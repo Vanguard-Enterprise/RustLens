@@ -11,8 +11,10 @@ node_modules/
 # Build
 apps/frontend/.next/
 apps/frontend/out/
+apps/frontend/tsconfig.tsbuildinfo
 apps/bot/dist/
 apps/backend/tmp/
+apps/backend/server.exe
 
 # Coverage
 coverage/
