@@ -31,14 +31,28 @@ const SETUP_ALL_ROLES_VALUE = "all_roles";
 const SETUP_ALL_CHANNELS_VALUE = "all_channels";
 
 const shardID = process.env.SHARD_ID ?? "0";
-const config = loadConfig();
-const backend = new BackendClient(
-  config.backendUrl,
-  config.jwtSecret,
-  config.jwtIssuer,
-  config.jwtAudience,
-);
-const setupWorkerID = `${config.workerId}-setup-${shardID}`;
+
+let _backend: BackendClient | undefined;
+let _setupWorkerID: string | undefined;
+
+function getBackend() {
+  if (!_backend) {
+    const config = loadConfig();
+    _backend = new BackendClient(
+      config.backendUrl,
+      config.jwtSecret,
+      config.jwtIssuer,
+      config.jwtAudience,
+    );
+    _setupWorkerID = `${config.workerId}-setup-${shardID}`;
+  }
+  return _backend;
+}
+
+function getSetupWorkerID() {
+  getBackend();
+  return _setupWorkerID!;
+}
 
 type SetupRoleKey =
   | "keyrole"
@@ -201,6 +215,10 @@ const setupRoleConfigs: readonly SetupRoleConfig[] = [
   },
 ] as const;
 
+// Roles shown in the modal checkbox. "bot" is excluded because it is
+// always added automatically when any role is selected.
+const modalRoleConfigs = setupRoleConfigs.filter((config) => config.key !== "bot");
+
 const setupChannelConfigs: readonly SetupChannelConfig[] = [
   { key: "voice_calls", modalLabel: "Voice Calls" },
   { key: "announcements", modalLabel: "Announcements" },
@@ -277,13 +295,13 @@ function buildSetupStartModal() {
         .setCustomId(SETUP_ROLES_CUSTOM_ID)
         .setRequired(true)
         .setMinValues(1)
-        .setMaxValues(setupRoleConfigs.length + 1)
+        .setMaxValues(modalRoleConfigs.length + 1)
         .addOptions(
           {
             label: "All",
             value: SETUP_ALL_ROLES_VALUE,
           },
-          ...setupRoleConfigs.map((config) => ({
+          ...modalRoleConfigs.map((config) => ({
             label: config.modalLabel,
             value: config.key,
           })),
@@ -709,11 +727,7 @@ function buildSetupPlan(
     });
   }
 
-  if (
-    channelKeys.includes("announcements") ||
-    channelKeys.includes("wipe_react") ||
-    channelKeys.includes("invite")
-  ) {
+  if (channelKeys.includes("announcements") || channelKeys.includes("wipe_react")) {
     categories.set("Important", { name: "Important" });
     channels.push({
       name: "wipe log",
@@ -836,11 +850,7 @@ function getTargetChannelNames(
     names.push("Important", "press for invite");
   }
 
-  if (
-    channelKeys.includes("announcements") ||
-    channelKeys.includes("wipe_react") ||
-    channelKeys.includes("invite")
-  ) {
+  if (channelKeys.includes("announcements") || channelKeys.includes("wipe_react")) {
     names.push("Important", "wipe log");
   }
 
@@ -977,12 +987,23 @@ async function createSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag
     const botRole = createdRoles.find((role) => role.name === roleConfigByKey.get("bot")?.roleName);
     if (botRole) {
       await me.roles.add(botRole, `RustLens setup by ${actorTag}`);
-      const cachedBots = guild.members.cache.filter(
-        (member) => member.user.bot && member.id !== me.id,
-      );
+
+      // Best-effort: fetch all members to discover other bots. This
+      // requires the GuildMembers intent; if unavailable, we fall back
+      // to the cache which may only contain the bot itself.
+      let members = guild.members.cache;
+      try {
+        members = (await guild.members.fetch()).filter(
+          (member) => member.user.bot && member.id !== me.id,
+        );
+      } catch {
+        members = guild.members.cache.filter(
+          (member) => member.user.bot && member.id !== me.id,
+        );
+      }
 
       await Promise.allSettled(
-        cachedBots.map((member) =>
+        members.map((member) =>
           member.roles
             .add(botRole, `RustLens setup by ${actorTag}`)
             .catch((error) => {
@@ -1112,19 +1133,7 @@ async function deleteSetupChannels(
     return [];
   }
 
-  const roleMap = new Map<SetupRoleKey, Role>();
-  for (const config of getRoleConfigs(roleKeys)) {
-    const role = guild.roles.cache.find((entry) => entry.name === config.roleName);
-    if (role) {
-      roleMap.set(config.key, role);
-    }
-  }
-
-  const plan = buildSetupPlan(channelKeys, roleMap);
-  const targetNames = new Set([
-    ...plan.channels.map((channel) => channel.name),
-    ...plan.categories.map((category) => category.name),
-  ]);
+  const targetNames = new Set(getTargetChannelNames(channelKeys, roleKeys));
   const deletedChannelNames: string[] = [];
   const existingChannels = [...guild.channels.cache.values()]
     .filter((channel) => targetNames.has(channel.name))
@@ -1261,7 +1270,7 @@ export async function handleSetupChatInput(interaction: ChatInputCommandInteract
     return true;
   }
 
-  const state = await backend.guildSetup(setupWorkerID, interaction.guildId);
+  const state = await getBackend().guildSetup(getSetupWorkerID(), interaction.guildId);
   const blockedMessage = setupBlockedMessage(state.status);
   if (blockedMessage) {
     await replyEphemeral(interaction, blockedMessage);
@@ -1304,7 +1313,7 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
 
   await deferEphemeral(interaction);
 
-  const state = await backend.guildSetup(setupWorkerID, interaction.guildId);
+  const state = await getBackend().guildSetup(getSetupWorkerID(), interaction.guildId);
   if (state.status === "missing") {
     await replyEphemeral(interaction, "Setup has not been completed for this server.");
     return true;
@@ -1323,7 +1332,20 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
     roleKeys,
     interaction.user.tag,
   );
-  await backend.resetGuildSetup(setupWorkerID, interaction.guildId);
+  await getBackend().resetGuildSetup(getSetupWorkerID(), interaction.guildId);
+
+  const deletedRoleList = deletedRoles.length > 0 ? deletedRoles.join(", ") : "(none found)";
+  const deletedChannelList =
+    deletedChannels.length > 0 ? deletedChannels.join(", ") : "(none found)";
+  try {
+    await replyEphemeral(
+      interaction,
+      `Setup reset. Removed channels: ${deletedChannelList}. Removed roles: ${deletedRoleList}. You can run /setup start again now.`,
+    );
+  } catch {
+    // The command channel may have been deleted during reset.
+  }
+
   return true;
 }
 
@@ -1407,7 +1429,7 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
     "Starting setup.",
   );
 
-  const claim = await backend.claimGuildSetup(setupWorkerID, interaction.guildId);
+  const claim = await getBackend().claimGuildSetup(getSetupWorkerID(), interaction.guildId);
   if (!claim.claimed) {
     const blockedMessage = setupBlockedMessage(claim.status) ?? "Setup is not available right now.";
     await replyEphemeral(interaction, blockedMessage);
@@ -1466,8 +1488,8 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
       4,
       "Saving setup state.",
     );
-    await backend.completeGuildSetup(
-      setupWorkerID,
+    await getBackend().completeGuildSetup(
+      getSetupWorkerID(),
       interaction.guildId,
       interaction.user.id,
       selectedRoleKeys,
@@ -1518,7 +1540,7 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
       );
     }
 
-    await backend.resetGuildSetup(setupWorkerID, interaction.guildId).catch(() => undefined);
+    await getBackend().resetGuildSetup(getSetupWorkerID(), interaction.guildId).catch(() => undefined);
 
     const message = formatSetupError(error);
     await replyEphemeral(interaction, message);

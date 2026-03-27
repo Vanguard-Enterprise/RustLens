@@ -19,13 +19,12 @@ describe("setup command", () => {
         custom_id: "setup_roles",
         required: true,
         min_values: 1,
-        max_values: 10,
+        max_values: 9,
         options: [
           { label: "All", value: "all_roles" },
           { label: "Keyrole", value: "keyrole" },
           { label: "Leader", value: "leader" },
           { label: "Co-Leader", value: "co_leader" },
-          { label: "Bot", value: "bot" },
           { label: "Member", value: "member" },
           { label: "Builder", value: "builder" },
           { label: "Electrician", value: "electrician" },
@@ -173,6 +172,15 @@ describe("setup command", () => {
         "afk",
       ]),
     );
+  });
+
+  it("does not include wipe log when only invite is selected", () => {
+    expect(
+      __testables.getTargetChannelNames(
+        ["invite"],
+        ["leader", "co_leader", "bot", "member"],
+      ),
+    ).not.toContain("wipe log");
   });
 
   it("requires member when member-scoped roles are selected", () => {
