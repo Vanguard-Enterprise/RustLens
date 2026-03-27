@@ -27,6 +27,10 @@ func TestOpenAPISpecContainsCoreRoutes(t *testing.T) {
 		"/api/internal/bot/shards/heartbeat",
 		"/api/internal/bot/shards/release",
 		"/api/internal/bot/shards/assignments",
+		"/api/internal/bot/setup/guilds/{guildID}",
+		"/api/internal/bot/setup/guilds/{guildID}/claim",
+		"/api/internal/bot/setup/guilds/{guildID}/complete",
+		"/api/internal/bot/setup/guilds/{guildID}/reset",
 	}
 
 	for _, path := range requiredPaths {

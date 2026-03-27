@@ -16,13 +16,22 @@ The bot is a sharded worker runtime. Each shard runs as a child process (`shard-
 ```
 src/
   index.ts              # Orchestrator: register, reconcile, heartbeat
-  shard-worker.ts       # Discord.js Client per shard (child process)
+  shard-worker.ts       # Discord.js Client per shard + interaction handling
   shard-runtime.ts      # Child process manager
   shards.ts             # Shard delta computation
   backend-client.ts     # HTTP client for backend shard API (JWT auth)
   config.ts             # Env config loader
+  setup-command.ts      # /setup start command registration + modal flow
   builders/             # Custom v2 modal component builders
 ```
+
+Current command flow:
+- `/setup start` opens a v2 modal with one checkbox group for role creation.
+- `/admin reset_setup` clears persisted setup state and removes roles created by setup.
+- Modal custom id: `setup_start_modal`
+- Field custom id: `setup_roles`
+- Commands are registered by shard `0` on startup (global by default, or guild-scoped when `DISCORD_COMMAND_GUILD_ID` is set).
+- Setup state is persisted through backend bot-only API routes so setup can only run once per guild until reset.
 
 ## Custom V2 Modal Builders
 
@@ -33,7 +42,7 @@ Discord.js v14 does not have builder classes for v2 modal components. We provide
 | `ModalV2Builder` | — | Top-level modal, auto-wraps components in Label (type 18) |
 | `TextInputBuilder` | 4 | Short or paragraph text input |
 | `RadioGroupBuilder` | 21 | Single choice radio buttons |
-| `CheckboxGroupBuilder` | 22 | Multiple choice checkboxes |
+| `CheckboxGroupBuilder` | 22 | Multiple choice checkboxes (`setRequired(false)` allows `min_values: 0`) |
 | `StringSelectBuilder` | 3 | Dropdown select menu |
 
 Usage:

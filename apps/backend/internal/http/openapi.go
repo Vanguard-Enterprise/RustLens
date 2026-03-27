@@ -156,6 +156,126 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get guild setup state",
+					"description": "Returns the persisted setup state for a guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Setup state returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSetupState"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/claim": map[string]any{
+				"post": map[string]any{
+					"summary":     "Claim guild setup",
+					"description": "Attempts to claim setup for a guild before role creation begins.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Claim result returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/ClaimGuildSetupResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/complete": map[string]any{
+				"post": map[string]any{
+					"summary":     "Complete guild setup",
+					"description": "Marks a guild setup as configured and stores selected role keys.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CompleteGuildSetupRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Setup marked configured",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSetupState"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/reset": map[string]any{
+				"post": map[string]any{
+					"summary":     "Reset guild setup",
+					"description": "Clears the persisted guild setup state.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Setup reset",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"securitySchemes": map[string]any{
@@ -242,6 +362,46 @@ func buildOpenAPIDocument() map[string]any {
 						},
 					},
 					"required": []string{"workerId", "targetShards", "shardIds"},
+				},
+				"GuildSetupState": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId": map[string]any{"type": "string"},
+						"status":  map[string]any{"type": "string"},
+						"configuredBy": map[string]any{
+							"type": "string",
+						},
+						"selectedRoles": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
+					},
+					"required": []string{"guildId", "status", "configuredBy", "selectedRoles"},
+				},
+				"ClaimGuildSetupResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"claimed":      map[string]any{"type": "boolean"},
+						"guildId":      map[string]any{"type": "string"},
+						"status":       map[string]any{"type": "string"},
+						"configuredBy": map[string]any{"type": "string"},
+						"selectedRoles": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
+					},
+					"required": []string{"claimed", "guildId", "status", "configuredBy", "selectedRoles"},
+				},
+				"CompleteGuildSetupRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"configuredBy": map[string]any{"type": "string"},
+						"selectedRoles": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
+					},
+					"required": []string{"configuredBy", "selectedRoles"},
 				},
 				"ErrorResponse": map[string]any{
 					"type": "object",

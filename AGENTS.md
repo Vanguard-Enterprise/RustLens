@@ -84,7 +84,7 @@ apps/backend/
     config/config.go         # Env-based config with defaults (PORT, POSTGRES_URL, REDIS_URL, etc.)
     http/
       router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*
-      handlers.go            # Handler implementations
+      handlers.go            # Handler implementations incl. bot setup-state endpoints
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
     auth/jwt.go              # JWT signing/validation for bot service auth
     shards/
@@ -100,6 +100,7 @@ Key patterns:
 
 - Schema is auto-migrated at startup via `EnsureSchema()` (no migration tool).
 - Bot routes (`/api/internal/bot/shards/*`) are JWT-protected via middleware.
+- Bot setup-state routes (`/api/internal/bot/setup/guilds/*`) are JWT-protected and persist one-time guild setup state in Postgres.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
 
 ### Bot (TypeScript)
@@ -111,10 +112,12 @@ apps/bot/src/
   backend-client.ts     # HTTP client for backend shard API (register, heartbeat, release, assignments)
   shards.ts             # Shard reconciliation logic
   shard-runtime.ts      # discord.js ShardingManager wrapper
-  shard-worker.ts       # Individual shard worker process
+  shard-worker.ts       # Individual shard worker process + interaction handling
+  setup-command.ts      # /setup start command + setup modal handling
 ```
 
 Flow: worker registers with backend -> polls `/assignments` -> reconciles local discord.js shards -> heartbeats leases -> releases on shutdown. Auth via self-signed JWT using `BOT_SERVICE_JWT_SECRET`.
+Command flow: shard `0` registers `/setup start` and `/admin reset_setup` at startup. `/setup start` opens a modal with role checkboxes, creates configured guild roles in a fixed order, and stores per-guild setup state via backend bot-only endpoints. `/admin reset_setup` clears that state and deletes the roles created by setup.
 
 ### Frontend (Next.js)
 
@@ -142,6 +145,7 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
 
 The bot requires a real `DISCORD_TOKEN` for gateway login.
+Optional for fast command propagation in dev: `DISCORD_COMMAND_GUILD_ID` (registers slash commands to one guild instead of globally).
 
 ## CI/CD
 

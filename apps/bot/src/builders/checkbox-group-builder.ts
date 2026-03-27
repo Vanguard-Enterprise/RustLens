@@ -3,12 +3,18 @@ import { ComponentType } from "./types.js";
 
 export class CheckboxGroupBuilder implements ToJSON<APICheckboxGroup> {
   private customId: string | undefined;
+  private isRequired: boolean | undefined;
   private minValues: number | undefined;
   private maxValues: number | undefined;
   private readonly options: SelectOption[] = [];
 
   setCustomId(id: string): this {
     this.customId = id;
+    return this;
+  }
+
+  setRequired(required: boolean): this {
+    this.isRequired = required;
     return this;
   }
 
@@ -45,6 +51,7 @@ export class CheckboxGroupBuilder implements ToJSON<APICheckboxGroup> {
     return {
       type: ComponentType.CheckboxGroup,
       custom_id: this.customId,
+      ...(this.isRequired !== undefined && { required: this.isRequired }),
       options: [...this.options],
       ...(this.minValues !== undefined && { min_values: this.minValues }),
       ...(this.maxValues !== undefined && { max_values: this.maxValues }),

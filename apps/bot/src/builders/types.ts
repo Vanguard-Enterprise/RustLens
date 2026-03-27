@@ -44,6 +44,7 @@ export type APIRadioGroup = {
 export type APICheckboxGroup = {
   type: typeof ComponentType.CheckboxGroup;
   custom_id: string;
+  required?: boolean;
   min_values?: number;
   max_values?: number;
   options: SelectOption[];

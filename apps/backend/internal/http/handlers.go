@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
@@ -171,6 +173,101 @@ func (h *Handler) GetShardAssignments(w http.ResponseWriter, r *http.Request) {
 		"targetShards": targetShards,
 		"shardIds":     shards,
 	})
+}
+
+func (h *Handler) GetGuildSetupState(w http.ResponseWriter, r *http.Request) {
+	guildID := chi.URLParam(r, "guildID")
+	if guildID == "" {
+		writeError(w, http.StatusBadRequest, "guildID is required")
+		return
+	}
+
+	state, err := h.postgres.GetGuildSetupState(r.Context(), guildID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"guildId":       state.GuildID,
+		"status":        state.Status,
+		"configuredBy":  state.ConfiguredBy,
+		"selectedRoles": state.SelectedRoles,
+	})
+}
+
+func (h *Handler) ClaimGuildSetup(w http.ResponseWriter, r *http.Request) {
+	guildID := chi.URLParam(r, "guildID")
+	if guildID == "" {
+		writeError(w, http.StatusBadRequest, "guildID is required")
+		return
+	}
+
+	claimed, state, err := h.postgres.ClaimGuildSetup(r.Context(), guildID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"claimed":       claimed,
+		"guildId":       state.GuildID,
+		"status":        state.Status,
+		"configuredBy":  state.ConfiguredBy,
+		"selectedRoles": state.SelectedRoles,
+	})
+}
+
+type completeGuildSetupRequest struct {
+	ConfiguredBy  string   `json:"configuredBy"`
+	SelectedRoles []string `json:"selectedRoles"`
+}
+
+func (h *Handler) CompleteGuildSetup(w http.ResponseWriter, r *http.Request) {
+	guildID := chi.URLParam(r, "guildID")
+	if guildID == "" {
+		writeError(w, http.StatusBadRequest, "guildID is required")
+		return
+	}
+
+	var request completeGuildSetupRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.postgres.CompleteGuildSetup(r.Context(), guildID, request.ConfiguredBy, request.SelectedRoles); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	state, err := h.postgres.GetGuildSetupState(r.Context(), guildID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"guildId":       state.GuildID,
+		"status":        state.Status,
+		"configuredBy":  state.ConfiguredBy,
+		"selectedRoles": state.SelectedRoles,
+	})
+}
+
+func (h *Handler) ResetGuildSetup(w http.ResponseWriter, r *http.Request) {
+	guildID := chi.URLParam(r, "guildID")
+	if guildID == "" {
+		writeError(w, http.StatusBadRequest, "guildID is required")
+		return
+	}
+
+	if err := h.postgres.ResetGuildSetup(r.Context(), guildID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

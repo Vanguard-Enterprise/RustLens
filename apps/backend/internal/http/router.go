@@ -47,6 +47,14 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Get("/assignments", handler.GetShardAssignments)
 	})
 
+	r.Route("/api/internal/bot/setup", func(r chi.Router) {
+		r.Use(botJWTMiddleware(handler.jwtValidator))
+		r.Get("/guilds/{guildID}", handler.GetGuildSetupState)
+		r.Post("/guilds/{guildID}/claim", handler.ClaimGuildSetup)
+		r.Post("/guilds/{guildID}/complete", handler.CompleteGuildSetup)
+		r.Post("/guilds/{guildID}/reset", handler.ResetGuildSetup)
+	})
+
 	return r
 }
 
