@@ -148,6 +148,16 @@ The bot requires a real `DISCORD_TOKEN` for gateway login.
 - **`.github/workflows/ci.yml`** — On PR and push to `main`: lint/test/build for JS workspace, vet/test/build for Go backend, dry-run validate K8s manifests. Runs on self-hosted runners.
 - **`.github/workflows/publish.yml`** — On `main`: builds and pushes `backend`, `frontend`, `bot` Docker images to GHCR.
 
+## Skills
+
+Agent skills live in `.agents/skills/` (symlinked to `.claude/skills/` for Claude Code). Each skill is a directory with a `SKILL.md` file. When creating or editing skills, always write to `.agents/skills/` — the symlink ensures all agent tooling picks them up.
+
+Current skills:
+
+| Skill | Description |
+|---|---|
+| `battlemetrics-api` | BattleMetrics REST API reference (endpoints, auth, pagination, JSON:API shapes) |
+
 ## Kubernetes
 
 Manifests in `deploy/k8s/`. Apply in order: namespace -> configmap -> secrets -> backend -> frontend -> bot -> hpa -> ingress.
