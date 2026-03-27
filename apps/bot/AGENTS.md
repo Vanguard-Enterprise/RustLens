@@ -32,6 +32,8 @@ Current command flow:
 - Field custom ids: `setup_roles`, `setup_channels`
 - Commands are registered globally by shard `0` on startup.
 - Setup state is persisted through backend bot-only API routes so setup can only run once per guild until reset. Persisted data now includes selected roles and selected channels.
+- Channel setup only bootstraps from a fresh guild with exactly one existing channel, and `/setup start` must be run from that channel because setup renames and deletes it after creating the new layout.
+- When channel setup creates `#join`, the bot also tries to set it as the guild system channel and unsuppress Discord join notifications so member join messages land there.
 
 ## Custom V2 Modal Builders
 

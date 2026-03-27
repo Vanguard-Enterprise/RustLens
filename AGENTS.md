@@ -117,7 +117,7 @@ apps/bot/src/
 ```
 
 Flow: worker registers with backend -> polls `/assignments` -> reconciles local discord.js shards -> heartbeats leases -> releases on shutdown. Auth via self-signed JWT using `BOT_SERVICE_JWT_SECRET`.
-Command flow: shard `0` registers `/setup start` and `/admin reset_setup` at startup. `/setup start` opens a modal with role and channel checkboxes, creates configured guild roles in a fixed order, creates the selected channel/category layout with permission overwrites, and stores per-guild setup state via backend bot-only endpoints. `/admin reset_setup` clears that state and deletes the roles and channels created by setup.
+Command flow: shard `0` registers `/setup start` and `/admin reset_setup` at startup. `/setup start` opens a modal with role and channel checkboxes, creates configured guild roles in a fixed order, creates the selected channel/category layout with permission overwrites, tries to set `#join` as the guild system channel for join messages when that channel is created, and stores per-guild setup state via backend bot-only endpoints. Channel creation only bootstraps from a guild that still has exactly one existing channel, and the command must be run in that channel because setup replaces it. `/admin reset_setup` clears that state and deletes the roles and channels created by setup.
 
 ### Frontend (Next.js)
 

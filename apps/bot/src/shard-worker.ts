@@ -28,6 +28,15 @@ client.once("clientReady", () => {
   });
 });
 
+function isIgnorableInteractionReplyError(error: unknown) {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return code === 10008 || code === 10062;
+}
+
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
@@ -58,7 +67,9 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
       } catch (replyError) {
-        console.error("[bot] failed to send interaction error reply", replyError);
+        if (!isIgnorableInteractionReplyError(replyError)) {
+          console.error("[bot] failed to send interaction error reply", replyError);
+        }
       }
     }
   }

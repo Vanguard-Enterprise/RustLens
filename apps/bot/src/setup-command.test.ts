@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { __testables } from "./setup-command.js";
 import { ComponentType } from "./builders/index.js";
+import { ChannelType } from "discord.js";
 
 describe("setup command", () => {
   it("builds setup modal with ordered role options", () => {
@@ -110,5 +111,72 @@ describe("setup command", () => {
         ["general"],
       ),
     ).toBe("General and Voice Calls channel setup require the Builder role to be selected too.");
+  });
+
+  it("plans bootstrap for a single existing setup channel", () => {
+    expect(
+      __testables.planSetupBootstrap(
+        [
+          {
+            id: "general-id",
+            name: "general",
+            type: ChannelType.GuildText,
+          },
+        ],
+        "general-id",
+        ["general"],
+      ),
+    ).toEqual({
+      bootstrapChannelId: "general-id",
+      blockingConflicts: [],
+      error: null,
+    });
+  });
+
+  it("rejects channel setup when the server has more than one channel", () => {
+    expect(
+      __testables.planSetupBootstrap(
+        [
+          {
+            id: "general-id",
+            name: "general",
+            type: ChannelType.GuildText,
+          },
+          {
+            id: "other-id",
+            name: "other",
+            type: ChannelType.GuildText,
+          },
+        ],
+        "general-id",
+        ["general"],
+      ),
+    ).toEqual({
+      bootstrapChannelId: null,
+      blockingConflicts: [],
+      error:
+        "Channel setup can only run when the server has exactly one existing channel. Delete the extras first.",
+    });
+  });
+
+  it("rejects channel setup when not launched from the only server channel", () => {
+    expect(
+      __testables.planSetupBootstrap(
+        [
+          {
+            id: "general-id",
+            name: "general",
+            type: ChannelType.GuildText,
+          },
+        ],
+        "different-id",
+        ["general"],
+      ),
+    ).toEqual({
+      bootstrapChannelId: null,
+      blockingConflicts: [],
+      error:
+        "Run /setup start from the server's only channel so RustLens can replace it.",
+    });
   });
 });
