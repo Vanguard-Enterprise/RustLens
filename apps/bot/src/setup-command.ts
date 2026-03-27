@@ -23,7 +23,6 @@ export const SETUP_COMMAND_NAME = "setup";
 export const ADMIN_COMMAND_NAME = "admin";
 
 const SETUP_START_SUBCOMMAND_NAME = "start";
-const SETUP_REPAIR_VCS_SUBCOMMAND_NAME = "repair_vcs";
 const ADMIN_RESET_SUBCOMMAND_NAME = "reset_setup";
 const SETUP_MODAL_CUSTOM_ID = "setup_start_modal";
 const SETUP_CHANNELS_CUSTOM_ID = "setup_channels";
@@ -255,11 +254,6 @@ const setupCommand = new SlashCommandBuilder()
     subcommand
       .setName(SETUP_START_SUBCOMMAND_NAME)
       .setDescription("Create the configured RustLens roles"),
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName(SETUP_REPAIR_VCS_SUBCOMMAND_NAME)
-      .setDescription("Recreate any missing setup voice channels"),
   );
 
 const adminCommand = new SlashCommandBuilder()
@@ -1089,86 +1083,6 @@ async function createSetupChannels(
   }
 }
 
-function getExistingRoleMap(guild: Guild, roleKeys: readonly SetupRoleKey[]) {
-  const roleMap = new Map<SetupRoleKey, Role>();
-
-  for (const config of getRoleConfigs([...roleKeys])) {
-    const role = guild.roles.cache.find((entry) => entry.name === config.roleName);
-    if (role) {
-      roleMap.set(config.key, role);
-    }
-  }
-
-  return roleMap;
-}
-
-async function repairSetupVoiceChannels(
-  guild: Guild,
-  roleKeys: SetupRoleKey[],
-  channelKeys: SetupChannelKey[],
-  actorTag: string,
-) {
-  if (!channelKeys.includes("voice_calls")) {
-    return {
-      createdNames: [] as string[],
-      skippedNames: [] as string[],
-    };
-  }
-
-  const roleMap = getExistingRoleMap(guild, roleKeys);
-  const plan = buildSetupPlan(channelKeys, roleMap);
-  const voiceCategoryPlan = plan.categories.find((category) => category.name === "Voice Channels");
-  const voiceChannelPlans = plan.channels.filter(
-    (channel) =>
-      channel.type === ChannelType.GuildVoice ||
-      (channel.parentName !== undefined && channel.parentName === "Voice Channels"),
-  );
-  const createdNames: string[] = [];
-  const skippedNames: string[] = [];
-  const reason = `RustLens voice repair by ${actorTag}`;
-
-  let voiceCategory = guild.channels.cache.find(
-    (channel) =>
-      channel.type === ChannelType.GuildCategory && channel.name === "Voice Channels",
-  );
-
-  if (!voiceCategory && voiceCategoryPlan) {
-    voiceCategory = await guild.channels.create({
-      name: voiceCategoryPlan.name,
-      type: ChannelType.GuildCategory,
-      reason,
-    });
-    createdNames.push(voiceCategory.name);
-  }
-
-  for (const channelPlan of voiceChannelPlans) {
-    const existingChannel = guild.channels.cache.find(
-      (channel) => channel.name === channelPlan.name,
-    );
-    if (existingChannel) {
-      skippedNames.push(channelPlan.name);
-      continue;
-    }
-
-    const createdChannel = await guild.channels.create({
-      name: channelPlan.name,
-      type: channelPlan.type,
-      parent:
-        channelPlan.parentName === "Voice Channels" && voiceCategory
-          ? voiceCategory.id
-          : undefined,
-      permissionOverwrites: channelPlan.permissionOverwrites,
-      reason,
-    });
-    createdNames.push(createdChannel.name);
-  }
-
-  return {
-    createdNames,
-    skippedNames,
-  };
-}
-
 async function deleteSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag: string) {
   await ensureManageableGuild(guild);
 
@@ -1339,54 +1253,6 @@ export async function handleSetupChatInput(interaction: ChatInputCommandInteract
   }
 
   const subcommand = interaction.options.getSubcommand(false);
-  if (subcommand === SETUP_REPAIR_VCS_SUBCOMMAND_NAME) {
-    await deferEphemeral(interaction);
-
-    const state = await backend.guildSetup(setupWorkerID, interaction.guildId);
-    if (state.status !== "configured") {
-      await replyEphemeral(
-        interaction,
-        "Setup must be completed before voice channels can be repaired.",
-      );
-      return true;
-    }
-
-    const roleKeys = getSelectedRoleKeys(state.selectedRoles);
-    const channelKeys = getSelectedChannelKeys(state.selectedChannels);
-    if (!channelKeys.includes("voice_calls")) {
-      await replyEphemeral(
-        interaction,
-        "This server setup did not include Voice Calls, so there is nothing to repair.",
-      );
-      return true;
-    }
-
-    try {
-      const repair = await repairSetupVoiceChannels(
-        interaction.guild!,
-        roleKeys,
-        channelKeys,
-        interaction.user.tag,
-      );
-      await configureGuildChannelSettings(
-        interaction.guild!,
-        [...interaction.guild!.channels.cache.values()],
-        interaction.user.tag,
-      ).catch((error) => {
-        console.error("[bot] failed to reapply guild channel settings after voice repair", error);
-      });
-
-      await replyEphemeral(
-        interaction,
-        `Voice repair completed. Created: ${repair.createdNames.length > 0 ? repair.createdNames.join(", ") : "(none)"}. Already present: ${repair.skippedNames.length > 0 ? repair.skippedNames.join(", ") : "(none)"}.`,
-      );
-    } catch (error) {
-      await replyEphemeral(interaction, formatSetupError(error));
-    }
-
-    return true;
-  }
-
   if (subcommand !== SETUP_START_SUBCOMMAND_NAME) {
     await replyEphemeral(
       interaction,
