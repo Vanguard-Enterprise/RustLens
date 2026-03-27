@@ -1224,6 +1224,7 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
       type: channel.type,
     })),
     interaction.channelId,
+    selectedRoleKeys,
     selectedChannelKeys,
   );
   if (bootstrapPlan.error) {
