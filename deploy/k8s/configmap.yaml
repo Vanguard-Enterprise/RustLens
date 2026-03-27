@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rustlens-config
+  namespace: rustlens
+data:
+  PORT: "8080"
+  BOT_TARGET_SHARDS: "16"
+  BOT_HEARTBEAT_TTL_SECONDS: "45"
+  BOT_JWT_ISSUER: "rustlens-bot"
+  BOT_JWT_AUDIENCE: "rustlens-backend"
+  BACKEND_URL: "http://backend.rustlens.svc.cluster.local:8080"

@@ -1,0 +1,16 @@
+{
+  "name": "rustlens-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.6.0",
+  "scripts": {
+    "dev": "turbo run dev --parallel --continue",
+    "dev:all": "concurrently -k -n backend,frontend,bot \"cd apps/backend && go run github.com/air-verse/air@latest -c .air.toml\" \"pnpm --filter @rustlens/frontend dev\" \"pnpm --filter @rustlens/bot dev\"",
+    "lint": "turbo run lint --filter=@rustlens/frontend --filter=@rustlens/bot",
+    "test": "turbo run test --filter=@rustlens/frontend --filter=@rustlens/bot",
+    "build": "turbo run build --filter=@rustlens/frontend --filter=@rustlens/bot"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "turbo": "^2.5.0"
+  }
+}

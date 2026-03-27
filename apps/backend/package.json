@@ -1,0 +1,11 @@
+{
+  "name": "@rustlens/backend",
+  "private": true,
+  "scripts": {
+    "dev": "go run github.com/air-verse/air@latest -c .air.toml",
+    "lint": "go vet ./...",
+    "test": "go test ./...",
+    "build": "go build ./cmd/server",
+    "go:tidy": "go mod tidy"
+  }
+}

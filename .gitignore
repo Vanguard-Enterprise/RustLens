@@ -1,0 +1,27 @@
+# Node
+node_modules/
+.pnpm-store/
+.turbo/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Build
+apps/frontend/.next/
+apps/frontend/out/
+apps/bot/dist/
+apps/backend/tmp/
+
+# Coverage
+coverage/
+
+# Logs
+*.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
