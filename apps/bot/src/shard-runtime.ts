@@ -22,7 +22,7 @@ export class ShardRuntime {
 
     const child = fork(useDist ? distEntry : sourceEntry, [], {
       stdio: "inherit",
-      execArgv: useDist ? [] : ["--loader", "tsx"],
+      execArgv: useDist ? [] : ["--import", "tsx"],
       env: {
         ...process.env,
         SHARD_ID: String(shardID),
