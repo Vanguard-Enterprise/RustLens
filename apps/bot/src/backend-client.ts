@@ -12,6 +12,18 @@ type AssignmentsResponse = {
   shardIds: number[];
 };
 
+export type GuildSetupState = {
+  guildId: string;
+  status: "missing" | "pending" | "configured";
+  configuredBy: string;
+  selectedRoles: string[];
+  selectedChannels: string[];
+};
+
+type ClaimGuildSetupResponse = GuildSetupState & {
+  claimed: boolean;
+};
+
 export class BackendClient {
   constructor(
     private readonly backendUrl: string,
@@ -69,5 +81,36 @@ export class BackendClient {
   assignments(workerId: string) {
     const query = new URLSearchParams({ workerId }).toString();
     return this.call<AssignmentsResponse>(workerId, `/api/internal/bot/shards/assignments?${query}`, "GET");
+  }
+
+  guildSetup(workerId: string, guildId: string) {
+    return this.call<GuildSetupState>(workerId, `/api/internal/bot/setup/guilds/${guildId}`, "GET");
+  }
+
+  claimGuildSetup(workerId: string, guildId: string) {
+    return this.call<ClaimGuildSetupResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/claim`,
+      "POST",
+    );
+  }
+
+  completeGuildSetup(
+    workerId: string,
+    guildId: string,
+    configuredBy: string,
+    selectedRoles: string[],
+    selectedChannels: string[],
+  ) {
+    return this.call<GuildSetupState>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/complete`,
+      "POST",
+      { configuredBy, selectedRoles, selectedChannels },
+    );
+  }
+
+  resetGuildSetup(workerId: string, guildId: string) {
+    return this.call<{ status: string }>(workerId, `/api/internal/bot/setup/guilds/${guildId}/reset`, "POST");
   }
 }

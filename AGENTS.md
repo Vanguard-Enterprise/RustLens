@@ -84,7 +84,7 @@ apps/backend/
     config/config.go         # Env-based config with defaults (PORT, POSTGRES_URL, REDIS_URL, etc.)
     http/
       router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*
-      handlers.go            # Handler implementations
+      handlers.go            # Handler implementations incl. bot setup-state endpoints
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
     auth/jwt.go              # JWT signing/validation for bot service auth
     shards/
@@ -100,6 +100,7 @@ Key patterns:
 
 - Schema is auto-migrated at startup via `EnsureSchema()` (no migration tool).
 - Bot routes (`/api/internal/bot/shards/*`) are JWT-protected via middleware.
+- Bot setup-state routes (`/api/internal/bot/setup/guilds/*`) are JWT-protected and persist one-time guild setup state in Postgres, including selected roles and selected channels.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
 
 ### Bot (TypeScript)
@@ -111,10 +112,12 @@ apps/bot/src/
   backend-client.ts     # HTTP client for backend shard API (register, heartbeat, release, assignments)
   shards.ts             # Shard reconciliation logic
   shard-runtime.ts      # discord.js ShardingManager wrapper
-  shard-worker.ts       # Individual shard worker process
+  shard-worker.ts       # Individual shard worker process + interaction handling
+  setup-command.ts      # /setup start command + setup modal handling
 ```
 
 Flow: worker registers with backend -> polls `/assignments` -> reconciles local discord.js shards -> heartbeats leases -> releases on shutdown. Auth via self-signed JWT using `BOT_SERVICE_JWT_SECRET`.
+Command flow: shard `0` registers `/setup start` and `/admin reset_setup` at startup. `/setup start` opens a modal with role and channel checkboxes (the `Bot` role is not shown in the modal — it is always created automatically), includes an `All` option for both groups, switches the deferred ephemeral response into a textual progress bar during setup, creates configured guild roles in a fixed order including a hoisted soft-blue `Bot` role between `Co Leader` and `member`, assigns that `Bot` role to the RustLens bot plus other bot members (fetched via `guild.members.fetch()` with cache fallback), creates the selected channel/category layout with permission overwrites, skips builder-only channels when the `Builder` role is not selected, adds `#wipe log` at the bottom of `Important` when announcements or wipe react channels are requested, supports an `Invite` modal option that creates `#press for invite`, creates an `afk` voice channel at the bottom of `Voice Channels`, tries to set `#join` as the guild system channel for join messages, and sets the guild AFK channel plus Discord's nearest supported AFK timeout of 15 minutes. Setup state is stored via backend bot-only endpoints. Channel creation only bootstraps from a guild that still has exactly one existing channel, and the command must be run in that channel because setup replaces it. `/admin reset_setup` clears that state and deletes the roles and channels created by setup, replying with a summary (silently catches reply failures when the command channel was deleted during reset).
 
 ### Frontend (Next.js)
 

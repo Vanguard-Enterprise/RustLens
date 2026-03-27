@@ -43,6 +43,21 @@ describe("CheckboxGroupBuilder", () => {
     expect(json).not.toHaveProperty("max_values");
   });
 
+  it("includes required when set", () => {
+    const json = new CheckboxGroupBuilder()
+      .setCustomId("areas")
+      .setRequired(false)
+      .addOption({ label: "UI", value: "ui" })
+      .toJSON();
+
+    expect(json).toEqual({
+      type: ComponentType.CheckboxGroup,
+      custom_id: "areas",
+      required: false,
+      options: [{ label: "UI", value: "ui" }],
+    });
+  });
+
   it("throws when custom_id is missing", () => {
     const builder = new CheckboxGroupBuilder().addOption({
       label: "A",
@@ -59,6 +74,7 @@ describe("CheckboxGroupBuilder", () => {
   it("supports fluent chaining", () => {
     const builder = new CheckboxGroupBuilder();
     expect(builder.setCustomId("x")).toBe(builder);
+    expect(builder.setRequired(false)).toBe(builder);
     expect(builder.setMinValues(1)).toBe(builder);
     expect(builder.setMaxValues(5)).toBe(builder);
     expect(builder.addOption({ label: "A", value: "a" })).toBe(builder);
