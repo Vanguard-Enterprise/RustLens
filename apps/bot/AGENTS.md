@@ -27,9 +27,11 @@ src/
 
 Current command flow:
 - `/setup start` opens a v2 modal with checkbox groups for roles and channels to create.
-- The setup modal includes an `All` option in both checkbox groups; role setup now includes a hoisted soft-blue `Bot` role between `Co Leader` and `member`, and that role is assigned to the RustLens bot plus other bot accounts during setup.
+- After modal submit, setup edits the deferred ephemeral reply into a text progress bar instead of leaving Discord's default "thinking" state visible.
+- The setup modal includes an `All` option in both checkbox groups; role setup now includes a hoisted soft-blue `Bot` role between `Co Leader` and `member`, and that role is assigned to the RustLens bot plus any other bot members already present in cache during setup.
 - Builder-only channels (`#build`, `builder call`) are skipped automatically when the `Builder` role is not selected.
-- Channel setup also includes `#wipe log` at the bottom of `Important` whenever an Important-section channel is requested, supports an `Invite` modal option that creates `#click for invite`, and creates an `afk` voice channel at the bottom of `Voice Channels` while setting the guild AFK channel/timeout to 10 minutes.
+- Channel setup also includes `#wipe log` at the bottom of `Important` whenever an Important-section channel is requested, supports an `Invite` modal option that creates `#press for invite`, and creates an `afk` voice channel at the bottom of `Voice Channels` while setting the guild AFK channel and Discord's nearest supported AFK timeout of 15 minutes.
+- `/setup repair_vcs` recreates any missing setup voice channels (and the `Voice Channels` category if needed) from the persisted guild setup state, then reapplies guild AFK/system channel settings.
 - `/admin reset_setup` clears persisted setup state and removes roles and channels created by setup.
 - Modal custom id: `setup_start_modal`
 - Field custom ids: `setup_roles`, `setup_channels`

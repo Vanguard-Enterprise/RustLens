@@ -87,6 +87,28 @@ describe("setup command", () => {
     ).toEqual(["keyrole", "leader"]);
   });
 
+  it("extracts values from nested modal components", () => {
+    expect(
+      __testables.extractComponentValues(
+        [
+          {
+            component: {
+              customId: "setup_roles",
+              values: ["leader", "member"],
+            },
+          },
+          {
+            component: {
+              customId: "setup_channels",
+              values: ["voice_calls", "general"],
+            },
+          },
+        ],
+        "setup_channels",
+      ),
+    ).toEqual(["voice_calls", "general"]);
+  });
+
   it("orders selected role keys by configured hierarchy", () => {
     expect(
       __testables.getSelectedRoleKeys([
@@ -145,7 +167,7 @@ describe("setup command", () => {
       expect.arrayContaining([
         "Important",
         "announcements",
-        "click for invite",
+        "press for invite",
         "wipe log",
         "Voice Channels",
         "afk",

@@ -23,6 +23,7 @@ export const SETUP_COMMAND_NAME = "setup";
 export const ADMIN_COMMAND_NAME = "admin";
 
 const SETUP_START_SUBCOMMAND_NAME = "start";
+const SETUP_REPAIR_VCS_SUBCOMMAND_NAME = "repair_vcs";
 const ADMIN_RESET_SUBCOMMAND_NAME = "reset_setup";
 const SETUP_MODAL_CUSTOM_ID = "setup_start_modal";
 const SETUP_CHANNELS_CUSTOM_ID = "setup_channels";
@@ -112,6 +113,14 @@ type SetupChannelCreationResult = {
   createdChannels: GuildBasedChannel[];
   bootstrapChannelId: string | null;
   bootstrapOriginalName: string | null;
+};
+
+type ModalComponentNode = {
+  customId?: string;
+  value?: unknown;
+  values?: unknown;
+  component?: ModalComponentNode;
+  components?: ModalComponentNode[];
 };
 
 const leaderPermissions = [
@@ -233,7 +242,9 @@ const orderedSetupCategoryNames = ["Important", "General", "Voice Channels"] as 
 const joinMessageUnsuppressFlags =
   GuildSystemChannelFlags.SuppressJoinNotifications |
   GuildSystemChannelFlags.SuppressJoinNotificationReplies;
-const setupAfkTimeoutSeconds = 600;
+// Discord only accepts fixed AFK timeout enum values: 60, 300, 900, 1800, 3600.
+const setupAfkTimeoutSeconds = 900;
+const setupProgressTotalSteps = 5;
 
 const setupCommand = new SlashCommandBuilder()
   .setName(SETUP_COMMAND_NAME)
@@ -244,6 +255,11 @@ const setupCommand = new SlashCommandBuilder()
     subcommand
       .setName(SETUP_START_SUBCOMMAND_NAME)
       .setDescription("Create the configured RustLens roles"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(SETUP_REPAIR_VCS_SUBCOMMAND_NAME)
+      .setDescription("Recreate any missing setup voice channels"),
   );
 
 const adminCommand = new SlashCommandBuilder()
@@ -337,20 +353,65 @@ function extractFieldValues(
 }
 
 function getFieldValues(interaction: ModalSubmitInteraction, customId: string) {
-  const accessorField = interaction.fields.getField(customId) as
-    | { value?: unknown; values?: unknown }
-    | null
-    | undefined;
-  const accessorValues = extractFieldValues(accessorField);
-  if (accessorValues.length > 0) {
-    return accessorValues;
+  try {
+    const accessorField = interaction.fields.getField(customId) as
+      | { value?: unknown; values?: unknown }
+      | null
+      | undefined;
+    const accessorValues = extractFieldValues(accessorField);
+    if (accessorValues.length > 0) {
+      return accessorValues;
+    }
+  } catch {
+    // Fall through to the raw field map and component tree.
   }
 
   const mapField = interaction.fields.fields.get(customId) as
     | { value?: unknown; values?: unknown }
     | null
     | undefined;
-  return extractFieldValues(mapField);
+  const mapValues = extractFieldValues(mapField);
+  if (mapValues.length > 0) {
+    return mapValues;
+  }
+
+  return extractComponentValues(
+    interaction.components as unknown as readonly ModalComponentNode[],
+    customId,
+  );
+}
+
+function extractComponentValues(
+  components: readonly ModalComponentNode[] | undefined,
+  customId: string,
+): string[] {
+  if (!components) {
+    return [];
+  }
+
+  for (const component of components) {
+    if (component.customId === customId) {
+      const values = extractFieldValues(component);
+      if (values.length > 0) {
+        return values;
+      }
+    }
+
+    const nestedComponentValues = extractComponentValues(
+      component.component ? [component.component] : undefined,
+      customId,
+    );
+    if (nestedComponentValues.length > 0) {
+      return nestedComponentValues;
+    }
+
+    const nestedValues = extractComponentValues(component.components, customId);
+    if (nestedValues.length > 0) {
+      return nestedValues;
+    }
+  }
+
+  return [];
 }
 
 function getSelectedRoleKeys(values: string[]): SetupRoleKey[] {
@@ -647,7 +708,7 @@ function buildSetupPlan(
   if (channelKeys.includes("invite")) {
     categories.set("Important", { name: "Important" });
     channels.push({
-      name: "click for invite",
+      name: "press for invite",
       type: ChannelType.GuildText,
       parentName: "Important",
       permissionOverwrites: restrictedAnnouncementOverwrites,
@@ -728,37 +789,27 @@ async function configureGuildChannelSettings(
     (channel): channel is TextChannel =>
       channel.type === ChannelType.GuildText && channel.name === "join",
   );
-  if (!joinChannel) {
-    const afkChannel = createdChannels.find(
-      (channel): channel is import("discord.js").VoiceChannel =>
-        channel.type === ChannelType.GuildVoice && channel.name === "afk",
-    );
-    if (afkChannel) {
-      await guild.edit({
-        afkChannel,
-        afkTimeout: setupAfkTimeoutSeconds,
-        reason: `RustLens setup by ${actorTag}`,
-      });
-    }
-    return;
-  }
-
-  const updatedFlags = guild.systemChannelFlags.bitfield & ~joinMessageUnsuppressFlags;
   const afkChannel = createdChannels.find(
     (channel): channel is import("discord.js").VoiceChannel =>
       channel.type === ChannelType.GuildVoice && channel.name === "afk",
   );
-  await guild.edit({
-    systemChannel: joinChannel,
-    systemChannelFlags: updatedFlags,
-    ...(afkChannel
-      ? {
-          afkChannel,
-          afkTimeout: setupAfkTimeoutSeconds,
-        }
-      : {}),
-    reason: `RustLens setup by ${actorTag}`,
-  });
+
+  if (joinChannel) {
+    const updatedFlags = guild.systemChannelFlags.bitfield & ~joinMessageUnsuppressFlags;
+    await guild.edit({
+      systemChannel: joinChannel,
+      systemChannelFlags: updatedFlags,
+      reason: `RustLens setup by ${actorTag}`,
+    });
+  }
+
+  if (afkChannel) {
+    await guild.edit({
+      afkChannel,
+      afkTimeout: setupAfkTimeoutSeconds,
+      reason: `RustLens setup by ${actorTag}`,
+    });
+  }
 }
 
 function getTargetChannelNames(
@@ -788,7 +839,7 @@ function getTargetChannelNames(
   }
 
   if (channelKeys.includes("invite")) {
-    names.push("Important", "click for invite");
+    names.push("Important", "press for invite");
   }
 
   if (
@@ -932,14 +983,12 @@ async function createSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag
     const botRole = createdRoles.find((role) => role.name === roleConfigByKey.get("bot")?.roleName);
     if (botRole) {
       await me.roles.add(botRole, `RustLens setup by ${actorTag}`);
-
-      const members = await guild.members.fetch();
-      const otherBots = members.filter(
+      const cachedBots = guild.members.cache.filter(
         (member) => member.user.bot && member.id !== me.id,
       );
 
       await Promise.allSettled(
-        otherBots.map((member) =>
+        cachedBots.map((member) =>
           member.roles
             .add(botRole, `RustLens setup by ${actorTag}`)
             .catch((error) => {
@@ -1038,6 +1087,86 @@ async function createSetupChannels(
 
     throw error;
   }
+}
+
+function getExistingRoleMap(guild: Guild, roleKeys: readonly SetupRoleKey[]) {
+  const roleMap = new Map<SetupRoleKey, Role>();
+
+  for (const config of getRoleConfigs([...roleKeys])) {
+    const role = guild.roles.cache.find((entry) => entry.name === config.roleName);
+    if (role) {
+      roleMap.set(config.key, role);
+    }
+  }
+
+  return roleMap;
+}
+
+async function repairSetupVoiceChannels(
+  guild: Guild,
+  roleKeys: SetupRoleKey[],
+  channelKeys: SetupChannelKey[],
+  actorTag: string,
+) {
+  if (!channelKeys.includes("voice_calls")) {
+    return {
+      createdNames: [] as string[],
+      skippedNames: [] as string[],
+    };
+  }
+
+  const roleMap = getExistingRoleMap(guild, roleKeys);
+  const plan = buildSetupPlan(channelKeys, roleMap);
+  const voiceCategoryPlan = plan.categories.find((category) => category.name === "Voice Channels");
+  const voiceChannelPlans = plan.channels.filter(
+    (channel) =>
+      channel.type === ChannelType.GuildVoice ||
+      (channel.parentName !== undefined && channel.parentName === "Voice Channels"),
+  );
+  const createdNames: string[] = [];
+  const skippedNames: string[] = [];
+  const reason = `RustLens voice repair by ${actorTag}`;
+
+  let voiceCategory = guild.channels.cache.find(
+    (channel) =>
+      channel.type === ChannelType.GuildCategory && channel.name === "Voice Channels",
+  );
+
+  if (!voiceCategory && voiceCategoryPlan) {
+    voiceCategory = await guild.channels.create({
+      name: voiceCategoryPlan.name,
+      type: ChannelType.GuildCategory,
+      reason,
+    });
+    createdNames.push(voiceCategory.name);
+  }
+
+  for (const channelPlan of voiceChannelPlans) {
+    const existingChannel = guild.channels.cache.find(
+      (channel) => channel.name === channelPlan.name,
+    );
+    if (existingChannel) {
+      skippedNames.push(channelPlan.name);
+      continue;
+    }
+
+    const createdChannel = await guild.channels.create({
+      name: channelPlan.name,
+      type: channelPlan.type,
+      parent:
+        channelPlan.parentName === "Voice Channels" && voiceCategory
+          ? voiceCategory.id
+          : undefined,
+      permissionOverwrites: channelPlan.permissionOverwrites,
+      reason,
+    });
+    createdNames.push(createdChannel.name);
+  }
+
+  return {
+    createdNames,
+    skippedNames,
+  };
 }
 
 async function deleteSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag: string) {
@@ -1154,6 +1283,24 @@ async function deferEphemeral(
   });
 }
 
+function renderProgressBar(step: number, totalSteps: number) {
+  const clampedStep = Math.max(0, Math.min(step, totalSteps));
+  const filled = "█".repeat(clampedStep);
+  const empty = "░".repeat(totalSteps - clampedStep);
+  return `[${filled}${empty}] ${clampedStep}/${totalSteps}`;
+}
+
+async function updateSetupProgress(
+  interaction: ModalSubmitInteraction,
+  step: number,
+  message: string,
+) {
+  await replyEphemeral(
+    interaction,
+    `${renderProgressBar(step, setupProgressTotalSteps)}\n${message}`,
+  );
+}
+
 export async function ensureSetupCommand(client: Client, shardID: number) {
   if (shardID !== 0 || !client.application) {
     return;
@@ -1192,6 +1339,54 @@ export async function handleSetupChatInput(interaction: ChatInputCommandInteract
   }
 
   const subcommand = interaction.options.getSubcommand(false);
+  if (subcommand === SETUP_REPAIR_VCS_SUBCOMMAND_NAME) {
+    await deferEphemeral(interaction);
+
+    const state = await backend.guildSetup(setupWorkerID, interaction.guildId);
+    if (state.status !== "configured") {
+      await replyEphemeral(
+        interaction,
+        "Setup must be completed before voice channels can be repaired.",
+      );
+      return true;
+    }
+
+    const roleKeys = getSelectedRoleKeys(state.selectedRoles);
+    const channelKeys = getSelectedChannelKeys(state.selectedChannels);
+    if (!channelKeys.includes("voice_calls")) {
+      await replyEphemeral(
+        interaction,
+        "This server setup did not include Voice Calls, so there is nothing to repair.",
+      );
+      return true;
+    }
+
+    try {
+      const repair = await repairSetupVoiceChannels(
+        interaction.guild!,
+        roleKeys,
+        channelKeys,
+        interaction.user.tag,
+      );
+      await configureGuildChannelSettings(
+        interaction.guild!,
+        [...interaction.guild!.channels.cache.values()],
+        interaction.user.tag,
+      ).catch((error) => {
+        console.error("[bot] failed to reapply guild channel settings after voice repair", error);
+      });
+
+      await replyEphemeral(
+        interaction,
+        `Voice repair completed. Created: ${repair.createdNames.length > 0 ? repair.createdNames.join(", ") : "(none)"}. Already present: ${repair.skippedNames.length > 0 ? repair.skippedNames.join(", ") : "(none)"}.`,
+      );
+    } catch (error) {
+      await replyEphemeral(interaction, formatSetupError(error));
+    }
+
+    return true;
+  }
+
   if (subcommand !== SETUP_START_SUBCOMMAND_NAME) {
     await replyEphemeral(
       interaction,
@@ -1293,6 +1488,11 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
   const selectedChannelKeys = getSelectedChannelKeys(
     getFieldValues(interaction, SETUP_CHANNELS_CUSTOM_ID),
   );
+  console.log("[bot] setup selections", {
+    guildId: interaction.guildId,
+    roles: selectedRoleKeys,
+    channels: selectedChannelKeys,
+  });
   const validationError = validateSetupSelections(
     selectedRoleKeys,
     selectedChannelKeys,
@@ -1335,6 +1535,11 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
   }
 
   await deferEphemeral(interaction);
+  await updateSetupProgress(
+    interaction,
+    0,
+    "Starting setup.",
+  );
 
   const claim = await backend.claimGuildSetup(setupWorkerID, interaction.guildId);
   if (!claim.claimed) {
@@ -1349,10 +1554,22 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
   let bootstrapOriginalName: string | null = null;
 
   try {
+    await updateSetupProgress(
+      interaction,
+      1,
+      "Creating roles.",
+    );
     createdRoles = await createSetupRoles(
       guild,
       selectedRoleKeys,
       interaction.user.tag,
+    );
+    await updateSetupProgress(
+      interaction,
+      2,
+      selectedChannelKeys.length > 0
+        ? "Roles created. Creating channels."
+        : "Roles created. No channels were selected.",
     );
     const channelCreation = await createSetupChannels(
       guild,
@@ -1364,6 +1581,13 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
     createdChannels = channelCreation.createdChannels;
     bootstrapChannelId = channelCreation.bootstrapChannelId;
     bootstrapOriginalName = channelCreation.bootstrapOriginalName;
+    await updateSetupProgress(
+      interaction,
+      3,
+      selectedChannelKeys.length > 0
+        ? "Channels created. Applying guild settings."
+        : "Applying guild settings.",
+    );
     await configureGuildChannelSettings(
       guild,
       createdChannels,
@@ -1371,6 +1595,11 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
     ).catch((error) => {
       console.error("[bot] failed to configure guild channel settings", error);
     });
+    await updateSetupProgress(
+      interaction,
+      4,
+      "Saving setup state.",
+    );
     await backend.completeGuildSetup(
       setupWorkerID,
       interaction.guildId,
@@ -1381,7 +1610,7 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
 
     await replyEphemeral(
       interaction,
-      `Setup completed. Created roles: ${formatRoleList(selectedRoleKeys)}. Created channels: ${selectedChannelKeys.length > 0 ? formatChannelList(selectedChannelKeys) : "(none)"}.`,
+      `${renderProgressBar(setupProgressTotalSteps, setupProgressTotalSteps)}\nSetup completed.\nCreated roles: ${formatRoleList(selectedRoleKeys)}\nCreated channels: ${selectedChannelKeys.length > 0 ? formatChannelList(selectedChannelKeys) : "(none)"}.`,
     );
 
     if (bootstrapChannelId) {
@@ -1434,6 +1663,7 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
 
 export const __testables = {
   buildSetupStartModal,
+  extractComponentValues,
   extractFieldValues,
   getSelectedChannelKeys,
   getTargetChannelNames,
