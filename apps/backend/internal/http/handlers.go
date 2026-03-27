@@ -3,7 +3,9 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -13,6 +15,8 @@ import (
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/store"
 )
+
+var snowflakePattern = regexp.MustCompile(`^\d{17,20}$`)
 
 type Handler struct {
 	cfg          config.Config
@@ -49,13 +53,15 @@ func (h *Handler) Healthz(w http.ResponseWriter, r *http.Request) {
 	if dbErr != nil {
 		status = http.StatusServiceUnavailable
 		response["status"] = "degraded"
-		response["db"] = dbErr.Error()
+		response["db"] = "unavailable"
+		log.Printf("[backend] healthz db ping failed: %v", dbErr)
 	}
 
 	if redisErr != nil {
 		status = http.StatusServiceUnavailable
 		response["status"] = "degraded"
-		response["redis"] = redisErr.Error()
+		response["redis"] = "unavailable"
+		log.Printf("[backend] healthz redis ping failed: %v", redisErr)
 	}
 
 	writeJSON(w, status, response)
@@ -175,19 +181,20 @@ func (h *Handler) GetShardAssignments(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) GetGuildSetupState(w http.ResponseWriter, r *http.Request) {
+func validateGuildID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	guildID := chi.URLParam(r, "guildID")
 	if guildID == "" {
 		writeError(w, http.StatusBadRequest, "guildID is required")
-		return
+		return "", false
 	}
-
-	state, err := h.postgres.GetGuildSetupState(r.Context(), guildID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if !snowflakePattern.MatchString(guildID) {
+		writeError(w, http.StatusBadRequest, "guildID must be a valid Discord snowflake")
+		return "", false
 	}
+	return guildID, true
+}
 
+func writeGuildSetupState(w http.ResponseWriter, state store.GuildSetupState) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"guildId":          state.GuildID,
 		"status":           state.Status,
@@ -197,16 +204,32 @@ func (h *Handler) GetGuildSetupState(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) GetGuildSetupState(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	state, err := h.postgres.GetGuildSetupState(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] GetGuildSetupState error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild setup state")
+		return
+	}
+
+	writeGuildSetupState(w, state)
+}
+
 func (h *Handler) ClaimGuildSetup(w http.ResponseWriter, r *http.Request) {
-	guildID := chi.URLParam(r, "guildID")
-	if guildID == "" {
-		writeError(w, http.StatusBadRequest, "guildID is required")
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
 		return
 	}
 
 	claimed, state, err := h.postgres.ClaimGuildSetup(r.Context(), guildID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ClaimGuildSetup error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to claim guild setup")
 		return
 	}
 
@@ -227,9 +250,8 @@ type completeGuildSetupRequest struct {
 }
 
 func (h *Handler) CompleteGuildSetup(w http.ResponseWriter, r *http.Request) {
-	guildID := chi.URLParam(r, "guildID")
-	if guildID == "" {
-		writeError(w, http.StatusBadRequest, "guildID is required")
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
 		return
 	}
 
@@ -239,35 +261,40 @@ func (h *Handler) CompleteGuildSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if request.ConfiguredBy == "" {
+		writeError(w, http.StatusBadRequest, "configuredBy is required")
+		return
+	}
+	if len(request.SelectedRoles) == 0 {
+		writeError(w, http.StatusBadRequest, "selectedRoles must not be empty")
+		return
+	}
+
 	if err := h.postgres.CompleteGuildSetup(r.Context(), guildID, request.ConfiguredBy, request.SelectedRoles, request.SelectedChannels); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] CompleteGuildSetup error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to complete guild setup")
 		return
 	}
 
 	state, err := h.postgres.GetGuildSetupState(r.Context(), guildID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetGuildSetupState (post-complete) error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild setup state")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"guildId":          state.GuildID,
-		"status":           state.Status,
-		"configuredBy":     state.ConfiguredBy,
-		"selectedRoles":    state.SelectedRoles,
-		"selectedChannels": state.SelectedChannels,
-	})
+	writeGuildSetupState(w, state)
 }
 
 func (h *Handler) ResetGuildSetup(w http.ResponseWriter, r *http.Request) {
-	guildID := chi.URLParam(r, "guildID")
-	if guildID == "" {
-		writeError(w, http.StatusBadRequest, "guildID is required")
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
 		return
 	}
 
 	if err := h.postgres.ResetGuildSetup(r.Context(), guildID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ResetGuildSetup error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to reset guild setup")
 		return
 	}
 

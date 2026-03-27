@@ -62,9 +62,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
-
-		ALTER TABLE guild_setups
-		ADD COLUMN IF NOT EXISTS selected_channels JSONB NOT NULL DEFAULT '[]'::jsonb;
 	`)
 	return err
 }
@@ -169,17 +166,24 @@ func (p *PostgresStore) CompleteGuildSetup(ctx context.Context, guildID string, 
 		return err
 	}
 
-	_, err = p.pool.Exec(ctx, `
+	tag, err := p.pool.Exec(ctx, `
 		UPDATE guild_setups
 		SET status = 'configured',
 			configured_by = $2,
 			selected_roles = $3::jsonb,
 			selected_channels = $4::jsonb,
 			updated_at = NOW()
-		WHERE guild_id = $1
+		WHERE guild_id = $1 AND status = 'pending'
 	`, guildID, configuredBy, string(encoded), string(encodedChannels))
+	if err != nil {
+		return err
+	}
 
-	return err
+	if tag.RowsAffected() == 0 {
+		return errors.New("guild setup is not in pending state")
+	}
+
+	return nil
 }
 
 func (p *PostgresStore) ResetGuildSetup(ctx context.Context, guildID string) error {
