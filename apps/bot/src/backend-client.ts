@@ -17,6 +17,7 @@ export type GuildSetupState = {
   status: "missing" | "pending" | "configured";
   configuredBy: string;
   selectedRoles: string[];
+  selectedChannels: string[];
 };
 
 type ClaimGuildSetupResponse = GuildSetupState & {
@@ -94,12 +95,18 @@ export class BackendClient {
     );
   }
 
-  completeGuildSetup(workerId: string, guildId: string, configuredBy: string, selectedRoles: string[]) {
+  completeGuildSetup(
+    workerId: string,
+    guildId: string,
+    configuredBy: string,
+    selectedRoles: string[],
+    selectedChannels: string[],
+  ) {
     return this.call<GuildSetupState>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/complete`,
       "POST",
-      { configuredBy, selectedRoles },
+      { configuredBy, selectedRoles, selectedChannels },
     );
   }
 

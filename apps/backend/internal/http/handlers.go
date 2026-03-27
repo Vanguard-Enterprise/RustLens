@@ -189,10 +189,11 @@ func (h *Handler) GetGuildSetupState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"guildId":       state.GuildID,
-		"status":        state.Status,
-		"configuredBy":  state.ConfiguredBy,
-		"selectedRoles": state.SelectedRoles,
+		"guildId":          state.GuildID,
+		"status":           state.Status,
+		"configuredBy":     state.ConfiguredBy,
+		"selectedRoles":    state.SelectedRoles,
+		"selectedChannels": state.SelectedChannels,
 	})
 }
 
@@ -210,17 +211,19 @@ func (h *Handler) ClaimGuildSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"claimed":       claimed,
-		"guildId":       state.GuildID,
-		"status":        state.Status,
-		"configuredBy":  state.ConfiguredBy,
-		"selectedRoles": state.SelectedRoles,
+		"claimed":          claimed,
+		"guildId":          state.GuildID,
+		"status":           state.Status,
+		"configuredBy":     state.ConfiguredBy,
+		"selectedRoles":    state.SelectedRoles,
+		"selectedChannels": state.SelectedChannels,
 	})
 }
 
 type completeGuildSetupRequest struct {
-	ConfiguredBy  string   `json:"configuredBy"`
-	SelectedRoles []string `json:"selectedRoles"`
+	ConfiguredBy     string   `json:"configuredBy"`
+	SelectedRoles    []string `json:"selectedRoles"`
+	SelectedChannels []string `json:"selectedChannels"`
 }
 
 func (h *Handler) CompleteGuildSetup(w http.ResponseWriter, r *http.Request) {
@@ -236,7 +239,7 @@ func (h *Handler) CompleteGuildSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.postgres.CompleteGuildSetup(r.Context(), guildID, request.ConfiguredBy, request.SelectedRoles); err != nil {
+	if err := h.postgres.CompleteGuildSetup(r.Context(), guildID, request.ConfiguredBy, request.SelectedRoles, request.SelectedChannels); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -248,10 +251,11 @@ func (h *Handler) CompleteGuildSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"guildId":       state.GuildID,
-		"status":        state.Status,
-		"configuredBy":  state.ConfiguredBy,
-		"selectedRoles": state.SelectedRoles,
+		"guildId":          state.GuildID,
+		"status":           state.Status,
+		"configuredBy":     state.ConfiguredBy,
+		"selectedRoles":    state.SelectedRoles,
+		"selectedChannels": state.SelectedChannels,
 	})
 }
 

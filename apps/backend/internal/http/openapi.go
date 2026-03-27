@@ -375,8 +375,12 @@ func buildOpenAPIDocument() map[string]any {
 							"type":  "array",
 							"items": map[string]any{"type": "string"},
 						},
+						"selectedChannels": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
 					},
-					"required": []string{"guildId", "status", "configuredBy", "selectedRoles"},
+					"required": []string{"guildId", "status", "configuredBy", "selectedRoles", "selectedChannels"},
 				},
 				"ClaimGuildSetupResponse": map[string]any{
 					"type": "object",
@@ -389,8 +393,12 @@ func buildOpenAPIDocument() map[string]any {
 							"type":  "array",
 							"items": map[string]any{"type": "string"},
 						},
+						"selectedChannels": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
 					},
-					"required": []string{"claimed", "guildId", "status", "configuredBy", "selectedRoles"},
+					"required": []string{"claimed", "guildId", "status", "configuredBy", "selectedRoles", "selectedChannels"},
 				},
 				"CompleteGuildSetupRequest": map[string]any{
 					"type": "object",
@@ -400,8 +408,12 @@ func buildOpenAPIDocument() map[string]any {
 							"type":  "array",
 							"items": map[string]any{"type": "string"},
 						},
+						"selectedChannels": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
 					},
-					"required": []string{"configuredBy", "selectedRoles"},
+					"required": []string{"configuredBy", "selectedRoles", "selectedChannels"},
 				},
 				"ErrorResponse": map[string]any{
 					"type": "object",

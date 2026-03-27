@@ -26,12 +26,12 @@ src/
 ```
 
 Current command flow:
-- `/setup start` opens a v2 modal with one checkbox group for role creation.
-- `/admin reset_setup` clears persisted setup state and removes roles created by setup.
+- `/setup start` opens a v2 modal with checkbox groups for roles and channels to create.
+- `/admin reset_setup` clears persisted setup state and removes roles and channels created by setup.
 - Modal custom id: `setup_start_modal`
-- Field custom id: `setup_roles`
-- Commands are registered by shard `0` on startup (global by default, or guild-scoped when `DISCORD_COMMAND_GUILD_ID` is set).
-- Setup state is persisted through backend bot-only API routes so setup can only run once per guild until reset.
+- Field custom ids: `setup_roles`, `setup_channels`
+- Commands are registered globally by shard `0` on startup.
+- Setup state is persisted through backend bot-only API routes so setup can only run once per guild until reset. Persisted data now includes selected roles and selected channels.
 
 ## Custom V2 Modal Builders
 

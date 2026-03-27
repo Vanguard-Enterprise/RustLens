@@ -8,11 +8,11 @@ describe("setup command", () => {
 
     expect(modal.title).toBe("Setup Roles");
     expect(modal.custom_id).toBe("setup_start_modal");
-    expect(modal.components).toHaveLength(1);
+    expect(modal.components).toHaveLength(2);
 
     expect(modal.components[0]).toEqual({
       type: ComponentType.Label,
-      label: "Roles",
+      label: "Roles to create",
       component: {
         type: ComponentType.CheckboxGroup,
         custom_id: "setup_roles",
@@ -28,6 +28,25 @@ describe("setup command", () => {
           { label: "Electrician", value: "electrician" },
           { label: "Monument", value: "monument" },
           { label: "PvP", value: "pvp" },
+        ],
+      },
+    });
+
+    expect(modal.components[1]).toEqual({
+      type: ComponentType.Label,
+      label: "Channels to create",
+      component: {
+        type: ComponentType.CheckboxGroup,
+        custom_id: "setup_channels",
+        required: false,
+        min_values: 0,
+        max_values: 5,
+        options: [
+          { label: "Voice Calls", value: "voice_calls" },
+          { label: "Announcements", value: "announcements" },
+          { label: "Wipe react", value: "wipe_react" },
+          { label: "General", value: "general" },
+          { label: "Pics", value: "pics" },
         ],
       },
     });
@@ -75,9 +94,21 @@ describe("setup command", () => {
   });
 
   it("requires member when member-scoped roles are selected", () => {
-    expect(__testables.validateSelectedRoleKeys(["builder"])).toBe(
+    expect(__testables.validateSetupSelections(["builder"], [])).toBe(
       "Builder, Electrician, Monument, and PvP require Member to be selected too.",
     );
-    expect(__testables.validateSelectedRoleKeys(["member", "builder"])).toBeNull();
+    expect(__testables.validateSetupSelections(["member", "builder"], [])).toBeNull();
+  });
+
+  it("requires dependent roles for channel setup", () => {
+    expect(
+      __testables.validateSetupSelections(["member"], ["announcements"]),
+    ).toBe("Channel creation requires these roles too: Leader, Co-Leader.");
+    expect(
+      __testables.validateSetupSelections(
+        ["leader", "co_leader", "member"],
+        ["general"],
+      ),
+    ).toBe("General and Voice Calls channel setup require the Builder role to be selected too.");
   });
 });

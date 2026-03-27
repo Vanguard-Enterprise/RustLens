@@ -14,10 +14,11 @@ type PostgresStore struct {
 }
 
 type GuildSetupState struct {
-	GuildID       string
-	Status        string
-	ConfiguredBy  string
-	SelectedRoles []string
+	GuildID          string
+	Status           string
+	ConfiguredBy     string
+	SelectedRoles    []string
+	SelectedChannels []string
 }
 
 func NewPostgresStore(ctx context.Context, connectionString string) (*PostgresStore, error) {
@@ -57,9 +58,13 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			status TEXT NOT NULL,
 			configured_by TEXT NOT NULL DEFAULT '',
 			selected_roles JSONB NOT NULL DEFAULT '[]'::jsonb,
+			selected_channels JSONB NOT NULL DEFAULT '[]'::jsonb,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
+
+		ALTER TABLE guild_setups
+		ADD COLUMN IF NOT EXISTS selected_channels JSONB NOT NULL DEFAULT '[]'::jsonb;
 	`)
 	return err
 }
@@ -80,22 +85,24 @@ func (p *PostgresStore) InsertWorkerEvent(ctx context.Context, workerID string, 
 
 func (p *PostgresStore) GetGuildSetupState(ctx context.Context, guildID string) (GuildSetupState, error) {
 	var (
-		status       string
-		configuredBy string
-		selectedJSON []byte
+		status               string
+		configuredBy         string
+		selectedJSON         []byte
+		selectedChannelsJSON []byte
 	)
 
 	err := p.pool.QueryRow(ctx, `
-		SELECT status, configured_by, selected_roles
+		SELECT status, configured_by, selected_roles, selected_channels
 		FROM guild_setups
 		WHERE guild_id = $1
-	`, guildID).Scan(&status, &configuredBy, &selectedJSON)
+	`, guildID).Scan(&status, &configuredBy, &selectedJSON, &selectedChannelsJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return GuildSetupState{
-			GuildID:       guildID,
-			Status:        "missing",
-			ConfiguredBy:  "",
-			SelectedRoles: []string{},
+			GuildID:          guildID,
+			Status:           "missing",
+			ConfiguredBy:     "",
+			SelectedRoles:    []string{},
+			SelectedChannels: []string{},
 		}, nil
 	}
 	if err != nil {
@@ -103,17 +110,24 @@ func (p *PostgresStore) GetGuildSetupState(ctx context.Context, guildID string) 
 	}
 
 	var selectedRoles []string
+	var selectedChannels []string
 	if len(selectedJSON) > 0 {
 		if err := json.Unmarshal(selectedJSON, &selectedRoles); err != nil {
 			return GuildSetupState{}, err
 		}
 	}
+	if len(selectedChannelsJSON) > 0 {
+		if err := json.Unmarshal(selectedChannelsJSON, &selectedChannels); err != nil {
+			return GuildSetupState{}, err
+		}
+	}
 
 	return GuildSetupState{
-		GuildID:       guildID,
-		Status:        status,
-		ConfiguredBy:  configuredBy,
-		SelectedRoles: selectedRoles,
+		GuildID:          guildID,
+		Status:           status,
+		ConfiguredBy:     configuredBy,
+		SelectedRoles:    selectedRoles,
+		SelectedChannels: selectedChannels,
 	}, nil
 }
 
@@ -129,10 +143,11 @@ func (p *PostgresStore) ClaimGuildSetup(ctx context.Context, guildID string) (bo
 
 	if tag.RowsAffected() == 1 {
 		return true, GuildSetupState{
-			GuildID:       guildID,
-			Status:        "pending",
-			ConfiguredBy:  "",
-			SelectedRoles: []string{},
+			GuildID:          guildID,
+			Status:           "pending",
+			ConfiguredBy:     "",
+			SelectedRoles:    []string{},
+			SelectedChannels: []string{},
 		}, nil
 	}
 
@@ -144,8 +159,12 @@ func (p *PostgresStore) ClaimGuildSetup(ctx context.Context, guildID string) (bo
 	return false, state, nil
 }
 
-func (p *PostgresStore) CompleteGuildSetup(ctx context.Context, guildID string, configuredBy string, selectedRoles []string) error {
+func (p *PostgresStore) CompleteGuildSetup(ctx context.Context, guildID string, configuredBy string, selectedRoles []string, selectedChannels []string) error {
 	encoded, err := json.Marshal(selectedRoles)
+	if err != nil {
+		return err
+	}
+	encodedChannels, err := json.Marshal(selectedChannels)
 	if err != nil {
 		return err
 	}
@@ -155,9 +174,10 @@ func (p *PostgresStore) CompleteGuildSetup(ctx context.Context, guildID string, 
 		SET status = 'configured',
 			configured_by = $2,
 			selected_roles = $3::jsonb,
+			selected_channels = $4::jsonb,
 			updated_at = NOW()
 		WHERE guild_id = $1
-	`, guildID, configuredBy, string(encoded))
+	`, guildID, configuredBy, string(encoded), string(encodedChannels))
 
 	return err
 }

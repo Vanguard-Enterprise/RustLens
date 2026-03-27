@@ -100,7 +100,7 @@ Key patterns:
 
 - Schema is auto-migrated at startup via `EnsureSchema()` (no migration tool).
 - Bot routes (`/api/internal/bot/shards/*`) are JWT-protected via middleware.
-- Bot setup-state routes (`/api/internal/bot/setup/guilds/*`) are JWT-protected and persist one-time guild setup state in Postgres.
+- Bot setup-state routes (`/api/internal/bot/setup/guilds/*`) are JWT-protected and persist one-time guild setup state in Postgres, including selected roles and selected channels.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
 
 ### Bot (TypeScript)
@@ -117,7 +117,7 @@ apps/bot/src/
 ```
 
 Flow: worker registers with backend -> polls `/assignments` -> reconciles local discord.js shards -> heartbeats leases -> releases on shutdown. Auth via self-signed JWT using `BOT_SERVICE_JWT_SECRET`.
-Command flow: shard `0` registers `/setup start` and `/admin reset_setup` at startup. `/setup start` opens a modal with role checkboxes, creates configured guild roles in a fixed order, and stores per-guild setup state via backend bot-only endpoints. `/admin reset_setup` clears that state and deletes the roles created by setup.
+Command flow: shard `0` registers `/setup start` and `/admin reset_setup` at startup. `/setup start` opens a modal with role and channel checkboxes, creates configured guild roles in a fixed order, creates the selected channel/category layout with permission overwrites, and stores per-guild setup state via backend bot-only endpoints. `/admin reset_setup` clears that state and deletes the roles and channels created by setup.
 
 ### Frontend (Next.js)
 
@@ -145,7 +145,6 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
 
 The bot requires a real `DISCORD_TOKEN` for gateway login.
-Optional for fast command propagation in dev: `DISCORD_COMMAND_GUILD_ID` (registers slash commands to one guild instead of globally).
 
 ## CI/CD
 

@@ -2,11 +2,14 @@ import type {
   ChatInputCommandInteraction,
   Client,
   Guild,
+  GuildBasedChannel,
   ModalSubmitInteraction,
   Role,
 } from "discord.js";
 import {
+  ChannelType,
   MessageFlags,
+  OverwriteType,
   PermissionFlagsBits,
   SlashCommandBuilder,
 } from "discord.js";
@@ -20,6 +23,7 @@ export const ADMIN_COMMAND_NAME = "admin";
 const SETUP_START_SUBCOMMAND_NAME = "start";
 const ADMIN_RESET_SUBCOMMAND_NAME = "reset_setup";
 const SETUP_MODAL_CUSTOM_ID = "setup_start_modal";
+const SETUP_CHANNELS_CUSTOM_ID = "setup_channels";
 const SETUP_ROLES_CUSTOM_ID = "setup_roles";
 
 const shardID = process.env.SHARD_ID ?? "0";
@@ -42,6 +46,13 @@ type SetupRoleKey =
   | "monument"
   | "pvp";
 
+type SetupChannelKey =
+  | "voice_calls"
+  | "announcements"
+  | "wipe_react"
+  | "general"
+  | "pics";
+
 type SetupRoleConfig = {
   key: SetupRoleKey;
   modalLabel: string;
@@ -51,11 +62,40 @@ type SetupRoleConfig = {
   permissions: bigint[];
 };
 
+type SetupChannelConfig = {
+  key: SetupChannelKey;
+  modalLabel: string;
+};
+
+type SetupCategoryPlan = {
+  name: string;
+};
+
+type SetupChannelPlan = {
+  name: string;
+  type: ChannelType.GuildText | ChannelType.GuildVoice;
+  parentName?: string;
+  permissionOverwrites: SetupRoleOverwrite[];
+};
+
+type SetupRoleOverwrite = {
+    id: string;
+    type: OverwriteType.Role;
+    allow?: bigint[];
+    deny?: bigint[];
+};
+
+type SetupPlan = {
+  categories: SetupCategoryPlan[];
+  channels: SetupChannelPlan[];
+};
+
 const leaderPermissions = [
   PermissionFlagsBits.BanMembers,
   PermissionFlagsBits.KickMembers,
   PermissionFlagsBits.ModerateMembers,
   PermissionFlagsBits.ManageMessages,
+  PermissionFlagsBits.MentionEveryone,
   PermissionFlagsBits.MoveMembers,
 ] as const;
 
@@ -121,8 +161,19 @@ const setupRoleConfigs: readonly SetupRoleConfig[] = [
   },
 ] as const;
 
+const setupChannelConfigs: readonly SetupChannelConfig[] = [
+  { key: "voice_calls", modalLabel: "Voice Calls" },
+  { key: "announcements", modalLabel: "Announcements" },
+  { key: "wipe_react", modalLabel: "Wipe react" },
+  { key: "general", modalLabel: "General" },
+  { key: "pics", modalLabel: "Pics" },
+] as const;
+
 const roleConfigByKey = new Map<SetupRoleKey, SetupRoleConfig>(
   setupRoleConfigs.map((config) => [config.key, config]),
+);
+const channelConfigByKey = new Map<SetupChannelKey, SetupChannelConfig>(
+  setupChannelConfigs.map((config) => [config.key, config]),
 );
 const memberChildRoleKeys = new Set<SetupRoleKey>([
   "builder",
@@ -130,6 +181,21 @@ const memberChildRoleKeys = new Set<SetupRoleKey>([
   "monument",
   "pvp",
 ]);
+const threadPermissionBits = [
+  PermissionFlagsBits.CreatePublicThreads,
+  PermissionFlagsBits.CreatePrivateThreads,
+  PermissionFlagsBits.SendMessagesInThreads,
+] as const;
+const textWritePermissionBits = [
+  PermissionFlagsBits.SendMessages,
+  PermissionFlagsBits.AddReactions,
+  ...threadPermissionBits,
+] as const;
+const voicePermissionBits = [
+  PermissionFlagsBits.ViewChannel,
+  PermissionFlagsBits.Connect,
+  PermissionFlagsBits.Speak,
+] as const;
 
 const setupCommand = new SlashCommandBuilder()
   .setName(SETUP_COMMAND_NAME)
@@ -158,7 +224,7 @@ function buildSetupStartModal() {
     .setTitle("Setup Roles")
     .setCustomId(SETUP_MODAL_CUSTOM_ID)
     .addComponent(
-      "Roles",
+      "Roles to create",
       new CheckboxGroupBuilder()
         .setCustomId(SETUP_ROLES_CUSTOM_ID)
         .setRequired(true)
@@ -166,6 +232,20 @@ function buildSetupStartModal() {
         .setMaxValues(setupRoleConfigs.length)
         .addOptions(
           ...setupRoleConfigs.map((config) => ({
+            label: config.modalLabel,
+            value: config.key,
+          })),
+        ),
+    )
+    .addComponent(
+      "Channels to create",
+      new CheckboxGroupBuilder()
+        .setCustomId(SETUP_CHANNELS_CUSTOM_ID)
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(setupChannelConfigs.length)
+        .addOptions(
+          ...setupChannelConfigs.map((config) => ({
             label: config.modalLabel,
             value: config.key,
           })),
@@ -241,14 +321,46 @@ function getSelectedRoleKeys(values: string[]): SetupRoleKey[] {
     .map((config) => config.key);
 }
 
-function validateSelectedRoleKeys(keys: SetupRoleKey[]) {
-  if (keys.length === 0) {
+function getSelectedChannelKeys(values: string[]): SetupChannelKey[] {
+  const selected = new Set<SetupChannelKey>();
+
+  for (const value of values) {
+    if (channelConfigByKey.has(value as SetupChannelKey)) {
+      selected.add(value as SetupChannelKey);
+    }
+  }
+
+  return setupChannelConfigs
+    .filter((config) => selected.has(config.key))
+    .map((config) => config.key);
+}
+
+function validateSetupSelections(roleKeys: SetupRoleKey[], channelKeys: SetupChannelKey[]) {
+  if (roleKeys.length === 0) {
     return "Select at least one role.";
   }
 
-  const includesMemberChildRole = keys.some((key) => memberChildRoleKeys.has(key));
-  if (includesMemberChildRole && !keys.includes("member")) {
+  const includesMemberChildRole = roleKeys.some((key) => memberChildRoleKeys.has(key));
+  if (includesMemberChildRole && !roleKeys.includes("member")) {
     return "Builder, Electrician, Monument, and PvP require Member to be selected too.";
+  }
+
+  if (channelKeys.length > 0) {
+    const missingCoreRoles = [
+      !roleKeys.includes("leader") && "Leader",
+      !roleKeys.includes("co_leader") && "Co-Leader",
+      !roleKeys.includes("member") && "Member",
+    ].filter((value): value is string => Boolean(value));
+
+    if (missingCoreRoles.length > 0) {
+      return `Channel creation requires these roles too: ${missingCoreRoles.join(", ")}.`;
+    }
+
+    const needsBuilderChannels =
+      channelKeys.includes("general") || channelKeys.includes("voice_calls");
+    if (needsBuilderChannels && !roleKeys.includes("builder")) {
+      return "General and Voice Calls channel setup require the Builder role to be selected too.";
+    }
   }
 
   return null;
@@ -257,6 +369,12 @@ function validateSelectedRoleKeys(keys: SetupRoleKey[]) {
 function formatRoleList(keys: SetupRoleKey[]) {
   return keys
     .map((key) => roleConfigByKey.get(key)?.roleName ?? key)
+    .join(", ");
+}
+
+function formatChannelList(keys: SetupChannelKey[]) {
+  return keys
+    .map((key) => channelConfigByKey.get(key)?.modalLabel ?? key)
     .join(", ");
 }
 
@@ -291,6 +409,254 @@ function getRoleConfigs(keys: SetupRoleKey[]) {
   });
 }
 
+function getSelectedRoleMap(createdRoles: Role[]) {
+  const roleMap = new Map<SetupRoleKey, Role>();
+
+  for (const config of setupRoleConfigs) {
+    const role = createdRoles.find((entry) => entry.name === config.roleName);
+    if (role) {
+      roleMap.set(config.key, role);
+    }
+  }
+
+  return roleMap;
+}
+
+function roleOverwrite(
+  role: Role,
+  allow: readonly bigint[] = [],
+  deny: readonly bigint[] = [],
+): SetupRoleOverwrite {
+  return {
+    id: role.id,
+    type: OverwriteType.Role as const,
+    allow: [...allow],
+    deny: [...deny],
+  };
+}
+
+function everyoneOverwrite(
+  roleId: string,
+  deny: readonly bigint[] = [],
+): SetupRoleOverwrite {
+  return {
+    id: roleId,
+    type: OverwriteType.Role as const,
+    deny: [...deny],
+  };
+}
+
+function buildSetupPlan(
+  channelKeys: SetupChannelKey[],
+  roleMap: Map<SetupRoleKey, Role>,
+): SetupPlan {
+  const categories = new Map<string, SetupCategoryPlan>();
+  const channels: SetupChannelPlan[] = [];
+  const everyoneId = roleMap.get("leader")?.guild.roles.everyone.id ?? "";
+
+  const leaderRole = roleMap.get("leader");
+  const coLeaderRole = roleMap.get("co_leader");
+  const memberRole = roleMap.get("member");
+  const builderRole = roleMap.get("builder");
+
+  if (!leaderRole || !coLeaderRole || !memberRole) {
+    throw new Error("Channel setup requires Leader, Co-Leader, and Member roles.");
+  }
+
+  const privateTextOverwrites = [
+    everyoneOverwrite(everyoneId, [PermissionFlagsBits.ViewChannel]),
+    roleOverwrite(leaderRole, [PermissionFlagsBits.ViewChannel, ...textWritePermissionBits]),
+    roleOverwrite(coLeaderRole, [PermissionFlagsBits.ViewChannel, ...textWritePermissionBits]),
+  ];
+
+  const memberTextOverwrites = [
+    everyoneOverwrite(everyoneId, [PermissionFlagsBits.ViewChannel]),
+    roleOverwrite(memberRole, [PermissionFlagsBits.ViewChannel, ...textWritePermissionBits]),
+    roleOverwrite(leaderRole, [PermissionFlagsBits.ViewChannel, ...textWritePermissionBits]),
+    roleOverwrite(coLeaderRole, [PermissionFlagsBits.ViewChannel, ...textWritePermissionBits]),
+  ];
+
+  const restrictedAnnouncementOverwrites = [
+    everyoneOverwrite(everyoneId, [PermissionFlagsBits.ViewChannel]),
+    roleOverwrite(
+      memberRole,
+      [PermissionFlagsBits.ViewChannel],
+      textWritePermissionBits,
+    ),
+    roleOverwrite(leaderRole, [PermissionFlagsBits.ViewChannel, ...textWritePermissionBits]),
+    roleOverwrite(coLeaderRole, [PermissionFlagsBits.ViewChannel, ...textWritePermissionBits]),
+  ];
+
+  const builderTextOverwrites = [
+    everyoneOverwrite(everyoneId, [PermissionFlagsBits.ViewChannel]),
+    ...(builderRole
+      ? [roleOverwrite(builderRole, [PermissionFlagsBits.ViewChannel, ...textWritePermissionBits])]
+      : []),
+    roleOverwrite(leaderRole, [PermissionFlagsBits.ViewChannel, ...textWritePermissionBits]),
+    roleOverwrite(coLeaderRole, [PermissionFlagsBits.ViewChannel, ...textWritePermissionBits]),
+  ];
+
+  const memberVoiceOverwrites = [
+    everyoneOverwrite(everyoneId, [PermissionFlagsBits.ViewChannel]),
+    roleOverwrite(memberRole, voicePermissionBits),
+    roleOverwrite(leaderRole, voicePermissionBits),
+    roleOverwrite(coLeaderRole, voicePermissionBits),
+  ];
+
+  const builderVoiceOverwrites = [
+    everyoneOverwrite(everyoneId, [PermissionFlagsBits.ViewChannel]),
+    ...(builderRole ? [roleOverwrite(builderRole, voicePermissionBits)] : []),
+    roleOverwrite(leaderRole, voicePermissionBits),
+    roleOverwrite(coLeaderRole, voicePermissionBits),
+  ];
+
+  const privateVoiceOverwrites = [
+    everyoneOverwrite(everyoneId, [PermissionFlagsBits.ViewChannel]),
+    roleOverwrite(leaderRole, voicePermissionBits),
+    roleOverwrite(coLeaderRole, voicePermissionBits),
+  ];
+
+  if (channelKeys.includes("general")) {
+    channels.push(
+      {
+        name: "join",
+        type: ChannelType.GuildText,
+        permissionOverwrites: privateTextOverwrites,
+      },
+      {
+        name: "public",
+        type: ChannelType.GuildText,
+        permissionOverwrites: memberTextOverwrites,
+      },
+    );
+
+    categories.set("General", { name: "General" });
+    channels.push(
+      {
+        name: "general",
+        type: ChannelType.GuildText,
+        parentName: "General",
+        permissionOverwrites: memberTextOverwrites,
+      },
+      {
+        name: "build",
+        type: ChannelType.GuildText,
+        parentName: "General",
+        permissionOverwrites: builderTextOverwrites,
+      },
+      {
+        name: "logs",
+        type: ChannelType.GuildText,
+        parentName: "General",
+        permissionOverwrites: privateTextOverwrites,
+      },
+      {
+        name: "priv",
+        type: ChannelType.GuildText,
+        parentName: "General",
+        permissionOverwrites: privateTextOverwrites,
+      },
+    );
+  }
+
+  if (channelKeys.includes("pics")) {
+    categories.set("General", { name: "General" });
+    channels.push({
+      name: "pics",
+      type: ChannelType.GuildText,
+      parentName: "General",
+      permissionOverwrites: memberTextOverwrites,
+    });
+  }
+
+  if (channelKeys.includes("announcements")) {
+    categories.set("Important", { name: "Important" });
+    channels.push({
+      name: "announcements",
+      type: ChannelType.GuildText,
+      parentName: "Important",
+      permissionOverwrites: restrictedAnnouncementOverwrites,
+    });
+  }
+
+  if (channelKeys.includes("wipe_react")) {
+    categories.set("Important", { name: "Important" });
+    channels.push({
+      name: "wipe react",
+      type: ChannelType.GuildText,
+      parentName: "Important",
+      permissionOverwrites: restrictedAnnouncementOverwrites,
+    });
+  }
+
+  if (channelKeys.includes("voice_calls")) {
+    channels.push({
+      name: "public vc",
+      type: ChannelType.GuildVoice,
+      permissionOverwrites: memberVoiceOverwrites,
+    });
+
+    categories.set("Voice Channels", { name: "Voice Channels" });
+    for (let index = 1; index <= 10; index += 1) {
+      channels.push({
+        name: `VC${index}`,
+        type: ChannelType.GuildVoice,
+        parentName: "Voice Channels",
+        permissionOverwrites: memberVoiceOverwrites,
+      });
+    }
+
+    channels.push(
+      {
+        name: "builder call",
+        type: ChannelType.GuildVoice,
+        parentName: "Voice Channels",
+        permissionOverwrites: builderVoiceOverwrites,
+      },
+      {
+        name: "private vc",
+        type: ChannelType.GuildVoice,
+        parentName: "Voice Channels",
+        permissionOverwrites: privateVoiceOverwrites,
+      },
+    );
+  }
+
+  return {
+    categories: [...categories.values()],
+    channels,
+  };
+}
+
+function getTargetChannelNames(channelKeys: SetupChannelKey[]) {
+  const names: string[] = [];
+
+  if (channelKeys.includes("general")) {
+    names.push("join", "public", "General", "general", "build", "logs", "priv");
+  }
+
+  if (channelKeys.includes("pics")) {
+    names.push("General", "pics");
+  }
+
+  if (channelKeys.includes("announcements")) {
+    names.push("Important", "announcements");
+  }
+
+  if (channelKeys.includes("wipe_react")) {
+    names.push("Important", "wipe react");
+  }
+
+  if (channelKeys.includes("voice_calls")) {
+    names.push("public vc", "Voice Channels", "builder call", "private vc");
+    for (let index = 1; index <= 10; index += 1) {
+      names.push(`VC${index}`);
+    }
+  }
+
+  return [...new Set(names)];
+}
+
 function findConflictingRoles(guild: Guild, roleKeys: SetupRoleKey[]) {
   const conflicts: string[] = [];
 
@@ -301,6 +667,17 @@ function findConflictingRoles(guild: Guild, roleKeys: SetupRoleKey[]) {
   }
 
   return conflicts;
+}
+
+function findConflictingChannels(
+  guild: Guild,
+  channelKeys: SetupChannelKey[],
+) {
+  const names = new Set(getTargetChannelNames(channelKeys));
+
+  return guild.channels.cache
+    .filter((channel) => names.has(channel.name))
+    .map((channel) => channel.name);
 }
 
 async function createSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag: string) {
@@ -314,6 +691,7 @@ async function createSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag
       const role = await guild.roles.create({
         name: config.roleName,
         hoist: config.hoist,
+        mentionable: false,
         permissions: config.permissions,
         position: Math.max(1, highestPosition - (index + 1)),
         ...(config.color !== undefined && {
@@ -336,6 +714,51 @@ async function createSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag
   }
 }
 
+async function createSetupChannels(
+  guild: Guild,
+  channelKeys: SetupChannelKey[],
+  createdRoles: Role[],
+  actorTag: string,
+) {
+  const roleMap = getSelectedRoleMap(createdRoles);
+  const plan = buildSetupPlan(channelKeys, roleMap);
+  const createdChannels: GuildBasedChannel[] = [];
+  const categoryMap = new Map<string, GuildBasedChannel>();
+
+  try {
+    for (const category of plan.categories) {
+      const createdCategory = await guild.channels.create({
+        name: category.name,
+        type: ChannelType.GuildCategory,
+        reason: `RustLens setup by ${actorTag}`,
+      });
+      categoryMap.set(category.name, createdCategory);
+      createdChannels.push(createdCategory);
+    }
+
+    for (const channel of plan.channels) {
+      const createdChannel = await guild.channels.create({
+        name: channel.name,
+        type: channel.type,
+        parent: channel.parentName ? categoryMap.get(channel.parentName)?.id : undefined,
+        permissionOverwrites: channel.permissionOverwrites,
+        reason: `RustLens setup by ${actorTag}`,
+      });
+      createdChannels.push(createdChannel);
+    }
+
+    return createdChannels;
+  } catch (error) {
+    await Promise.allSettled(
+      createdChannels
+        .slice()
+        .reverse()
+        .map((channel) => channel.delete(`Rolling back failed RustLens setup by ${actorTag}`)),
+    );
+    throw error;
+  }
+}
+
 async function deleteSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag: string) {
   await ensureManageableGuild(guild);
 
@@ -353,6 +776,47 @@ async function deleteSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag
   }
 
   return deletedRoleNames.reverse();
+}
+
+async function deleteSetupChannels(
+  guild: Guild,
+  channelKeys: SetupChannelKey[],
+  roleKeys: SetupRoleKey[],
+  actorTag: string,
+) {
+  if (channelKeys.length === 0) {
+    return [];
+  }
+
+  const roleMap = new Map<SetupRoleKey, Role>();
+  for (const config of getRoleConfigs(roleKeys)) {
+    const role = guild.roles.cache.find((entry) => entry.name === config.roleName);
+    if (role) {
+      roleMap.set(config.key, role);
+    }
+  }
+
+  const plan = buildSetupPlan(channelKeys, roleMap);
+  const targetNames = new Set([
+    ...plan.channels.map((channel) => channel.name),
+    ...plan.categories.map((category) => category.name),
+  ]);
+  const deletedChannelNames: string[] = [];
+  const existingChannels = [...guild.channels.cache.values()]
+    .filter((channel) => targetNames.has(channel.name))
+    .sort((left, right) => {
+      const leftWeight = left.type === ChannelType.GuildCategory ? 1 : 0;
+      const rightWeight = right.type === ChannelType.GuildCategory ? 1 : 0;
+      return leftWeight - rightWeight;
+    })
+    .reverse();
+
+  for (const channel of existingChannels) {
+    deletedChannelNames.push(channel.name);
+    await channel.delete(`RustLens setup reset by ${actorTag}`);
+  }
+
+  return deletedChannelNames.reverse();
 }
 
 function formatSetupError(error: unknown) {
@@ -414,31 +878,21 @@ export async function ensureSetupCommand(client: Client, shardID: number) {
     return;
   }
 
-  const guildId = process.env.DISCORD_COMMAND_GUILD_ID;
   const commandData = [setupCommand.toJSON(), adminCommand.toJSON()];
-  const commands = await client.application.commands.fetch({ guildId });
+  const commands = await client.application.commands.fetch();
 
   for (const data of commandData) {
     const existing = commands.find((command) => command.name === data.name);
 
     if (existing) {
-      if (guildId) {
-        await client.application.commands.edit(existing.id, data, guildId);
-      } else {
-        await client.application.commands.edit(existing.id, data);
-      }
+      await client.application.commands.edit(existing.id, data);
       continue;
     }
 
-    if (guildId) {
-      await client.application.commands.create(data, guildId);
-    } else {
-      await client.application.commands.create(data);
-    }
+    await client.application.commands.create(data);
   }
 
-  const scope = guildId ? `guild=${guildId}` : "global";
-  console.log(`[bot] ensured /setup and /admin commands (${scope})`);
+  console.log("[bot] ensured /setup and /admin commands (global)");
 }
 
 export async function handleSetupChatInput(interaction: ChatInputCommandInteraction) {
@@ -515,6 +969,13 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
   }
 
   const roleKeys = getSelectedRoleKeys(state.selectedRoles);
+  const channelKeys = getSelectedChannelKeys(state.selectedChannels);
+  const deletedChannels = await deleteSetupChannels(
+    guild,
+    channelKeys,
+    roleKeys,
+    interaction.user.tag,
+  );
   const deletedRoles = await deleteSetupRoles(
     guild,
     roleKeys,
@@ -522,11 +983,12 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
   );
   await backend.resetGuildSetup(setupWorkerID, interaction.guildId);
 
-  const deletedRoleList =
-    deletedRoles.length > 0 ? deletedRoles.join(", ") : "(none found)";
+  const deletedRoleList = deletedRoles.length > 0 ? deletedRoles.join(", ") : "(none found)";
+  const deletedChannelList =
+    deletedChannels.length > 0 ? deletedChannels.join(", ") : "(none found)";
   await replyEphemeral(
     interaction,
-    `Setup reset. Removed roles: ${deletedRoleList}. You can run /setup start again now.`,
+    `Setup reset. Removed channels: ${deletedChannelList}. Removed roles: ${deletedRoleList}. You can run /setup start again now.`,
   );
 
   return true;
@@ -556,7 +1018,13 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
   const selectedRoleKeys = getSelectedRoleKeys(
     getFieldValues(interaction, SETUP_ROLES_CUSTOM_ID),
   );
-  const validationError = validateSelectedRoleKeys(selectedRoleKeys);
+  const selectedChannelKeys = getSelectedChannelKeys(
+    getFieldValues(interaction, SETUP_CHANNELS_CUSTOM_ID),
+  );
+  const validationError = validateSetupSelections(
+    selectedRoleKeys,
+    selectedChannelKeys,
+  );
   if (validationError) {
     await replyEphemeral(interaction, validationError);
     return true;
@@ -571,6 +1039,15 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
     return true;
   }
 
+  const conflictingChannels = findConflictingChannels(guild, selectedChannelKeys);
+  if (conflictingChannels.length > 0) {
+    await replyEphemeral(
+      interaction,
+      `Setup cannot continue because these channels already exist: ${conflictingChannels.join(", ")}.`,
+    );
+    return true;
+  }
+
   await deferEphemeral(interaction);
 
   const claim = await backend.claimGuildSetup(setupWorkerID, interaction.guildId);
@@ -581,6 +1058,7 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
   }
 
   let createdRoles: Role[] = [];
+  let createdChannels: GuildBasedChannel[] = [];
 
   try {
     createdRoles = await createSetupRoles(
@@ -588,18 +1066,36 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
       selectedRoleKeys,
       interaction.user.tag,
     );
+    createdChannels = await createSetupChannels(
+      guild,
+      selectedChannelKeys,
+      createdRoles,
+      interaction.user.tag,
+    );
     await backend.completeGuildSetup(
       setupWorkerID,
       interaction.guildId,
       interaction.user.id,
       selectedRoleKeys,
+      selectedChannelKeys,
     );
 
     await replyEphemeral(
       interaction,
-      `Setup completed. Created roles in order: ${formatRoleList(selectedRoleKeys)}.`,
+      `Setup completed. Created roles: ${formatRoleList(selectedRoleKeys)}. Created channels: ${selectedChannelKeys.length > 0 ? formatChannelList(selectedChannelKeys) : "(none)"}.`,
     );
   } catch (error) {
+    if (createdChannels.length > 0) {
+      await Promise.allSettled(
+        createdChannels
+          .slice()
+          .reverse()
+          .map((channel) =>
+            channel.delete(`Rolling back failed RustLens setup by ${interaction.user.tag}`),
+          ),
+      );
+    }
+
     if (createdRoles.length > 0) {
       await Promise.allSettled(
         createdRoles.map((role) =>
@@ -620,7 +1116,8 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
 export const __testables = {
   buildSetupStartModal,
   extractFieldValues,
+  getSelectedChannelKeys,
   normalizeModalFieldValue,
   getSelectedRoleKeys,
-  validateSelectedRoleKeys,
+  validateSetupSelections,
 };
