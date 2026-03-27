@@ -44,6 +44,7 @@ type SetupRoleKey =
   | "keyrole"
   | "leader"
   | "co_leader"
+  | "bot"
   | "member"
   | "builder"
   | "electrician"
@@ -54,6 +55,7 @@ type SetupChannelKey =
   | "voice_calls"
   | "announcements"
   | "wipe_react"
+  | "invite"
   | "general"
   | "pics";
 
@@ -146,6 +148,14 @@ const setupRoleConfigs: readonly SetupRoleConfig[] = [
     permissions: [...leaderPermissions],
   },
   {
+    key: "bot",
+    modalLabel: "Bot",
+    roleName: "Bot",
+    hoist: true,
+    color: 0x9fc6ff,
+    permissions: [],
+  },
+  {
     key: "member",
     modalLabel: "Member",
     roleName: "member",
@@ -187,6 +197,7 @@ const setupChannelConfigs: readonly SetupChannelConfig[] = [
   { key: "voice_calls", modalLabel: "Voice Calls" },
   { key: "announcements", modalLabel: "Announcements" },
   { key: "wipe_react", modalLabel: "Wipe react" },
+  { key: "invite", modalLabel: "Invite" },
   { key: "general", modalLabel: "General" },
   { key: "pics", modalLabel: "Pics" },
 ] as const;
@@ -222,6 +233,7 @@ const orderedSetupCategoryNames = ["Important", "General", "Voice Channels"] as 
 const joinMessageUnsuppressFlags =
   GuildSystemChannelFlags.SuppressJoinNotifications |
   GuildSystemChannelFlags.SuppressJoinNotificationReplies;
+const setupAfkTimeoutSeconds = 600;
 
 const setupCommand = new SlashCommandBuilder()
   .setName(SETUP_COMMAND_NAME)
@@ -352,6 +364,10 @@ function getSelectedRoleKeys(values: string[]): SetupRoleKey[] {
     if (roleConfigByKey.has(value as SetupRoleKey)) {
       selected.add(value as SetupRoleKey);
     }
+  }
+
+  if (selected.size > 0) {
+    selected.add("bot");
   }
 
   return setupRoleConfigs
@@ -628,6 +644,30 @@ function buildSetupPlan(
     });
   }
 
+  if (channelKeys.includes("invite")) {
+    categories.set("Important", { name: "Important" });
+    channels.push({
+      name: "click for invite",
+      type: ChannelType.GuildText,
+      parentName: "Important",
+      permissionOverwrites: restrictedAnnouncementOverwrites,
+    });
+  }
+
+  if (
+    channelKeys.includes("announcements") ||
+    channelKeys.includes("wipe_react") ||
+    channelKeys.includes("invite")
+  ) {
+    categories.set("Important", { name: "Important" });
+    channels.push({
+      name: "wipe log",
+      type: ChannelType.GuildText,
+      parentName: "Important",
+      permissionOverwrites: restrictedAnnouncementOverwrites,
+    });
+  }
+
   if (channelKeys.includes("voice_calls")) {
     channels.push({
       name: "public vc",
@@ -660,6 +700,13 @@ function buildSetupPlan(
       parentName: "Voice Channels",
       permissionOverwrites: privateVoiceOverwrites,
     });
+
+    channels.push({
+      name: "afk",
+      type: ChannelType.GuildVoice,
+      parentName: "Voice Channels",
+      permissionOverwrites: memberVoiceOverwrites,
+    });
   }
 
   return {
@@ -672,7 +719,7 @@ function buildSetupPlan(
   };
 }
 
-async function configureJoinSystemChannel(
+async function configureGuildChannelSettings(
   guild: Guild,
   createdChannels: readonly GuildBasedChannel[],
   actorTag: string,
@@ -682,13 +729,34 @@ async function configureJoinSystemChannel(
       channel.type === ChannelType.GuildText && channel.name === "join",
   );
   if (!joinChannel) {
+    const afkChannel = createdChannels.find(
+      (channel): channel is import("discord.js").VoiceChannel =>
+        channel.type === ChannelType.GuildVoice && channel.name === "afk",
+    );
+    if (afkChannel) {
+      await guild.edit({
+        afkChannel,
+        afkTimeout: setupAfkTimeoutSeconds,
+        reason: `RustLens setup by ${actorTag}`,
+      });
+    }
     return;
   }
 
   const updatedFlags = guild.systemChannelFlags.bitfield & ~joinMessageUnsuppressFlags;
+  const afkChannel = createdChannels.find(
+    (channel): channel is import("discord.js").VoiceChannel =>
+      channel.type === ChannelType.GuildVoice && channel.name === "afk",
+  );
   await guild.edit({
     systemChannel: joinChannel,
     systemChannelFlags: updatedFlags,
+    ...(afkChannel
+      ? {
+          afkChannel,
+          afkTimeout: setupAfkTimeoutSeconds,
+        }
+      : {}),
     reason: `RustLens setup by ${actorTag}`,
   });
 }
@@ -719,8 +787,20 @@ function getTargetChannelNames(
     names.push("Important", "wipe react");
   }
 
+  if (channelKeys.includes("invite")) {
+    names.push("Important", "click for invite");
+  }
+
+  if (
+    channelKeys.includes("announcements") ||
+    channelKeys.includes("wipe_react") ||
+    channelKeys.includes("invite")
+  ) {
+    names.push("Important", "wipe log");
+  }
+
   if (channelKeys.includes("voice_calls")) {
-    names.push("public vc", "Voice Channels", "private vc");
+    names.push("public vc", "Voice Channels", "private vc", "afk");
     if (hasBuilderRole) {
       names.push("builder call");
     }
@@ -847,6 +927,29 @@ async function createSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag
       });
 
       createdRoles.push(role);
+    }
+
+    const botRole = createdRoles.find((role) => role.name === roleConfigByKey.get("bot")?.roleName);
+    if (botRole) {
+      await me.roles.add(botRole, `RustLens setup by ${actorTag}`);
+
+      const members = await guild.members.fetch();
+      const otherBots = members.filter(
+        (member) => member.user.bot && member.id !== me.id,
+      );
+
+      await Promise.allSettled(
+        otherBots.map((member) =>
+          member.roles
+            .add(botRole, `RustLens setup by ${actorTag}`)
+            .catch((error) => {
+              console.error(
+                `[bot] failed to assign Bot role to ${member.user.tag}`,
+                error,
+              );
+            }),
+        ),
+      );
     }
 
     return createdRoles;
@@ -1160,15 +1263,6 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
     interaction.user.tag,
   );
   await backend.resetGuildSetup(setupWorkerID, interaction.guildId);
-
-  const deletedRoleList = deletedRoles.length > 0 ? deletedRoles.join(", ") : "(none found)";
-  const deletedChannelList =
-    deletedChannels.length > 0 ? deletedChannels.join(", ") : "(none found)";
-  await replyEphemeral(
-    interaction,
-    `Setup reset. Removed channels: ${deletedChannelList}. Removed roles: ${deletedRoleList}. You can run /setup start again now.`,
-  );
-
   return true;
 }
 
@@ -1270,12 +1364,12 @@ export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction
     createdChannels = channelCreation.createdChannels;
     bootstrapChannelId = channelCreation.bootstrapChannelId;
     bootstrapOriginalName = channelCreation.bootstrapOriginalName;
-    await configureJoinSystemChannel(
+    await configureGuildChannelSettings(
       guild,
       createdChannels,
       interaction.user.tag,
     ).catch((error) => {
-      console.error("[bot] failed to configure join system channel", error);
+      console.error("[bot] failed to configure guild channel settings", error);
     });
     await backend.completeGuildSetup(
       setupWorkerID,
@@ -1342,6 +1436,7 @@ export const __testables = {
   buildSetupStartModal,
   extractFieldValues,
   getSelectedChannelKeys,
+  getTargetChannelNames,
   normalizeModalFieldValue,
   planSetupBootstrap,
   getSelectedRoleKeys,

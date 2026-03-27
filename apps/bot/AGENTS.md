@@ -27,6 +27,9 @@ src/
 
 Current command flow:
 - `/setup start` opens a v2 modal with checkbox groups for roles and channels to create.
+- The setup modal includes an `All` option in both checkbox groups; role setup now includes a hoisted soft-blue `Bot` role between `Co Leader` and `member`, and that role is assigned to the RustLens bot plus other bot accounts during setup.
+- Builder-only channels (`#build`, `builder call`) are skipped automatically when the `Builder` role is not selected.
+- Channel setup also includes `#wipe log` at the bottom of `Important` whenever an Important-section channel is requested, supports an `Invite` modal option that creates `#click for invite`, and creates an `afk` voice channel at the bottom of `Voice Channels` while setting the guild AFK channel/timeout to 10 minutes.
 - `/admin reset_setup` clears persisted setup state and removes roles and channels created by setup.
 - Modal custom id: `setup_start_modal`
 - Field custom ids: `setup_roles`, `setup_channels`
@@ -34,6 +37,7 @@ Current command flow:
 - Setup state is persisted through backend bot-only API routes so setup can only run once per guild until reset. Persisted data now includes selected roles and selected channels.
 - Channel setup only bootstraps from a fresh guild with exactly one existing channel, and `/setup start` must be run from that channel because setup renames and deletes it after creating the new layout.
 - When channel setup creates `#join`, the bot also tries to set it as the guild system channel and unsuppress Discord join notifications so member join messages land there.
+- `/admin reset_setup` does not send a final summary reply after deletion, because the command channel may be deleted as part of reset.
 
 ## Custom V2 Modal Builders
 

@@ -19,11 +19,13 @@ describe("setup command", () => {
         custom_id: "setup_roles",
         required: true,
         min_values: 1,
-        max_values: 8,
+        max_values: 10,
         options: [
+          { label: "All", value: "all_roles" },
           { label: "Keyrole", value: "keyrole" },
           { label: "Leader", value: "leader" },
           { label: "Co-Leader", value: "co_leader" },
+          { label: "Bot", value: "bot" },
           { label: "Member", value: "member" },
           { label: "Builder", value: "builder" },
           { label: "Electrician", value: "electrician" },
@@ -41,11 +43,13 @@ describe("setup command", () => {
         custom_id: "setup_channels",
         required: false,
         min_values: 0,
-        max_values: 5,
+        max_values: 7,
         options: [
+          { label: "All", value: "all_channels" },
           { label: "Voice Calls", value: "voice_calls" },
           { label: "Announcements", value: "announcements" },
           { label: "Wipe react", value: "wipe_react" },
+          { label: "Invite", value: "invite" },
           { label: "General", value: "general" },
           { label: "Pics", value: "pics" },
         ],
@@ -91,7 +95,62 @@ describe("setup command", () => {
         "pvp",
         "leader",
       ]),
-    ).toEqual(["keyrole", "leader", "member", "pvp"]);
+    ).toEqual(["keyrole", "leader", "bot", "member", "pvp"]);
+    expect(__testables.getSelectedRoleKeys(["all_roles"])).toEqual([
+      "keyrole",
+      "leader",
+      "co_leader",
+      "bot",
+      "member",
+      "builder",
+      "electrician",
+      "monument",
+      "pvp",
+    ]);
+  });
+
+  it("expands the all channels option", () => {
+    expect(__testables.getSelectedChannelKeys(["all_channels"])).toEqual([
+      "voice_calls",
+      "announcements",
+      "wipe_react",
+      "invite",
+      "general",
+      "pics",
+    ]);
+  });
+
+  it("omits builder-only channels when builder is not selected", () => {
+    expect(
+      __testables.getTargetChannelNames(
+        ["general", "voice_calls"],
+        ["leader", "co_leader", "bot", "member"],
+      ),
+    ).not.toContain("build");
+    expect(
+      __testables.getTargetChannelNames(
+        ["general", "voice_calls"],
+        ["leader", "co_leader", "bot", "member"],
+      ),
+    ).not.toContain("builder call");
+  });
+
+  it("includes invite, wipe log, and afk channels in the target channel names", () => {
+    expect(
+      __testables.getTargetChannelNames(
+        ["announcements", "invite", "voice_calls"],
+        ["leader", "co_leader", "bot", "member"],
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "Important",
+        "announcements",
+        "click for invite",
+        "wipe log",
+        "Voice Channels",
+        "afk",
+      ]),
+    );
   });
 
   it("requires member when member-scoped roles are selected", () => {
@@ -110,7 +169,7 @@ describe("setup command", () => {
         ["leader", "co_leader", "member"],
         ["general"],
       ),
-    ).toBe("General and Voice Calls channel setup require the Builder role to be selected too.");
+    ).toBeNull();
   });
 
   it("plans bootstrap for a single existing setup channel", () => {
@@ -124,6 +183,7 @@ describe("setup command", () => {
           },
         ],
         "general-id",
+        ["leader", "co_leader", "bot", "member"],
         ["general"],
       ),
     ).toEqual({
@@ -149,6 +209,7 @@ describe("setup command", () => {
           },
         ],
         "general-id",
+        ["leader", "co_leader", "bot", "member"],
         ["general"],
       ),
     ).toEqual({
@@ -170,6 +231,7 @@ describe("setup command", () => {
           },
         ],
         "different-id",
+        ["leader", "co_leader", "bot", "member"],
         ["general"],
       ),
     ).toEqual({
