@@ -2643,6 +2643,7 @@ export function startWipeReactScheduler(client: Client) {
 
   async function tick() {
     const guilds = [...client.guilds.cache.values()];
+    console.log(`[bot] scheduler tick: ${guilds.length} guild(s)`);
 
     for (const guild of guilds) {
       try {
@@ -2650,6 +2651,7 @@ export function startWipeReactScheduler(client: Client) {
           getWipeReactWorkerID(),
           guild.id,
         );
+        console.log(`[bot] scheduler: guild ${guild.id} has ${response.items.length} schedule(s)`);
 
         for (const schedule of response.items) {
           await processSchedule(guild, schedule).catch((error) => {
