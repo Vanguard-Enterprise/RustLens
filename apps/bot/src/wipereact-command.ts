@@ -2269,7 +2269,7 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
           buildSchedulePayload(draft.config, interaction.user.id, interaction.channelId),
         );
         await interaction.followUp({
-          content: `Schedule updated (ID: ${draft.editScheduleId}).`,
+          content: `Schedule updated\n-# ID: ${draft.editScheduleId}`,
           flags: MessageFlags.Ephemeral,
         });
       } else {
@@ -2279,7 +2279,7 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
           buildSchedulePayload(draft.config, interaction.user.id, interaction.channelId),
         );
         await interaction.followUp({
-          content: `Schedule created (ID: ${schedule.id}).`,
+          content: `Schedule created\n-# ID: ${schedule.id}`,
           flags: MessageFlags.Ephemeral,
         });
       }
