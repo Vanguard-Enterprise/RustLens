@@ -177,3 +177,45 @@ func (p *PostgresStore) DeleteSoftLink(ctx context.Context, steamID string, disc
 	}
 	return nil
 }
+
+type BulkHardLink struct {
+	SteamID   string
+	BmID      *string
+	DiscordID string
+	Source    string
+}
+
+func (p *PostgresStore) BulkUpsertHardLinks(ctx context.Context, links []BulkHardLink) error {
+	if len(links) == 0 {
+		return nil
+	}
+
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	for _, link := range links {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO steam_accounts (steam_id, bm_id)
+			VALUES ($1, $2)
+			ON CONFLICT (steam_id) DO UPDATE
+			SET bm_id = COALESCE(EXCLUDED.bm_id, steam_accounts.bm_id)
+		`, link.SteamID, link.BmID)
+		if err != nil {
+			return err
+		}
+
+		_, err = tx.Exec(ctx, `
+			INSERT INTO steam_discord_links (steam_id, discord_id, type, source)
+			VALUES ($1, $2, 'hard', $3)
+			ON CONFLICT (steam_id, discord_id, type) DO NOTHING
+		`, link.SteamID, link.DiscordID, link.Source)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}
