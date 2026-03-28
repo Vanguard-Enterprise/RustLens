@@ -106,6 +106,7 @@ Known Steam player accounts with optional BattleMetrics ID.
 |---|---|---|
 | `steam_id` | `TEXT` | PK (17-digit Steam ID) |
 | `bm_id` | `TEXT UNIQUE` | Nullable, BattleMetrics player ID |
+| `avatar_image` | `TEXT NOT NULL DEFAULT ''` | Steam avatar URL |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 
 ### `steam_discord_links`

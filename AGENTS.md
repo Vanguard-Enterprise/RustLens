@@ -110,7 +110,7 @@ Key patterns:
 
 **Steam & Discord linking**
 
-`steam_accounts` stores known Steam players, optionally with their BattleMetrics player ID (`bm_id`). The `bm_id` is populated when a hard link is created via BattleMetrics scrape.
+`steam_accounts` stores known Steam players, optionally with their BattleMetrics player ID (`bm_id`) and Steam avatar URL (`avatar_image`). The `bm_id` is populated when a hard link is created via BattleMetrics scrape.
 
 `steam_discord_links` maps Steam accounts to Discord users with a `type` and `source`:
 - **soft** — user self-reported via bot command or frontend. No verification that the Steam account actually belongs to them. Source examples: `bot_command`, `frontend`.

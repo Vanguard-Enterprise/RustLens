@@ -85,6 +85,7 @@ export type WipeReactScheduleListResponse = {
 export type SteamAccount = {
   steamId: string;
   bmId: string | null;
+  avatarImage: string;
   createdAt: string;
 };
 

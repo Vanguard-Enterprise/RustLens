@@ -130,6 +130,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS steam_accounts (
 			steam_id TEXT PRIMARY KEY,
 			bm_id TEXT UNIQUE,
+			avatar_image TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 

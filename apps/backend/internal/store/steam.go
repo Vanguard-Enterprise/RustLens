@@ -12,9 +12,10 @@ var ErrSteamAccountNotFound = errors.New("steam account not found")
 var ErrLinkAlreadyExists = errors.New("steam discord link already exists")
 
 type SteamAccount struct {
-	SteamID   string
-	BmID      *string
-	CreatedAt time.Time
+	SteamID     string
+	BmID        *string
+	AvatarImage string
+	CreatedAt   time.Time
 }
 
 type SteamDiscordLink struct {
@@ -27,7 +28,7 @@ type SteamDiscordLink struct {
 
 func scanSteamAccount(scanner rowScanner) (SteamAccount, error) {
 	var record SteamAccount
-	err := scanner.Scan(&record.SteamID, &record.BmID, &record.CreatedAt)
+	err := scanner.Scan(&record.SteamID, &record.BmID, &record.AvatarImage, &record.CreatedAt)
 	if err != nil {
 		return SteamAccount{}, err
 	}
@@ -50,8 +51,8 @@ func (p *PostgresStore) UpsertSteamAccount(ctx context.Context, steamID string, 
 		VALUES ($1, $2)
 		ON CONFLICT (steam_id) DO UPDATE
 		SET bm_id = COALESCE(EXCLUDED.bm_id, steam_accounts.bm_id)
-		RETURNING steam_id, bm_id, created_at
-	`, steamID, bmID).Scan(&record.SteamID, &record.BmID, &record.CreatedAt)
+		RETURNING steam_id, bm_id, avatar_image, created_at
+	`, steamID, bmID).Scan(&record.SteamID, &record.BmID, &record.AvatarImage, &record.CreatedAt)
 	if err != nil {
 		return SteamAccount{}, err
 	}
@@ -60,7 +61,7 @@ func (p *PostgresStore) UpsertSteamAccount(ctx context.Context, steamID string, 
 
 func (p *PostgresStore) GetSteamAccountBySteamID(ctx context.Context, steamID string) (SteamAccount, error) {
 	record, err := scanSteamAccount(p.pool.QueryRow(ctx, `
-		SELECT steam_id, bm_id, created_at
+		SELECT steam_id, bm_id, avatar_image, created_at
 		FROM steam_accounts
 		WHERE steam_id = $1
 	`, steamID))
@@ -72,7 +73,7 @@ func (p *PostgresStore) GetSteamAccountBySteamID(ctx context.Context, steamID st
 
 func (p *PostgresStore) GetSteamAccountByBmID(ctx context.Context, bmID string) (SteamAccount, error) {
 	record, err := scanSteamAccount(p.pool.QueryRow(ctx, `
-		SELECT steam_id, bm_id, created_at
+		SELECT steam_id, bm_id, avatar_image, created_at
 		FROM steam_accounts
 		WHERE bm_id = $1
 	`, bmID))

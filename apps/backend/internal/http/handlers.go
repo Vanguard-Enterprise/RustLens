@@ -1023,8 +1023,9 @@ func (h *Handler) MarkWipeReactSchedulePosted(w http.ResponseWriter, r *http.Req
 
 func steamAccountToMap(record store.SteamAccount) map[string]any {
 	result := map[string]any{
-		"steamId":   record.SteamID,
-		"createdAt": record.CreatedAt,
+		"steamId":     record.SteamID,
+		"avatarImage": record.AvatarImage,
+		"createdAt":   record.CreatedAt,
 	}
 	if record.BmID != nil {
 		result["bmId"] = *record.BmID
