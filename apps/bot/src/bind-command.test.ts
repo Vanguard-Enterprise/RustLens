@@ -228,6 +228,84 @@ describe("bind command", () => {
     ]);
   });
 
+  it("builds the rocket modal", () => {
+    const modal = __testables.buildBindRocketModal().toJSON();
+
+    expect(modal.title).toBe("Bind Rocket");
+    expect(modal.custom_id).toBe("bind_rocket_modal");
+    expect(modal.components).toEqual([
+      {
+        type: ComponentType.Label,
+        label: "Amount of Rockets",
+        component: {
+          type: ComponentType.TextInput,
+          custom_id: "bind_rocket_amount",
+          style: TextInputStyle.Short,
+          max_length: 2,
+          placeholder: "Amount of rockets you want to be crafted",
+          required: true,
+        },
+      },
+      {
+        type: ComponentType.Label,
+        label: "Anything else?",
+        component: {
+          type: ComponentType.CheckboxGroup,
+          custom_id: "bind_rocket_anything_else",
+          required: false,
+          min_values: 0,
+          max_values: 1,
+          options: [{ label: "Pipes", value: "pipes" }],
+        },
+      },
+      {
+        type: ComponentType.Label,
+        label: "Bind",
+        component: {
+          type: ComponentType.TextInput,
+          custom_id: "bind_rocket_bind",
+          style: TextInputStyle.Short,
+          max_length: 1,
+          placeholder: "Specify a one key to make the bind for",
+          required: true,
+        },
+      },
+    ]);
+  });
+
+  it("builds the c4 modal", () => {
+    const modal = __testables.buildBindC4Modal().toJSON();
+
+    expect(modal.title).toBe("Bind C4");
+    expect(modal.custom_id).toBe("bind_c4_modal");
+    expect(modal.components).toEqual([
+      {
+        type: ComponentType.Label,
+        label: "Amount of C4",
+        component: {
+          type: ComponentType.TextInput,
+          custom_id: "bind_c4_amount",
+          style: TextInputStyle.Short,
+          max_length: 2,
+          placeholder: "Amount of c4 you want to be crafted",
+          required: true,
+        },
+      },
+      {
+        type: ComponentType.Label,
+        label: "Bind",
+        component: {
+          type: ComponentType.TextInput,
+          custom_id: "bind_c4_bind",
+          style: TextInputStyle.Short,
+          max_length: 1,
+          placeholder: "Specify a one key to make the bind for",
+          required: true,
+        },
+      },
+    ]);
+  });
+
   it("extracts draft ids from prefixed custom ids", () => {
     expect(
       __testables.extractDraftId(
@@ -383,6 +461,48 @@ describe("bind command", () => {
 
     expect(embed.title).toBe("Turret bind");
     expect(embed.description).toBe('```\nbind t "craft.add 1 1"\n```');
+  });
+
+  it("builds rocket craft commands in the requested order and chunks rockets", () => {
+    const result = __testables.buildRocketCraftCommands(["21"], ["pipes"]);
+
+    expect(result).toEqual({
+      commands: [
+        "craft.add -265876753 1365",
+        "craft.add -592016202 210",
+        "craft.add 95950017 42",
+        "craft.add -742865266 20",
+        "craft.add -742865266 1",
+      ],
+      error: null,
+    });
+  });
+
+  it("builds the rocket bind embed", () => {
+    const embed = __testables.buildRocketBindEmbed('bind r "craft.add 1 1"');
+
+    expect(embed.title).toBe("Rocket bind");
+    expect(embed.description).toBe('```\nbind r "craft.add 1 1"\n```');
+  });
+
+  it("builds c4 craft commands in the requested order", () => {
+    const result = __testables.buildC4CraftCommands(["7"]);
+
+    expect(result).toEqual({
+      commands: [
+        "craft.add -265876753 700",
+        "craft.add -592016202 140",
+        "craft.add 1248356124 7",
+      ],
+      error: null,
+    });
+  });
+
+  it("builds the c4 bind embed", () => {
+    const embed = __testables.buildC4BindEmbed('bind c "craft.add 1 1"');
+
+    expect(embed.title).toBe("C4 bind");
+    expect(embed.description).toBe('```\nbind c "craft.add 1 1"\n```');
   });
 
   it("rejects missing numeric input and supports HV ammo", () => {

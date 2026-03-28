@@ -24,6 +24,8 @@ export const BIND_COMMAND_NAME = "bind";
 
 const BIND_FULLKIT_SUBCOMMAND_NAME = "fullkit";
 const BIND_TURRET_SUBCOMMAND_NAME = "turret";
+const BIND_ROCKET_SUBCOMMAND_NAME = "rocket";
+const BIND_C4_SUBCOMMAND_NAME = "c4";
 const BIND_FULLKIT_STEP_ONE_MODAL_CUSTOM_ID = "bind_fullkit_modal_step_1";
 const BIND_FULLKIT_STEP_TWO_MODAL_PREFIX = "bind_fullkit_modal_step_2:";
 const BIND_FULLKIT_CONTINUE_BUTTON_PREFIX = "bind_fullkit_continue:";
@@ -43,6 +45,13 @@ const BIND_TURRET_AMMO_CUSTOM_ID = "bind_turret_ammo";
 const BIND_TURRET_AMMO_AMOUNT_CUSTOM_ID = "bind_turret_ammo_amount";
 const BIND_TURRET_ANYTHING_ELSE_CUSTOM_ID = "bind_turret_anything_else";
 const BIND_TURRET_BIND_CUSTOM_ID = "bind_turret_bind";
+const BIND_ROCKET_MODAL_CUSTOM_ID = "bind_rocket_modal";
+const BIND_ROCKET_AMOUNT_CUSTOM_ID = "bind_rocket_amount";
+const BIND_ROCKET_ANYTHING_ELSE_CUSTOM_ID = "bind_rocket_anything_else";
+const BIND_ROCKET_BIND_CUSTOM_ID = "bind_rocket_bind";
+const BIND_C4_MODAL_CUSTOM_ID = "bind_c4_modal";
+const BIND_C4_AMOUNT_CUSTOM_ID = "bind_c4_amount";
+const BIND_C4_BIND_CUSTOM_ID = "bind_c4_bind";
 const BIND_FULLKIT_DRAFT_TTL_MS = 15 * 60 * 1000;
 const RUSTLENS_EMBED_COLOR = 14582045;
 const RUSTLENS_EMBED_ICON_URL =
@@ -131,6 +140,9 @@ const turretExtraOptions: readonly CraftableOption[] = [
   { value: "muzzle_boost", label: "Muzzle Boost", itemIds: [-1405508498] },
   { value: "silencer", label: "Silencer", itemIds: [-781866273] },
 ] as const;
+const rocketExtraOptions: readonly CraftableOption[] = [
+  { value: "pipes", label: "Pipes", itemIds: [95950017] },
+] as const;
 
 const medsItemId = 1079279582;
 const medkitsItemId = 254522515;
@@ -139,6 +151,16 @@ const armorBaseItemIds = [-194953424, 1850456855, 1751045826, 237239288] as cons
 const maxMedsPerCraftCommand = 10;
 const maxMedkitsPerCraftCommand = 5;
 const turretItemId = -2139580305;
+const gunpowderItemId = -265876753;
+const explosivesItemId = -592016202;
+const rocketItemId = -742865266;
+const c4ItemId = 1248356124;
+const gunpowderCraftsPerRocket = 65;
+const explosivesPerRocket = 10;
+const pipesPerRocket = 2;
+const maxRocketsPerCraftCommand = 20;
+const gunpowderCraftsPerC4 = 100;
+const explosivesPerC4 = 20;
 
 const bindCommand = new SlashCommandBuilder()
   .setName(BIND_COMMAND_NAME)
@@ -153,6 +175,16 @@ const bindCommand = new SlashCommandBuilder()
     subcommand
       .setName(BIND_TURRET_SUBCOMMAND_NAME)
       .setDescription("Open the turret bind modal"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(BIND_ROCKET_SUBCOMMAND_NAME)
+      .setDescription("Open the rocket bind modal"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(BIND_C4_SUBCOMMAND_NAME)
+      .setDescription("Open the c4 bind modal"),
   );
 
 function buildBindFullkitStartModal() {
@@ -295,6 +327,65 @@ function buildBindTurretModal() {
       "Bind",
       new TextInputBuilder()
         .setCustomId(BIND_TURRET_BIND_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(1)
+        .setPlaceholder("Specify a one key to make the bind for"),
+    );
+}
+
+function buildBindRocketModal() {
+  return new ModalV2Builder()
+    .setTitle("Bind Rocket")
+    .setCustomId(BIND_ROCKET_MODAL_CUSTOM_ID)
+    .addComponent(
+      "Amount of Rockets",
+      new TextInputBuilder()
+        .setCustomId(BIND_ROCKET_AMOUNT_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(2)
+        .setPlaceholder("Amount of rockets you want to be crafted"),
+    )
+    .addComponent(
+      "Anything else?",
+      new CheckboxGroupBuilder()
+        .setCustomId(BIND_ROCKET_ANYTHING_ELSE_CUSTOM_ID)
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(1)
+        .addOptions(
+          ...rocketExtraOptions.map(({ label, value }) => ({ label, value })),
+        ),
+    )
+    .addComponent(
+      "Bind",
+      new TextInputBuilder()
+        .setCustomId(BIND_ROCKET_BIND_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(1)
+        .setPlaceholder("Specify a one key to make the bind for"),
+    );
+}
+
+function buildBindC4Modal() {
+  return new ModalV2Builder()
+    .setTitle("Bind C4")
+    .setCustomId(BIND_C4_MODAL_CUSTOM_ID)
+    .addComponent(
+      "Amount of C4",
+      new TextInputBuilder()
+        .setCustomId(BIND_C4_AMOUNT_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(2)
+        .setPlaceholder("Amount of c4 you want to be crafted"),
+    )
+    .addComponent(
+      "Bind",
+      new TextInputBuilder()
+        .setCustomId(BIND_C4_BIND_CUSTOM_ID)
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setMaxLength(1)
@@ -627,6 +718,72 @@ function buildTurretCraftCommands(
   } as const;
 }
 
+function addChunkedCraftCommands(
+  commands: string[],
+  itemId: number,
+  totalAmount: number,
+  chunkSize: number,
+) {
+  if (totalAmount <= 0) {
+    return;
+  }
+
+  let remaining = totalAmount;
+  while (remaining > 0) {
+    const amount = Math.min(remaining, chunkSize);
+    commands.push(`craft.add ${itemId} ${amount}`);
+    remaining -= amount;
+  }
+}
+
+function buildRocketCraftCommands(amountValues: string[], anythingElseValues: string[]) {
+  const rocketAmountResult = parseWholeNumber(amountValues, "Amount of Rockets");
+  if (rocketAmountResult.error || rocketAmountResult.value === null) {
+    return {
+      commands: [],
+      error: rocketAmountResult.error,
+    } as const;
+  }
+
+  const rocketAmount = rocketAmountResult.value;
+  const commands: string[] = [
+    `craft.add ${gunpowderItemId} ${rocketAmount * gunpowderCraftsPerRocket}`,
+    `craft.add ${explosivesItemId} ${rocketAmount * explosivesPerRocket}`,
+  ];
+
+  const selectedExtras = new Set(anythingElseValues);
+  if (selectedExtras.has("pipes")) {
+    commands.push(`craft.add 95950017 ${rocketAmount * pipesPerRocket}`);
+  }
+
+  addChunkedCraftCommands(commands, rocketItemId, rocketAmount, maxRocketsPerCraftCommand);
+
+  return {
+    commands,
+    error: null,
+  } as const;
+}
+
+function buildC4CraftCommands(amountValues: string[]) {
+  const c4AmountResult = parseWholeNumber(amountValues, "Amount of C4");
+  if (c4AmountResult.error || c4AmountResult.value === null) {
+    return {
+      commands: [],
+      error: c4AmountResult.error,
+    } as const;
+  }
+
+  const c4Amount = c4AmountResult.value;
+  return {
+    commands: [
+      `craft.add ${gunpowderItemId} ${c4Amount * gunpowderCraftsPerC4}`,
+      `craft.add ${explosivesItemId} ${c4Amount * explosivesPerC4}`,
+      `craft.add ${c4ItemId} ${c4Amount}`,
+    ],
+    error: null,
+  } as const;
+}
+
 function buildBindCommand(key: string, commands: readonly string[]) {
   return `bind ${key} "${commands.join(";")}"`;
 }
@@ -637,6 +794,14 @@ function buildFullkitBindEmbed(command: string) {
 
 function buildTurretBindEmbed(command: string) {
   return buildBindEmbed("Turret bind", command);
+}
+
+function buildRocketBindEmbed(command: string) {
+  return buildBindEmbed("Rocket bind", command);
+}
+
+function buildC4BindEmbed(command: string) {
+  return buildBindEmbed("C4 bind", command);
 }
 
 function buildBindEmbed(title: string, command: string) {
@@ -705,6 +870,12 @@ export async function handleBindChatInput(interaction: ChatInputCommandInteracti
     case BIND_TURRET_SUBCOMMAND_NAME:
       await interaction.showModal(buildBindTurretModal().toJSON() as any);
       return true;
+    case BIND_ROCKET_SUBCOMMAND_NAME:
+      await interaction.showModal(buildBindRocketModal().toJSON() as any);
+      return true;
+    case BIND_C4_SUBCOMMAND_NAME:
+      await interaction.showModal(buildBindC4Modal().toJSON() as any);
+      return true;
     default:
       await replyEphemeral(
         interaction,
@@ -733,6 +904,51 @@ export async function handleBindButtonInteraction(interaction: ButtonInteraction
 }
 
 export async function handleBindModalSubmit(interaction: ModalSubmitInteraction) {
+  if (interaction.customId === BIND_ROCKET_MODAL_CUSTOM_ID) {
+    const bindKey = getFieldValues(interaction, BIND_ROCKET_BIND_CUSTOM_ID)[0]?.trim() ?? "";
+    if (bindKey.length === 0) {
+      await replyEphemeral(interaction, "Bind is required.");
+      return true;
+    }
+
+    const craftCommands = buildRocketCraftCommands(
+      getFieldValues(interaction, BIND_ROCKET_AMOUNT_CUSTOM_ID),
+      getFieldValues(interaction, BIND_ROCKET_ANYTHING_ELSE_CUSTOM_ID),
+    );
+    if (craftCommands.error) {
+      await replyEphemeral(interaction, craftCommands.error);
+      return true;
+    }
+
+    const bindCommand = buildBindCommand(bindKey, craftCommands.commands);
+    await interaction.reply({
+      embeds: [buildRocketBindEmbed(bindCommand)],
+    });
+    return true;
+  }
+
+  if (interaction.customId === BIND_C4_MODAL_CUSTOM_ID) {
+    const bindKey = getFieldValues(interaction, BIND_C4_BIND_CUSTOM_ID)[0]?.trim() ?? "";
+    if (bindKey.length === 0) {
+      await replyEphemeral(interaction, "Bind is required.");
+      return true;
+    }
+
+    const craftCommands = buildC4CraftCommands(
+      getFieldValues(interaction, BIND_C4_AMOUNT_CUSTOM_ID),
+    );
+    if (craftCommands.error) {
+      await replyEphemeral(interaction, craftCommands.error);
+      return true;
+    }
+
+    const bindCommand = buildBindCommand(bindKey, craftCommands.commands);
+    await interaction.reply({
+      embeds: [buildC4BindEmbed(bindCommand)],
+    });
+    return true;
+  }
+
   if (interaction.customId === BIND_TURRET_MODAL_CUSTOM_ID) {
     const bindKey = getFieldValues(interaction, BIND_TURRET_BIND_CUSTOM_ID)[0]?.trim() ?? "";
     if (bindKey.length === 0) {
@@ -858,11 +1074,17 @@ export async function handleBindModalSubmit(interaction: ModalSubmitInteraction)
 
 export const __testables = {
   buildBindCommand,
+  buildBindC4Modal,
   buildCraftCommands,
   buildBindFullkitFinishModal,
   buildBindFullkitStartModal,
+  buildBindRocketModal,
   buildBindTurretModal,
+  buildC4BindEmbed,
+  buildC4CraftCommands,
   buildFullkitBindEmbed,
+  buildRocketBindEmbed,
+  buildRocketCraftCommands,
   buildTurretBindEmbed,
   buildTurretCraftCommands,
   extractDraftId,
