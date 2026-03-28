@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"regexp"
@@ -194,6 +195,19 @@ func validateGuildID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return guildID, true
 }
 
+func validateSnowflakePathParam(w http.ResponseWriter, r *http.Request, paramName string) (string, bool) {
+	value := chi.URLParam(r, paramName)
+	if value == "" {
+		writeError(w, http.StatusBadRequest, paramName+" is required")
+		return "", false
+	}
+	if !snowflakePattern.MatchString(value) {
+		writeError(w, http.StatusBadRequest, paramName+" must be a valid Discord snowflake")
+		return "", false
+	}
+	return value, true
+}
+
 func writeGuildSetupState(w http.ResponseWriter, state store.GuildSetupState) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"guildId":          state.GuildID,
@@ -209,6 +223,104 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 		"guildId":      settings.GuildID,
 		"logChannelId": settings.LogChannelID,
 	})
+}
+
+func writeWipeReact(w http.ResponseWriter, record store.WipeReact) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"guildId":           record.GuildID,
+		"channelId":         record.ChannelID,
+		"messageId":         record.MessageID,
+		"creatorId":         record.CreatorID,
+		"name":              record.Name,
+		"description":       record.Description,
+		"timeZone":          record.TimeZone,
+		"scheduledUnix":     record.ScheduledUnix,
+		"askLateReason":     record.AskLateReason,
+		"askDeclinedReason": record.AskDeclinedReason,
+		"acceptedUserIds":   record.AcceptedUserIDs,
+		"declinedUserIds":   record.DeclinedUserIDs,
+		"lateUserIds":       record.LateUserIDs,
+		"embedTimestamp":    record.EmbedTimestamp,
+	})
+}
+
+func writeWipeReactList(w http.ResponseWriter, records []store.WipeReact) {
+	items := make([]map[string]any, 0, len(records))
+	for _, record := range records {
+		items = append(items, map[string]any{
+			"guildId":           record.GuildID,
+			"channelId":         record.ChannelID,
+			"messageId":         record.MessageID,
+			"creatorId":         record.CreatorID,
+			"name":              record.Name,
+			"description":       record.Description,
+			"timeZone":          record.TimeZone,
+			"scheduledUnix":     record.ScheduledUnix,
+			"askLateReason":     record.AskLateReason,
+			"askDeclinedReason": record.AskDeclinedReason,
+			"acceptedUserIds":   record.AcceptedUserIDs,
+			"declinedUserIds":   record.DeclinedUserIDs,
+			"lateUserIds":       record.LateUserIDs,
+			"embedTimestamp":    record.EmbedTimestamp,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func writeWipeReactReactionUpdate(w http.ResponseWriter, update store.WipeReactReactionUpdate) {
+	response := map[string]any{
+		"changed": update.Changed,
+		"wipeReact": map[string]any{
+			"guildId":           update.WipeReact.GuildID,
+			"channelId":         update.WipeReact.ChannelID,
+			"messageId":         update.WipeReact.MessageID,
+			"creatorId":         update.WipeReact.CreatorID,
+			"name":              update.WipeReact.Name,
+			"description":       update.WipeReact.Description,
+			"timeZone":          update.WipeReact.TimeZone,
+			"scheduledUnix":     update.WipeReact.ScheduledUnix,
+			"askLateReason":     update.WipeReact.AskLateReason,
+			"askDeclinedReason": update.WipeReact.AskDeclinedReason,
+			"acceptedUserIds":   update.WipeReact.AcceptedUserIDs,
+			"declinedUserIds":   update.WipeReact.DeclinedUserIDs,
+			"lateUserIds":       update.WipeReact.LateUserIDs,
+			"embedTimestamp":    update.WipeReact.EmbedTimestamp,
+		},
+	}
+	if update.PreviousType != nil {
+		response["previousType"] = string(*update.PreviousType)
+	} else {
+		response["previousType"] = nil
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func writeWipeReactReactionRemoval(w http.ResponseWriter, removal store.WipeReactReactionRemoval) {
+	response := map[string]any{
+		"changed": removal.Changed,
+		"wipeReact": map[string]any{
+			"guildId":           removal.WipeReact.GuildID,
+			"channelId":         removal.WipeReact.ChannelID,
+			"messageId":         removal.WipeReact.MessageID,
+			"creatorId":         removal.WipeReact.CreatorID,
+			"name":              removal.WipeReact.Name,
+			"description":       removal.WipeReact.Description,
+			"timeZone":          removal.WipeReact.TimeZone,
+			"scheduledUnix":     removal.WipeReact.ScheduledUnix,
+			"askLateReason":     removal.WipeReact.AskLateReason,
+			"askDeclinedReason": removal.WipeReact.AskDeclinedReason,
+			"acceptedUserIds":   removal.WipeReact.AcceptedUserIDs,
+			"declinedUserIds":   removal.WipeReact.DeclinedUserIDs,
+			"lateUserIds":       removal.WipeReact.LateUserIDs,
+			"embedTimestamp":    removal.WipeReact.EmbedTimestamp,
+		},
+	}
+	if removal.RemovedType != nil {
+		response["removedType"] = string(*removal.RemovedType)
+	} else {
+		response["removedType"] = nil
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) GetGuildSetupState(w http.ResponseWriter, r *http.Request) {
@@ -357,6 +469,287 @@ func (h *Handler) SetGuildLogChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeGuildSettings(w, settings)
+}
+
+type wipeReactPayload struct {
+	ChannelID         string   `json:"channelId"`
+	MessageID         string   `json:"messageId"`
+	CreatorID         string   `json:"creatorId"`
+	Name              string   `json:"name"`
+	Description       string   `json:"description"`
+	TimeZone          string   `json:"timeZone"`
+	ScheduledUnix     int64    `json:"scheduledUnix"`
+	AskLateReason     bool     `json:"askLateReason"`
+	AskDeclinedReason bool     `json:"askDeclinedReason"`
+	AcceptedUserIDs   []string `json:"acceptedUserIds"`
+	DeclinedUserIDs   []string `json:"declinedUserIds"`
+	LateUserIDs       []string `json:"lateUserIds"`
+	EmbedTimestamp    string   `json:"embedTimestamp"`
+}
+
+func validateSnowflakeValue(value string) bool {
+	return value != "" && snowflakePattern.MatchString(value)
+}
+
+func validateWipeReactPayload(w http.ResponseWriter, payload wipeReactPayload, requireMessageID bool) bool {
+	if !validateSnowflakeValue(payload.ChannelID) {
+		writeError(w, http.StatusBadRequest, "channelId must be a valid Discord snowflake")
+		return false
+	}
+	if requireMessageID && !validateSnowflakeValue(payload.MessageID) {
+		writeError(w, http.StatusBadRequest, "messageId must be a valid Discord snowflake")
+		return false
+	}
+	if !validateSnowflakeValue(payload.CreatorID) {
+		writeError(w, http.StatusBadRequest, "creatorId must be a valid Discord snowflake")
+		return false
+	}
+	if payload.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return false
+	}
+	if payload.TimeZone == "" {
+		writeError(w, http.StatusBadRequest, "timeZone is required")
+		return false
+	}
+	if payload.ScheduledUnix <= 0 {
+		writeError(w, http.StatusBadRequest, "scheduledUnix must be greater than zero")
+		return false
+	}
+	if payload.EmbedTimestamp == "" {
+		writeError(w, http.StatusBadRequest, "embedTimestamp is required")
+		return false
+	}
+	reactionUserIDs := append([]string{}, payload.AcceptedUserIDs...)
+	reactionUserIDs = append(reactionUserIDs, payload.DeclinedUserIDs...)
+	reactionUserIDs = append(reactionUserIDs, payload.LateUserIDs...)
+	for _, userID := range reactionUserIDs {
+		if !validateSnowflakeValue(userID) {
+			writeError(w, http.StatusBadRequest, "reaction user ids must be valid Discord snowflakes")
+			return false
+		}
+	}
+	return true
+}
+
+func wipeReactFromPayload(guildID string, payload wipeReactPayload) store.WipeReact {
+	return store.WipeReact{
+		GuildID:           guildID,
+		ChannelID:         payload.ChannelID,
+		MessageID:         payload.MessageID,
+		CreatorID:         payload.CreatorID,
+		Name:              payload.Name,
+		Description:       payload.Description,
+		TimeZone:          payload.TimeZone,
+		ScheduledUnix:     payload.ScheduledUnix,
+		AskLateReason:     payload.AskLateReason,
+		AskDeclinedReason: payload.AskDeclinedReason,
+		AcceptedUserIDs:   payload.AcceptedUserIDs,
+		DeclinedUserIDs:   payload.DeclinedUserIDs,
+		LateUserIDs:       payload.LateUserIDs,
+		EmbedTimestamp:    payload.EmbedTimestamp,
+	}
+}
+
+func (h *Handler) ListActiveWipeReacts(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	records, err := h.postgres.ListActiveWipeReacts(r.Context(), guildID, time.Now().Unix())
+	if err != nil {
+		log.Printf("[backend] ListActiveWipeReacts error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list active wipe reacts")
+		return
+	}
+
+	writeWipeReactList(w, records)
+}
+
+func (h *Handler) GetWipeReact(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	messageID, ok := validateSnowflakePathParam(w, r, "messageID")
+	if !ok {
+		return
+	}
+
+	record, err := h.postgres.GetWipeReact(r.Context(), guildID, messageID)
+	if errors.Is(err, store.ErrWipeReactNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetWipeReact error for guild %s message %s: %v", guildID, messageID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch wipe react")
+		return
+	}
+
+	writeWipeReact(w, record)
+}
+
+func (h *Handler) CreateWipeReact(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	var payload wipeReactPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if !validateWipeReactPayload(w, payload, true) {
+		return
+	}
+
+	record, err := h.postgres.CreateWipeReact(r.Context(), wipeReactFromPayload(guildID, payload))
+	if err != nil {
+		log.Printf("[backend] CreateWipeReact error for guild %s message %s: %v", guildID, payload.MessageID, err)
+		writeError(w, http.StatusInternalServerError, "failed to create wipe react")
+		return
+	}
+
+	writeWipeReact(w, record)
+}
+
+func (h *Handler) UpdateWipeReact(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	messageID, ok := validateSnowflakePathParam(w, r, "messageID")
+	if !ok {
+		return
+	}
+
+	var payload wipeReactPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	payload.MessageID = messageID
+	if !validateWipeReactPayload(w, payload, true) {
+		return
+	}
+
+	record, err := h.postgres.UpdateWipeReact(r.Context(), guildID, messageID, wipeReactFromPayload(guildID, payload))
+	if errors.Is(err, store.ErrWipeReactNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] UpdateWipeReact error for guild %s message %s: %v", guildID, messageID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update wipe react")
+		return
+	}
+
+	writeWipeReact(w, record)
+}
+
+func (h *Handler) DeleteWipeReact(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	messageID, ok := validateSnowflakePathParam(w, r, "messageID")
+	if !ok {
+		return
+	}
+
+	if err := h.postgres.DeleteWipeReact(r.Context(), guildID, messageID); errors.Is(err, store.ErrWipeReactNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react not found")
+		return
+	} else if err != nil {
+		log.Printf("[backend] DeleteWipeReact error for guild %s message %s: %v", guildID, messageID, err)
+		writeError(w, http.StatusInternalServerError, "failed to delete wipe react")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+type setWipeReactReactionRequest struct {
+	UserID string `json:"userId"`
+	Type   string `json:"type"`
+}
+
+func (h *Handler) SetWipeReactReaction(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	messageID, ok := validateSnowflakePathParam(w, r, "messageID")
+	if !ok {
+		return
+	}
+
+	var payload setWipeReactReactionRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if !validateSnowflakeValue(payload.UserID) {
+		writeError(w, http.StatusBadRequest, "userId must be a valid Discord snowflake")
+		return
+	}
+
+	var reactionType store.WipeReactReactionType
+	switch payload.Type {
+	case string(store.WipeReactReactionAccepted):
+		reactionType = store.WipeReactReactionAccepted
+	case string(store.WipeReactReactionDeclined):
+		reactionType = store.WipeReactReactionDeclined
+	case string(store.WipeReactReactionLate):
+		reactionType = store.WipeReactReactionLate
+	default:
+		writeError(w, http.StatusBadRequest, "type must be one of accepted, declined, or late")
+		return
+	}
+
+	update, err := h.postgres.SetWipeReactReaction(r.Context(), guildID, messageID, payload.UserID, reactionType)
+	if errors.Is(err, store.ErrWipeReactNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] SetWipeReactReaction error for guild %s message %s: %v", guildID, messageID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update wipe react reaction")
+		return
+	}
+
+	writeWipeReactReactionUpdate(w, update)
+}
+
+func (h *Handler) RemoveWipeReactReaction(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	messageID, ok := validateSnowflakePathParam(w, r, "messageID")
+	if !ok {
+		return
+	}
+	userID, ok := validateSnowflakePathParam(w, r, "userID")
+	if !ok {
+		return
+	}
+
+	removal, err := h.postgres.RemoveWipeReactReaction(r.Context(), guildID, messageID, userID)
+	if errors.Is(err, store.ErrWipeReactNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] RemoveWipeReactReaction error for guild %s message %s user %s: %v", guildID, messageID, userID, err)
+		writeError(w, http.StatusInternalServerError, "failed to remove wipe react reaction")
+		return
+	}
+
+	writeWipeReactReactionRemoval(w, removal)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

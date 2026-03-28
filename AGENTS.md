@@ -83,8 +83,8 @@ apps/backend/
   internal/
     config/config.go         # Env-based config with defaults (PORT, POSTGRES_URL, REDIS_URL, etc.)
     http/
-      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*
-      handlers.go            # Handler implementations incl. bot setup-state and guild-settings endpoints
+      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/setup/*
+      handlers.go            # Handler implementations incl. bot setup-state, guild-settings, and wipe-react persistence endpoints
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
     auth/jwt.go              # JWT signing/validation for bot service auth
     shards/
@@ -92,7 +92,8 @@ apps/backend/
       allocator.go           # Shard assignment algorithm
       heartbeat.go           # Heartbeat/lease management
     store/
-      postgres.go            # pgx pool + schema auto-migration (bot_worker_events, guild_setups, guild_settings)
+      postgres.go            # pgx pool + schema auto-migration (bot_worker_events, guild_setups, guild_settings, wipe_reacts)
+      wipe_reacts.go         # Persisted wipe react CRUD + reaction mutation helpers
       redis.go               # go-redis client for heartbeats and shard leases
 ```
 
@@ -102,6 +103,7 @@ Key patterns:
 - Bot routes (`/api/internal/bot/shards/*`) are JWT-protected via middleware.
 - Bot setup-state routes (`/api/internal/bot/setup/guilds/*`) are JWT-protected and persist one-time guild setup state in Postgres, including selected roles and selected channels.
 - Bot guild settings routes (`/api/internal/bot/setup/guilds/*/settings*`) are JWT-protected and currently store the logs channel override used by wipe reacts.
+- Bot wipe-react routes (`/api/internal/bot/setup/guilds/*/wipe-reacts*`) are JWT-protected and persist wipe react metadata plus accepted/declined/late user lists in Postgres.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
 
 ### Bot (TypeScript)
@@ -113,19 +115,15 @@ apps/bot/src/
   backend-client.ts     # HTTP client for backend shard API (register, heartbeat, release, assignments)
   shards.ts             # Shard reconciliation logic
   shard-runtime.ts      # discord.js ShardingManager wrapper
-  shard-worker.ts       # Individual shard worker process + interaction handling
+  shard-worker.ts       # Individual shard worker process + interaction handling (requires GuildMembers intent for /wipereact missing)
   setup-command.ts      # /setup start command + setup modal handling
   bind-command.ts       # /bind fullkit/turret/rocket/c4 modal registration + submit handling
-  wipereact-command.ts  # /wipereact create flow, button handling, edit modal, and logs embeds
+  wipereact-command.ts  # /wipereact create/delete/missing/react flow, persistence sync, button handling, edit modal, and logs embeds
 ```
 
 Flow: worker registers with backend -> polls `/assignments` -> reconciles local discord.js shards -> heartbeats leases -> releases on shutdown. Auth via self-signed JWT using `BOT_SERVICE_JWT_SECRET`.
-Command flow: shard `0` registers `/setup start`, `/setup logchannel`, `/wipereact create`, `/bind ...`, and `/admin reset_setup` at startup. `/setup start` opens a modal with role and channel checkboxes (the `Bot` role is not shown in the modal — it is always created automatically), includes an `All` option for both groups, switches the deferred ephemeral response into a textual progress bar during setup, creates configured guild roles in a fixed order including a hoisted soft-blue `Bot` role between `Co Leader` and `member`, assigns that `Bot` role to the RustLens bot, creates the selected channel/category layout with permission overwrites, skips builder-only channels when the `Builder` role is not selected, adds `#wipe log` at the bottom of `Important` when announcements or wipe react channels are requested, supports an `Invite` modal option that creates `#press for invite`, creates an `afk` voice channel at the bottom of `Voice Channels`, tries to set `#join` as the guild system channel for join messages, and sets the guild AFK channel plus Discord's nearest supported AFK timeout of 15 minutes. Setup state is stored via backend bot-only endpoints. Channel creation only bootstraps from a guild that still has exactly one existing channel, and the command must be run in that channel because setup replaces it. `/setup logchannel {channel}` persists a logs-channel override in backend guild settings for wipe reacts and logs. `/admin reset_setup` clears that state and deletes the roles and channels created by setup, replying with a summary (silently catches reply failures when the command channel was deleted during reset).
-`/wipereact create` opens a five-component v2 modal with `Name`, `Description`, `Time & Date`, `Timezone`, and `Anything else?`. The timezone field is optional and defaults to `Europe/London`; it accepts IANA timezone names such as `Europe/Helsinki` or `America/New_York`. The time parser accepts `DD.MM.YY HH:MM`, mixed `.` / `-` / `:` separators such as `DD-MM-YYYY HH.MM`, date-only inputs like `1.2` (defaults year to the current year in the selected timezone and time to `00:00`), and time-only inputs like `18-45` (defaults date to today in the selected timezone). The command refuses past timestamps and refuses to open when RustLens cannot resolve a logs channel from backend settings or a guild text channel literally named `logs`. The posted embed includes `Timezone`, `Date & Time`, and live `Accepted` / `Declined` / `Late` sections plus buttons colored green, red, gray, and gray. Accept/Decline/Late move the user into the corresponding section, late/decline can optionally open a reason modal first, and every successful reaction writes one logs embed into the configured logs channel with the reacting user as author, their action, their Discord mention, and an optional reason. After the scheduled timestamp passes, reactions are locked and the buttons are disabled on the next interaction. The cogwheel button is admin-only and opens an edit modal that can update the wipe react details while preserving the current accepted/declined/late lists. `/wipereact delete` uses autocomplete on a required string option and lists wipe reacts in the current text channel created by the caller; selecting one deletes the bot message and cancels its expiry timer.
-`/bind fullkit` uses a two-step v2 modal flow because Discord modals only allow five top-level components. Step 1 collects weapon, Attachments, ammo, ammo amount, and `Amount of barricades`; step 2 collects medkits amount, meds amount, armor, Anything else, and `Bind` as the final field. The text-field character caps are ammo `3`, meds `2`, medkits `2`, barricades `2`, and `Bind` `1`. Submitting the second step posts a non-ephemeral embed with the generated bind command. The bind output uses `craft.add {id} {amount}` batching, keeps the order weapon -> meds -> medkits -> barricade -> attachments -> ammo -> armor, splits meds into commands of at most `10` and medkits into commands of at most `5`, crafts the meds required for medkits before the medkits themselves, then crafts the user-requested meds, and crafts barricades with item id `1373240771`. HV ammo uses item id `1712070256`. Armor always crafts `-194953424`, `1850456855`, `1751045826`, and `237239288`, except `Shorts` swaps out `237239288` for `-1695367501`; the armor selection adds `-2002277461` for `Road Sign`, `1110385766` for `Metal`, or `-1163532624` for `Jacket`, and `Boots` adds `-1549739227`.
-`/bind turret` opens a single v2 modal with `Weapons`, `Ammo`, `Amount of Ammo`, `Anything else?`, and `Bind`. It always crafts `-2139580305` first, then the selected weapon (`Bolt Action Rifle`, `HMLMG`, or `Python`), then the selected ammo using the same ammo yields as fullkit, then optional `Muzzle Boost` and `Silencer`, and posts a non-ephemeral embed titled `Turret bind`.
-`/bind rocket` opens a single v2 modal with `Amount of Rockets`, `Anything else?`, and `Bind`. It posts a non-ephemeral embed titled `Rocket bind` and crafts gunpowder first (`-265876753`) at `65` gunpowder craft commands per rocket, then explosives (`-592016202`) at `10` per rocket, then optional `Pipes` (`95950017`) at `2` per rocket, then the rockets themselves (`-742865266`) chunked into commands of at most `20`.
-`/bind c4` opens a single v2 modal with `Amount of C4` and `Bind`. It posts a non-ephemeral embed titled `C4 bind` and crafts gunpowder first (`-265876753`) at `100` gunpowder craft commands per C4, then explosives (`-592016202`) at `20` per C4, then the C4 itself (`1248356124`) chunked into commands of at most `20`.
+Command flow: shard `0` registers `/setup start`, `/setup logchannel`, `/wipereact ...`, `/bind ...`, and `/admin reset_setup` at startup. `/setup logchannel {channel}` persists a logs-channel override in backend guild settings for wipe reacts and logs. `/wipereact` is an administrator-only guild command and uses in-command autocomplete for selecting active wipe reacts on `/wipereact delete`, `/wipereact missing {scope} {wipereact}`, `/wipereact react add {user} {type} {wipereact}`, and `/wipereact react remove {user} {wipereact}`. Wipe reacts are persisted in Postgres through backend bot-only endpoints, including the message/channel IDs, config, and accepted/declined/late user lists, and shard workers rehydrate active wipe-react expiry timers on startup. `/wipereact missing` posts an embed titled `Missing reactants` listing members of the selected role who have not accepted, declined, or marked late; this requires the bot to have the Discord Guild Members privileged intent enabled.
+
 
 ### Frontend (Next.js)
 
@@ -152,7 +150,7 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `BOT_TARGET_SHARDS` | `4` |
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
 
-The bot requires a real `DISCORD_TOKEN` for gateway login.
+The bot requires a real `DISCORD_TOKEN` for gateway login. `/wipereact missing` also requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
 
 ## CI/CD
 

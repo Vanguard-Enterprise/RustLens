@@ -25,6 +25,41 @@ export type GuildSettings = {
   logChannelId: string;
 };
 
+export type WipeReactReactionType = "accepted" | "declined" | "late";
+
+export type WipeReact = {
+  guildId: string;
+  channelId: string;
+  messageId: string;
+  creatorId: string;
+  name: string;
+  description: string;
+  timeZone: string;
+  scheduledUnix: number;
+  askLateReason: boolean;
+  askDeclinedReason: boolean;
+  acceptedUserIds: string[];
+  declinedUserIds: string[];
+  lateUserIds: string[];
+  embedTimestamp: string;
+};
+
+export type WipeReactListResponse = {
+  items: WipeReact[];
+};
+
+export type WipeReactReactionUpdate = {
+  changed: boolean;
+  previousType?: WipeReactReactionType | null;
+  wipeReact: WipeReact;
+};
+
+export type WipeReactReactionRemoval = {
+  changed: boolean;
+  removedType?: WipeReactReactionType | null;
+  wipeReact: WipeReact;
+};
+
 type ClaimGuildSetupResponse = GuildSetupState & {
   claimed: boolean;
 };
@@ -129,6 +164,71 @@ export class BackendClient {
       `/api/internal/bot/setup/guilds/${guildId}/settings/log-channel`,
       "POST",
       { logChannelId },
+    );
+  }
+
+  listActiveWipeReacts(workerId: string, guildId: string) {
+    return this.call<WipeReactListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts/active`,
+      "GET",
+    );
+  }
+
+  getWipeReact(workerId: string, guildId: string, messageId: string) {
+    return this.call<WipeReact>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts/${messageId}`,
+      "GET",
+    );
+  }
+
+  createWipeReact(workerId: string, guildId: string, wipeReact: WipeReact) {
+    return this.call<WipeReact>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts`,
+      "POST",
+      wipeReact,
+    );
+  }
+
+  updateWipeReact(workerId: string, guildId: string, messageId: string, wipeReact: WipeReact) {
+    return this.call<WipeReact>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts/${messageId}`,
+      "PUT",
+      wipeReact,
+    );
+  }
+
+  deleteWipeReact(workerId: string, guildId: string, messageId: string) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts/${messageId}`,
+      "DELETE",
+    );
+  }
+
+  setWipeReactReaction(
+    workerId: string,
+    guildId: string,
+    messageId: string,
+    userId: string,
+    type: WipeReactReactionType,
+  ) {
+    return this.call<WipeReactReactionUpdate>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts/${messageId}/reactions`,
+      "POST",
+      { userId, type },
+    );
+  }
+
+  removeWipeReactReaction(workerId: string, guildId: string, messageId: string, userId: string) {
+    return this.call<WipeReactReactionRemoval>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts/${messageId}/reactions/${userId}`,
+      "DELETE",
     );
   }
 }

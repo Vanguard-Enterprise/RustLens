@@ -17,6 +17,7 @@ import {
   handleWipeReactButtonInteraction,
   handleWipeReactChatInput,
   handleWipeReactModalSubmit,
+  rehydratePersistedWipeReacts,
 } from "./wipereact-command.js";
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
@@ -28,7 +29,7 @@ if (!token) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   shards: [shardID],
   shardCount,
 });
@@ -40,6 +41,7 @@ client.once("clientReady", () => {
     ensureSetupCommand(client, shardID),
     ensureBindCommand(client, shardID),
     ensureWipeReactCommand(client, shardID),
+    rehydratePersistedWipeReacts(client),
   ]).catch((error) => {
     console.error("[bot] command registration failed", error);
   });
@@ -98,6 +100,7 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       await handleWipeReactButtonInteraction(interaction);
+      return;
     }
   } catch (error) {
     console.error("[bot] interaction handling failed", error);

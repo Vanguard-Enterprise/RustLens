@@ -74,6 +74,28 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
+
+		CREATE TABLE IF NOT EXISTS wipe_reacts (
+			message_id TEXT PRIMARY KEY,
+			guild_id TEXT NOT NULL,
+			channel_id TEXT NOT NULL,
+			creator_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			time_zone TEXT NOT NULL,
+			scheduled_unix BIGINT NOT NULL,
+			ask_late_reason BOOLEAN NOT NULL DEFAULT FALSE,
+			ask_declined_reason BOOLEAN NOT NULL DEFAULT FALSE,
+			accepted_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+			declined_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+			late_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+			embed_timestamp TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS wipe_reacts_guild_scheduled_idx
+		ON wipe_reacts (guild_id, scheduled_unix DESC);
 	`)
 	return err
 }

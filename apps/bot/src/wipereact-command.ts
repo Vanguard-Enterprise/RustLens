@@ -3,9 +3,11 @@ import type {
   ButtonInteraction,
   ChatInputCommandInteraction,
   Client,
+  Guild,
   GuildBasedChannel,
   ModalSubmitInteraction,
   Message,
+  Role,
 } from "discord.js";
 import {
   ActionRowBuilder,
@@ -17,7 +19,11 @@ import {
   SlashCommandBuilder,
   TextChannel,
 } from "discord.js";
-import { BackendClient } from "./backend-client.js";
+import {
+  BackendClient,
+  type WipeReact,
+  type WipeReactReactionType,
+} from "./backend-client.js";
 import {
   CheckboxGroupBuilder,
   ModalV2Builder,
@@ -30,6 +36,10 @@ export const WIPEREACT_COMMAND_NAME = "wipereact";
 
 const WIPEREACT_CREATE_SUBCOMMAND_NAME = "create";
 const WIPEREACT_DELETE_SUBCOMMAND_NAME = "delete";
+const WIPEREACT_MISSING_SUBCOMMAND_NAME = "missing";
+const WIPEREACT_REACT_GROUP_NAME = "react";
+const WIPEREACT_REACT_ADD_SUBCOMMAND_NAME = "add";
+const WIPEREACT_REACT_REMOVE_SUBCOMMAND_NAME = "remove";
 const WIPEREACT_CREATE_MODAL_CUSTOM_ID = "wipereact_create_modal";
 const WIPEREACT_EDIT_MODAL_PREFIX = "wipereact_edit_modal:";
 const WIPEREACT_REASON_MODAL_PREFIX = "wipereact_reason_modal:";
@@ -44,7 +54,10 @@ const WIPEREACT_DECLINE_BUTTON_PREFIX = "wipereact_decline:";
 const WIPEREACT_LATE_BUTTON_PREFIX = "wipereact_late:";
 const WIPEREACT_EDIT_BUTTON_CUSTOM_ID = "wipereact_edit";
 const WIPEREACT_EDIT_BUTTON_PREFIX = "wipereact_edit:";
-const WIPEREACT_DELETE_OPTION_NAME = "wipereact";
+const WIPEREACT_TARGET_OPTION_NAME = "wipereact";
+const WIPEREACT_SCOPE_OPTION_NAME = "scope";
+const WIPEREACT_USER_OPTION_NAME = "user";
+const WIPEREACT_TYPE_OPTION_NAME = "type";
 const WIPEREACT_OPTION_ASK_LATE_REASON = "ask_late_reason";
 const WIPEREACT_OPTION_ASK_DECLINED_REASON = "ask_declined_reason";
 const RUSTLENS_EMBED_COLOR = 14582045;
@@ -58,6 +71,7 @@ const WIPE_REACT_EMPTY_FIELD_VALUE = "-";
 const LOG_ACCEPTED_COLOR = 0x67c587;
 const LOG_DECLINED_COLOR = 0xd96b6b;
 const LOG_LATE_COLOR = 0xe3a24f;
+const LOG_REMOVED_COLOR = 0x99a1ab;
 const DEFAULT_WIPEREACT_TIMEZONE = "Europe/London";
 
 type ModalComponentNode = {
@@ -68,7 +82,7 @@ type ModalComponentNode = {
   components?: ModalComponentNode[];
 };
 
-type WipeReactAction = "accepted" | "declined" | "late";
+type WipeReactAction = WipeReactReactionType;
 
 type WipeReactConfig = {
   name: string;
@@ -137,13 +151,83 @@ const wipeReactCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName(WIPEREACT_DELETE_SUBCOMMAND_NAME)
-      .setDescription("Delete one of your wipe reacts")
+      .setDescription("Delete an active wipe react")
       .addStringOption((option) =>
         option
-          .setName(WIPEREACT_DELETE_OPTION_NAME)
-          .setDescription("Select one of your wipe reacts")
+          .setName(WIPEREACT_TARGET_OPTION_NAME)
+          .setDescription("Select an active wipe react")
           .setRequired(true)
           .setAutocomplete(true),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(WIPEREACT_MISSING_SUBCOMMAND_NAME)
+      .setDescription("List role members missing a response for a wipe react")
+      .addRoleOption((option) =>
+        option
+          .setName(WIPEREACT_SCOPE_OPTION_NAME)
+          .setDescription("Role to check")
+          .setRequired(true),
+      )
+      .addStringOption((option) =>
+        option
+          .setName(WIPEREACT_TARGET_OPTION_NAME)
+          .setDescription("Select an active wipe react")
+          .setRequired(true)
+          .setAutocomplete(true),
+      ),
+  )
+  .addSubcommandGroup((group) =>
+    group
+      .setName(WIPEREACT_REACT_GROUP_NAME)
+      .setDescription("Manage wipe react responses")
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(WIPEREACT_REACT_ADD_SUBCOMMAND_NAME)
+          .setDescription("Add or replace a user's wipe react response")
+          .addUserOption((option) =>
+            option
+              .setName(WIPEREACT_USER_OPTION_NAME)
+              .setDescription("User to update")
+              .setRequired(true),
+          )
+          .addStringOption((option) =>
+            option
+              .setName(WIPEREACT_TYPE_OPTION_NAME)
+              .setDescription("Response type")
+              .setRequired(true)
+              .addChoices(
+                { name: "accept", value: "accepted" },
+                { name: "decline", value: "declined" },
+                { name: "late", value: "late" },
+              ),
+          )
+          .addStringOption((option) =>
+            option
+              .setName(WIPEREACT_TARGET_OPTION_NAME)
+              .setDescription("Select an active wipe react")
+              .setRequired(true)
+              .setAutocomplete(true),
+          ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(WIPEREACT_REACT_REMOVE_SUBCOMMAND_NAME)
+          .setDescription("Remove a user's wipe react response")
+          .addUserOption((option) =>
+            option
+              .setName(WIPEREACT_USER_OPTION_NAME)
+              .setDescription("User to update")
+              .setRequired(true),
+          )
+          .addStringOption((option) =>
+            option
+              .setName(WIPEREACT_TARGET_OPTION_NAME)
+              .setDescription("Select an active wipe react")
+              .setRequired(true)
+              .setAutocomplete(true),
+          ),
       ),
   );
 
@@ -247,7 +331,10 @@ function getFieldValues(interaction: ModalSubmitInteraction, customId: string) {
 }
 
 function hasAdministratorPermission(
-  interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction,
+  interaction:
+    | ChatInputCommandInteraction
+    | ButtonInteraction
+    | ModalSubmitInteraction,
 ) {
   return interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
 }
@@ -954,6 +1041,100 @@ function buildReactionLogEmbed(
   };
 }
 
+function buildReactionRemovalLogEmbed(
+  state: WipeReactMessageState,
+  action: WipeReactAction,
+  user: { tag: string; id: string; displayAvatarURL: (options?: { size?: number }) => string },
+  reason: string,
+) {
+  return {
+    color: LOG_REMOVED_COLOR,
+    author: {
+      name: user.tag,
+      icon_url: user.displayAvatarURL({ size: 128 }),
+    },
+    fields: [
+      {
+        name: "Removed reaction",
+        value: `${actionLabel(action)}\n${actionEmoji(action)}`,
+      },
+      {
+        name: "Discord",
+        value: `<@${user.id}>`,
+      },
+      {
+        name: "Reason",
+        value: reason,
+      },
+    ],
+    footer: {
+      text: `RustLens | ${state.name}`,
+      icon_url: RUSTLENS_EMBED_ICON_URL,
+    },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function buildMissingReactantsEmbed(
+  state: WipeReactMessageState,
+  role: Role,
+  missingUserIds: readonly string[],
+) {
+  return {
+    title: "Missing reactants",
+    description:
+      missingUserIds.length > 0
+        ? missingUserIds.map((userId) => `> * <@${userId}>`).join("\n")
+        : "> * None",
+    color: RUSTLENS_EMBED_COLOR,
+    footer: {
+      text: `RustLens | ${state.name} | ${role.name}`,
+      icon_url: RUSTLENS_EMBED_ICON_URL,
+    },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function buildPersistedWipeReact(
+  guildId: string,
+  channelId: string,
+  messageId: string,
+  state: WipeReactMessageState,
+): WipeReact {
+  return {
+    guildId,
+    channelId,
+    messageId,
+    creatorId: state.creatorId ?? "",
+    name: state.name,
+    description: state.description,
+    timeZone: state.timeZone,
+    scheduledUnix: state.scheduledUnix,
+    askLateReason: state.askLateReason,
+    askDeclinedReason: state.askDeclinedReason,
+    acceptedUserIds: [...state.acceptedUserIds],
+    declinedUserIds: [...state.declinedUserIds],
+    lateUserIds: [...state.lateUserIds],
+    embedTimestamp: state.embedTimestamp,
+  };
+}
+
+function toWipeReactState(record: WipeReact): WipeReactMessageState {
+  return {
+    name: record.name,
+    description: record.description,
+    timeZone: record.timeZone,
+    scheduledUnix: record.scheduledUnix,
+    creatorId: record.creatorId,
+    askLateReason: record.askLateReason,
+    askDeclinedReason: record.askDeclinedReason,
+    acceptedUserIds: record.acceptedUserIds,
+    declinedUserIds: record.declinedUserIds,
+    lateUserIds: record.lateUserIds,
+    embedTimestamp: record.embedTimestamp,
+  };
+}
+
 async function resolveConfiguredLogsChannel(guildId: string, guild: {
   channels: {
     cache: Map<string, GuildBasedChannel>;
@@ -971,6 +1152,15 @@ async function resolveConfiguredLogsChannel(guildId: string, guild: {
       ? await guild.channels.fetch(settings.logChannelId).catch(() => null)
       : null);
   return configured?.type === ChannelType.GuildText ? (configured as TextChannel) : null;
+}
+
+async function listActiveWipeReacts(guildId: string) {
+  const response = await getBackend().listActiveWipeReacts(getWipeReactWorkerID(), guildId);
+  return response.items;
+}
+
+async function getPersistedWipeReact(guildId: string, messageId: string) {
+  return getBackend().getWipeReact(getWipeReactWorkerID(), guildId, messageId);
 }
 
 async function resolveLogsChannel(interaction: {
@@ -996,21 +1186,47 @@ async function resolveLogsChannel(interaction: {
 }
 
 async function fetchWipeReactMessage(
-  interaction: ModalSubmitInteraction,
+  guild: Guild,
   channelId: string,
   messageId: string,
 ) {
-  const guild = interaction.guild;
-  if (!guild) {
-    return null;
-  }
-
   const channel = guild.channels.cache.get(channelId) ?? (await guild.channels.fetch(channelId));
   if (!channel?.isTextBased() || !("messages" in channel)) {
     return null;
   }
 
   return channel.messages.fetch(messageId).catch(() => null);
+}
+
+async function syncPersistedWipeReactMessage(guild: Guild, record: WipeReact) {
+  const message = await fetchWipeReactMessage(guild, record.channelId, record.messageId);
+  if (!message) {
+    await getBackend().deleteWipeReact(getWipeReactWorkerID(), guild.id, record.messageId).catch(() => undefined);
+    const timer = wipeReactExpiryTimers.get(record.messageId);
+    if (timer) {
+      clearTimeout(timer);
+      wipeReactExpiryTimers.delete(record.messageId);
+    }
+    return null;
+  }
+
+  const disabled = record.scheduledUnix <= Math.floor(Date.now() / 1000);
+  const updatedMessage = await message.edit({
+    embeds: [buildWipeReactEmbed(toWipeReactState(record))],
+    components: createWipeReactButtons(toWipeReactState(record), disabled),
+  });
+
+  if (disabled) {
+    const timer = wipeReactExpiryTimers.get(record.messageId);
+    if (timer) {
+      clearTimeout(timer);
+      wipeReactExpiryTimers.delete(record.messageId);
+    }
+  } else {
+    scheduleWipeReactExpiry(updatedMessage, record.scheduledUnix);
+  }
+
+  return updatedMessage;
 }
 
 function formatWipeReactChoiceName(state: WipeReactMessageState) {
@@ -1053,18 +1269,32 @@ async function disableScheduledWipeReact(message: Message) {
     return;
   }
 
-  const state = parseWipeReactMessage(latestMessage);
-  if (!state) {
+  if (!latestMessage.guildId) {
+    return;
+  }
+
+  const record = await getPersistedWipeReact(latestMessage.guildId, latestMessage.id).catch(() => null);
+  if (!record) {
+    const legacyState = parseWipeReactMessage(latestMessage);
+    if (!legacyState) {
+      return;
+    }
+    const nowUnix = Math.floor(Date.now() / 1000);
+    if (legacyState.scheduledUnix > nowUnix) {
+      scheduleWipeReactExpiry(latestMessage, legacyState.scheduledUnix);
+      return;
+    }
+    await disableExpiredWipeReact(latestMessage, legacyState).catch(() => undefined);
     return;
   }
 
   const nowUnix = Math.floor(Date.now() / 1000);
-  if (state.scheduledUnix > nowUnix) {
-    scheduleWipeReactExpiry(latestMessage, state.scheduledUnix);
+  if (record.scheduledUnix > nowUnix) {
+    scheduleWipeReactExpiry(latestMessage, record.scheduledUnix);
     return;
   }
 
-  await disableExpiredWipeReact(latestMessage, state).catch(() => undefined);
+  await disableExpiredWipeReact(latestMessage, toWipeReactState(record)).catch(() => undefined);
 }
 
 function scheduleWipeReactExpiry(message: Message, scheduledUnix: number) {
@@ -1089,13 +1319,19 @@ async function processWipeReactAction(
   action: WipeReactAction,
   reason?: string,
 ) {
-  const state = parseWipeReactMessage(message);
-  if (!state) {
+  if (!interaction.guildId) {
     await replyEphemeral(interaction, "This wipe react message is no longer valid.");
     return true;
   }
 
-  if (state.scheduledUnix <= Math.floor(Date.now() / 1000)) {
+  const record = await getPersistedWipeReact(interaction.guildId, message.id).catch(() => null);
+  if (!record) {
+    await replyEphemeral(interaction, "This wipe react message is no longer valid.");
+    return true;
+  }
+
+  const state = toWipeReactState(record);
+  if (record.scheduledUnix <= Math.floor(Date.now() / 1000)) {
     await disableExpiredWipeReact(message, state).catch(() => undefined);
     await replyEphemeral(interaction, "This wipe react has already closed.");
     return true;
@@ -1110,7 +1346,13 @@ async function processWipeReactAction(
     return true;
   }
 
-  const updated = applyUserReaction(state, interaction.user.id, action);
+  const updated = await getBackend().setWipeReactReaction(
+    getWipeReactWorkerID(),
+    interaction.guildId,
+    message.id,
+    interaction.user.id,
+    action,
+  );
   if (!updated.changed) {
     await replyEphemeral(
       interaction,
@@ -1120,14 +1362,10 @@ async function processWipeReactAction(
   }
 
   await logsChannel.send({
-    embeds: [buildReactionLogEmbed(updated.state, action, interaction.user, reason?.trim())],
+    embeds: [buildReactionLogEmbed(toWipeReactState(updated.wipeReact), action, interaction.user, reason?.trim())],
   });
 
-  const updatedMessage = await message.edit({
-    embeds: [buildWipeReactEmbed(updated.state)],
-    components: createWipeReactButtons(updated.state, false),
-  });
-  scheduleWipeReactExpiry(updatedMessage, updated.state.scheduledUnix);
+  await syncPersistedWipeReactMessage(message.guild!, updated.wipeReact);
 
   await replyEphemeral(
     interaction,
@@ -1154,52 +1392,36 @@ export async function ensureWipeReactCommand(client: Client, shardID: number) {
   console.log("[bot] ensured /wipereact command (global)");
 }
 
-export async function handleWipeReactAutocomplete(interaction: AutocompleteInteraction) {
-  if (interaction.commandName !== WIPEREACT_COMMAND_NAME || !interaction.inGuild()) {
-    return false;
-  }
-
-  const subcommand = interaction.options.getSubcommand(false);
-  const focused = interaction.options.getFocused(true);
-  if (
-    subcommand !== WIPEREACT_DELETE_SUBCOMMAND_NAME ||
-    focused.name !== WIPEREACT_DELETE_OPTION_NAME
-  ) {
-    return false;
-  }
-
-  const channel = interaction.channel;
-  if (!channel?.isTextBased() || !("messages" in channel)) {
-    await interaction.respond([]);
-    return true;
-  }
-
-  const query = focused.value.toLowerCase();
-  const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-  if (!messages) {
-    await interaction.respond([]);
-    return true;
-  }
-
-  const choices = [...messages.values()]
-    .flatMap((message) => {
-      const state = parseWipeReactMessage(message);
-      if (!state || state.creatorId !== interaction.user.id) {
-        return [];
+export async function rehydratePersistedWipeReacts(client: Client) {
+  const guilds = [...client.guilds.cache.values()];
+  await Promise.all(
+    guilds.map(async (guild) => {
+      const records = await listActiveWipeReacts(guild.id).catch((error) => {
+        console.error("[bot] failed to load persisted wipe reacts", { guildId: guild.id, error });
+        return null;
+      });
+      if (!records) {
+        return;
       }
 
-      return [{ message, state }];
-    })
-    .filter(({ state }) => state.name.toLowerCase().includes(query))
-    .sort((left, right) => right.state.scheduledUnix - left.state.scheduledUnix)
-    .slice(0, 25)
-    .map(({ message, state }) => ({
-      name: formatWipeReactChoiceName(state),
-      value: message.id,
-    }));
+      await Promise.all(
+        records.map(async (record) => {
+          const message = await fetchWipeReactMessage(guild, record.channelId, record.messageId);
+          if (!message) {
+            await getBackend().deleteWipeReact(getWipeReactWorkerID(), guild.id, record.messageId).catch(() => undefined);
+            return;
+          }
 
-  await interaction.respond(choices);
-  return true;
+          if (record.scheduledUnix <= Math.floor(Date.now() / 1000)) {
+            await disableExpiredWipeReact(message, toWipeReactState(record)).catch(() => undefined);
+            return;
+          }
+
+          scheduleWipeReactExpiry(message, record.scheduledUnix);
+        }),
+      );
+    }),
+  );
 }
 
 export async function handleWipeReactChatInput(interaction: ChatInputCommandInteraction) {
@@ -1212,6 +1434,18 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     return true;
   }
 
+  if (!hasAdministratorPermission(interaction)) {
+    await replyEphemeral(interaction, "Only administrators can use /wipereact.");
+    return true;
+  }
+
+  const guild = interaction.guild;
+  if (!guild) {
+    await replyEphemeral(interaction, "Wipe react can only be used inside a server.");
+    return true;
+  }
+
+  const subcommandGroup = interaction.options.getSubcommandGroup(false);
   const subcommand = interaction.options.getSubcommand(false);
   if (subcommand === WIPEREACT_CREATE_SUBCOMMAND_NAME) {
     const logsChannel = await resolveLogsChannel(interaction);
@@ -1228,68 +1462,234 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
   }
 
   if (subcommand === WIPEREACT_DELETE_SUBCOMMAND_NAME) {
-    const channel = interaction.channel;
-    if (!channel?.isTextBased() || !("messages" in channel)) {
-      await replyEphemeral(interaction, "Wipe react delete can only be used in a text channel.");
+    const messageId = interaction.options.getString(WIPEREACT_TARGET_OPTION_NAME, true);
+    const record = await getPersistedWipeReact(interaction.guildId, messageId).catch(() => null);
+    if (!record) {
+      await replyEphemeral(interaction, "That wipe react could not be found.");
       return true;
     }
 
-    const messageId = interaction.options.getString(WIPEREACT_DELETE_OPTION_NAME, true);
-    const message = await channel.messages.fetch(messageId).catch(() => null);
-    if (!message) {
-      await replyEphemeral(interaction, "That wipe react could not be found in this channel.");
-      return true;
+    const message = await fetchWipeReactMessage(guild, record.channelId, record.messageId);
+    if (message) {
+      try {
+        await message.delete();
+      } catch {
+        await replyEphemeral(interaction, "RustLens could not delete that wipe react.");
+        return true;
+      }
     }
 
-    const state = parseWipeReactMessage(message);
-    if (!state) {
-      await replyEphemeral(interaction, "That message is not a valid wipe react.");
-      return true;
-    }
-
-    if (state.creatorId !== interaction.user.id) {
-      await replyEphemeral(interaction, "You can only delete wipe reacts you created.");
-      return true;
-    }
-
-    const timer = wipeReactExpiryTimers.get(message.id);
+    const timer = wipeReactExpiryTimers.get(record.messageId);
     if (timer) {
       clearTimeout(timer);
-      wipeReactExpiryTimers.delete(message.id);
+      wipeReactExpiryTimers.delete(record.messageId);
+    }
+
+    await getBackend().deleteWipeReact(getWipeReactWorkerID(), interaction.guildId, record.messageId).catch(() => undefined);
+    await replyEphemeral(interaction, message ? "Wipe react deleted." : "Wipe react state deleted. The Discord message was already missing.");
+    return true;
+  }
+
+  if (subcommand === WIPEREACT_MISSING_SUBCOMMAND_NAME) {
+    const scope = interaction.options.getRole(WIPEREACT_SCOPE_OPTION_NAME, true);
+    if (!("members" in scope)) {
+      await replyEphemeral(interaction, "That scope role is not available in this server.");
+      return true;
+    }
+
+    const messageId = interaction.options.getString(WIPEREACT_TARGET_OPTION_NAME, true);
+    const record = await getPersistedWipeReact(interaction.guildId, messageId).catch(() => null);
+    if (!record) {
+      await replyEphemeral(interaction, "That wipe react could not be found.");
+      return true;
     }
 
     try {
-      await message.delete();
+      await guild.members.fetch();
     } catch {
-      await replyEphemeral(interaction, "RustLens could not delete that wipe react.");
+      await replyEphemeral(
+        interaction,
+        "RustLens could not load the members for that role. Make sure the bot has the Guild Members intent enabled.",
+      );
       return true;
     }
 
-    await replyEphemeral(interaction, "Wipe react deleted.");
+    const reactedUserIds = new Set([
+      ...record.acceptedUserIds,
+      ...record.declinedUserIds,
+      ...record.lateUserIds,
+    ]);
+    const missingUserIds = [...scope.members.values()]
+      .filter((member) => !member.user.bot && !reactedUserIds.has(member.id))
+      .sort((left, right) => left.displayName.localeCompare(right.displayName))
+      .map((member) => member.id);
+
+    await interaction.reply({
+      embeds: [buildMissingReactantsEmbed(toWipeReactState(record), scope as Role, missingUserIds)],
+    });
     return true;
+  }
+
+  if (subcommandGroup === WIPEREACT_REACT_GROUP_NAME) {
+    const messageId = interaction.options.getString(WIPEREACT_TARGET_OPTION_NAME, true);
+    const record = await getPersistedWipeReact(interaction.guildId, messageId).catch(() => null);
+    if (!record) {
+      await replyEphemeral(interaction, "That wipe react could not be found.");
+      return true;
+    }
+
+    const message = await fetchWipeReactMessage(guild, record.channelId, record.messageId);
+    if (!message) {
+      await getBackend().deleteWipeReact(getWipeReactWorkerID(), interaction.guildId, record.messageId).catch(() => undefined);
+      await replyEphemeral(interaction, "That wipe react message no longer exists. RustLens removed its persisted state.");
+      return true;
+    }
+
+    const logsChannel = await resolveLogsChannel(interaction);
+    if (!logsChannel) {
+      await replyEphemeral(
+        interaction,
+        "RustLens needs a logs channel before wipe reacts can be managed. Run /setup logchannel and try again.",
+      );
+      return true;
+    }
+
+    if (subcommand === WIPEREACT_REACT_ADD_SUBCOMMAND_NAME) {
+      const targetUser = interaction.options.getUser(WIPEREACT_USER_OPTION_NAME, true);
+      const action = interaction.options.getString(WIPEREACT_TYPE_OPTION_NAME, true) as WipeReactAction;
+      const update = await getBackend().setWipeReactReaction(
+        getWipeReactWorkerID(),
+        interaction.guildId,
+        record.messageId,
+        targetUser.id,
+        action,
+      );
+      if (!update.changed) {
+        await replyEphemeral(
+          interaction,
+          `${actionEmoji(action)} <@${targetUser.id}> is already marked as ${actionLabel(action).toLowerCase()}.`,
+        );
+        return true;
+      }
+
+      await logsChannel.send({
+        embeds: [
+          buildReactionLogEmbed(
+            toWipeReactState(update.wipeReact),
+            action,
+            targetUser,
+            `Set by <@${interaction.user.id}> via /wipereact react add.`,
+          ),
+        ],
+      });
+
+      const synced = await syncPersistedWipeReactMessage(guild, update.wipeReact);
+      if (!synced) {
+        await replyEphemeral(interaction, "That wipe react message no longer exists. RustLens removed its persisted state.");
+        return true;
+      }
+
+      await replyEphemeral(
+        interaction,
+        `${actionEmoji(action)} <@${targetUser.id}> is now marked as ${actionLabel(action).toLowerCase()}.`,
+      );
+      return true;
+    }
+
+    if (subcommand === WIPEREACT_REACT_REMOVE_SUBCOMMAND_NAME) {
+      const targetUser = interaction.options.getUser(WIPEREACT_USER_OPTION_NAME, true);
+      const removal = await getBackend().removeWipeReactReaction(
+        getWipeReactWorkerID(),
+        interaction.guildId,
+        record.messageId,
+        targetUser.id,
+      );
+      if (!removal.changed || !removal.removedType) {
+        await replyEphemeral(interaction, `<@${targetUser.id}> does not have a reaction on that wipe react.`);
+        return true;
+      }
+
+      await logsChannel.send({
+        embeds: [
+          buildReactionRemovalLogEmbed(
+            toWipeReactState(removal.wipeReact),
+            removal.removedType,
+            targetUser,
+            `Removed by <@${interaction.user.id}> via /wipereact react remove.`,
+          ),
+        ],
+      });
+
+      const synced = await syncPersistedWipeReactMessage(guild, removal.wipeReact);
+      if (!synced) {
+        await replyEphemeral(interaction, "That wipe react message no longer exists. RustLens removed its persisted state.");
+        return true;
+      }
+
+      await replyEphemeral(
+        interaction,
+        `${actionEmoji(removal.removedType)} Removed <@${targetUser.id}> from ${actionLabel(removal.removedType).toLowerCase()}.`,
+      );
+      return true;
+    }
   }
 
   await replyEphemeral(
     interaction,
-    `Unknown /${WIPEREACT_COMMAND_NAME} subcommand: ${subcommand}`,
+    `Unknown /${WIPEREACT_COMMAND_NAME} command: ${subcommandGroup ? `${subcommandGroup} ${subcommand}` : subcommand}`,
   );
+  return true;
+}
+
+export async function handleWipeReactAutocomplete(interaction: AutocompleteInteraction) {
+  if (interaction.commandName !== WIPEREACT_COMMAND_NAME || !interaction.inGuild()) {
+    return false;
+  }
+
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== WIPEREACT_TARGET_OPTION_NAME) {
+    return false;
+  }
+
+  const query = focused.value.toLowerCase();
+  const records = await listActiveWipeReacts(interaction.guildId).catch(() => null);
+  if (!records) {
+    await interaction.respond([]);
+    return true;
+  }
+
+  const choices = records
+    .filter((record) => record.name.toLowerCase().includes(query))
+    .sort((left, right) => right.scheduledUnix - left.scheduledUnix)
+    .slice(0, 25)
+    .map((record) => ({
+      name: formatWipeReactChoiceName(toWipeReactState(record)),
+      value: record.messageId,
+    }));
+
+  await interaction.respond(choices);
   return true;
 }
 
 export async function handleWipeReactButtonInteraction(interaction: ButtonInteraction) {
   const action = parseActionButton(interaction.customId);
   if (action) {
-    const state = parseWipeReactMessage(interaction.message);
-    if (!state) {
+    if (!interaction.guildId) {
       await replyEphemeral(interaction, "This wipe react message is no longer valid.");
       return true;
     }
 
-    scheduleWipeReactExpiry(interaction.message, state.scheduledUnix);
+    const record = await getPersistedWipeReact(interaction.guildId, interaction.message.id).catch(() => null);
+    if (!record) {
+      await replyEphemeral(interaction, "This wipe react message is no longer valid.");
+      return true;
+    }
 
-    if (state.scheduledUnix <= Math.floor(Date.now() / 1000)) {
+    scheduleWipeReactExpiry(interaction.message, record.scheduledUnix);
+
+    if (record.scheduledUnix <= Math.floor(Date.now() / 1000)) {
       await deferEphemeral(interaction);
-      await disableExpiredWipeReact(interaction.message, state).catch(() => undefined);
+      await disableExpiredWipeReact(interaction.message, toWipeReactState(record)).catch(() => undefined);
       await replyEphemeral(interaction, "This wipe react has already closed.");
       return true;
     }
@@ -1317,15 +1717,20 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
     return true;
   }
 
-  const state = parseWipeReactMessage(interaction.message);
-  if (!state) {
+  if (!interaction.guildId) {
     await replyEphemeral(interaction, "This wipe react message is no longer valid.");
     return true;
   }
 
-  if (state.scheduledUnix <= Math.floor(Date.now() / 1000)) {
+  const record = await getPersistedWipeReact(interaction.guildId, interaction.message.id).catch(() => null);
+  if (!record) {
+    await replyEphemeral(interaction, "This wipe react message is no longer valid.");
+    return true;
+  }
+
+  if (record.scheduledUnix <= Math.floor(Date.now() / 1000)) {
     await deferEphemeral(interaction);
-    await disableExpiredWipeReact(interaction.message, state).catch(() => undefined);
+    await disableExpiredWipeReact(interaction.message, toWipeReactState(record)).catch(() => undefined);
     await replyEphemeral(interaction, "This wipe react has already closed.");
     return true;
   }
@@ -1333,7 +1738,7 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
   await interaction.showModal(
     buildWipeReactModal(
       `${WIPEREACT_EDIT_MODAL_PREFIX}${interaction.channelId}:${interaction.message.id}`,
-      state,
+      toWipeReactState(record),
     ).toJSON() as any,
   );
   return true;
@@ -1370,6 +1775,25 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
       components: createWipeReactButtons(stateResult.state, false),
     });
     const createdMessage = await interaction.fetchReply();
+    try {
+      await getBackend().createWipeReact(
+        getWipeReactWorkerID(),
+        interaction.guildId,
+        buildPersistedWipeReact(
+          interaction.guildId,
+          createdMessage.channelId,
+          createdMessage.id,
+          stateResult.state,
+        ),
+      );
+    } catch {
+      await createdMessage.delete().catch(() => undefined);
+      await interaction.followUp({
+        content: "RustLens could not persist that wipe react.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
     scheduleWipeReactExpiry(createdMessage, stateResult.state.scheduledUnix);
     return true;
   }
@@ -1380,20 +1804,26 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
   );
   if (editTarget) {
     const [channelId, messageId] = editTarget;
-    const message = await fetchWipeReactMessage(interaction, channelId, messageId);
+    if (!interaction.guildId || !interaction.guild) {
+      await replyEphemeral(interaction, "This wipe react message is no longer valid.");
+      return true;
+    }
+
+    const message = await fetchWipeReactMessage(interaction.guild, channelId, messageId);
     if (!message) {
+      await getBackend().deleteWipeReact(getWipeReactWorkerID(), interaction.guildId, messageId).catch(() => undefined);
       await replyEphemeral(interaction, "The wipe react message could not be found.");
       return true;
     }
 
-    const existing = parseWipeReactMessage(message);
+    const existing = await getPersistedWipeReact(interaction.guildId, messageId).catch(() => null);
     if (!existing) {
       await replyEphemeral(interaction, "This wipe react message is no longer valid.");
       return true;
     }
 
     if (existing.scheduledUnix <= Math.floor(Date.now() / 1000)) {
-      await disableExpiredWipeReact(message, existing).catch(() => undefined);
+      await disableExpiredWipeReact(message, toWipeReactState(existing)).catch(() => undefined);
       await replyEphemeral(interaction, "This wipe react has already closed.");
       return true;
     }
@@ -1408,18 +1838,28 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
       return true;
     }
 
-    const preservedState: WipeReactMessageState = {
-      ...updated.state,
-      acceptedUserIds: existing.acceptedUserIds,
-      declinedUserIds: existing.declinedUserIds,
-      lateUserIds: existing.lateUserIds,
-    };
+    const updatedRecord = await getBackend().updateWipeReact(
+      getWipeReactWorkerID(),
+      interaction.guildId,
+      messageId,
+      buildPersistedWipeReact(
+        interaction.guildId,
+        existing.channelId,
+        existing.messageId,
+        {
+          ...updated.state,
+          acceptedUserIds: existing.acceptedUserIds,
+          declinedUserIds: existing.declinedUserIds,
+          lateUserIds: existing.lateUserIds,
+        },
+      ),
+    );
 
-    const updatedMessage = await message.edit({
-      embeds: [buildWipeReactEmbed(preservedState)],
-      components: createWipeReactButtons(preservedState, false),
-    });
-    scheduleWipeReactExpiry(updatedMessage, preservedState.scheduledUnix);
+    const synced = await syncPersistedWipeReactMessage(interaction.guild, updatedRecord);
+    if (!synced) {
+      await replyEphemeral(interaction, "That wipe react message no longer exists. RustLens removed its persisted state.");
+      return true;
+    }
     await replyEphemeral(interaction, "Wipe react updated.");
     return true;
   }
@@ -1438,7 +1878,12 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
     return true;
   }
 
-  const message = await fetchWipeReactMessage(interaction, channelId, messageId);
+  if (!interaction.guild) {
+    await replyEphemeral(interaction, "The wipe react message could not be found.");
+    return true;
+  }
+
+  const message = await fetchWipeReactMessage(interaction.guild, channelId, messageId);
   if (!message) {
     await replyEphemeral(interaction, "The wipe react message could not be found.");
     return true;
@@ -1457,10 +1902,12 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
 export const __testables = {
   applyUserReaction,
   buildWipeReactEmbed,
+  buildMissingReactantsEmbed,
   buildWipeReactModal,
   createWipeReactButtons,
   formatTimestampForInput,
   parseActionButton,
   parseFlexibleDateTime,
   parseWipeReactMessage,
+  wipeReactCommand,
 };

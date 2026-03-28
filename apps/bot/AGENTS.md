@@ -26,25 +26,6 @@ src/
   builders/             # Custom v2 modal component builders
 ```
 
-Current command flow:
-- `/setup start` opens a v2 modal with checkbox groups for roles and channels to create.
-- After modal submit, setup edits the deferred ephemeral reply into a text progress bar instead of leaving Discord's default "thinking" state visible.
-- The setup modal includes an `All` option in both checkbox groups. The `Bot` role is not shown in the modal — it is always created automatically when any role is selected. Role setup includes a hoisted soft-blue `Bot` role between `Co Leader` and `member`, assigned to the RustLens bot.
-- Builder-only channels (`#build`, `builder call`) are skipped automatically when the `Builder` role is not selected.
-- Channel setup includes `#wipe log` at the bottom of `Important` when announcements or wipe react channels are requested, supports an `Invite` modal option that creates `#press for invite`, and creates an `afk` voice channel at the bottom of `Voice Channels` while setting the guild AFK channel and Discord's nearest supported AFK timeout of 15 minutes.
-- `/admin reset_setup` clears persisted setup state and removes roles and channels created by setup.
-- Modal custom id: `setup_start_modal`
-- Field custom ids: `setup_roles`, `setup_channels`
-- Commands are registered globally by shard `0` on startup.
-- Setup state is persisted through backend bot-only API routes so setup can only run once per guild until reset. Persisted data now includes selected roles and selected channels.
-- Channel setup only bootstraps from a fresh guild with exactly one existing channel, and `/setup start` must be run from that channel because setup renames and deletes it after creating the new layout.
-- When channel setup creates `#join`, the bot also tries to set it as the guild system channel and unsuppress Discord join notifications so member join messages land there.
-- `/admin reset_setup` sends a summary reply after deletion, silently catching reply failures when the command channel was deleted during reset.
-- `/bind fullkit` uses a two-step v2 modal flow because Discord modals are limited to five top-level components. Step 1 collects Weapon, Attachments, Ammo, ammo amount, and `Amount of barricades`; step 2 collects medkits amount, meds amount, Armor, Anything else, and `Bind` as the final field. The text-field character caps are ammo `3`, meds `2`, medkits `2`, barricades `2`, and `Bind` `1`. Submitting the second step posts a non-ephemeral embed with the generated bind command. The bind output uses `craft.add {id} {amount}` batching, keeps the order weapon -> meds -> medkits -> barricade -> attachments -> ammo -> armor, splits meds into commands of at most `10` and medkits into commands of at most `5`, crafts the meds required for medkits before the medkits themselves, then crafts the user-requested meds, and crafts barricades with item id `1373240771`. HV ammo uses item id `1712070256`. Armor always crafts `-194953424`, `1850456855`, `1751045826`, and `237239288`, except `Shorts` swaps out `237239288` for `-1695367501`; the armor selection adds `-2002277461` for `Road Sign`, `1110385766` for `Metal`, or `-1163532624` for `Jacket`, and `Boots` adds `-1549739227`.
-- `/bind turret` opens a single v2 modal with `Weapons`, `Ammo`, `Amount of Ammo`, `Anything else?`, and `Bind`. It always crafts `-2139580305` first, then the selected weapon (`Bolt Action Rifle`, `HMLMG`, or `Python`), then the selected ammo using the same ammo yields as fullkit, then optional `Muzzle Boost` and `Silencer`, and posts a non-ephemeral embed titled `Turret bind`.
-- `/bind rocket` opens a single v2 modal with `Amount of Rockets`, `Anything else?`, and `Bind`. It posts a non-ephemeral embed titled `Rocket bind` and crafts gunpowder first (`-265876753`) at `65` gunpowder craft commands per rocket, then explosives (`-592016202`) at `10` per rocket, then optional `Pipes` (`95950017`) at `2` per rocket, then the rockets themselves (`-742865266`) chunked into commands of at most `20`.
-- `/bind c4` opens a single v2 modal with `Amount of C4` and `Bind`. It posts a non-ephemeral embed titled `C4 bind` and crafts gunpowder first (`-265876753`) at `100` gunpowder craft commands per C4, then explosives (`-592016202`) at `20` per C4, then the C4 itself (`1248356124`) chunked into commands of at most `20`.
-
 ## Custom V2 Modal Builders
 
 Discord.js v14 does not have builder classes for v2 modal components. We provide our own at `src/builders/`:

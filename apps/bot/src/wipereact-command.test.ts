@@ -39,6 +39,21 @@ describe("wipereact command", () => {
     });
   });
 
+  it("registers delete, missing, and react management subcommands", () => {
+    const command = __testables.wipeReactCommand.toJSON();
+    const options = command.options as any[];
+
+    expect(options.map((option) => option.name)).toEqual([
+      "create",
+      "delete",
+      "missing",
+      "react",
+    ]);
+
+    const reactGroup = options.find((option) => option.name === "react");
+    expect((reactGroup?.options ?? []).map((option: any) => option.name)).toEqual(["add", "remove"]);
+  });
+
   it("parses flexible date and time formats", () => {
     const now = new Date(Date.UTC(2026, 2, 28, 12, 0, 0, 0));
 
@@ -153,5 +168,28 @@ describe("wipereact command", () => {
       lateUserIds: [],
       embedTimestamp: "2026-03-02T20:44:18.917Z",
     });
+  });
+
+  it("builds the missing reactants embed with quoted mentions", () => {
+    const embed = __testables.buildMissingReactantsEmbed(
+      {
+        name: "Friday Wipe",
+        description: "Be online 15 minutes early.",
+        timeZone: "Europe/London",
+        scheduledUnix: 1774557951,
+        creatorId: "1234567890",
+        askLateReason: false,
+        askDeclinedReason: true,
+        acceptedUserIds: [],
+        declinedUserIds: [],
+        lateUserIds: [],
+        embedTimestamp: "2026-03-02T20:44:18.917Z",
+      },
+      { name: "Member" } as any,
+      ["111", "222"],
+    );
+
+    expect(embed.title).toBe("Missing reactants");
+    expect(embed.description).toBe("> * <@111>\n> * <@222>");
   });
 });

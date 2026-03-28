@@ -55,6 +55,13 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Post("/guilds/{guildID}/reset", handler.ResetGuildSetup)
 		r.Get("/guilds/{guildID}/settings", handler.GetGuildSettings)
 		r.Post("/guilds/{guildID}/settings/log-channel", handler.SetGuildLogChannel)
+		r.Get("/guilds/{guildID}/wipe-reacts/active", handler.ListActiveWipeReacts)
+		r.Post("/guilds/{guildID}/wipe-reacts", handler.CreateWipeReact)
+		r.Get("/guilds/{guildID}/wipe-reacts/{messageID}", handler.GetWipeReact)
+		r.Put("/guilds/{guildID}/wipe-reacts/{messageID}", handler.UpdateWipeReact)
+		r.Delete("/guilds/{guildID}/wipe-reacts/{messageID}", handler.DeleteWipeReact)
+		r.Post("/guilds/{guildID}/wipe-reacts/{messageID}/reactions", handler.SetWipeReactReaction)
+		r.Delete("/guilds/{guildID}/wipe-reacts/{messageID}/reactions/{userID}", handler.RemoveWipeReactReaction)
 	})
 
 	return r
