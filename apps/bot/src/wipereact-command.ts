@@ -2673,9 +2673,22 @@ export function startWipeReactScheduler(client: Client) {
     if (!schedule.channelId) return;
 
     const next = computeNextPostTime(schedule);
-    if (!next) return;
+    if (!next) {
+      console.log("[bot] schedule: no next post time", { guildId: guild.id, scheduleId: schedule.id });
+      return;
+    }
 
     const nowUnix = Math.floor(Date.now() / 1000);
+    console.log("[bot] schedule check", {
+      guildId: guild.id,
+      scheduleId: schedule.id,
+      nowUnix,
+      wipeUnix: next.wipeUnix,
+      postUnix: next.postUnix,
+      lastPostedForUnix: schedule.lastPostedForUnix,
+      shouldPost: nowUnix >= next.postUnix && schedule.lastPostedForUnix < next.wipeUnix,
+    });
+
     if (nowUnix < next.postUnix) return;
     if (schedule.lastPostedForUnix >= next.wipeUnix) return;
 
