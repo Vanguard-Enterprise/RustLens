@@ -485,14 +485,15 @@ describe("bind command", () => {
     expect(embed.description).toBe('```\nbind r "craft.add 1 1"\n```');
   });
 
-  it("builds c4 craft commands in the requested order", () => {
-    const result = __testables.buildC4CraftCommands(["7"]);
+  it("builds c4 craft commands in the requested order and chunks c4", () => {
+    const result = __testables.buildC4CraftCommands(["21"]);
 
     expect(result).toEqual({
       commands: [
-        "craft.add -265876753 700",
-        "craft.add -592016202 140",
-        "craft.add 1248356124 7",
+        "craft.add -265876753 2100",
+        "craft.add -592016202 420",
+        "craft.add 1248356124 20",
+        "craft.add 1248356124 1",
       ],
       error: null,
     });

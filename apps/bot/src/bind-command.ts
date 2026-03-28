@@ -159,6 +159,7 @@ const gunpowderCraftsPerRocket = 65;
 const explosivesPerRocket = 10;
 const pipesPerRocket = 2;
 const maxRocketsPerCraftCommand = 20;
+const maxC4PerCraftCommand = 20;
 const gunpowderCraftsPerC4 = 100;
 const explosivesPerC4 = 20;
 
@@ -774,12 +775,14 @@ function buildC4CraftCommands(amountValues: string[]) {
   }
 
   const c4Amount = c4AmountResult.value;
+  const commands = [
+    `craft.add ${gunpowderItemId} ${c4Amount * gunpowderCraftsPerC4}`,
+    `craft.add ${explosivesItemId} ${c4Amount * explosivesPerC4}`,
+  ];
+  addChunkedCraftCommands(commands, c4ItemId, c4Amount, maxC4PerCraftCommand);
+
   return {
-    commands: [
-      `craft.add ${gunpowderItemId} ${c4Amount * gunpowderCraftsPerC4}`,
-      `craft.add ${explosivesItemId} ${c4Amount * explosivesPerC4}`,
-      `craft.add ${c4ItemId} ${c4Amount}`,
-    ],
+    commands,
     error: null,
   } as const;
 }
