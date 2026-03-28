@@ -46,12 +46,13 @@ describe("wipereact command", () => {
     expect(options.map((option) => option.name)).toEqual([
       "create",
       "schedule",
-      "schedule_delete",
-      "schedule_edit",
       "delete",
       "missing",
       "react",
     ]);
+
+    const scheduleGroup = options.find((option) => option.name === "schedule");
+    expect((scheduleGroup?.options ?? []).map((option: any) => option.name)).toEqual(["create", "delete", "edit"]);
 
     const reactGroup = options.find((option) => option.name === "react");
     expect((reactGroup?.options ?? []).map((option: any) => option.name)).toEqual(["add", "remove"]);

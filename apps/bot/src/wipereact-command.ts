@@ -69,15 +69,16 @@ const WIPEREACT_USER_OPTION_NAME = "user";
 const WIPEREACT_TYPE_OPTION_NAME = "type";
 const WIPEREACT_OPTION_ASK_LATE_REASON = "ask_late_reason";
 const WIPEREACT_OPTION_ASK_DECLINED_REASON = "ask_declined_reason";
-const WIPEREACT_SCHEDULE_SUBCOMMAND_NAME = "schedule";
+const WIPEREACT_SCHEDULE_GROUP_NAME = "schedule";
+const WIPEREACT_SCHEDULE_CREATE_SUBCOMMAND_NAME = "create";
+const WIPEREACT_SCHEDULE_DELETE_SUBCOMMAND_NAME = "delete";
+const WIPEREACT_SCHEDULE_EDIT_SUBCOMMAND_NAME = "edit";
 const WIPEREACT_SCHEDULE_MODAL_CUSTOM_ID = "wipereact_schedule_modal";
 const WIPEREACT_SCHEDULE_DAYS_CUSTOM_ID = "wipereact_schedule_days";
 const WIPEREACT_SCHEDULE_TIME_CUSTOM_ID = "wipereact_schedule_time";
 const WIPEREACT_SCHEDULE_REPEAT_CUSTOM_ID = "wipereact_schedule_repeat";
 const WIPEREACT_SCHEDULE_TIMEZONE_CUSTOM_ID = "wipereact_schedule_timezone";
 const WIPEREACT_SCHEDULE_POST_BEFORE_CUSTOM_ID = "wipereact_schedule_post_before";
-const WIPEREACT_SCHEDULE_DELETE_SUBCOMMAND_NAME = "schedule_delete";
-const WIPEREACT_SCHEDULE_EDIT_SUBCOMMAND_NAME = "schedule_edit";
 const WIPEREACT_SCHEDULE_TARGET_OPTION_NAME = "schedule";
 const WIPEREACT_SCHEDULE_EDIT_MODAL_PREFIX = "wipereact_schedule_edit_modal:";
 const SCHEDULE_FORCE_WIPE_VALUE = "force_wipe";
@@ -182,33 +183,38 @@ const wipeReactCommand = new SlashCommandBuilder()
       .setName(WIPEREACT_CREATE_SUBCOMMAND_NAME)
       .setDescription("Create a wipe react message"),
   )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName(WIPEREACT_SCHEDULE_SUBCOMMAND_NAME)
-      .setDescription("Create a scheduled wipe react"),
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName(WIPEREACT_SCHEDULE_DELETE_SUBCOMMAND_NAME)
-      .setDescription("Delete a wipe react schedule")
-      .addStringOption((option) =>
-        option
-          .setName(WIPEREACT_SCHEDULE_TARGET_OPTION_NAME)
-          .setDescription("Select a schedule")
-          .setRequired(true)
-          .setAutocomplete(true),
-      ),
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName(WIPEREACT_SCHEDULE_EDIT_SUBCOMMAND_NAME)
-      .setDescription("Edit a wipe react schedule")
-      .addStringOption((option) =>
-        option
-          .setName(WIPEREACT_SCHEDULE_TARGET_OPTION_NAME)
-          .setDescription("Select a schedule")
-          .setRequired(true)
-          .setAutocomplete(true),
+  .addSubcommandGroup((group) =>
+    group
+      .setName(WIPEREACT_SCHEDULE_GROUP_NAME)
+      .setDescription("Manage wipe react schedules")
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(WIPEREACT_SCHEDULE_CREATE_SUBCOMMAND_NAME)
+          .setDescription("Create a scheduled wipe react"),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(WIPEREACT_SCHEDULE_DELETE_SUBCOMMAND_NAME)
+          .setDescription("Delete a wipe react schedule")
+          .addStringOption((option) =>
+            option
+              .setName(WIPEREACT_SCHEDULE_TARGET_OPTION_NAME)
+              .setDescription("Select a schedule")
+              .setRequired(true)
+              .setAutocomplete(true),
+          ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(WIPEREACT_SCHEDULE_EDIT_SUBCOMMAND_NAME)
+          .setDescription("Edit a wipe react schedule")
+          .addStringOption((option) =>
+            option
+              .setName(WIPEREACT_SCHEDULE_TARGET_OPTION_NAME)
+              .setDescription("Select a schedule")
+              .setRequired(true)
+              .setAutocomplete(true),
+          ),
       ),
   )
   .addSubcommand((subcommand) =>
@@ -1643,49 +1649,51 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     return true;
   }
 
-  if (subcommand === WIPEREACT_SCHEDULE_SUBCOMMAND_NAME) {
-    await interaction.showModal(buildScheduleWipeReactModal().toJSON() as any);
-    return true;
-  }
-
-  if (subcommand === WIPEREACT_SCHEDULE_DELETE_SUBCOMMAND_NAME) {
-    const scheduleId = Number(interaction.options.getString(WIPEREACT_SCHEDULE_TARGET_OPTION_NAME, true));
-    if (!Number.isInteger(scheduleId) || scheduleId <= 0) {
-      await replyEphemeral(interaction, "That schedule could not be found.");
+  if (subcommandGroup === WIPEREACT_SCHEDULE_GROUP_NAME) {
+    if (subcommand === WIPEREACT_SCHEDULE_CREATE_SUBCOMMAND_NAME) {
+      await interaction.showModal(buildScheduleWipeReactModal().toJSON() as any);
       return true;
     }
 
-    try {
-      await getBackend().deleteWipeReactSchedule(getWipeReactWorkerID(), interaction.guildId, scheduleId);
-      await replyEphemeral(interaction, "Schedule deleted.");
-    } catch {
-      await replyEphemeral(interaction, "That schedule could not be found.");
-    }
-    return true;
-  }
+    if (subcommand === WIPEREACT_SCHEDULE_DELETE_SUBCOMMAND_NAME) {
+      const scheduleId = Number(interaction.options.getString(WIPEREACT_SCHEDULE_TARGET_OPTION_NAME, true));
+      if (!Number.isInteger(scheduleId) || scheduleId <= 0) {
+        await replyEphemeral(interaction, "That schedule could not be found.");
+        return true;
+      }
 
-  if (subcommand === WIPEREACT_SCHEDULE_EDIT_SUBCOMMAND_NAME) {
-    const scheduleId = Number(interaction.options.getString(WIPEREACT_SCHEDULE_TARGET_OPTION_NAME, true));
-    if (!Number.isInteger(scheduleId) || scheduleId <= 0) {
-      await replyEphemeral(interaction, "That schedule could not be found.");
+      try {
+        await getBackend().deleteWipeReactSchedule(getWipeReactWorkerID(), interaction.guildId, scheduleId);
+        await replyEphemeral(interaction, "Schedule deleted.");
+      } catch {
+        await replyEphemeral(interaction, "That schedule could not be found.");
+      }
       return true;
     }
 
-    let schedule: WipeReactSchedule;
-    try {
-      schedule = await getBackend().getWipeReactSchedule(getWipeReactWorkerID(), interaction.guildId, scheduleId);
-    } catch {
-      await replyEphemeral(interaction, "That schedule could not be found.");
+    if (subcommand === WIPEREACT_SCHEDULE_EDIT_SUBCOMMAND_NAME) {
+      const scheduleId = Number(interaction.options.getString(WIPEREACT_SCHEDULE_TARGET_OPTION_NAME, true));
+      if (!Number.isInteger(scheduleId) || scheduleId <= 0) {
+        await replyEphemeral(interaction, "That schedule could not be found.");
+        return true;
+      }
+
+      let schedule: WipeReactSchedule;
+      try {
+        schedule = await getBackend().getWipeReactSchedule(getWipeReactWorkerID(), interaction.guildId, scheduleId);
+      } catch {
+        await replyEphemeral(interaction, "That schedule could not be found.");
+        return true;
+      }
+
+      await interaction.showModal(
+        buildScheduleWipeReactModal(
+          `${WIPEREACT_SCHEDULE_EDIT_MODAL_PREFIX}${scheduleId}`,
+          schedule,
+        ).toJSON() as any,
+      );
       return true;
     }
-
-    await interaction.showModal(
-      buildScheduleWipeReactModal(
-        `${WIPEREACT_SCHEDULE_EDIT_MODAL_PREFIX}${scheduleId}`,
-        schedule,
-      ).toJSON() as any,
-    );
-    return true;
   }
 
   if (subcommand === WIPEREACT_DELETE_SUBCOMMAND_NAME) {

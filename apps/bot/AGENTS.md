@@ -23,7 +23,7 @@ src/
   config.ts             # Env config loader
   setup-command.ts      # /setup start command registration + modal flow
   bind-command.ts       # /bind fullkit/turret/rocket/c4 registration + modal flow
-  wipereact-command.ts  # /wipereact create/schedule/schedule_delete/schedule_edit/delete/missing/react flow, persistence sync, button handling, edit modal, and logs embeds
+  wipereact-command.ts  # /wipereact create/delete/missing/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, and logs embeds
   builders/             # Custom v2 modal component builders
 ```
 
