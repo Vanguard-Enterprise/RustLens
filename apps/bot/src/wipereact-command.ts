@@ -27,6 +27,7 @@ import {
 import {
   CheckboxGroupBuilder,
   ModalV2Builder,
+  StringSelectBuilder,
   TextInputBuilder,
   TextInputStyle,
 } from "./builders/index.js";
@@ -67,6 +68,36 @@ const WIPEREACT_USER_OPTION_NAME = "user";
 const WIPEREACT_TYPE_OPTION_NAME = "type";
 const WIPEREACT_OPTION_ASK_LATE_REASON = "ask_late_reason";
 const WIPEREACT_OPTION_ASK_DECLINED_REASON = "ask_declined_reason";
+const WIPEREACT_SCHEDULE_SUBCOMMAND_NAME = "schedule";
+const WIPEREACT_SCHEDULE_MODAL_CUSTOM_ID = "wipereact_schedule_modal";
+const WIPEREACT_SCHEDULE_DAYS_CUSTOM_ID = "wipereact_schedule_days";
+const WIPEREACT_SCHEDULE_TIME_CUSTOM_ID = "wipereact_schedule_time";
+const WIPEREACT_SCHEDULE_REPEAT_CUSTOM_ID = "wipereact_schedule_repeat";
+const WIPEREACT_SCHEDULE_POST_BEFORE_CUSTOM_ID = "wipereact_schedule_post_before";
+const SCHEDULE_FORCE_WIPE_VALUE = "force_wipe";
+const SCHEDULE_DAY_OPTIONS = [
+  { label: "Monday", value: "monday" },
+  { label: "Tuesday", value: "tuesday" },
+  { label: "Wednesday", value: "wednesday" },
+  { label: "Thursday", value: "thursday" },
+  { label: "Friday", value: "friday" },
+  { label: "Saturday", value: "saturday" },
+  { label: "Sunday", value: "sunday" },
+  { label: "Force Wipe", value: SCHEDULE_FORCE_WIPE_VALUE },
+] as const;
+const SCHEDULE_REPEAT_OPTIONS = [
+  { label: "Weekly", value: "weekly" },
+  { label: "Bi-Weekly", value: "biweekly" },
+  { label: "Monthly", value: "monthly" },
+] as const;
+const SCHEDULE_POST_BEFORE_OPTIONS = [
+  { label: "1 day before", value: "1d" },
+  { label: "2 days before", value: "2d" },
+  { label: "3 days before", value: "3d" },
+  { label: "4 days before", value: "4d" },
+  { label: "1 week before", value: "1w" },
+  { label: "2 weeks before", value: "2w" },
+] as const;
 const WIPE_REACT_ACCEPTED_FIELD_PREFIX = "✅ Accepted";
 const WIPE_REACT_DECLINED_FIELD_PREFIX = "❌ Declined";
 const WIPE_REACT_LATE_FIELD_PREFIX = "🕑 Late";
@@ -144,6 +175,11 @@ const wipeReactCommand = new SlashCommandBuilder()
     subcommand
       .setName(WIPEREACT_CREATE_SUBCOMMAND_NAME)
       .setDescription("Create a wipe react message"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(WIPEREACT_SCHEDULE_SUBCOMMAND_NAME)
+      .setDescription("Create a scheduled wipe react"),
   )
   .addSubcommand((subcommand) =>
     subcommand
@@ -631,6 +667,162 @@ function parseWipeReactMessage(message: Message): WipeReactMessageState | null {
     lateUserIds: parseUserIds(lateField.value),
     embedTimestamp: embed.timestamp ?? new Date().toISOString(),
   };
+}
+
+function buildScheduleWipeReactModal() {
+  return new ModalV2Builder()
+    .setTitle("Scheduled Wipe React")
+    .setCustomId(WIPEREACT_SCHEDULE_MODAL_CUSTOM_ID)
+    .addComponent(
+      "Schedule",
+      new CheckboxGroupBuilder()
+        .setCustomId(WIPEREACT_SCHEDULE_DAYS_CUSTOM_ID)
+        .setRequired(true)
+        .setMinValues(1)
+        .setMaxValues(8)
+        .addOptions(...SCHEDULE_DAY_OPTIONS.map(({ label, value }) => ({ label, value }))),
+    )
+    .addComponent(
+      "Time (HH:MM)",
+      new TextInputBuilder()
+        .setCustomId(WIPEREACT_SCHEDULE_TIME_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(5)
+        .setPlaceholder("18:30"),
+    )
+    .addComponent(
+      "Repeat",
+      new StringSelectBuilder()
+        .setCustomId(WIPEREACT_SCHEDULE_REPEAT_CUSTOM_ID)
+        .setPlaceholder("How often to post")
+        .setMinValues(0)
+        .setMaxValues(1)
+        .addOptions(...SCHEDULE_REPEAT_OPTIONS.map(({ label, value }) => ({ label, value }))),
+    )
+    .addComponent(
+      "When to post",
+      new StringSelectBuilder()
+        .setCustomId(WIPEREACT_SCHEDULE_POST_BEFORE_CUSTOM_ID)
+        .setPlaceholder("How early to post the wipe react")
+        .setMinValues(1)
+        .setMaxValues(1)
+        .addOptions(...SCHEDULE_POST_BEFORE_OPTIONS.map(({ label, value }) => ({ label, value }))),
+    );
+}
+
+type ScheduleWipeReactConfig = {
+  days: string[];
+  includesForceWipe: boolean;
+  time: string | null;
+  repeat: string | null;
+  postBefore: string;
+};
+
+function parseScheduleTime(value: string): { hours: number; minutes: number } | null {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return null;
+  }
+
+  return { hours, minutes };
+}
+
+function validateScheduleModalSubmission(
+  interaction: ModalSubmitInteraction,
+): { config: ScheduleWipeReactConfig; error: null } | { config: null; error: string } {
+  const selectedDays = getFieldValues(interaction, WIPEREACT_SCHEDULE_DAYS_CUSTOM_ID);
+  if (selectedDays.length === 0) {
+    return { config: null, error: "Select at least one schedule day." };
+  }
+
+  const validDayValues: Set<string> = new Set(SCHEDULE_DAY_OPTIONS.map((option) => option.value));
+  for (const day of selectedDays) {
+    if (!validDayValues.has(day)) {
+      return { config: null, error: `Invalid schedule day: ${day}` };
+    }
+  }
+
+  const includesForceWipe = selectedDays.includes(SCHEDULE_FORCE_WIPE_VALUE);
+  const regularDays = selectedDays.filter((day) => day !== SCHEDULE_FORCE_WIPE_VALUE);
+  const hasRegularDays = regularDays.length > 0;
+
+  const rawTime = getFieldValues(interaction, WIPEREACT_SCHEDULE_TIME_CUSTOM_ID)[0]?.trim() ?? "";
+  let time: string | null = null;
+  if (hasRegularDays) {
+    if (rawTime.length === 0) {
+      return { config: null, error: "Time is required when a regular day is selected." };
+    }
+    const parsed = parseScheduleTime(rawTime);
+    if (!parsed) {
+      return { config: null, error: "Time must be in HH:MM format (24-hour)." };
+    }
+    time = `${String(parsed.hours).padStart(2, "0")}:${String(parsed.minutes).padStart(2, "0")}`;
+  }
+
+  const repeatValues = getFieldValues(interaction, WIPEREACT_SCHEDULE_REPEAT_CUSTOM_ID);
+  let repeat: string | null = null;
+  if (hasRegularDays) {
+    if (repeatValues.length === 0) {
+      return { config: null, error: "Repeat is required when a regular day is selected." };
+    }
+    const validRepeatValues: Set<string> = new Set(SCHEDULE_REPEAT_OPTIONS.map((option) => option.value));
+    if (!validRepeatValues.has(repeatValues[0])) {
+      return { config: null, error: "Invalid repeat value." };
+    }
+    repeat = repeatValues[0];
+  }
+
+  const postBeforeValues = getFieldValues(interaction, WIPEREACT_SCHEDULE_POST_BEFORE_CUSTOM_ID);
+  if (postBeforeValues.length === 0) {
+    return { config: null, error: "When to post is required." };
+  }
+  const validPostBeforeValues: Set<string> = new Set(SCHEDULE_POST_BEFORE_OPTIONS.map((option) => option.value));
+  if (!validPostBeforeValues.has(postBeforeValues[0])) {
+    return { config: null, error: "Invalid post-before value." };
+  }
+
+  return {
+    config: {
+      days: regularDays,
+      includesForceWipe,
+      time,
+      repeat,
+      postBefore: postBeforeValues[0],
+    },
+    error: null,
+  };
+}
+
+function formatScheduleSummary(config: ScheduleWipeReactConfig) {
+  const lines: string[] = [];
+
+  if (config.days.length > 0) {
+    const dayLabels = config.days.map(
+      (day) => SCHEDULE_DAY_OPTIONS.find((option) => option.value === day)?.label ?? day,
+    );
+    lines.push(`**Days:** ${dayLabels.join(", ")}`);
+    lines.push(`**Time:** ${config.time}`);
+    const repeatLabel = SCHEDULE_REPEAT_OPTIONS.find((option) => option.value === config.repeat)?.label ?? config.repeat;
+    lines.push(`**Repeat:** ${repeatLabel}`);
+  }
+
+  if (config.includesForceWipe) {
+    lines.push(`**Force Wipe:** First Thursday of the month at 19:00 Europe/London`);
+  }
+
+  const postBeforeLabel = SCHEDULE_POST_BEFORE_OPTIONS.find(
+    (option) => option.value === config.postBefore,
+  )?.label ?? config.postBefore;
+  lines.push(`**Post:** ${postBeforeLabel}`);
+
+  return lines.join("\n");
 }
 
 function buildWipeReactModal(
@@ -1346,6 +1538,11 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     return true;
   }
 
+  if (subcommand === WIPEREACT_SCHEDULE_SUBCOMMAND_NAME) {
+    await interaction.showModal(buildScheduleWipeReactModal().toJSON() as any);
+    return true;
+  }
+
   if (subcommand === WIPEREACT_DELETE_SUBCOMMAND_NAME) {
     const messageId = interaction.options.getString(WIPEREACT_TARGET_OPTION_NAME, true);
     const record = await getPersistedWipeReact(interaction.guildId, messageId).catch(() => null);
@@ -1635,6 +1832,25 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
 }
 
 export async function handleWipeReactModalSubmit(interaction: ModalSubmitInteraction) {
+  if (interaction.customId === WIPEREACT_SCHEDULE_MODAL_CUSTOM_ID) {
+    if (!interaction.inGuild()) {
+      await replyEphemeral(interaction, "Scheduled wipe react can only be used inside a server.");
+      return true;
+    }
+
+    const result = validateScheduleModalSubmission(interaction);
+    if (result.error || !result.config) {
+      await replyEphemeral(interaction, result.error ?? "Invalid schedule configuration.");
+      return true;
+    }
+
+    await replyEphemeral(
+      interaction,
+      `**Scheduled Wipe React configured:**\n\n${formatScheduleSummary(result.config)}\n\nBackend persistence is not yet implemented — this is a preview of your schedule.`,
+    );
+    return true;
+  }
+
   if (interaction.customId === WIPEREACT_CREATE_MODAL_CUSTOM_ID) {
     if (!interaction.inGuild()) {
       await replyEphemeral(interaction, "Wipe react can only be created inside a server.");
@@ -1791,13 +2007,16 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
 
 export const __testables = {
   applyUserReaction,
+  buildScheduleWipeReactModal,
   buildWipeReactEmbed,
   buildMissingReactantsEmbed,
   buildWipeReactModal,
   createWipeReactButtons,
+  formatScheduleSummary,
   formatTimestampForInput,
   parseActionButton,
   parseFlexibleDateTime,
+  parseScheduleTime,
   parseWipeReactMessage,
   wipeReactCommand,
 };
