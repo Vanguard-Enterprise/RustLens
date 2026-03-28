@@ -270,7 +270,7 @@ export class BackendClient {
     );
   }
 
-  createWipeReactSchedule(workerId: string, guildId: string, schedule: Omit<WipeReactSchedule, "id" | "guildId">) {
+  createWipeReactSchedule(workerId: string, guildId: string, schedule: Omit<WipeReactSchedule, "id" | "guildId" | "lastPostedForUnix">) {
     return this.call<WipeReactSchedule>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules`,
@@ -279,7 +279,7 @@ export class BackendClient {
     );
   }
 
-  updateWipeReactSchedule(workerId: string, guildId: string, scheduleId: number, schedule: Omit<WipeReactSchedule, "id" | "guildId">) {
+  updateWipeReactSchedule(workerId: string, guildId: string, scheduleId: number, schedule: Omit<WipeReactSchedule, "id" | "guildId" | "lastPostedForUnix">) {
     return this.call<WipeReactSchedule>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules/${scheduleId}`,

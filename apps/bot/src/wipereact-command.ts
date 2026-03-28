@@ -956,7 +956,6 @@ function buildSchedulePayload(config: ScheduleWipeReactConfig, createdBy: string
     askLateReason: config.askLateReason,
     askDeclinedReason: config.askDeclinedReason,
     channelId,
-    lastPostedForUnix: 0,
     createdBy,
   };
 }
@@ -1086,7 +1085,7 @@ function computeNextWeekdayOccurrence(
   dayName: string,
   time: string,
   timeZone: string,
-  _repeat: string,
+  repeat: string,
   afterUnix: number,
 ): number | null {
   const targetDay = DAY_NAME_TO_JS_DAY[dayName];
@@ -1100,23 +1099,29 @@ function computeNextWeekdayOccurrence(
   const afterDate = new Date(afterUnix * 1000);
   const parts = getTimeZoneParts(afterDate, timeZone);
 
-  let year = parts.year;
-  let month = parts.month;
-  let day = parts.day;
+  const year = parts.year;
+  const month = parts.month;
+  const day = parts.day;
 
-  for (let offset = 0; offset <= 35; offset++) {
+  const minGapSeconds = repeat === "biweekly" ? 13 * 86400 : 0;
+
+  for (let offset = 0; offset <= 62; offset++) {
     const candidate = zonedDateTimeToUtc(year, month, day + offset, hours, minutes, timeZone);
     const candidateUnix = Math.floor(candidate.getTime() / 1000);
     if (candidateUnix <= afterUnix) continue;
+
+    if (minGapSeconds > 0 && candidateUnix - afterUnix < minGapSeconds) continue;
 
     const candidateParts = getTimeZoneParts(candidate, timeZone);
     const candidateJsDay = new Date(
       Date.UTC(candidateParts.year, candidateParts.month - 1, candidateParts.day),
     ).getUTCDay();
 
-    if (candidateJsDay === targetDay) {
-      return candidateUnix;
-    }
+    if (candidateJsDay !== targetDay) continue;
+
+    if (repeat === "monthly" && candidateParts.day > 7) continue;
+
+    return candidateUnix;
   }
 
   return null;
@@ -1127,7 +1132,7 @@ function computeNextForceWipeOccurrence(afterUnix: number): number | null {
   const afterDate = new Date(afterUnix * 1000);
   const parts = getTimeZoneParts(afterDate, timeZone);
 
-  for (let monthOffset = 0; monthOffset < 3; monthOffset++) {
+  for (let monthOffset = 0; monthOffset < 4; monthOffset++) {
     let year = parts.year;
     let month = parts.month + monthOffset;
     if (month > 12) {

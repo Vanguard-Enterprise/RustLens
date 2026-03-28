@@ -775,7 +775,6 @@ type wipeReactSchedulePayload struct {
 	AskLateReason     bool     `json:"askLateReason"`
 	AskDeclinedReason bool     `json:"askDeclinedReason"`
 	ChannelID         string   `json:"channelId"`
-	LastPostedForUnix int64    `json:"lastPostedForUnix"`
 	CreatedBy         string   `json:"createdBy"`
 }
 
@@ -852,7 +851,6 @@ func wipeReactScheduleFromPayload(guildID string, payload wipeReactSchedulePaylo
 		AskLateReason:     payload.AskLateReason,
 		AskDeclinedReason: payload.AskDeclinedReason,
 		ChannelID:         payload.ChannelID,
-		LastPostedForUnix: payload.LastPostedForUnix,
 		CreatedBy:         payload.CreatedBy,
 	}
 }

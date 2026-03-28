@@ -156,11 +156,10 @@ func (p *PostgresStore) UpdateWipeReactSchedule(ctx context.Context, guildID str
 			ask_late_reason = $11,
 			ask_declined_reason = $12,
 			channel_id = $13,
-			last_posted_for_unix = $14,
 			updated_at = NOW()
 		WHERE guild_id = $1 AND id = $2
 	`, guildID, scheduleID, daysJSON, updated.IncludesForceWipe, updated.Time, updated.TimeZone,
-		updated.Repeat, updated.PostBefore, updated.Name, updated.Description, updated.AskLateReason, updated.AskDeclinedReason, updated.ChannelID, updated.LastPostedForUnix)
+		updated.Repeat, updated.PostBefore, updated.Name, updated.Description, updated.AskLateReason, updated.AskDeclinedReason, updated.ChannelID)
 	if err != nil {
 		return WipeReactSchedule{}, err
 	}
@@ -191,7 +190,7 @@ func (p *PostgresStore) MarkWipeReactSchedulePosted(ctx context.Context, guildID
 		UPDATE wipe_react_schedules
 		SET last_posted_for_unix = $3,
 			updated_at = NOW()
-		WHERE guild_id = $1 AND id = $2
+		WHERE guild_id = $1 AND id = $2 AND last_posted_for_unix < $3
 	`, guildID, scheduleID, lastPostedForUnix)
 	if err != nil {
 		return err
