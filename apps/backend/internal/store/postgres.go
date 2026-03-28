@@ -21,6 +21,11 @@ type GuildSetupState struct {
 	SelectedChannels []string
 }
 
+type GuildSettings struct {
+	GuildID      string
+	LogChannelID string
+}
+
 func NewPostgresStore(ctx context.Context, connectionString string) (*PostgresStore, error) {
 	pool, err := pgxpool.New(ctx, connectionString)
 	if err != nil {
@@ -62,6 +67,65 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
+
+		CREATE TABLE IF NOT EXISTS guild_settings (
+			guild_id TEXT PRIMARY KEY,
+			log_channel_id TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS wipe_reacts (
+			message_id TEXT PRIMARY KEY,
+			guild_id TEXT NOT NULL,
+			channel_id TEXT NOT NULL,
+			creator_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			time_zone TEXT NOT NULL,
+			scheduled_unix BIGINT NOT NULL,
+			ask_late_reason BOOLEAN NOT NULL DEFAULT FALSE,
+			ask_declined_reason BOOLEAN NOT NULL DEFAULT FALSE,
+			accepted_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+			declined_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+			late_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+			embed_timestamp TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS wipe_reacts_guild_scheduled_idx
+		ON wipe_reacts (guild_id, scheduled_unix DESC);
+
+		CREATE TABLE IF NOT EXISTS wipe_react_schedules (
+			id BIGSERIAL PRIMARY KEY,
+			guild_id TEXT NOT NULL,
+			days JSONB NOT NULL DEFAULT '[]'::jsonb,
+			includes_force_wipe BOOLEAN NOT NULL DEFAULT FALSE,
+			time TEXT NOT NULL DEFAULT '',
+			time_zone TEXT NOT NULL,
+			repeat TEXT NOT NULL DEFAULT '',
+			post_before TEXT NOT NULL,
+			name TEXT NOT NULL DEFAULT '',
+			description TEXT NOT NULL DEFAULT '',
+			ask_late_reason BOOLEAN NOT NULL DEFAULT FALSE,
+			ask_declined_reason BOOLEAN NOT NULL DEFAULT FALSE,
+			channel_id TEXT NOT NULL DEFAULT '',
+			last_posted_for_unix BIGINT NOT NULL DEFAULT 0,
+			created_by TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS wipe_react_schedules_guild_idx
+		ON wipe_react_schedules (guild_id);
+
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS ask_late_reason BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS ask_declined_reason BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS channel_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS last_posted_for_unix BIGINT NOT NULL DEFAULT 0;
 	`)
 	return err
 }
@@ -193,4 +257,46 @@ func (p *PostgresStore) ResetGuildSetup(ctx context.Context, guildID string) err
 	`, guildID)
 
 	return err
+}
+
+func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (GuildSettings, error) {
+	var logChannelID string
+
+	err := p.pool.QueryRow(ctx, `
+		SELECT log_channel_id
+		FROM guild_settings
+		WHERE guild_id = $1
+	`, guildID).Scan(&logChannelID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return GuildSettings{
+			GuildID:      guildID,
+			LogChannelID: "",
+		}, nil
+	}
+	if err != nil {
+		return GuildSettings{}, err
+	}
+
+	return GuildSettings{
+		GuildID:      guildID,
+		LogChannelID: logChannelID,
+	}, nil
+}
+
+func (p *PostgresStore) SetGuildLogChannel(ctx context.Context, guildID string, logChannelID string) (GuildSettings, error) {
+	_, err := p.pool.Exec(ctx, `
+		INSERT INTO guild_settings (guild_id, log_channel_id)
+		VALUES ($1, $2)
+		ON CONFLICT (guild_id) DO UPDATE
+		SET log_channel_id = EXCLUDED.log_channel_id,
+			updated_at = NOW()
+	`, guildID, logChannelID)
+	if err != nil {
+		return GuildSettings{}, err
+	}
+
+	return GuildSettings{
+		GuildID:      guildID,
+		LogChannelID: logChannelID,
+	}, nil
 }

@@ -83,8 +83,8 @@ apps/backend/
   internal/
     config/config.go         # Env-based config with defaults (PORT, POSTGRES_URL, REDIS_URL, etc.)
     http/
-      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*
-      handlers.go            # Handler implementations incl. bot setup-state endpoints
+      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/setup/*
+      handlers.go            # Handler implementations incl. bot setup-state, guild-settings, and wipe-react persistence endpoints
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
     auth/jwt.go              # JWT signing/validation for bot service auth
     shards/
@@ -92,7 +92,8 @@ apps/backend/
       allocator.go           # Shard assignment algorithm
       heartbeat.go           # Heartbeat/lease management
     store/
-      postgres.go            # pgx pool + schema auto-migration (bot_worker_events table)
+      postgres.go            # pgx pool + schema auto-migration (bot_worker_events, guild_setups, guild_settings, wipe_reacts)
+      wipe_reacts.go         # Persisted wipe react CRUD + reaction mutation helpers
       redis.go               # go-redis client for heartbeats and shard leases
 ```
 
@@ -101,6 +102,9 @@ Key patterns:
 - Schema is auto-migrated at startup via `EnsureSchema()` (no migration tool).
 - Bot routes (`/api/internal/bot/shards/*`) are JWT-protected via middleware.
 - Bot setup-state routes (`/api/internal/bot/setup/guilds/*`) are JWT-protected and persist one-time guild setup state in Postgres, including selected roles and selected channels.
+- Bot guild settings routes (`/api/internal/bot/setup/guilds/*/settings*`) are JWT-protected and currently store the logs channel override used by wipe reacts.
+- Bot wipe-react routes (`/api/internal/bot/setup/guilds/*/wipe-reacts*`) are JWT-protected and persist wipe react metadata plus accepted/declined/late user lists in Postgres.
+- Bot wipe-react schedule routes (`/api/internal/bot/setup/guilds/*/wipe-react-schedules*`) are JWT-protected and persist recurring wipe-react schedule configs (max 3 per guild) with CRUD operations.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
 
 ### Bot (TypeScript)
@@ -112,12 +116,14 @@ apps/bot/src/
   backend-client.ts     # HTTP client for backend shard API (register, heartbeat, release, assignments)
   shards.ts             # Shard reconciliation logic
   shard-runtime.ts      # discord.js ShardingManager wrapper
-  shard-worker.ts       # Individual shard worker process + interaction handling
+  shard-worker.ts       # Individual shard worker process + interaction handling (requires GuildMembers intent for /wipereact missing)
   setup-command.ts      # /setup start command + setup modal handling
+  bind-command.ts       # /bind fullkit/turret/rocket/c4 modal registration + submit handling
+  wipereact-command.ts  # /wipereact create/delete/missing/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, and logs embeds
 ```
 
 Flow: worker registers with backend -> polls `/assignments` -> reconciles local discord.js shards -> heartbeats leases -> releases on shutdown. Auth via self-signed JWT using `BOT_SERVICE_JWT_SECRET`.
-Command flow: shard `0` registers `/setup start` and `/admin reset_setup` at startup. `/setup start` opens a modal with role and channel checkboxes (the `Bot` role is not shown in the modal — it is always created automatically), includes an `All` option for both groups, switches the deferred ephemeral response into a textual progress bar during setup, creates configured guild roles in a fixed order including a hoisted soft-blue `Bot` role between `Co Leader` and `member`, assigns that `Bot` role to the RustLens bot plus other bot members (fetched via `guild.members.fetch()` with cache fallback), creates the selected channel/category layout with permission overwrites, skips builder-only channels when the `Builder` role is not selected, adds `#wipe log` at the bottom of `Important` when announcements or wipe react channels are requested, supports an `Invite` modal option that creates `#press for invite`, creates an `afk` voice channel at the bottom of `Voice Channels`, tries to set `#join` as the guild system channel for join messages, and sets the guild AFK channel plus Discord's nearest supported AFK timeout of 15 minutes. Setup state is stored via backend bot-only endpoints. Channel creation only bootstraps from a guild that still has exactly one existing channel, and the command must be run in that channel because setup replaces it. `/admin reset_setup` clears that state and deletes the roles and channels created by setup, replying with a summary (silently catches reply failures when the command channel was deleted during reset).
+Command flow: shard `0` registers `/setup start`, `/setup logchannel`, `/wipereact ...`, `/bind ...`, and `/admin reset_setup` at startup. `/setup logchannel {channel}` persists a logs-channel override in backend guild settings for wipe reacts and logs. `/wipereact` is an administrator-only guild command and uses in-command autocomplete for selecting active wipe reacts on `/wipereact delete`, `/wipereact missing {scope} {wipereact}`, `/wipereact react add {user} {type} {wipereact}`, and `/wipereact react remove {user} {wipereact}`. `/wipereact schedule create` opens a modal to create a recurring wipe-react schedule (max 3 per guild) with day selection (Mon-Sun + Force Wipe), time, timezone, repeat interval, and post-before timing; `/wipereact schedule delete` and `/wipereact schedule edit` manage existing schedules via autocomplete. Wipe reacts are persisted in Postgres through backend bot-only endpoints, including the message/channel IDs, config, and accepted/declined/late user lists, and shard workers rehydrate active wipe-react expiry timers on startup. `/wipereact missing` posts an embed titled `Missing reactants` listing members of the selected role who have not accepted, declined, or marked late; this requires the bot to have the Discord Guild Members privileged intent enabled.
 
 ### Frontend (Next.js)
 
@@ -144,7 +150,7 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `BOT_TARGET_SHARDS` | `4` |
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
 
-The bot requires a real `DISCORD_TOKEN` for gateway login.
+The bot requires a real `DISCORD_TOKEN` for gateway login. `/wipereact missing` also requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
 
 ## CI/CD
 

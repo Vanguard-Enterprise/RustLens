@@ -23,6 +23,8 @@ export const SETUP_COMMAND_NAME = "setup";
 export const ADMIN_COMMAND_NAME = "admin";
 
 const SETUP_START_SUBCOMMAND_NAME = "start";
+const SETUP_LOG_CHANNEL_SUBCOMMAND_NAME = "logchannel";
+const SETUP_LOG_CHANNEL_OPTION_NAME = "channel";
 const ADMIN_RESET_SUBCOMMAND_NAME = "reset_setup";
 const SETUP_MODAL_CUSTOM_ID = "setup_start_modal";
 const SETUP_CHANNELS_CUSTOM_ID = "setup_channels";
@@ -272,6 +274,18 @@ const setupCommand = new SlashCommandBuilder()
     subcommand
       .setName(SETUP_START_SUBCOMMAND_NAME)
       .setDescription("Create the configured RustLens roles"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(SETUP_LOG_CHANNEL_SUBCOMMAND_NAME)
+      .setDescription("Set the logs channel used by wipe reacts")
+      .addChannelOption((option) =>
+        option
+          .setName(SETUP_LOG_CHANNEL_OPTION_NAME)
+          .setDescription("The text channel RustLens should use for logs")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true),
+      ),
   );
 
 const adminCommand = new SlashCommandBuilder()
@@ -739,7 +753,7 @@ function buildSetupPlan(
 
   if (channelKeys.includes("voice_calls")) {
     channels.push({
-      name: "public vc",
+      name: "public",
       type: ChannelType.GuildVoice,
       permissionOverwrites: memberVoiceOverwrites,
     });
@@ -855,7 +869,7 @@ function getTargetChannelNames(
   }
 
   if (channelKeys.includes("voice_calls")) {
-    names.push("public vc", "Voice Channels", "private vc", "afk");
+    names.push("public", "Voice Channels", "private vc", "afk");
     if (hasBuilderRole) {
       names.push("builder call");
     }
@@ -987,33 +1001,6 @@ async function createSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag
     const botRole = createdRoles.find((role) => role.name === roleConfigByKey.get("bot")?.roleName);
     if (botRole) {
       await me.roles.add(botRole, `RustLens setup by ${actorTag}`);
-
-      // Best-effort: fetch all members to discover other bots. This
-      // requires the GuildMembers intent; if unavailable, we fall back
-      // to the cache which may only contain the bot itself.
-      let members = guild.members.cache;
-      try {
-        members = (await guild.members.fetch()).filter(
-          (member) => member.user.bot && member.id !== me.id,
-        );
-      } catch {
-        members = guild.members.cache.filter(
-          (member) => member.user.bot && member.id !== me.id,
-        );
-      }
-
-      await Promise.allSettled(
-        members.map((member) =>
-          member.roles
-            .add(botRole, `RustLens setup by ${actorTag}`)
-            .catch((error) => {
-              console.error(
-                `[bot] failed to assign Bot role to ${member.user.tag}`,
-                error,
-              );
-            }),
-        ),
-      );
     }
 
     return createdRoles;
@@ -1262,23 +1249,43 @@ export async function handleSetupChatInput(interaction: ChatInputCommandInteract
   }
 
   const subcommand = interaction.options.getSubcommand(false);
-  if (subcommand !== SETUP_START_SUBCOMMAND_NAME) {
-    await replyEphemeral(
-      interaction,
-      `Unknown /${SETUP_COMMAND_NAME} subcommand: ${subcommand}`,
-    );
-    return true;
-  }
+  switch (subcommand) {
+    case SETUP_START_SUBCOMMAND_NAME: {
+      const state = await getBackend().guildSetup(getSetupWorkerID(), interaction.guildId);
+      const blockedMessage = setupBlockedMessage(state.status);
+      if (blockedMessage) {
+        await replyEphemeral(interaction, blockedMessage);
+        return true;
+      }
 
-  const state = await getBackend().guildSetup(getSetupWorkerID(), interaction.guildId);
-  const blockedMessage = setupBlockedMessage(state.status);
-  if (blockedMessage) {
-    await replyEphemeral(interaction, blockedMessage);
-    return true;
-  }
+      await interaction.showModal(buildSetupStartModal().toJSON() as any);
+      return true;
+    }
+    case SETUP_LOG_CHANNEL_SUBCOMMAND_NAME: {
+      const channel = interaction.options.getChannel(SETUP_LOG_CHANNEL_OPTION_NAME, true);
+      if (channel.type !== ChannelType.GuildText) {
+        await replyEphemeral(interaction, "The logs channel must be a text channel.");
+        return true;
+      }
 
-  await interaction.showModal(buildSetupStartModal().toJSON() as any);
-  return true;
+      await getBackend().setGuildLogChannel(
+        getSetupWorkerID(),
+        interaction.guildId,
+        channel.id,
+      );
+      await replyEphemeral(
+        interaction,
+        `RustLens logs channel set to <#${channel.id}>.`,
+      );
+      return true;
+    }
+    default:
+      await replyEphemeral(
+        interaction,
+        `Unknown /${SETUP_COMMAND_NAME} subcommand: ${subcommand}`,
+      );
+      return true;
+  }
 }
 
 export async function handleAdminChatInput(interaction: ChatInputCommandInteraction) {

@@ -1,10 +1,25 @@
 import { Client, GatewayIntentBits, MessageFlags } from "discord.js";
 import {
+  ensureBindCommand,
+  handleBindButtonInteraction,
+  handleBindChatInput,
+  handleBindModalSubmit,
+} from "./bind-command.js";
+import {
   ensureSetupCommand,
   handleAdminChatInput,
   handleSetupChatInput,
   handleSetupModalSubmit,
 } from "./setup-command.js";
+import {
+  ensureWipeReactCommand,
+  handleWipeReactAutocomplete,
+  handleWipeReactButtonInteraction,
+  handleWipeReactChatInput,
+  handleWipeReactModalSubmit,
+  rehydratePersistedWipeReacts,
+  startWipeReactScheduler,
+} from "./wipereact-command.js";
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
 const shardCount = Number(process.env.SHARD_COUNT ?? "1");
@@ -15,7 +30,7 @@ if (!token) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   shards: [shardID],
   shardCount,
 });
@@ -23,7 +38,14 @@ const client = new Client({
 client.once("clientReady", () => {
   console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);
 
-  ensureSetupCommand(client, shardID).catch((error) => {
+  Promise.all([
+    ensureSetupCommand(client, shardID),
+    ensureBindCommand(client, shardID),
+    ensureWipeReactCommand(client, shardID),
+    rehydratePersistedWipeReacts(client),
+  ]).then(() => {
+    startWipeReactScheduler(client);
+  }).catch((error) => {
     console.error("[bot] command registration failed", error);
   });
 });
@@ -39,8 +61,22 @@ function isIgnorableInteractionReplyError(error: unknown) {
 
 client.on("interactionCreate", async (interaction) => {
   try {
+    if (interaction.isAutocomplete()) {
+      if (await handleWipeReactAutocomplete(interaction)) {
+        return;
+      }
+    }
+
     if (interaction.isChatInputCommand()) {
       if (await handleAdminChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleBindChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleWipeReactChatInput(interaction)) {
         return;
       }
 
@@ -49,7 +85,25 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isModalSubmit()) {
+      if (await handleBindModalSubmit(interaction)) {
+        return;
+      }
+
+      if (await handleWipeReactModalSubmit(interaction)) {
+        return;
+      }
+
       await handleSetupModalSubmit(interaction);
+      return;
+    }
+
+    if (interaction.isButton()) {
+      if (await handleBindButtonInteraction(interaction)) {
+        return;
+      }
+
+      await handleWipeReactButtonInteraction(interaction);
+      return;
     }
   } catch (error) {
     console.error("[bot] interaction handling failed", error);
@@ -58,11 +112,11 @@ client.on("interactionCreate", async (interaction) => {
       try {
         if (interaction.deferred || interaction.replied) {
           await interaction.editReply({
-            content: "Setup interaction failed.",
+            content: "Bot interaction failed.",
           });
         } else {
           await interaction.reply({
-            content: "Setup interaction failed.",
+            content: "Bot interaction failed.",
             flags: MessageFlags.Ephemeral,
           });
         }

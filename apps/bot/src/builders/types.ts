@@ -53,6 +53,7 @@ export type APICheckboxGroup = {
 export type APIStringSelect = {
   type: typeof ComponentType.StringSelect;
   custom_id: string;
+  required?: boolean;
   placeholder?: string;
   min_values?: number;
   max_values?: number;
