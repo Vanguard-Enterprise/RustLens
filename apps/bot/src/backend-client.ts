@@ -69,6 +69,10 @@ export type WipeReactSchedule = {
   timeZone: string;
   repeat: string;
   postBefore: string;
+  name: string;
+  description: string;
+  askLateReason: boolean;
+  askDeclinedReason: boolean;
   createdBy: string;
 };
 

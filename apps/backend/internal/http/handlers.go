@@ -741,6 +741,10 @@ func wipeReactScheduleToMap(record store.WipeReactSchedule) map[string]any {
 		"timeZone":          record.TimeZone,
 		"repeat":            record.Repeat,
 		"postBefore":        record.PostBefore,
+		"name":              record.Name,
+		"description":       record.Description,
+		"askLateReason":     record.AskLateReason,
+		"askDeclinedReason": record.AskDeclinedReason,
 		"createdBy":         record.CreatedBy,
 	}
 }
@@ -764,6 +768,10 @@ type wipeReactSchedulePayload struct {
 	TimeZone          string   `json:"timeZone"`
 	Repeat            string   `json:"repeat"`
 	PostBefore        string   `json:"postBefore"`
+	Name              string   `json:"name"`
+	Description       string   `json:"description"`
+	AskLateReason     bool     `json:"askLateReason"`
+	AskDeclinedReason bool     `json:"askDeclinedReason"`
 	CreatedBy         string   `json:"createdBy"`
 }
 
@@ -835,6 +843,10 @@ func wipeReactScheduleFromPayload(guildID string, payload wipeReactSchedulePaylo
 		TimeZone:          payload.TimeZone,
 		Repeat:            payload.Repeat,
 		PostBefore:        payload.PostBefore,
+		Name:              payload.Name,
+		Description:       payload.Description,
+		AskLateReason:     payload.AskLateReason,
+		AskDeclinedReason: payload.AskDeclinedReason,
 		CreatedBy:         payload.CreatedBy,
 	}
 }

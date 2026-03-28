@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   AutocompleteInteraction,
   ButtonInteraction,
@@ -81,6 +82,16 @@ const WIPEREACT_SCHEDULE_TIMEZONE_CUSTOM_ID = "wipereact_schedule_timezone";
 const WIPEREACT_SCHEDULE_POST_BEFORE_CUSTOM_ID = "wipereact_schedule_post_before";
 const WIPEREACT_SCHEDULE_TARGET_OPTION_NAME = "schedule";
 const WIPEREACT_SCHEDULE_EDIT_MODAL_PREFIX = "wipereact_schedule_edit_modal:";
+const WIPEREACT_SCHEDULE_STEP_TWO_MODAL_PREFIX = "wipereact_schedule_step2:";
+const WIPEREACT_SCHEDULE_CONTINUE_BUTTON_PREFIX = "wipereact_schedule_continue:";
+const WIPEREACT_SCHEDULE_CONFIRM_BUTTON_PREFIX = "wipereact_schedule_confirm:";
+const WIPEREACT_SCHEDULE_DENY_BUTTON_PREFIX = "wipereact_schedule_deny:";
+const WIPEREACT_SCHEDULE_NAME_CUSTOM_ID = "wipereact_schedule_name";
+const WIPEREACT_SCHEDULE_DESCRIPTION_CUSTOM_ID = "wipereact_schedule_description";
+const WIPEREACT_SCHEDULE_OPTIONS_CUSTOM_ID = "wipereact_schedule_options";
+const WIPEREACT_SCHEDULE_OPTION_ASK_LATE_REASON = "ask_late_reason";
+const WIPEREACT_SCHEDULE_OPTION_ASK_DECLINED_REASON = "ask_declined_reason";
+const SCHEDULE_DRAFT_TTL_MS = 15 * 60 * 1000;
 const SCHEDULE_FORCE_WIPE_VALUE = "force_wipe";
 const SCHEDULE_DAY_OPTIONS = [
   { label: "Monday", value: "monday" },
@@ -145,6 +156,24 @@ type ParsedActionButton =
       type: "declined" | "late";
       requiresReason: boolean;
     };
+
+type ScheduleDraft = {
+  userId: string;
+  guildId: string;
+  config: ScheduleWipeReactConfig;
+  editScheduleId: number | null;
+  createdAt: number;
+};
+
+const scheduleDrafts = new Map<string, ScheduleDraft>();
+
+function pruneExpiredScheduleDrafts(now = Date.now()) {
+  for (const [draftId, draft] of scheduleDrafts) {
+    if (now - draft.createdAt > SCHEDULE_DRAFT_TTL_MS) {
+      scheduleDrafts.delete(draftId);
+    }
+  }
+}
 
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
@@ -789,6 +818,10 @@ type ScheduleWipeReactConfig = {
   timeZone: string;
   repeat: string | null;
   postBefore: string;
+  name: string;
+  description: string;
+  askLateReason: boolean;
+  askDeclinedReason: boolean;
 };
 
 function parseScheduleTime(value: string): { hours: number; minutes: number } | null {
@@ -875,6 +908,10 @@ function validateScheduleModalSubmission(
       timeZone: timeZoneResult.timeZone,
       repeat,
       postBefore: postBeforeValues[0],
+      name: "",
+      description: "",
+      askLateReason: false,
+      askDeclinedReason: false,
     },
     error: null,
   };
@@ -914,8 +951,94 @@ function buildSchedulePayload(config: ScheduleWipeReactConfig, createdBy: string
     timeZone: config.timeZone,
     repeat: config.repeat ?? "",
     postBefore: config.postBefore,
+    name: config.name,
+    description: config.description,
+    askLateReason: config.askLateReason,
+    askDeclinedReason: config.askDeclinedReason,
     createdBy,
   };
+}
+
+function buildScheduleStepTwoModal(
+  draftId: string,
+  defaults?: { name?: string; description?: string; askLateReason?: boolean; askDeclinedReason?: boolean },
+) {
+  return new ModalV2Builder()
+    .setTitle("Scheduled Wipe React")
+    .setCustomId(`${WIPEREACT_SCHEDULE_STEP_TWO_MODAL_PREFIX}${draftId}`)
+    .addComponent(
+      "Title",
+      new TextInputBuilder()
+        .setCustomId(WIPEREACT_SCHEDULE_NAME_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(100)
+        .setValue(defaults?.name ?? ""),
+    )
+    .addComponent(
+      "Description",
+      new TextInputBuilder()
+        .setCustomId(WIPEREACT_SCHEDULE_DESCRIPTION_CUSTOM_ID)
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setMaxLength(250)
+        .setValue(defaults?.description ?? ""),
+    )
+    .addComponent(
+      "Options",
+      new CheckboxGroupBuilder()
+        .setCustomId(WIPEREACT_SCHEDULE_OPTIONS_CUSTOM_ID)
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(2)
+        .addOptions(
+          {
+            label: "Ask for late reason?",
+            value: WIPEREACT_SCHEDULE_OPTION_ASK_LATE_REASON,
+            ...(defaults?.askLateReason && { default: true }),
+          },
+          {
+            label: "Ask for declined reason?",
+            value: WIPEREACT_SCHEDULE_OPTION_ASK_DECLINED_REASON,
+            ...(defaults?.askDeclinedReason && { default: true }),
+          },
+        ),
+    );
+}
+
+function buildScheduleConfirmEmbed(config: ScheduleWipeReactConfig) {
+  return {
+    title: `Schedule: ${config.name}`,
+    description: config.description,
+    color: RUSTLENS_EMBED_COLOR,
+    fields: [
+      { name: "Schedule", value: formatScheduleSummary(config) },
+      { name: "Ask late reason", value: config.askLateReason ? "Yes" : "No", inline: true },
+      { name: "Ask declined reason", value: config.askDeclinedReason ? "Yes" : "No", inline: true },
+    ],
+    footer: {
+      text: "RustLens",
+      icon_url: RUSTLENS_EMBED_ICON_URL,
+    },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function createScheduleConfirmButtons(draftId: string) {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${WIPEREACT_SCHEDULE_CONFIRM_BUTTON_PREFIX}${draftId}`)
+        .setLabel("Confirm")
+        .setEmoji("✅")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`${WIPEREACT_SCHEDULE_DENY_BUTTON_PREFIX}${draftId}`)
+        .setLabel("Cancel")
+        .setEmoji("❌")
+        .setStyle(ButtonStyle.Danger),
+    ),
+  ];
 }
 
 function formatScheduleChoiceName(schedule: WipeReactSchedule) {
@@ -1969,6 +2092,73 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
     return processWipeReactAction(interaction, interaction.message, action.type);
   }
 
+  if (interaction.customId.startsWith(WIPEREACT_SCHEDULE_CONTINUE_BUTTON_PREFIX)) {
+    const draftId = interaction.customId.slice(WIPEREACT_SCHEDULE_CONTINUE_BUTTON_PREFIX.length);
+    pruneExpiredScheduleDrafts();
+    const draft = scheduleDrafts.get(draftId);
+    if (!draft || draft.userId !== interaction.user.id || draft.guildId !== interaction.guildId) {
+      await replyEphemeral(interaction, "That schedule draft expired. Start again with /wipereact schedule create.");
+      return true;
+    }
+
+    await interaction.showModal(
+      buildScheduleStepTwoModal(draftId, {
+        name: draft.config.name,
+        description: draft.config.description,
+        askLateReason: draft.config.askLateReason,
+        askDeclinedReason: draft.config.askDeclinedReason,
+      }).toJSON() as any,
+    );
+    return true;
+  }
+
+  if (interaction.customId.startsWith(WIPEREACT_SCHEDULE_CONFIRM_BUTTON_PREFIX)) {
+    const draftId = interaction.customId.slice(WIPEREACT_SCHEDULE_CONFIRM_BUTTON_PREFIX.length);
+    pruneExpiredScheduleDrafts();
+    const draft = scheduleDrafts.get(draftId);
+    if (!draft || draft.userId !== interaction.user.id || draft.guildId !== interaction.guildId) {
+      await replyEphemeral(interaction, "That schedule draft expired. Start again with /wipereact schedule create.");
+      return true;
+    }
+
+    scheduleDrafts.delete(draftId);
+    await deferEphemeral(interaction);
+
+    try {
+      if (draft.editScheduleId !== null) {
+        await getBackend().updateWipeReactSchedule(
+          getWipeReactWorkerID(),
+          draft.guildId,
+          draft.editScheduleId,
+          buildSchedulePayload(draft.config, interaction.user.id),
+        );
+        await replyEphemeral(interaction, `Schedule updated (ID: ${draft.editScheduleId}).`);
+      } else {
+        const schedule = await getBackend().createWipeReactSchedule(
+          getWipeReactWorkerID(),
+          draft.guildId,
+          buildSchedulePayload(draft.config, interaction.user.id),
+        );
+        await replyEphemeral(interaction, `Schedule created (ID: ${schedule.id}).`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("409")) {
+        await replyEphemeral(interaction, "You can only have up to 3 schedules per server.");
+        return true;
+      }
+      await replyEphemeral(interaction, "Failed to save the schedule. Please try again.");
+    }
+    return true;
+  }
+
+  if (interaction.customId.startsWith(WIPEREACT_SCHEDULE_DENY_BUTTON_PREFIX)) {
+    const draftId = interaction.customId.slice(WIPEREACT_SCHEDULE_DENY_BUTTON_PREFIX.length);
+    scheduleDrafts.delete(draftId);
+    await replyEphemeral(interaction, "Schedule cancelled.");
+    return true;
+  }
+
   if (
     interaction.customId !== WIPEREACT_EDIT_BUTTON_CUSTOM_ID &&
     !interaction.customId.startsWith(WIPEREACT_EDIT_BUTTON_PREFIX)
@@ -2021,24 +2211,29 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
       return true;
     }
 
-    try {
-      const schedule = await getBackend().createWipeReactSchedule(
-        getWipeReactWorkerID(),
-        interaction.guildId,
-        buildSchedulePayload(result.config, interaction.user.id),
-      );
-      await replyEphemeral(
-        interaction,
-        `Schedule created (ID: ${schedule.id}):\n\n${formatScheduleSummary(result.config)}`,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("409")) {
-        await replyEphemeral(interaction, "You can only have up to 3 schedules per server.");
-        return true;
-      }
-      await replyEphemeral(interaction, "Failed to save the schedule. Please try again.");
-    }
+    pruneExpiredScheduleDrafts();
+    const draftId = randomUUID();
+    scheduleDrafts.set(draftId, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      config: result.config,
+      editScheduleId: null,
+      createdAt: Date.now(),
+    });
+
+    await replyEphemeral(
+      interaction,
+      "Step 1 saved. Click continue to set the title, description, and options.",
+      [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${WIPEREACT_SCHEDULE_CONTINUE_BUTTON_PREFIX}${draftId}`)
+            .setLabel("Continue")
+            .setEmoji("⚙️")
+            .setStyle(ButtonStyle.Success),
+        ),
+      ],
+    );
     return true;
   }
 
@@ -2060,20 +2255,78 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
       return true;
     }
 
+    let existing: WipeReactSchedule | null = null;
     try {
-      await getBackend().updateWipeReactSchedule(
-        getWipeReactWorkerID(),
-        interaction.guildId,
-        scheduleId,
-        buildSchedulePayload(result.config, interaction.user.id),
-      );
-      await replyEphemeral(
-        interaction,
-        `Schedule updated (ID: ${scheduleId}):\n\n${formatScheduleSummary(result.config)}`,
-      );
+      existing = await getBackend().getWipeReactSchedule(getWipeReactWorkerID(), interaction.guildId, scheduleId);
     } catch {
-      await replyEphemeral(interaction, "Failed to update the schedule. It may have been deleted.");
+      // Will use empty defaults
     }
+
+    pruneExpiredScheduleDrafts();
+    const draftId = randomUUID();
+    scheduleDrafts.set(draftId, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      config: {
+        ...result.config,
+        name: existing?.name ?? "",
+        description: existing?.description ?? "",
+        askLateReason: existing?.askLateReason ?? false,
+        askDeclinedReason: existing?.askDeclinedReason ?? false,
+      },
+      editScheduleId: scheduleId,
+      createdAt: Date.now(),
+    });
+
+    await replyEphemeral(
+      interaction,
+      "Step 1 saved. Click continue to update the title, description, and options.",
+      [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${WIPEREACT_SCHEDULE_CONTINUE_BUTTON_PREFIX}${draftId}`)
+            .setLabel("Continue")
+            .setEmoji("⚙️")
+            .setStyle(ButtonStyle.Success),
+        ),
+      ],
+    );
+    return true;
+  }
+
+  if (interaction.customId.startsWith(WIPEREACT_SCHEDULE_STEP_TWO_MODAL_PREFIX)) {
+    const draftId = interaction.customId.slice(WIPEREACT_SCHEDULE_STEP_TWO_MODAL_PREFIX.length);
+    pruneExpiredScheduleDrafts();
+    const draft = scheduleDrafts.get(draftId);
+    if (!draft || draft.userId !== interaction.user.id || draft.guildId !== interaction.guildId) {
+      await replyEphemeral(interaction, "That schedule draft expired. Start again with /wipereact schedule create.");
+      return true;
+    }
+
+    const name = getFieldValues(interaction, WIPEREACT_SCHEDULE_NAME_CUSTOM_ID)[0]?.trim() ?? "";
+    if (name.length === 0) {
+      await replyEphemeral(interaction, "Title is required.");
+      return true;
+    }
+
+    const description = getFieldValues(interaction, WIPEREACT_SCHEDULE_DESCRIPTION_CUSTOM_ID)[0]?.trim() ?? "";
+    if (description.length === 0) {
+      await replyEphemeral(interaction, "Description is required.");
+      return true;
+    }
+
+    const options = new Set(getFieldValues(interaction, WIPEREACT_SCHEDULE_OPTIONS_CUSTOM_ID));
+
+    draft.config.name = name;
+    draft.config.description = description;
+    draft.config.askLateReason = options.has(WIPEREACT_SCHEDULE_OPTION_ASK_LATE_REASON);
+    draft.config.askDeclinedReason = options.has(WIPEREACT_SCHEDULE_OPTION_ASK_DECLINED_REASON);
+
+    await interaction.reply({
+      embeds: [buildScheduleConfirmEmbed(draft.config)],
+      components: createScheduleConfirmButtons(draftId),
+      flags: MessageFlags.Ephemeral,
+    });
     return true;
   }
 
@@ -2233,11 +2486,14 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
 
 export const __testables = {
   applyUserReaction,
+  buildScheduleConfirmEmbed,
   buildSchedulePayload,
+  buildScheduleStepTwoModal,
   buildScheduleWipeReactModal,
   buildWipeReactEmbed,
   buildMissingReactantsEmbed,
   buildWipeReactModal,
+  createScheduleConfirmButtons,
   createWipeReactButtons,
   formatScheduleChoiceName,
   formatScheduleSummary,
@@ -2246,5 +2502,6 @@ export const __testables = {
   parseFlexibleDateTime,
   parseScheduleTime,
   parseWipeReactMessage,
+  scheduleDrafts,
   wipeReactCommand,
 };

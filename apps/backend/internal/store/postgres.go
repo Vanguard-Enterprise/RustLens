@@ -106,6 +106,10 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			time_zone TEXT NOT NULL,
 			repeat TEXT NOT NULL DEFAULT '',
 			post_before TEXT NOT NULL,
+			name TEXT NOT NULL DEFAULT '',
+			description TEXT NOT NULL DEFAULT '',
+			ask_late_reason BOOLEAN NOT NULL DEFAULT FALSE,
+			ask_declined_reason BOOLEAN NOT NULL DEFAULT FALSE,
 			created_by TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -113,6 +117,11 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS wipe_react_schedules_guild_idx
 		ON wipe_react_schedules (guild_id);
+
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS ask_late_reason BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS ask_declined_reason BOOLEAN NOT NULL DEFAULT FALSE;
 	`)
 	return err
 }
