@@ -3,6 +3,7 @@ import { ComponentType } from "./types.js";
 
 export class StringSelectBuilder implements ToJSON<APIStringSelect> {
   private customId: string | undefined;
+  private isRequired: boolean | undefined;
   private placeholder: string | undefined;
   private minValues: number | undefined;
   private maxValues: number | undefined;
@@ -10,6 +11,11 @@ export class StringSelectBuilder implements ToJSON<APIStringSelect> {
 
   setCustomId(id: string): this {
     this.customId = id;
+    return this;
+  }
+
+  setRequired(required: boolean): this {
+    this.isRequired = required;
     return this;
   }
 
@@ -51,6 +57,7 @@ export class StringSelectBuilder implements ToJSON<APIStringSelect> {
     return {
       type: ComponentType.StringSelect,
       custom_id: this.customId,
+      ...(this.isRequired !== undefined && { required: this.isRequired }),
       options: [...this.options],
       ...(this.placeholder !== undefined && { placeholder: this.placeholder }),
       ...(this.minValues !== undefined && { min_values: this.minValues }),

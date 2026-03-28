@@ -695,6 +695,7 @@ function buildScheduleWipeReactModal() {
       "Repeat",
       new StringSelectBuilder()
         .setCustomId(WIPEREACT_SCHEDULE_REPEAT_CUSTOM_ID)
+        .setRequired(false)
         .setPlaceholder("How often to post")
         .setMinValues(0)
         .setMaxValues(1)
