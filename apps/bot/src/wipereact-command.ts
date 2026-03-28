@@ -31,6 +31,13 @@ import {
   TextInputStyle,
 } from "./builders/index.js";
 import { loadConfig } from "./config.js";
+import {
+  RUSTLENS_EMBED_COLOR,
+  RUSTLENS_EMBED_ICON_URL,
+  type ModalComponentNode,
+  getFieldValues,
+  replyEphemeral,
+} from "./shared.js";
 
 export const WIPEREACT_COMMAND_NAME = "wipereact";
 
@@ -60,9 +67,6 @@ const WIPEREACT_USER_OPTION_NAME = "user";
 const WIPEREACT_TYPE_OPTION_NAME = "type";
 const WIPEREACT_OPTION_ASK_LATE_REASON = "ask_late_reason";
 const WIPEREACT_OPTION_ASK_DECLINED_REASON = "ask_declined_reason";
-const RUSTLENS_EMBED_COLOR = 14582045;
-const RUSTLENS_EMBED_ICON_URL =
-  "https://i.ibb.co/n8MWVLDN/1ee153f3c14d7decaeb6cb62c28fb5b4.webp";
 const WIPE_REACT_ACCEPTED_FIELD_PREFIX = "✅ Accepted";
 const WIPE_REACT_DECLINED_FIELD_PREFIX = "❌ Declined";
 const WIPE_REACT_LATE_FIELD_PREFIX = "🕑 Late";
@@ -74,13 +78,6 @@ const LOG_LATE_COLOR = 0xe3a24f;
 const LOG_REMOVED_COLOR = 0x99a1ab;
 const DEFAULT_WIPEREACT_TIMEZONE = "Europe/London";
 
-type ModalComponentNode = {
-  customId?: string;
-  value?: unknown;
-  values?: unknown;
-  component?: ModalComponentNode;
-  components?: ModalComponentNode[];
-};
 
 type WipeReactAction = WipeReactReactionType;
 
@@ -231,104 +228,6 @@ const wipeReactCommand = new SlashCommandBuilder()
       ),
   );
 
-function normalizeModalFieldValue(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.filter((entry): entry is string => typeof entry === "string");
-  }
-
-  if (typeof value === "string") {
-    if (value.length === 0) {
-      return [];
-    }
-
-    return value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
-  }
-
-  return [];
-}
-
-function extractFieldValues(
-  field: { value?: unknown; values?: unknown } | null | undefined,
-) {
-  if (!field) {
-    return [];
-  }
-
-  if ("values" in field) {
-    return normalizeModalFieldValue(field.values);
-  }
-
-  if ("value" in field) {
-    return normalizeModalFieldValue(field.value);
-  }
-
-  return [];
-}
-
-function extractComponentValues(
-  components: readonly ModalComponentNode[] | undefined,
-  customId: string,
-): string[] {
-  if (!components) {
-    return [];
-  }
-
-  for (const component of components) {
-    if (component.customId === customId) {
-      const values = extractFieldValues(component);
-      if (values.length > 0) {
-        return values;
-      }
-    }
-
-    const nestedComponentValues = extractComponentValues(
-      component.component ? [component.component] : undefined,
-      customId,
-    );
-    if (nestedComponentValues.length > 0) {
-      return nestedComponentValues;
-    }
-
-    const nestedValues = extractComponentValues(component.components, customId);
-    if (nestedValues.length > 0) {
-      return nestedValues;
-    }
-  }
-
-  return [];
-}
-
-function getFieldValues(interaction: ModalSubmitInteraction, customId: string) {
-  try {
-    const accessorField = interaction.fields.getField(customId) as
-      | { value?: unknown; values?: unknown }
-      | null
-      | undefined;
-    const accessorValues = extractFieldValues(accessorField);
-    if (accessorValues.length > 0) {
-      return accessorValues;
-    }
-  } catch {
-    // Fall through to the raw field map and component tree.
-  }
-
-  const mapField = interaction.fields.fields.get(customId) as
-    | { value?: unknown; values?: unknown }
-    | null
-    | undefined;
-  const mapValues = extractFieldValues(mapField);
-  if (mapValues.length > 0) {
-    return mapValues;
-  }
-
-  return extractComponentValues(
-    interaction.components as unknown as readonly ModalComponentNode[],
-    customId,
-  );
-}
 
 function hasAdministratorPermission(
   interaction:
@@ -339,20 +238,6 @@ function hasAdministratorPermission(
   return interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
 }
 
-async function replyEphemeral(
-  interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction,
-  content: string,
-) {
-  if (interaction.deferred || interaction.replied) {
-    await interaction.editReply({ content, components: [] });
-    return;
-  }
-
-  await interaction.reply({
-    content,
-    flags: MessageFlags.Ephemeral,
-  });
-}
 
 async function deferEphemeral(
   interaction: ButtonInteraction | ModalSubmitInteraction,
@@ -1556,7 +1441,12 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
 
     if (subcommand === WIPEREACT_REACT_ADD_SUBCOMMAND_NAME) {
       const targetUser = interaction.options.getUser(WIPEREACT_USER_OPTION_NAME, true);
-      const action = interaction.options.getString(WIPEREACT_TYPE_OPTION_NAME, true) as WipeReactAction;
+      const rawAction = interaction.options.getString(WIPEREACT_TYPE_OPTION_NAME, true);
+      if (rawAction !== "accepted" && rawAction !== "declined" && rawAction !== "late") {
+        await replyEphemeral(interaction, "Invalid reaction type.");
+        return true;
+      }
+      const action: WipeReactAction = rawAction;
       const update = await getBackend().setWipeReactReaction(
         getWipeReactWorkerID(),
         interaction.guildId,

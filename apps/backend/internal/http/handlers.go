@@ -19,6 +19,8 @@ import (
 
 var snowflakePattern = regexp.MustCompile(`^\d{17,20}$`)
 
+const maxRequestBodyBytes = 1 << 20 // 1 MB
+
 type Handler struct {
 	cfg          config.Config
 	postgres     *store.PostgresStore
@@ -79,6 +81,7 @@ func (h *Handler) RegisterShardWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var request registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -110,6 +113,7 @@ func (h *Handler) HeartbeatShardWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var request heartbeatRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -139,6 +143,7 @@ func (h *Handler) ReleaseShardWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var request releaseRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -225,8 +230,8 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 	})
 }
 
-func writeWipeReact(w http.ResponseWriter, record store.WipeReact) {
-	writeJSON(w, http.StatusOK, map[string]any{
+func wipeReactToMap(record store.WipeReact) map[string]any {
+	return map[string]any{
 		"guildId":           record.GuildID,
 		"channelId":         record.ChannelID,
 		"messageId":         record.MessageID,
@@ -241,51 +246,25 @@ func writeWipeReact(w http.ResponseWriter, record store.WipeReact) {
 		"declinedUserIds":   record.DeclinedUserIDs,
 		"lateUserIds":       record.LateUserIDs,
 		"embedTimestamp":    record.EmbedTimestamp,
-	})
+	}
+}
+
+func writeWipeReact(w http.ResponseWriter, record store.WipeReact) {
+	writeJSON(w, http.StatusOK, wipeReactToMap(record))
 }
 
 func writeWipeReactList(w http.ResponseWriter, records []store.WipeReact) {
 	items := make([]map[string]any, 0, len(records))
 	for _, record := range records {
-		items = append(items, map[string]any{
-			"guildId":           record.GuildID,
-			"channelId":         record.ChannelID,
-			"messageId":         record.MessageID,
-			"creatorId":         record.CreatorID,
-			"name":              record.Name,
-			"description":       record.Description,
-			"timeZone":          record.TimeZone,
-			"scheduledUnix":     record.ScheduledUnix,
-			"askLateReason":     record.AskLateReason,
-			"askDeclinedReason": record.AskDeclinedReason,
-			"acceptedUserIds":   record.AcceptedUserIDs,
-			"declinedUserIds":   record.DeclinedUserIDs,
-			"lateUserIds":       record.LateUserIDs,
-			"embedTimestamp":    record.EmbedTimestamp,
-		})
+		items = append(items, wipeReactToMap(record))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func writeWipeReactReactionUpdate(w http.ResponseWriter, update store.WipeReactReactionUpdate) {
 	response := map[string]any{
-		"changed": update.Changed,
-		"wipeReact": map[string]any{
-			"guildId":           update.WipeReact.GuildID,
-			"channelId":         update.WipeReact.ChannelID,
-			"messageId":         update.WipeReact.MessageID,
-			"creatorId":         update.WipeReact.CreatorID,
-			"name":              update.WipeReact.Name,
-			"description":       update.WipeReact.Description,
-			"timeZone":          update.WipeReact.TimeZone,
-			"scheduledUnix":     update.WipeReact.ScheduledUnix,
-			"askLateReason":     update.WipeReact.AskLateReason,
-			"askDeclinedReason": update.WipeReact.AskDeclinedReason,
-			"acceptedUserIds":   update.WipeReact.AcceptedUserIDs,
-			"declinedUserIds":   update.WipeReact.DeclinedUserIDs,
-			"lateUserIds":       update.WipeReact.LateUserIDs,
-			"embedTimestamp":    update.WipeReact.EmbedTimestamp,
-		},
+		"changed":   update.Changed,
+		"wipeReact": wipeReactToMap(update.WipeReact),
 	}
 	if update.PreviousType != nil {
 		response["previousType"] = string(*update.PreviousType)
@@ -297,23 +276,8 @@ func writeWipeReactReactionUpdate(w http.ResponseWriter, update store.WipeReactR
 
 func writeWipeReactReactionRemoval(w http.ResponseWriter, removal store.WipeReactReactionRemoval) {
 	response := map[string]any{
-		"changed": removal.Changed,
-		"wipeReact": map[string]any{
-			"guildId":           removal.WipeReact.GuildID,
-			"channelId":         removal.WipeReact.ChannelID,
-			"messageId":         removal.WipeReact.MessageID,
-			"creatorId":         removal.WipeReact.CreatorID,
-			"name":              removal.WipeReact.Name,
-			"description":       removal.WipeReact.Description,
-			"timeZone":          removal.WipeReact.TimeZone,
-			"scheduledUnix":     removal.WipeReact.ScheduledUnix,
-			"askLateReason":     removal.WipeReact.AskLateReason,
-			"askDeclinedReason": removal.WipeReact.AskDeclinedReason,
-			"acceptedUserIds":   removal.WipeReact.AcceptedUserIDs,
-			"declinedUserIds":   removal.WipeReact.DeclinedUserIDs,
-			"lateUserIds":       removal.WipeReact.LateUserIDs,
-			"embedTimestamp":    removal.WipeReact.EmbedTimestamp,
-		},
+		"changed":   removal.Changed,
+		"wipeReact": wipeReactToMap(removal.WipeReact),
 	}
 	if removal.RemovedType != nil {
 		response["removedType"] = string(*removal.RemovedType)
@@ -374,6 +338,7 @@ func (h *Handler) CompleteGuildSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var request completeGuildSetupRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -446,6 +411,7 @@ func (h *Handler) SetGuildLogChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var request setGuildLogChannelRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -520,6 +486,15 @@ func validateWipeReactPayload(w http.ResponseWriter, payload wipeReactPayload, r
 		writeError(w, http.StatusBadRequest, "embedTimestamp is required")
 		return false
 	}
+
+	const maxReactionUserIDs = 10000
+
+	totalReactionUserIDs := len(payload.AcceptedUserIDs) + len(payload.DeclinedUserIDs) + len(payload.LateUserIDs)
+	if totalReactionUserIDs > maxReactionUserIDs {
+		writeError(w, http.StatusBadRequest, "reaction user id lists exceed maximum allowed size")
+		return false
+	}
+
 	reactionUserIDs := append([]string{}, payload.AcceptedUserIDs...)
 	reactionUserIDs = append(reactionUserIDs, payload.DeclinedUserIDs...)
 	reactionUserIDs = append(reactionUserIDs, payload.LateUserIDs...)
@@ -597,6 +572,7 @@ func (h *Handler) CreateWipeReact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var payload wipeReactPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -626,6 +602,7 @@ func (h *Handler) UpdateWipeReact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var payload wipeReactPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -687,6 +664,7 @@ func (h *Handler) SetWipeReactReaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var payload setWipeReactReactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
