@@ -18,6 +18,7 @@ import {
   handleWipeReactChatInput,
   handleWipeReactModalSubmit,
   rehydratePersistedWipeReacts,
+  startWipeReactScheduler,
 } from "./wipereact-command.js";
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
@@ -42,7 +43,11 @@ client.once("clientReady", () => {
     ensureBindCommand(client, shardID),
     ensureWipeReactCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
-  ]).catch((error) => {
+  ]).then(() => {
+    if (shardID === 0) {
+      startWipeReactScheduler(client);
+    }
+  }).catch((error) => {
     console.error("[bot] command registration failed", error);
   });
 });

@@ -110,6 +110,8 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			description TEXT NOT NULL DEFAULT '',
 			ask_late_reason BOOLEAN NOT NULL DEFAULT FALSE,
 			ask_declined_reason BOOLEAN NOT NULL DEFAULT FALSE,
+			channel_id TEXT NOT NULL DEFAULT '',
+			last_posted_for_unix BIGINT NOT NULL DEFAULT 0,
 			created_by TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -122,6 +124,8 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS ask_late_reason BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS ask_declined_reason BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS channel_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS last_posted_for_unix BIGINT NOT NULL DEFAULT 0;
 	`)
 	return err
 }

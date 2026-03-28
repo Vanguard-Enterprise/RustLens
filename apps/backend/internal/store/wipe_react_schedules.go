@@ -25,6 +25,8 @@ type WipeReactSchedule struct {
 	Description       string
 	AskLateReason     bool
 	AskDeclinedReason bool
+	ChannelID         string
+	LastPostedForUnix int64
 	CreatedBy         string
 }
 
@@ -47,6 +49,8 @@ func scanWipeReactSchedule(scanner rowScanner) (WipeReactSchedule, error) {
 		&record.Description,
 		&record.AskLateReason,
 		&record.AskDeclinedReason,
+		&record.ChannelID,
+		&record.LastPostedForUnix,
 		&record.CreatedBy,
 	)
 	if err != nil {
@@ -63,7 +67,7 @@ func scanWipeReactSchedule(scanner rowScanner) (WipeReactSchedule, error) {
 
 func (p *PostgresStore) ListWipeReactSchedules(ctx context.Context, guildID string) ([]WipeReactSchedule, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT id, guild_id, days, includes_force_wipe, time, time_zone, repeat, post_before, name, description, ask_late_reason, ask_declined_reason, created_by
+		SELECT id, guild_id, days, includes_force_wipe, time, time_zone, repeat, post_before, name, description, ask_late_reason, ask_declined_reason, channel_id, last_posted_for_unix, created_by
 		FROM wipe_react_schedules
 		WHERE guild_id = $1
 		ORDER BY id ASC
@@ -91,7 +95,7 @@ func (p *PostgresStore) ListWipeReactSchedules(ctx context.Context, guildID stri
 
 func (p *PostgresStore) GetWipeReactSchedule(ctx context.Context, guildID string, scheduleID int64) (WipeReactSchedule, error) {
 	record, err := scanWipeReactSchedule(p.pool.QueryRow(ctx, `
-		SELECT id, guild_id, days, includes_force_wipe, time, time_zone, repeat, post_before, name, description, ask_late_reason, ask_declined_reason, created_by
+		SELECT id, guild_id, days, includes_force_wipe, time, time_zone, repeat, post_before, name, description, ask_late_reason, ask_declined_reason, channel_id, last_posted_for_unix, created_by
 		FROM wipe_react_schedules
 		WHERE guild_id = $1 AND id = $2
 	`, guildID, scheduleID))
@@ -120,12 +124,12 @@ func (p *PostgresStore) CreateWipeReactSchedule(ctx context.Context, record Wipe
 
 	err = p.pool.QueryRow(ctx, `
 		INSERT INTO wipe_react_schedules (
-			guild_id, days, includes_force_wipe, time, time_zone, repeat, post_before, name, description, ask_late_reason, ask_declined_reason, created_by
+			guild_id, days, includes_force_wipe, time, time_zone, repeat, post_before, name, description, ask_late_reason, ask_declined_reason, channel_id, last_posted_for_unix, created_by
 		)
-		VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id
 	`, record.GuildID, daysJSON, record.IncludesForceWipe, record.Time, record.TimeZone,
-		record.Repeat, record.PostBefore, record.Name, record.Description, record.AskLateReason, record.AskDeclinedReason, record.CreatedBy).Scan(&record.ID)
+		record.Repeat, record.PostBefore, record.Name, record.Description, record.AskLateReason, record.AskDeclinedReason, record.ChannelID, record.LastPostedForUnix, record.CreatedBy).Scan(&record.ID)
 	if err != nil {
 		return WipeReactSchedule{}, err
 	}
@@ -151,10 +155,12 @@ func (p *PostgresStore) UpdateWipeReactSchedule(ctx context.Context, guildID str
 			description = $10,
 			ask_late_reason = $11,
 			ask_declined_reason = $12,
+			channel_id = $13,
+			last_posted_for_unix = $14,
 			updated_at = NOW()
 		WHERE guild_id = $1 AND id = $2
 	`, guildID, scheduleID, daysJSON, updated.IncludesForceWipe, updated.Time, updated.TimeZone,
-		updated.Repeat, updated.PostBefore, updated.Name, updated.Description, updated.AskLateReason, updated.AskDeclinedReason)
+		updated.Repeat, updated.PostBefore, updated.Name, updated.Description, updated.AskLateReason, updated.AskDeclinedReason, updated.ChannelID, updated.LastPostedForUnix)
 	if err != nil {
 		return WipeReactSchedule{}, err
 	}
@@ -177,5 +183,21 @@ func (p *PostgresStore) DeleteWipeReactSchedule(ctx context.Context, guildID str
 		return ErrWipeReactScheduleNotFound
 	}
 
+	return nil
+}
+
+func (p *PostgresStore) MarkWipeReactSchedulePosted(ctx context.Context, guildID string, scheduleID int64, lastPostedForUnix int64) error {
+	tag, err := p.pool.Exec(ctx, `
+		UPDATE wipe_react_schedules
+		SET last_posted_for_unix = $3,
+			updated_at = NOW()
+		WHERE guild_id = $1 AND id = $2
+	`, guildID, scheduleID, lastPostedForUnix)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrWipeReactScheduleNotFound
+	}
 	return nil
 }

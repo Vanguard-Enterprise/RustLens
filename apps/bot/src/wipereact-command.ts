@@ -943,7 +943,7 @@ function formatScheduleSummary(config: ScheduleWipeReactConfig) {
   return lines.join("\n");
 }
 
-function buildSchedulePayload(config: ScheduleWipeReactConfig, createdBy: string) {
+function buildSchedulePayload(config: ScheduleWipeReactConfig, createdBy: string, channelId = "") {
   return {
     days: config.days,
     includesForceWipe: config.includesForceWipe,
@@ -955,6 +955,8 @@ function buildSchedulePayload(config: ScheduleWipeReactConfig, createdBy: string
     description: config.description,
     askLateReason: config.askLateReason,
     askDeclinedReason: config.askDeclinedReason,
+    channelId,
+    lastPostedForUnix: 0,
     createdBy,
   };
 }
@@ -1059,6 +1061,136 @@ function formatScheduleChoiceName(schedule: WipeReactSchedule) {
   }
   const label = `#${schedule.id} | ${parts.join(" | ")}`;
   return label.length <= 100 ? label : `${label.slice(0, 97)}...`;
+}
+
+const POST_BEFORE_SECONDS: Record<string, number> = {
+  "1d": 86400,
+  "2d": 172800,
+  "3d": 259200,
+  "4d": 345600,
+  "1w": 604800,
+  "2w": 1209600,
+};
+
+const DAY_NAME_TO_JS_DAY: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
+
+function computeNextWeekdayOccurrence(
+  dayName: string,
+  time: string,
+  timeZone: string,
+  _repeat: string,
+  afterUnix: number,
+): number | null {
+  const targetDay = DAY_NAME_TO_JS_DAY[dayName];
+  if (targetDay === undefined) return null;
+
+  const [hoursStr, minutesStr] = time.split(":");
+  const hours = Number(hoursStr);
+  const minutes = Number(minutesStr);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+
+  const afterDate = new Date(afterUnix * 1000);
+  const parts = getTimeZoneParts(afterDate, timeZone);
+
+  let year = parts.year;
+  let month = parts.month;
+  let day = parts.day;
+
+  for (let offset = 0; offset <= 35; offset++) {
+    const candidate = zonedDateTimeToUtc(year, month, day + offset, hours, minutes, timeZone);
+    const candidateUnix = Math.floor(candidate.getTime() / 1000);
+    if (candidateUnix <= afterUnix) continue;
+
+    const candidateParts = getTimeZoneParts(candidate, timeZone);
+    const candidateJsDay = new Date(
+      Date.UTC(candidateParts.year, candidateParts.month - 1, candidateParts.day),
+    ).getUTCDay();
+
+    if (candidateJsDay === targetDay) {
+      return candidateUnix;
+    }
+  }
+
+  return null;
+}
+
+function computeNextForceWipeOccurrence(afterUnix: number): number | null {
+  const timeZone = "Europe/London";
+  const afterDate = new Date(afterUnix * 1000);
+  const parts = getTimeZoneParts(afterDate, timeZone);
+
+  for (let monthOffset = 0; monthOffset < 3; monthOffset++) {
+    let year = parts.year;
+    let month = parts.month + monthOffset;
+    if (month > 12) {
+      month -= 12;
+      year += 1;
+    }
+
+    for (let d = 1; d <= 7; d++) {
+      const candidate = zonedDateTimeToUtc(year, month, d, 19, 0, timeZone);
+      const candidateParts = getTimeZoneParts(candidate, timeZone);
+      const jsDay = new Date(
+        Date.UTC(candidateParts.year, candidateParts.month - 1, candidateParts.day),
+      ).getUTCDay();
+
+      if (jsDay === 4) {
+        const candidateUnix = Math.floor(candidate.getTime() / 1000);
+        if (candidateUnix > afterUnix) {
+          return candidateUnix;
+        }
+        break;
+      }
+    }
+  }
+
+  return null;
+}
+
+function computeNextPostTime(schedule: WipeReactSchedule): { wipeUnix: number; postUnix: number } | null {
+  const postBeforeSeconds = POST_BEFORE_SECONDS[schedule.postBefore];
+  if (!postBeforeSeconds) return null;
+
+  const afterUnix = schedule.lastPostedForUnix > 0
+    ? schedule.lastPostedForUnix
+    : Math.floor(Date.now() / 1000) - postBeforeSeconds - 1;
+
+  let earliestWipeUnix: number | null = null;
+
+  for (const dayName of schedule.days) {
+    const nextOccurrence = computeNextWeekdayOccurrence(
+      dayName,
+      schedule.time,
+      schedule.timeZone,
+      schedule.repeat,
+      afterUnix,
+    );
+    if (nextOccurrence !== null && (earliestWipeUnix === null || nextOccurrence < earliestWipeUnix)) {
+      earliestWipeUnix = nextOccurrence;
+    }
+  }
+
+  if (schedule.includesForceWipe) {
+    const nextForceWipe = computeNextForceWipeOccurrence(afterUnix);
+    if (nextForceWipe !== null && (earliestWipeUnix === null || nextForceWipe < earliestWipeUnix)) {
+      earliestWipeUnix = nextForceWipe;
+    }
+  }
+
+  if (earliestWipeUnix === null) return null;
+
+  return {
+    wipeUnix: earliestWipeUnix,
+    postUnix: earliestWipeUnix - postBeforeSeconds,
+  };
 }
 
 function buildWipeReactModal(
@@ -2134,7 +2266,7 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
           getWipeReactWorkerID(),
           draft.guildId,
           draft.editScheduleId,
-          buildSchedulePayload(draft.config, interaction.user.id),
+          buildSchedulePayload(draft.config, interaction.user.id, interaction.channelId),
         );
         await interaction.followUp({
           content: `Schedule updated (ID: ${draft.editScheduleId}).`,
@@ -2144,7 +2276,7 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
         const schedule = await getBackend().createWipeReactSchedule(
           getWipeReactWorkerID(),
           draft.guildId,
-          buildSchedulePayload(draft.config, interaction.user.id),
+          buildSchedulePayload(draft.config, interaction.user.id, interaction.channelId),
         );
         await interaction.followUp({
           content: `Schedule created (ID: ${schedule.id}).`,
@@ -2506,6 +2638,124 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
   return processWipeReactAction(interaction, message, action, reason);
 }
 
+export function startWipeReactScheduler(client: Client) {
+  const SCHEDULER_INTERVAL_MS = 60_000;
+
+  async function tick() {
+    const guilds = [...client.guilds.cache.values()];
+
+    for (const guild of guilds) {
+      try {
+        const response = await getBackend().listWipeReactSchedules(
+          getWipeReactWorkerID(),
+          guild.id,
+        );
+
+        for (const schedule of response.items) {
+          await processSchedule(guild, schedule).catch((error) => {
+            console.error("[bot] schedule tick failed", {
+              guildId: guild.id,
+              scheduleId: schedule.id,
+              error,
+            });
+          });
+        }
+      } catch (error) {
+        console.error("[bot] failed to list schedules for guild", {
+          guildId: guild.id,
+          error,
+        });
+      }
+    }
+  }
+
+  async function processSchedule(guild: Guild, schedule: WipeReactSchedule) {
+    if (!schedule.channelId) return;
+
+    const next = computeNextPostTime(schedule);
+    if (!next) return;
+
+    const nowUnix = Math.floor(Date.now() / 1000);
+    if (nowUnix < next.postUnix) return;
+    if (schedule.lastPostedForUnix >= next.wipeUnix) return;
+
+    const channel = guild.channels.cache.get(schedule.channelId) ??
+      await guild.channels.fetch(schedule.channelId).catch(() => null);
+    if (!channel?.isTextBased() || !("send" in channel)) return;
+
+    const state: WipeReactMessageState = {
+      name: schedule.name,
+      description: schedule.description,
+      timeZone: schedule.timeZone,
+      scheduledUnix: next.wipeUnix,
+      creatorId: schedule.createdBy,
+      askLateReason: schedule.askLateReason,
+      askDeclinedReason: schedule.askDeclinedReason,
+      acceptedUserIds: [],
+      declinedUserIds: [],
+      lateUserIds: [],
+      embedTimestamp: new Date().toISOString(),
+    };
+
+    const message = await channel.send({
+      embeds: [buildWipeReactEmbed(state)],
+      components: createWipeReactButtons(state, false),
+    });
+
+    try {
+      await getBackend().createWipeReact(
+        getWipeReactWorkerID(),
+        guild.id,
+        buildPersistedWipeReact(guild.id, message.channelId, message.id, state),
+      );
+    } catch (error) {
+      console.error("[bot] failed to persist scheduled wipe react", {
+        guildId: guild.id,
+        scheduleId: schedule.id,
+        error,
+      });
+      await message.delete().catch(() => undefined);
+      return;
+    }
+
+    scheduleWipeReactExpiry(message, next.wipeUnix);
+
+    await getBackend().markWipeReactSchedulePosted(
+      getWipeReactWorkerID(),
+      guild.id,
+      schedule.id,
+      next.wipeUnix,
+    ).catch((error) => {
+      console.error("[bot] failed to mark schedule as posted", {
+        guildId: guild.id,
+        scheduleId: schedule.id,
+        error,
+      });
+    });
+
+    console.log("[bot] auto-posted scheduled wipe react", {
+      guildId: guild.id,
+      scheduleId: schedule.id,
+      wipeUnix: next.wipeUnix,
+      messageId: message.id,
+    });
+  }
+
+  setInterval(() => {
+    tick().catch((error) => {
+      console.error("[bot] scheduler tick error", error);
+    });
+  }, SCHEDULER_INTERVAL_MS);
+
+  setTimeout(() => {
+    tick().catch((error) => {
+      console.error("[bot] initial scheduler tick error", error);
+    });
+  }, 5000);
+
+  console.log("[bot] wipe react scheduler started");
+}
+
 export const __testables = {
   applyUserReaction,
   buildScheduleConfirmEmbed,
@@ -2515,6 +2765,9 @@ export const __testables = {
   buildWipeReactEmbed,
   buildMissingReactantsEmbed,
   buildWipeReactModal,
+  computeNextForceWipeOccurrence,
+  computeNextPostTime,
+  computeNextWeekdayOccurrence,
   createScheduleConfirmButtons,
   createWipeReactButtons,
   formatScheduleChoiceName,

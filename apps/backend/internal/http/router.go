@@ -67,6 +67,7 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Get("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.GetWipeReactSchedule)
 		r.Put("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.UpdateWipeReactSchedule)
 		r.Delete("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.DeleteWipeReactSchedule)
+		r.Post("/guilds/{guildID}/wipe-react-schedules/{scheduleID}/mark-posted", handler.MarkWipeReactSchedulePosted)
 	})
 
 	return r

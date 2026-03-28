@@ -745,6 +745,8 @@ func wipeReactScheduleToMap(record store.WipeReactSchedule) map[string]any {
 		"description":       record.Description,
 		"askLateReason":     record.AskLateReason,
 		"askDeclinedReason": record.AskDeclinedReason,
+		"channelId":         record.ChannelID,
+		"lastPostedForUnix": record.LastPostedForUnix,
 		"createdBy":         record.CreatedBy,
 	}
 }
@@ -772,6 +774,8 @@ type wipeReactSchedulePayload struct {
 	Description       string   `json:"description"`
 	AskLateReason     bool     `json:"askLateReason"`
 	AskDeclinedReason bool     `json:"askDeclinedReason"`
+	ChannelID         string   `json:"channelId"`
+	LastPostedForUnix int64    `json:"lastPostedForUnix"`
 	CreatedBy         string   `json:"createdBy"`
 }
 
@@ -847,6 +851,8 @@ func wipeReactScheduleFromPayload(guildID string, payload wipeReactSchedulePaylo
 		Description:       payload.Description,
 		AskLateReason:     payload.AskLateReason,
 		AskDeclinedReason: payload.AskDeclinedReason,
+		ChannelID:         payload.ChannelID,
+		LastPostedForUnix: payload.LastPostedForUnix,
 		CreatedBy:         payload.CreatedBy,
 	}
 }
@@ -979,6 +985,41 @@ func (h *Handler) DeleteWipeReactSchedule(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (h *Handler) MarkWipeReactSchedulePosted(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	scheduleID, ok := validateScheduleIDParam(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var payload struct {
+		LastPostedForUnix int64 `json:"lastPostedForUnix"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if payload.LastPostedForUnix <= 0 {
+		writeError(w, http.StatusBadRequest, "lastPostedForUnix must be a positive integer")
+		return
+	}
+
+	if err := h.postgres.MarkWipeReactSchedulePosted(r.Context(), guildID, scheduleID, payload.LastPostedForUnix); errors.Is(err, store.ErrWipeReactScheduleNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react schedule not found")
+		return
+	} else if err != nil {
+		log.Printf("[backend] MarkWipeReactSchedulePosted error for guild %s schedule %d: %v", guildID, scheduleID, err)
+		writeError(w, http.StatusInternalServerError, "failed to mark schedule as posted")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

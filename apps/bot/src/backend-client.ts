@@ -73,6 +73,8 @@ export type WipeReactSchedule = {
   description: string;
   askLateReason: boolean;
   askDeclinedReason: boolean;
+  channelId: string;
+  lastPostedForUnix: number;
   createdBy: string;
 };
 
@@ -291,6 +293,15 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules/${scheduleId}`,
       "DELETE",
+    );
+  }
+
+  markWipeReactSchedulePosted(workerId: string, guildId: string, scheduleId: number, lastPostedForUnix: number) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules/${scheduleId}/mark-posted`,
+      "POST",
+      { lastPostedForUnix },
     );
   }
 }
