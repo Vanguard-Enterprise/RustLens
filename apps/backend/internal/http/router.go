@@ -68,6 +68,15 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Put("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.UpdateWipeReactSchedule)
 		r.Delete("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.DeleteWipeReactSchedule)
 		r.Post("/guilds/{guildID}/wipe-react-schedules/{scheduleID}/mark-posted", handler.MarkWipeReactSchedulePosted)
+
+		// Steam & Discord linking endpoints
+		r.Get("/steam/by-bm/{bmID}", handler.GetSteamAccountByBmID)
+		r.Post("/steam/links", handler.CreateSoftLink)
+		r.Post("/steam/bulk-hard-links", handler.BulkUpsertHardLinks)
+		r.Get("/steam/{steamID}", handler.GetSteamAccount)
+		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
+		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
+		r.Get("/discord/{discordID}/links", handler.ListLinksByDiscordID)
 	})
 
 	return r
