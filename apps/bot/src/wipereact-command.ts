@@ -73,6 +73,7 @@ const WIPEREACT_SCHEDULE_MODAL_CUSTOM_ID = "wipereact_schedule_modal";
 const WIPEREACT_SCHEDULE_DAYS_CUSTOM_ID = "wipereact_schedule_days";
 const WIPEREACT_SCHEDULE_TIME_CUSTOM_ID = "wipereact_schedule_time";
 const WIPEREACT_SCHEDULE_REPEAT_CUSTOM_ID = "wipereact_schedule_repeat";
+const WIPEREACT_SCHEDULE_TIMEZONE_CUSTOM_ID = "wipereact_schedule_timezone";
 const WIPEREACT_SCHEDULE_POST_BEFORE_CUSTOM_ID = "wipereact_schedule_post_before";
 const SCHEDULE_FORCE_WIPE_VALUE = "force_wipe";
 const SCHEDULE_DAY_OPTIONS = [
@@ -692,6 +693,15 @@ function buildScheduleWipeReactModal() {
         .setPlaceholder("18:30"),
     )
     .addComponent(
+      "Timezone",
+      new TextInputBuilder()
+        .setCustomId(WIPEREACT_SCHEDULE_TIMEZONE_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(100)
+        .setPlaceholder("Defaults to Europe/London"),
+    )
+    .addComponent(
       "Repeat",
       new StringSelectBuilder()
         .setCustomId(WIPEREACT_SCHEDULE_REPEAT_CUSTOM_ID)
@@ -716,6 +726,7 @@ type ScheduleWipeReactConfig = {
   days: string[];
   includesForceWipe: boolean;
   time: string | null;
+  timeZone: string;
   repeat: string | null;
   postBefore: string;
 };
@@ -767,6 +778,13 @@ function validateScheduleModalSubmission(
     time = `${String(parsed.hours).padStart(2, "0")}:${String(parsed.minutes).padStart(2, "0")}`;
   }
 
+  const timeZoneResult = resolveTimeZone(
+    getFieldValues(interaction, WIPEREACT_SCHEDULE_TIMEZONE_CUSTOM_ID)[0],
+  );
+  if (timeZoneResult.error || !timeZoneResult.timeZone) {
+    return { config: null, error: timeZoneResult.error ?? "Timezone is invalid." };
+  }
+
   const repeatValues = getFieldValues(interaction, WIPEREACT_SCHEDULE_REPEAT_CUSTOM_ID);
   let repeat: string | null = null;
   if (hasRegularDays) {
@@ -794,6 +812,7 @@ function validateScheduleModalSubmission(
       days: regularDays,
       includesForceWipe,
       time,
+      timeZone: timeZoneResult.timeZone,
       repeat,
       postBefore: postBeforeValues[0],
     },
@@ -810,6 +829,7 @@ function formatScheduleSummary(config: ScheduleWipeReactConfig) {
     );
     lines.push(`**Days:** ${dayLabels.join(", ")}`);
     lines.push(`**Time:** ${config.time}`);
+    lines.push(`**Timezone:** ${config.timeZone}`);
     const repeatLabel = SCHEDULE_REPEAT_OPTIONS.find((option) => option.value === config.repeat)?.label ?? config.repeat;
     lines.push(`**Repeat:** ${repeatLabel}`);
   }
