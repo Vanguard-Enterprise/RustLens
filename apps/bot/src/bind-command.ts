@@ -225,13 +225,13 @@ function buildBindFullkitStartModal() {
         .setPlaceholder("Amount of ammo you want to be crafted"),
     )
     .addComponent(
-      "Amount of Barricates",
+      "Amount of barricades",
       new TextInputBuilder()
         .setCustomId(BIND_FULLKIT_BARRICADES_AMOUNT_CUSTOM_ID)
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setMaxLength(2)
-        .setPlaceholder("Amount of barricates you want to be crafted"),
+        .setPlaceholder("Amount of barricades you want to be crafted"),
     );
 }
 
@@ -1035,7 +1035,7 @@ export async function handleBindModalSubmit(interaction: ModalSubmitInteraction)
 
   const barricadesAmountResult = parseWholeNumber(
     draft.barricadesAmount,
-    "Amount of Barricates",
+    "Amount of barricades",
   );
   if (barricadesAmountResult.error || barricadesAmountResult.value === null) {
     await replyEphemeral(interaction, barricadesAmountResult.error ?? "Invalid barricades amount.");

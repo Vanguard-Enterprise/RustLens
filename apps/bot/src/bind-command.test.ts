@@ -67,13 +67,13 @@ describe("bind command", () => {
       },
       {
         type: ComponentType.Label,
-        label: "Amount of Barricates",
+        label: "Amount of barricades",
         component: {
           type: ComponentType.TextInput,
           custom_id: "bind_fullkit_barricades_amount",
           style: TextInputStyle.Short,
           max_length: 2,
-          placeholder: "Amount of barricates you want to be crafted",
+          placeholder: "Amount of barricades you want to be crafted",
           required: true,
         },
       },
