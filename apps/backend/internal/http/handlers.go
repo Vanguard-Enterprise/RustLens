@@ -19,6 +19,7 @@ import (
 )
 
 var snowflakePattern = regexp.MustCompile(`^\d{17,20}$`)
+var steamIDPattern = regexp.MustCompile(`^\d{17}$`)
 
 const maxRequestBodyBytes = 1 << 20 // 1 MB
 
@@ -1018,6 +1019,245 @@ func (h *Handler) MarkWipeReactSchedulePosted(w http.ResponseWriter, r *http.Req
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func steamAccountToMap(record store.SteamAccount) map[string]any {
+	result := map[string]any{
+		"steamId":   record.SteamID,
+		"createdAt": record.CreatedAt,
+	}
+	if record.BmID != nil {
+		result["bmId"] = *record.BmID
+	} else {
+		result["bmId"] = nil
+	}
+	return result
+}
+
+func steamDiscordLinkToMap(link store.SteamDiscordLink) map[string]any {
+	return map[string]any{
+		"steamId":   link.SteamID,
+		"discordId": link.DiscordID,
+		"type":      link.Type,
+		"source":    link.Source,
+		"createdAt": link.CreatedAt,
+	}
+}
+
+func writeSteamAccount(w http.ResponseWriter, record store.SteamAccount) {
+	writeJSON(w, http.StatusOK, steamAccountToMap(record))
+}
+
+func writeSteamDiscordLinkList(w http.ResponseWriter, links []store.SteamDiscordLink) {
+	items := make([]map[string]any, 0, len(links))
+	for _, link := range links {
+		items = append(items, steamDiscordLinkToMap(link))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handler) GetSteamAccount(w http.ResponseWriter, r *http.Request) {
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	account, err := h.postgres.GetSteamAccountBySteamID(r.Context(), steamID)
+	if errors.Is(err, store.ErrSteamAccountNotFound) {
+		writeError(w, http.StatusNotFound, "steam account not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetSteamAccount error for %s: %v", steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+		return
+	}
+
+	writeSteamAccount(w, account)
+}
+
+func (h *Handler) GetSteamAccountByBmID(w http.ResponseWriter, r *http.Request) {
+	bmID := chi.URLParam(r, "bmID")
+	if bmID == "" {
+		writeError(w, http.StatusBadRequest, "bmID is required")
+		return
+	}
+
+	account, err := h.postgres.GetSteamAccountByBmID(r.Context(), bmID)
+	if errors.Is(err, store.ErrSteamAccountNotFound) {
+		writeError(w, http.StatusNotFound, "steam account not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetSteamAccountByBmID error for %s: %v", bmID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+		return
+	}
+
+	writeSteamAccount(w, account)
+}
+
+func (h *Handler) ListLinksBySteamID(w http.ResponseWriter, r *http.Request) {
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	links, err := h.postgres.ListLinksBySteamID(r.Context(), steamID)
+	if err != nil {
+		log.Printf("[backend] ListLinksBySteamID error for %s: %v", steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch links")
+		return
+	}
+
+	writeSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) ListLinksByDiscordID(w http.ResponseWriter, r *http.Request) {
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	links, err := h.postgres.ListLinksByDiscordID(r.Context(), discordID)
+	if err != nil {
+		log.Printf("[backend] ListLinksByDiscordID error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch links")
+		return
+	}
+
+	writeSteamDiscordLinkList(w, links)
+}
+
+type createSoftLinkRequest struct {
+	SteamID   string `json:"steamId"`
+	DiscordID string `json:"discordId"`
+	Source    string `json:"source"`
+}
+
+func (h *Handler) CreateSoftLink(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request createSoftLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if request.SteamID == "" || !steamIDPattern.MatchString(request.SteamID) {
+		writeError(w, http.StatusBadRequest, "steamId must be a 17-digit number")
+		return
+	}
+	if !validateSnowflakeValue(request.DiscordID) {
+		writeError(w, http.StatusBadRequest, "discordId must be a valid Discord snowflake")
+		return
+	}
+	if request.Source == "" {
+		writeError(w, http.StatusBadRequest, "source is required")
+		return
+	}
+
+	link, err := h.postgres.CreateSteamDiscordLink(r.Context(), store.SteamDiscordLink{
+		SteamID:   request.SteamID,
+		DiscordID: request.DiscordID,
+		Type:      "soft",
+		Source:    request.Source,
+	})
+	if errors.Is(err, store.ErrLinkAlreadyExists) {
+		writeError(w, http.StatusConflict, "soft link already exists for this steam and discord pair")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] CreateSoftLink error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to create soft link")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, steamDiscordLinkToMap(link))
+}
+
+type bulkHardLinkEntry struct {
+	SteamID   string  `json:"steamId"`
+	BmID      *string `json:"bmId"`
+	DiscordID string  `json:"discordId"`
+	Source    string  `json:"source"`
+}
+
+type bulkHardLinksRequest struct {
+	Links []bulkHardLinkEntry `json:"links"`
+}
+
+func (h *Handler) BulkUpsertHardLinks(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request bulkHardLinksRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(request.Links) == 0 {
+		writeError(w, http.StatusBadRequest, "links array must not be empty")
+		return
+	}
+
+	storeLinks := make([]store.BulkHardLink, 0, len(request.Links))
+	for i, entry := range request.Links {
+		if entry.SteamID == "" || !steamIDPattern.MatchString(entry.SteamID) {
+			writeError(w, http.StatusBadRequest, "links["+strconv.Itoa(i)+"].steamId must be a 17-digit number")
+			return
+		}
+		if !validateSnowflakeValue(entry.DiscordID) {
+			writeError(w, http.StatusBadRequest, "links["+strconv.Itoa(i)+"].discordId must be a valid Discord snowflake")
+			return
+		}
+		if entry.Source == "" {
+			writeError(w, http.StatusBadRequest, "links["+strconv.Itoa(i)+"].source is required")
+			return
+		}
+		storeLinks = append(storeLinks, store.BulkHardLink{
+			SteamID:   entry.SteamID,
+			BmID:      entry.BmID,
+			DiscordID: entry.DiscordID,
+			Source:    entry.Source,
+		})
+	}
+
+	if err := h.postgres.BulkUpsertHardLinks(r.Context(), storeLinks); err != nil {
+		log.Printf("[backend] BulkUpsertHardLinks error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to upsert hard links")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "count": len(storeLinks)})
+}
+
+func (h *Handler) DeleteSoftLink(w http.ResponseWriter, r *http.Request) {
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	err := h.postgres.DeleteSoftLink(r.Context(), steamID, discordID)
+	if errors.Is(err, store.ErrSteamAccountNotFound) {
+		writeError(w, http.StatusNotFound, "soft link not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] DeleteSoftLink error for %s/%s: %v", steamID, discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to delete soft link")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
