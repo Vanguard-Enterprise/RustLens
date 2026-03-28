@@ -23,6 +23,7 @@ import {
 export const BIND_COMMAND_NAME = "bind";
 
 const BIND_FULLKIT_SUBCOMMAND_NAME = "fullkit";
+const BIND_TURRET_SUBCOMMAND_NAME = "turret";
 const BIND_FULLKIT_STEP_ONE_MODAL_CUSTOM_ID = "bind_fullkit_modal_step_1";
 const BIND_FULLKIT_STEP_TWO_MODAL_PREFIX = "bind_fullkit_modal_step_2:";
 const BIND_FULLKIT_CONTINUE_BUTTON_PREFIX = "bind_fullkit_continue:";
@@ -36,6 +37,12 @@ const BIND_FULLKIT_BARRICADES_AMOUNT_CUSTOM_ID = "bind_fullkit_barricades_amount
 const BIND_FULLKIT_ARMOR_CUSTOM_ID = "bind_fullkit_armor";
 const BIND_FULLKIT_ANYTHING_ELSE_CUSTOM_ID = "bind_fullkit_anything_else";
 const BIND_FULLKIT_BIND_CUSTOM_ID = "bind_fullkit_bind";
+const BIND_TURRET_MODAL_CUSTOM_ID = "bind_turret_modal";
+const BIND_TURRET_WEAPON_CUSTOM_ID = "bind_turret_weapon";
+const BIND_TURRET_AMMO_CUSTOM_ID = "bind_turret_ammo";
+const BIND_TURRET_AMMO_AMOUNT_CUSTOM_ID = "bind_turret_ammo_amount";
+const BIND_TURRET_ANYTHING_ELSE_CUSTOM_ID = "bind_turret_anything_else";
+const BIND_TURRET_BIND_CUSTOM_ID = "bind_turret_bind";
 const BIND_FULLKIT_DRAFT_TTL_MS = 15 * 60 * 1000;
 const RUSTLENS_EMBED_COLOR = 14582045;
 const RUSTLENS_EMBED_ICON_URL =
@@ -111,6 +118,19 @@ const extraArmorOptions: readonly CraftableOption[] = [
   { value: "boots", label: "Boots", itemIds: [-1549739227] },
   { value: "shorts", label: "Shorts", itemIds: [-1695367501] },
 ] as const;
+const turretWeaponOptions: readonly CraftableOption[] = [
+  {
+    value: "bolt_action_rifle",
+    label: "Bolt Action Rifle",
+    itemIds: [1588298435],
+  },
+  { value: "hmlmg", label: "HMLMG", itemIds: [-1214542497] },
+  { value: "python", label: "Python", itemIds: [1373971859] },
+] as const;
+const turretExtraOptions: readonly CraftableOption[] = [
+  { value: "muzzle_boost", label: "Muzzle Boost", itemIds: [-1405508498] },
+  { value: "silencer", label: "Silencer", itemIds: [-781866273] },
+] as const;
 
 const medsItemId = 1079279582;
 const medkitsItemId = 254522515;
@@ -118,6 +138,7 @@ const barricadesItemId = 1373240771;
 const armorBaseItemIds = [-194953424, 1850456855, 1751045826, 237239288] as const;
 const maxMedsPerCraftCommand = 10;
 const maxMedkitsPerCraftCommand = 5;
+const turretItemId = -2139580305;
 
 const bindCommand = new SlashCommandBuilder()
   .setName(BIND_COMMAND_NAME)
@@ -127,6 +148,11 @@ const bindCommand = new SlashCommandBuilder()
     subcommand
       .setName(BIND_FULLKIT_SUBCOMMAND_NAME)
       .setDescription("Open the fullkit bind modal"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(BIND_TURRET_SUBCOMMAND_NAME)
+      .setDescription("Open the turret bind modal"),
   );
 
 function buildBindFullkitStartModal() {
@@ -225,6 +251,55 @@ function buildBindFullkitFinishModal(draftId: string) {
         .setPlaceholder("Specify a one key to make the bind for"),
     )
     ;
+}
+
+function buildBindTurretModal() {
+  return new ModalV2Builder()
+    .setTitle("Bind Turret")
+    .setCustomId(BIND_TURRET_MODAL_CUSTOM_ID)
+    .addComponent(
+      "Weapons",
+      new RadioGroupBuilder()
+        .setCustomId(BIND_TURRET_WEAPON_CUSTOM_ID)
+        .addOptions(
+          ...turretWeaponOptions.map(({ label, value }) => ({ label, value })),
+        ),
+    )
+    .addComponent(
+      "Ammo",
+      new RadioGroupBuilder()
+        .setCustomId(BIND_TURRET_AMMO_CUSTOM_ID)
+        .addOptions(...ammoOptions.map(({ label, value }) => ({ label, value }))),
+    )
+    .addComponent(
+      "Amount of Ammo",
+      new TextInputBuilder()
+        .setCustomId(BIND_TURRET_AMMO_AMOUNT_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(3)
+        .setPlaceholder("Amount of ammo you want to be crafted"),
+    )
+    .addComponent(
+      "Anything else?",
+      new CheckboxGroupBuilder()
+        .setCustomId(BIND_TURRET_ANYTHING_ELSE_CUSTOM_ID)
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(2)
+        .addOptions(
+          ...turretExtraOptions.map(({ label, value }) => ({ label, value })),
+        ),
+    )
+    .addComponent(
+      "Bind",
+      new TextInputBuilder()
+        .setCustomId(BIND_TURRET_BIND_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(1)
+        .setPlaceholder("Specify a one key to make the bind for"),
+    );
 }
 
 function createBindFullkitContinueRow(draftId: string) {
@@ -489,14 +564,85 @@ function buildCraftCommands(
   } as const;
 }
 
+function buildTurretCraftCommands(
+  weaponValues: string[],
+  ammoValues: string[],
+  ammoAmountValues: string[],
+  anythingElseValues: string[],
+) {
+  const commands: string[] = [];
+  const addCraft = (itemId: number, amount = 1) => {
+    if (amount <= 0) {
+      return;
+    }
+    commands.push(`craft.add ${itemId} ${amount}`);
+  };
+
+  addCraft(turretItemId);
+
+  const weapon = findOption(turretWeaponOptions, weaponValues[0]);
+  if (!weapon) {
+    return {
+      commands: [],
+      error: "Select a valid turret weapon.",
+    } as const;
+  }
+  for (const itemId of weapon.itemIds) {
+    addCraft(itemId);
+  }
+
+  const ammo = findOption(ammoOptions, ammoValues[0]);
+  if (!ammo) {
+    return {
+      commands: [],
+      error: "Select a valid ammo type.",
+    } as const;
+  }
+
+  const ammoAmountResult = parseWholeNumber(ammoAmountValues, "Amount of Ammo");
+  if (ammoAmountResult.error || ammoAmountResult.value === null) {
+    return {
+      commands: [],
+      error: ammoAmountResult.error,
+    } as const;
+  }
+
+  const ammoCraftCount = Math.ceil(ammoAmountResult.value / ammo.craftYield);
+  for (const itemId of ammo.itemIds) {
+    addCraft(itemId, ammoCraftCount);
+  }
+
+  const selectedExtras = new Set(anythingElseValues);
+  for (const option of turretExtraOptions) {
+    if (selectedExtras.has(option.value)) {
+      for (const itemId of option.itemIds) {
+        addCraft(itemId);
+      }
+    }
+  }
+
+  return {
+    commands,
+    error: null,
+  } as const;
+}
+
 function buildBindCommand(key: string, commands: readonly string[]) {
   return `bind ${key} "${commands.join(";")}"`;
 }
 
 function buildFullkitBindEmbed(command: string) {
+  return buildBindEmbed("Fullkit bind", command);
+}
+
+function buildTurretBindEmbed(command: string) {
+  return buildBindEmbed("Turret bind", command);
+}
+
+function buildBindEmbed(title: string, command: string) {
   return {
     color: RUSTLENS_EMBED_COLOR,
-    title: "Fullkit bind",
+    title,
     description: `\`\`\`\n${command}\n\`\`\``,
     footer: {
       text: "RustLens",
@@ -552,16 +698,20 @@ export async function handleBindChatInput(interaction: ChatInputCommandInteracti
   }
 
   const subcommand = interaction.options.getSubcommand(false);
-  if (subcommand !== BIND_FULLKIT_SUBCOMMAND_NAME) {
-    await replyEphemeral(
-      interaction,
-      `Unknown /${BIND_COMMAND_NAME} subcommand: ${subcommand}`,
-    );
-    return true;
+  switch (subcommand) {
+    case BIND_FULLKIT_SUBCOMMAND_NAME:
+      await interaction.showModal(buildBindFullkitStartModal().toJSON() as any);
+      return true;
+    case BIND_TURRET_SUBCOMMAND_NAME:
+      await interaction.showModal(buildBindTurretModal().toJSON() as any);
+      return true;
+    default:
+      await replyEphemeral(
+        interaction,
+        `Unknown /${BIND_COMMAND_NAME} subcommand: ${subcommand}`,
+      );
+      return true;
   }
-
-  await interaction.showModal(buildBindFullkitStartModal().toJSON() as any);
-  return true;
 }
 
 export async function handleBindButtonInteraction(interaction: ButtonInteraction) {
@@ -583,6 +733,31 @@ export async function handleBindButtonInteraction(interaction: ButtonInteraction
 }
 
 export async function handleBindModalSubmit(interaction: ModalSubmitInteraction) {
+  if (interaction.customId === BIND_TURRET_MODAL_CUSTOM_ID) {
+    const bindKey = getFieldValues(interaction, BIND_TURRET_BIND_CUSTOM_ID)[0]?.trim() ?? "";
+    if (bindKey.length === 0) {
+      await replyEphemeral(interaction, "Bind is required.");
+      return true;
+    }
+
+    const craftCommands = buildTurretCraftCommands(
+      getFieldValues(interaction, BIND_TURRET_WEAPON_CUSTOM_ID),
+      getFieldValues(interaction, BIND_TURRET_AMMO_CUSTOM_ID),
+      getFieldValues(interaction, BIND_TURRET_AMMO_AMOUNT_CUSTOM_ID),
+      getFieldValues(interaction, BIND_TURRET_ANYTHING_ELSE_CUSTOM_ID),
+    );
+    if (craftCommands.error) {
+      await replyEphemeral(interaction, craftCommands.error);
+      return true;
+    }
+
+    const bindCommand = buildBindCommand(bindKey, craftCommands.commands);
+    await interaction.reply({
+      embeds: [buildTurretBindEmbed(bindCommand)],
+    });
+    return true;
+  }
+
   if (interaction.customId === BIND_FULLKIT_STEP_ONE_MODAL_CUSTOM_ID) {
     pruneExpiredBindFullkitDrafts();
 
@@ -686,7 +861,10 @@ export const __testables = {
   buildCraftCommands,
   buildBindFullkitFinishModal,
   buildBindFullkitStartModal,
+  buildBindTurretModal,
   buildFullkitBindEmbed,
+  buildTurretBindEmbed,
+  buildTurretCraftCommands,
   extractDraftId,
   parseWholeNumber,
 };

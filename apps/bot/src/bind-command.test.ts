@@ -154,6 +154,80 @@ describe("bind command", () => {
     ]);
   });
 
+  it("builds the turret modal within Discord's 5 component limit", () => {
+    const modal = __testables.buildBindTurretModal().toJSON();
+
+    expect(modal.title).toBe("Bind Turret");
+    expect(modal.custom_id).toBe("bind_turret_modal");
+    expect(modal.components).toEqual([
+      {
+        type: ComponentType.Label,
+        label: "Weapons",
+        component: {
+          type: ComponentType.RadioGroup,
+          custom_id: "bind_turret_weapon",
+          options: [
+            { label: "Bolt Action Rifle", value: "bolt_action_rifle" },
+            { label: "HMLMG", value: "hmlmg" },
+            { label: "Python", value: "python" },
+          ],
+        },
+      },
+      {
+        type: ComponentType.Label,
+        label: "Ammo",
+        component: {
+          type: ComponentType.RadioGroup,
+          custom_id: "bind_turret_ammo",
+          options: [
+            { label: "5.56 Rifle Ammo", value: "5.56" },
+            { label: "Incendiary 5.56 Rifle Ammo", value: "incen" },
+            { label: "HV 5.56 Rifle Ammo", value: "hv" },
+          ],
+        },
+      },
+      {
+        type: ComponentType.Label,
+        label: "Amount of Ammo",
+        component: {
+          type: ComponentType.TextInput,
+          custom_id: "bind_turret_ammo_amount",
+          style: TextInputStyle.Short,
+          max_length: 3,
+          placeholder: "Amount of ammo you want to be crafted",
+          required: true,
+        },
+      },
+      {
+        type: ComponentType.Label,
+        label: "Anything else?",
+        component: {
+          type: ComponentType.CheckboxGroup,
+          custom_id: "bind_turret_anything_else",
+          required: false,
+          min_values: 0,
+          max_values: 2,
+          options: [
+            { label: "Muzzle Boost", value: "muzzle_boost" },
+            { label: "Silencer", value: "silencer" },
+          ],
+        },
+      },
+      {
+        type: ComponentType.Label,
+        label: "Bind",
+        component: {
+          type: ComponentType.TextInput,
+          custom_id: "bind_turret_bind",
+          style: TextInputStyle.Short,
+          max_length: 1,
+          placeholder: "Specify a one key to make the bind for",
+          required: true,
+        },
+      },
+    ]);
+  });
+
   it("extracts draft ids from prefixed custom ids", () => {
     expect(
       __testables.extractDraftId(
@@ -282,6 +356,33 @@ describe("bind command", () => {
       icon_url:
         "https://i.ibb.co/n8MWVLDN/1ee153f3c14d7decaeb6cb62c28fb5b4.webp",
     });
+  });
+
+  it("builds turret craft commands in the requested order", () => {
+    const result = __testables.buildTurretCraftCommands(
+      ["hmlmg"],
+      ["incen"],
+      ["7"],
+      ["muzzle_boost", "silencer"],
+    );
+
+    expect(result).toEqual({
+      commands: [
+        "craft.add -2139580305 1",
+        "craft.add -1214542497 1",
+        "craft.add 605467368 4",
+        "craft.add -1405508498 1",
+        "craft.add -781866273 1",
+      ],
+      error: null,
+    });
+  });
+
+  it("builds the turret bind embed", () => {
+    const embed = __testables.buildTurretBindEmbed('bind t "craft.add 1 1"');
+
+    expect(embed.title).toBe("Turret bind");
+    expect(embed.description).toBe('```\nbind t "craft.add 1 1"\n```');
   });
 
   it("rejects missing numeric input and supports HV ammo", () => {
