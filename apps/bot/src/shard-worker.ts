@@ -44,9 +44,7 @@ client.once("clientReady", () => {
     ensureWipeReactCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
   ]).then(() => {
-    if (shardID === 0) {
-      startWipeReactScheduler(client);
-    }
+    startWipeReactScheduler(client);
   }).catch((error) => {
     console.error("[bot] command registration failed", error);
   });
