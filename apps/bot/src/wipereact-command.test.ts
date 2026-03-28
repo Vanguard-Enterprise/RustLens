@@ -46,6 +46,8 @@ describe("wipereact command", () => {
     expect(options.map((option) => option.name)).toEqual([
       "create",
       "schedule",
+      "schedule_delete",
+      "schedule_edit",
       "delete",
       "missing",
       "react",

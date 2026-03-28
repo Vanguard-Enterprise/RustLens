@@ -96,6 +96,23 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS wipe_reacts_guild_scheduled_idx
 		ON wipe_reacts (guild_id, scheduled_unix DESC);
+
+		CREATE TABLE IF NOT EXISTS wipe_react_schedules (
+			id BIGSERIAL PRIMARY KEY,
+			guild_id TEXT NOT NULL,
+			days JSONB NOT NULL DEFAULT '[]'::jsonb,
+			includes_force_wipe BOOLEAN NOT NULL DEFAULT FALSE,
+			time TEXT NOT NULL DEFAULT '',
+			time_zone TEXT NOT NULL,
+			repeat TEXT NOT NULL DEFAULT '',
+			post_before TEXT NOT NULL,
+			created_by TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS wipe_react_schedules_guild_idx
+		ON wipe_react_schedules (guild_id);
 	`)
 	return err
 }

@@ -76,6 +76,28 @@ Persisted wipe-react events with reaction user lists.
 
 **Index**: `wipe_reacts_guild_scheduled_idx ON (guild_id, scheduled_unix DESC)` — used by `ListActiveWipeReacts`.
 
+### `wipe_react_schedules`
+
+Recurring wipe-react schedule configs (max 3 per guild).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `BIGSERIAL` | PK |
+| `guild_id` | `TEXT NOT NULL` | |
+| `days` | `JSONB NOT NULL DEFAULT '[]'` | String array of weekday values |
+| `includes_force_wipe` | `BOOLEAN NOT NULL DEFAULT FALSE` | First Thursday of month, 19:00 Europe/London |
+| `time` | `TEXT NOT NULL DEFAULT ''` | HH:MM, empty if force-wipe-only |
+| `time_zone` | `TEXT NOT NULL` | IANA timezone |
+| `repeat` | `TEXT NOT NULL DEFAULT ''` | weekly/biweekly/monthly, empty if force-wipe-only |
+| `post_before` | `TEXT NOT NULL` | 1d/2d/3d/4d/1w/2w |
+| `created_by` | `TEXT NOT NULL` | User snowflake |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**Index**: `wipe_react_schedules_guild_idx ON (guild_id)`.
+
+**Limit**: 3 schedules per guild, enforced in `CreateWipeReactSchedule` via `SELECT COUNT(*)` before insert.
+
 ## Conventions
 
 - Parameterized queries only (`$1`, `$2`, ...) — no string interpolation

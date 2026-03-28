@@ -60,6 +60,22 @@ export type WipeReactReactionRemoval = {
   wipeReact: WipeReact;
 };
 
+export type WipeReactSchedule = {
+  id: number;
+  guildId: string;
+  days: string[];
+  includesForceWipe: boolean;
+  time: string;
+  timeZone: string;
+  repeat: string;
+  postBefore: string;
+  createdBy: string;
+};
+
+export type WipeReactScheduleListResponse = {
+  items: WipeReactSchedule[];
+};
+
 type ClaimGuildSetupResponse = GuildSetupState & {
   claimed: boolean;
 };
@@ -228,6 +244,48 @@ export class BackendClient {
     return this.call<WipeReactReactionRemoval>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts/${messageId}/reactions/${userId}`,
+      "DELETE",
+    );
+  }
+
+  listWipeReactSchedules(workerId: string, guildId: string) {
+    return this.call<WipeReactScheduleListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules`,
+      "GET",
+    );
+  }
+
+  getWipeReactSchedule(workerId: string, guildId: string, scheduleId: number) {
+    return this.call<WipeReactSchedule>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules/${scheduleId}`,
+      "GET",
+    );
+  }
+
+  createWipeReactSchedule(workerId: string, guildId: string, schedule: Omit<WipeReactSchedule, "id" | "guildId">) {
+    return this.call<WipeReactSchedule>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules`,
+      "POST",
+      schedule,
+    );
+  }
+
+  updateWipeReactSchedule(workerId: string, guildId: string, scheduleId: number, schedule: Omit<WipeReactSchedule, "id" | "guildId">) {
+    return this.call<WipeReactSchedule>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules/${scheduleId}`,
+      "PUT",
+      schedule,
+    );
+  }
+
+  deleteWipeReactSchedule(workerId: string, guildId: string, scheduleId: number) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules/${scheduleId}`,
       "DELETE",
     );
   }

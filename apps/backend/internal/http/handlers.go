@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -728,6 +729,244 @@ func (h *Handler) RemoveWipeReactReaction(w http.ResponseWriter, r *http.Request
 	}
 
 	writeWipeReactReactionRemoval(w, removal)
+}
+
+func wipeReactScheduleToMap(record store.WipeReactSchedule) map[string]any {
+	return map[string]any{
+		"id":                record.ID,
+		"guildId":           record.GuildID,
+		"days":              record.Days,
+		"includesForceWipe": record.IncludesForceWipe,
+		"time":              record.Time,
+		"timeZone":          record.TimeZone,
+		"repeat":            record.Repeat,
+		"postBefore":        record.PostBefore,
+		"createdBy":         record.CreatedBy,
+	}
+}
+
+func validateScheduleIDParam(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	raw := chi.URLParam(r, "scheduleID")
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "scheduleID must be a positive integer")
+		return 0, false
+	}
+	return id, true
+}
+
+var timePattern = regexp.MustCompile(`^\d{2}:\d{2}$`)
+
+type wipeReactSchedulePayload struct {
+	Days              []string `json:"days"`
+	IncludesForceWipe bool     `json:"includesForceWipe"`
+	Time              string   `json:"time"`
+	TimeZone          string   `json:"timeZone"`
+	Repeat            string   `json:"repeat"`
+	PostBefore        string   `json:"postBefore"`
+	CreatedBy         string   `json:"createdBy"`
+}
+
+var validDays = map[string]bool{
+	"monday": true, "tuesday": true, "wednesday": true, "thursday": true,
+	"friday": true, "saturday": true, "sunday": true,
+}
+
+var validPostBefore = map[string]bool{
+	"1d": true, "2d": true, "3d": true, "4d": true, "1w": true, "2w": true,
+}
+
+var validRepeat = map[string]bool{
+	"weekly": true, "biweekly": true, "monthly": true,
+}
+
+func validateWipeReactSchedulePayload(w http.ResponseWriter, payload wipeReactSchedulePayload) bool {
+	for _, day := range payload.Days {
+		if !validDays[day] {
+			writeError(w, http.StatusBadRequest, "each day must be one of monday, tuesday, wednesday, thursday, friday, saturday, sunday")
+			return false
+		}
+	}
+
+	if payload.TimeZone == "" {
+		writeError(w, http.StatusBadRequest, "timeZone is required")
+		return false
+	}
+
+	if !validPostBefore[payload.PostBefore] {
+		writeError(w, http.StatusBadRequest, "postBefore must be one of 1d, 2d, 3d, 4d, 1w, 2w")
+		return false
+	}
+
+	if !validateSnowflakeValue(payload.CreatedBy) {
+		writeError(w, http.StatusBadRequest, "createdBy must be a valid Discord snowflake")
+		return false
+	}
+
+	if !payload.IncludesForceWipe && len(payload.Days) == 0 {
+		writeError(w, http.StatusBadRequest, "days must not be empty when includesForceWipe is false")
+		return false
+	}
+
+	if len(payload.Days) > 0 {
+		if !timePattern.MatchString(payload.Time) {
+			writeError(w, http.StatusBadRequest, "time must match HH:MM format")
+			return false
+		}
+		if !validRepeat[payload.Repeat] {
+			writeError(w, http.StatusBadRequest, "repeat must be one of weekly, biweekly, monthly")
+			return false
+		}
+	}
+
+	return true
+}
+
+func wipeReactScheduleFromPayload(guildID string, payload wipeReactSchedulePayload) store.WipeReactSchedule {
+	days := payload.Days
+	if days == nil {
+		days = []string{}
+	}
+	return store.WipeReactSchedule{
+		GuildID:           guildID,
+		Days:              days,
+		IncludesForceWipe: payload.IncludesForceWipe,
+		Time:              payload.Time,
+		TimeZone:          payload.TimeZone,
+		Repeat:            payload.Repeat,
+		PostBefore:        payload.PostBefore,
+		CreatedBy:         payload.CreatedBy,
+	}
+}
+
+func (h *Handler) ListWipeReactSchedules(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	records, err := h.postgres.ListWipeReactSchedules(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListWipeReactSchedules error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list wipe react schedules")
+		return
+	}
+
+	items := make([]map[string]any, 0, len(records))
+	for _, record := range records {
+		items = append(items, wipeReactScheduleToMap(record))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handler) GetWipeReactSchedule(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	scheduleID, ok := validateScheduleIDParam(w, r)
+	if !ok {
+		return
+	}
+
+	record, err := h.postgres.GetWipeReactSchedule(r.Context(), guildID, scheduleID)
+	if errors.Is(err, store.ErrWipeReactScheduleNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react schedule not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetWipeReactSchedule error for guild %s schedule %d: %v", guildID, scheduleID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch wipe react schedule")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, wipeReactScheduleToMap(record))
+}
+
+func (h *Handler) CreateWipeReactSchedule(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var payload wipeReactSchedulePayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if !validateWipeReactSchedulePayload(w, payload) {
+		return
+	}
+
+	record, err := h.postgres.CreateWipeReactSchedule(r.Context(), wipeReactScheduleFromPayload(guildID, payload))
+	if errors.Is(err, store.ErrWipeReactScheduleLimitReached) {
+		writeError(w, http.StatusConflict, "wipe react schedule limit reached")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] CreateWipeReactSchedule error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to create wipe react schedule")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, wipeReactScheduleToMap(record))
+}
+
+func (h *Handler) UpdateWipeReactSchedule(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	scheduleID, ok := validateScheduleIDParam(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var payload wipeReactSchedulePayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if !validateWipeReactSchedulePayload(w, payload) {
+		return
+	}
+
+	record, err := h.postgres.UpdateWipeReactSchedule(r.Context(), guildID, scheduleID, wipeReactScheduleFromPayload(guildID, payload))
+	if errors.Is(err, store.ErrWipeReactScheduleNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react schedule not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] UpdateWipeReactSchedule error for guild %s schedule %d: %v", guildID, scheduleID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update wipe react schedule")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, wipeReactScheduleToMap(record))
+}
+
+func (h *Handler) DeleteWipeReactSchedule(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	scheduleID, ok := validateScheduleIDParam(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.postgres.DeleteWipeReactSchedule(r.Context(), guildID, scheduleID); errors.Is(err, store.ErrWipeReactScheduleNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react schedule not found")
+		return
+	} else if err != nil {
+		log.Printf("[backend] DeleteWipeReactSchedule error for guild %s schedule %d: %v", guildID, scheduleID, err)
+		writeError(w, http.StatusInternalServerError, "failed to delete wipe react schedule")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
