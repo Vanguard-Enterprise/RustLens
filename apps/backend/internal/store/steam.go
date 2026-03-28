@@ -98,24 +98,27 @@ func (p *PostgresStore) CreateSteamDiscordLink(ctx context.Context, link SteamDi
 		return SteamDiscordLink{}, err
 	}
 
-	tag, err := tx.Exec(ctx, `
+	var created SteamDiscordLink
+	err = tx.QueryRow(ctx, `
 		INSERT INTO steam_discord_links (steam_id, discord_id, type, source)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (steam_id, discord_id, type) DO NOTHING
-	`, link.SteamID, link.DiscordID, link.Type, link.Source)
+		RETURNING steam_id, discord_id, type, source, created_at
+	`, link.SteamID, link.DiscordID, link.Type, link.Source).Scan(
+		&created.SteamID, &created.DiscordID, &created.Type, &created.Source, &created.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return SteamDiscordLink{}, ErrLinkAlreadyExists
+	}
 	if err != nil {
 		return SteamDiscordLink{}, err
-	}
-
-	if tag.RowsAffected() == 0 {
-		return SteamDiscordLink{}, ErrLinkAlreadyExists
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return SteamDiscordLink{}, err
 	}
 
-	return link, nil
+	return created, nil
 }
 
 func (p *PostgresStore) ListLinksBySteamID(ctx context.Context, steamID string) ([]SteamDiscordLink, error) {
