@@ -1,0 +1,692 @@
+import { randomUUID } from "node:crypto";
+import type {
+  ButtonInteraction,
+  ChatInputCommandInteraction,
+  Client,
+  ModalSubmitInteraction,
+} from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
+import {
+  CheckboxGroupBuilder,
+  ModalV2Builder,
+  RadioGroupBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+} from "./builders/index.js";
+
+export const BIND_COMMAND_NAME = "bind";
+
+const BIND_FULLKIT_SUBCOMMAND_NAME = "fullkit";
+const BIND_FULLKIT_STEP_ONE_MODAL_CUSTOM_ID = "bind_fullkit_modal_step_1";
+const BIND_FULLKIT_STEP_TWO_MODAL_PREFIX = "bind_fullkit_modal_step_2:";
+const BIND_FULLKIT_CONTINUE_BUTTON_PREFIX = "bind_fullkit_continue:";
+const BIND_FULLKIT_WEAPON_CUSTOM_ID = "bind_fullkit_weapon";
+const BIND_FULLKIT_ATTACHMENTS_CUSTOM_ID = "bind_fullkit_attatchments";
+const BIND_FULLKIT_AMMO_CUSTOM_ID = "bind_fullkit_ammo";
+const BIND_FULLKIT_AMMO_AMOUNT_CUSTOM_ID = "bind_fullkit_ammo_amount";
+const BIND_FULLKIT_MEDS_AMOUNT_CUSTOM_ID = "bind_fullkit_meds_amount";
+const BIND_FULLKIT_MEDKITS_AMOUNT_CUSTOM_ID = "bind_fullkit_medkits_amount";
+const BIND_FULLKIT_BARRICADES_AMOUNT_CUSTOM_ID = "bind_fullkit_barricades_amount";
+const BIND_FULLKIT_ARMOR_CUSTOM_ID = "bind_fullkit_armor";
+const BIND_FULLKIT_ANYTHING_ELSE_CUSTOM_ID = "bind_fullkit_anything_else";
+const BIND_FULLKIT_BIND_CUSTOM_ID = "bind_fullkit_bind";
+const BIND_FULLKIT_DRAFT_TTL_MS = 15 * 60 * 1000;
+const RUSTLENS_EMBED_COLOR = 14582045;
+const RUSTLENS_EMBED_ICON_URL =
+  "https://i.ibb.co/n8MWVLDN/1ee153f3c14d7decaeb6cb62c28fb5b4.webp";
+
+type ModalComponentNode = {
+  customId?: string;
+  value?: unknown;
+  values?: unknown;
+  component?: ModalComponentNode;
+  components?: ModalComponentNode[];
+};
+
+type BindFullkitDraft = {
+  userId: string;
+  guildId: string | null;
+  weapon: string[];
+  attachments: string[];
+  ammo: string[];
+  ammoAmount: string[];
+  barricadesAmount: string[];
+  createdAt: number;
+};
+
+type CraftableOption = {
+  value: string;
+  label: string;
+  itemIds: number[];
+};
+
+type AmmoOption = CraftableOption & {
+  craftYield: number;
+};
+
+const bindFullkitDrafts = new Map<string, BindFullkitDraft>();
+
+const weaponOptions: readonly CraftableOption[] = [
+  { value: "ak", label: "Assault Rifle", itemIds: [1545779598] },
+  { value: "mp5", label: "MP5A4", itemIds: [1318558775] },
+  { value: "thompson", label: "Thompson", itemIds: [-1758372725] },
+] as const;
+
+const attachmentOptions: readonly CraftableOption[] = [
+  { value: "holo", label: "Holosight", itemIds: [442289265] },
+  { value: "laser", label: "Weapon Lasersight", itemIds: [-132516482] },
+  { value: "extended_mag", label: "Extended Magazine", itemIds: [2005491391] },
+  { value: "flashlight", label: "Weapon Flashlight", itemIds: [952603248] },
+] as const;
+
+const ammoOptions: readonly AmmoOption[] = [
+  { value: "5.56", label: "5.56 Rifle Ammo", itemIds: [-1211166256], craftYield: 3 },
+  {
+    value: "incen",
+    label: "Incendiary 5.56 Rifle Ammo",
+    itemIds: [605467368],
+    craftYield: 2,
+  },
+  {
+    value: "hv",
+    label: "HV 5.56 Rifle Ammo",
+    itemIds: [1712070256],
+    craftYield: 3,
+  },
+] as const;
+
+const armorOptions: readonly CraftableOption[] = [
+  { value: "roadsign", label: "Road Sign", itemIds: [-2002277461] },
+  { value: "metal", label: "Metal", itemIds: [1110385766] },
+  { value: "jacket", label: "Jacket", itemIds: [-1163532624] },
+] as const;
+
+const extraArmorOptions: readonly CraftableOption[] = [
+  { value: "boots", label: "Boots", itemIds: [-1549739227] },
+  { value: "shorts", label: "Shorts", itemIds: [-1695367501] },
+] as const;
+
+const medsItemId = 1079279582;
+const medkitsItemId = 254522515;
+const barricadesItemId = 1373240771;
+const armorBaseItemIds = [-194953424, 1850456855, 1751045826, 237239288] as const;
+const maxMedsPerCraftCommand = 10;
+const maxMedkitsPerCraftCommand = 5;
+
+const bindCommand = new SlashCommandBuilder()
+  .setName(BIND_COMMAND_NAME)
+  .setDescription("RustLens bind commands")
+  .setDMPermission(false)
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(BIND_FULLKIT_SUBCOMMAND_NAME)
+      .setDescription("Open the fullkit bind modal"),
+  );
+
+function buildBindFullkitStartModal() {
+  return new ModalV2Builder()
+    .setTitle("Bind Fullkit")
+    .setCustomId(BIND_FULLKIT_STEP_ONE_MODAL_CUSTOM_ID)
+    .addComponent(
+      "Weapon",
+      new RadioGroupBuilder()
+        .setCustomId(BIND_FULLKIT_WEAPON_CUSTOM_ID)
+        .addOptions(...weaponOptions.map(({ label, value }) => ({ label, value }))),
+    )
+    .addComponent(
+      "Attachments",
+      new CheckboxGroupBuilder()
+        .setCustomId(BIND_FULLKIT_ATTACHMENTS_CUSTOM_ID)
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(4)
+        .addOptions(
+          ...attachmentOptions.map(({ label, value }) => ({ label, value })),
+        ),
+    )
+    .addComponent(
+      "Ammo",
+      new RadioGroupBuilder()
+        .setCustomId(BIND_FULLKIT_AMMO_CUSTOM_ID)
+        .addOptions(...ammoOptions.map(({ label, value }) => ({ label, value }))),
+    )
+    .addComponent(
+      "Amount of Ammo",
+      new TextInputBuilder()
+        .setCustomId(BIND_FULLKIT_AMMO_AMOUNT_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(3)
+        .setPlaceholder("Amount of ammo you want to be crafted"),
+    )
+    .addComponent(
+      "Amount of Barricates",
+      new TextInputBuilder()
+        .setCustomId(BIND_FULLKIT_BARRICADES_AMOUNT_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(2)
+        .setPlaceholder("Amount of barricates you want to be crafted"),
+    );
+}
+
+function buildBindFullkitFinishModal(draftId: string) {
+  return new ModalV2Builder()
+    .setTitle("Bind Fullkit")
+    .setCustomId(`${BIND_FULLKIT_STEP_TWO_MODAL_PREFIX}${draftId}`)
+    .addComponent(
+      "Amount of Medkits",
+      new TextInputBuilder()
+        .setCustomId(BIND_FULLKIT_MEDKITS_AMOUNT_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(2)
+        .setPlaceholder("Amount of medkits you want to be crafted"),
+    )
+    .addComponent(
+      "Amount of Meds",
+      new TextInputBuilder()
+        .setCustomId(BIND_FULLKIT_MEDS_AMOUNT_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(2)
+        .setPlaceholder("Amount of meds you want to be crafted"),
+    )
+    .addComponent(
+      "Armor",
+      new RadioGroupBuilder()
+        .setCustomId(BIND_FULLKIT_ARMOR_CUSTOM_ID)
+        .addOptions(...armorOptions.map(({ label, value }) => ({ label, value }))),
+    )
+    .addComponent(
+      "Anything else?",
+      new CheckboxGroupBuilder()
+        .setCustomId(BIND_FULLKIT_ANYTHING_ELSE_CUSTOM_ID)
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(2)
+        .addOptions(
+          ...extraArmorOptions.map(({ label, value }) => ({ label, value })),
+        ),
+    )
+    .addComponent(
+      "Bind",
+      new TextInputBuilder()
+        .setCustomId(BIND_FULLKIT_BIND_CUSTOM_ID)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(1)
+        .setPlaceholder("Specify a one key to make the bind for"),
+    )
+    ;
+}
+
+function createBindFullkitContinueRow(draftId: string) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${BIND_FULLKIT_CONTINUE_BUTTON_PREFIX}${draftId}`)
+      .setLabel("Step 2")
+      .setEmoji("⚙️")
+      .setStyle(ButtonStyle.Success),
+  );
+}
+
+function pruneExpiredBindFullkitDrafts(now = Date.now()) {
+  for (const [draftId, draft] of bindFullkitDrafts) {
+    if (now - draft.createdAt > BIND_FULLKIT_DRAFT_TTL_MS) {
+      bindFullkitDrafts.delete(draftId);
+    }
+  }
+}
+
+function extractDraftId(customId: string, prefix: string) {
+  if (!customId.startsWith(prefix)) {
+    return null;
+  }
+
+  const draftId = customId.slice(prefix.length);
+  return draftId.length > 0 ? draftId : null;
+}
+
+function normalizeModalFieldValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === "string");
+  }
+
+  if (typeof value === "string") {
+    if (value.length === 0) {
+      return [];
+    }
+
+    return value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+
+  return [];
+}
+
+function extractFieldValues(
+  field: { value?: unknown; values?: unknown } | null | undefined,
+) {
+  if (!field) {
+    return [];
+  }
+
+  if ("values" in field) {
+    return normalizeModalFieldValue(field.values);
+  }
+
+  if ("value" in field) {
+    return normalizeModalFieldValue(field.value);
+  }
+
+  return [];
+}
+
+function extractComponentValues(
+  components: readonly ModalComponentNode[] | undefined,
+  customId: string,
+): string[] {
+  if (!components) {
+    return [];
+  }
+
+  for (const component of components) {
+    if (component.customId === customId) {
+      const values = extractFieldValues(component);
+      if (values.length > 0) {
+        return values;
+      }
+    }
+
+    const nestedComponentValues = extractComponentValues(
+      component.component ? [component.component] : undefined,
+      customId,
+    );
+    if (nestedComponentValues.length > 0) {
+      return nestedComponentValues;
+    }
+
+    const nestedValues = extractComponentValues(component.components, customId);
+    if (nestedValues.length > 0) {
+      return nestedValues;
+    }
+  }
+
+  return [];
+}
+
+function getFieldValues(interaction: ModalSubmitInteraction, customId: string) {
+  try {
+    const accessorField = interaction.fields.getField(customId) as
+      | { value?: unknown; values?: unknown }
+      | null
+      | undefined;
+    const accessorValues = extractFieldValues(accessorField);
+    if (accessorValues.length > 0) {
+      return accessorValues;
+    }
+  } catch {
+    // Fall through to the raw field map and component tree.
+  }
+
+  const mapField = interaction.fields.fields.get(customId) as
+    | { value?: unknown; values?: unknown }
+    | null
+    | undefined;
+  const mapValues = extractFieldValues(mapField);
+  if (mapValues.length > 0) {
+    return mapValues;
+  }
+
+  return extractComponentValues(
+    interaction.components as unknown as readonly ModalComponentNode[],
+    customId,
+  );
+}
+
+function parseWholeNumber(values: string[], label: string) {
+  const value = values[0]?.trim() ?? "";
+  if (!/^\d+$/.test(value)) {
+    return {
+      error: `${label} must be a whole number.`,
+      value: null,
+    } as const;
+  }
+
+  return {
+    error: null,
+    value: Number(value),
+  } as const;
+}
+
+function findOption<T extends { value: string }>(
+  options: readonly T[],
+  selectedValue: string | undefined,
+) {
+  if (!selectedValue) {
+    return null;
+  }
+
+  return options.find((option) => option.value === selectedValue) ?? null;
+}
+
+function buildCraftCommands(
+  draft: Pick<BindFullkitDraft, "weapon" | "attachments" | "ammo" | "ammoAmount">,
+  medsAmount: number,
+  medkitsAmount: number,
+  barricadesAmount: number,
+  armor: string[],
+  anythingElse: string[],
+) {
+  const commands: string[] = [];
+  const addCraft = (itemId: number, amount = 1) => {
+    if (amount <= 0) {
+      return;
+    }
+    commands.push(`craft.add ${itemId} ${amount}`);
+  };
+  const addChunkedCraft = (itemId: number, totalAmount: number, chunkSize: number) => {
+    let remaining = totalAmount;
+    while (remaining > 0) {
+      const amount = Math.min(remaining, chunkSize);
+      addCraft(itemId, amount);
+      remaining -= amount;
+    }
+  };
+
+  const weapon = findOption(weaponOptions, draft.weapon[0]);
+  if (!weapon) {
+    return {
+      commands: [],
+      error: "Select a valid weapon.",
+    } as const;
+  }
+  for (const itemId of weapon.itemIds) {
+    addCraft(itemId);
+  }
+
+  const medsForMedkits = medkitsAmount * 2;
+  addChunkedCraft(medsItemId, medsForMedkits, maxMedsPerCraftCommand);
+  addChunkedCraft(medkitsItemId, medkitsAmount, maxMedkitsPerCraftCommand);
+  addChunkedCraft(medsItemId, medsAmount, maxMedsPerCraftCommand);
+  addCraft(barricadesItemId, barricadesAmount);
+
+  const selectedAttachments = new Set(draft.attachments);
+  for (const option of attachmentOptions) {
+    if (selectedAttachments.has(option.value)) {
+      for (const itemId of option.itemIds) {
+        addCraft(itemId);
+      }
+    }
+  }
+
+  const ammo = findOption(ammoOptions, draft.ammo[0]);
+  if (!ammo) {
+    return {
+      commands: [],
+      error: "Select a valid ammo type.",
+    } as const;
+  }
+  if (ammo.itemIds.length === 0) {
+    return {
+      commands: [],
+      error: `${ammo.label} is not configured yet because its item id is missing.`,
+    } as const;
+  }
+
+  const ammoAmountResult = parseWholeNumber(draft.ammoAmount, "Amount of Ammo");
+  if (ammoAmountResult.error || ammoAmountResult.value === null) {
+    return {
+      commands: [],
+      error: ammoAmountResult.error,
+    } as const;
+  }
+
+  const ammoCraftCount = Math.ceil(ammoAmountResult.value / ammo.craftYield);
+  for (const itemId of ammo.itemIds) {
+    addCraft(itemId, ammoCraftCount);
+  }
+
+  const armorOption = findOption(armorOptions, armor[0]);
+  if (!armorOption) {
+    return {
+      commands: [],
+      error: "Select a valid armor option.",
+    } as const;
+  }
+
+  const selectedExtras = new Set(anythingElse);
+  const includePants = !selectedExtras.has("shorts");
+  for (const itemId of armorBaseItemIds) {
+    if (itemId === 237239288 && !includePants) {
+      continue;
+    }
+    addCraft(itemId);
+  }
+  for (const itemId of armorOption.itemIds) {
+    addCraft(itemId);
+  }
+  for (const option of extraArmorOptions) {
+    if (selectedExtras.has(option.value)) {
+      for (const itemId of option.itemIds) {
+        addCraft(itemId);
+      }
+    }
+  }
+
+  return {
+    commands,
+    error: null,
+  } as const;
+}
+
+function buildBindCommand(key: string, commands: readonly string[]) {
+  return `bind ${key} "${commands.join(";")}"`;
+}
+
+function buildFullkitBindEmbed(command: string) {
+  return {
+    color: RUSTLENS_EMBED_COLOR,
+    title: "Fullkit bind",
+    description: `\`\`\`\n${command}\n\`\`\``,
+    footer: {
+      text: "RustLens",
+      icon_url: RUSTLENS_EMBED_ICON_URL,
+    },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+async function replyEphemeral(
+  interaction: ChatInputCommandInteraction | ModalSubmitInteraction | ButtonInteraction,
+  content: string,
+  components?: ActionRowBuilder<ButtonBuilder>[],
+) {
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply({ content, components: components ?? [] });
+    return;
+  }
+
+  await interaction.reply({
+    content,
+    components,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+export async function ensureBindCommand(client: Client, shardID: number) {
+  if (shardID !== 0 || !client.application) {
+    return;
+  }
+
+  const data = bindCommand.toJSON();
+  const commands = await client.application.commands.fetch();
+  const existing = commands.find((command) => command.name === data.name);
+
+  if (existing) {
+    await client.application.commands.edit(existing.id, data);
+  } else {
+    await client.application.commands.create(data);
+  }
+
+  console.log("[bot] ensured /bind command (global)");
+}
+
+export async function handleBindChatInput(interaction: ChatInputCommandInteraction) {
+  if (interaction.commandName !== BIND_COMMAND_NAME) {
+    return false;
+  }
+
+  if (!interaction.inGuild()) {
+    await replyEphemeral(interaction, "Bind can only be used inside a server.");
+    return true;
+  }
+
+  const subcommand = interaction.options.getSubcommand(false);
+  if (subcommand !== BIND_FULLKIT_SUBCOMMAND_NAME) {
+    await replyEphemeral(
+      interaction,
+      `Unknown /${BIND_COMMAND_NAME} subcommand: ${subcommand}`,
+    );
+    return true;
+  }
+
+  await interaction.showModal(buildBindFullkitStartModal().toJSON() as any);
+  return true;
+}
+
+export async function handleBindButtonInteraction(interaction: ButtonInteraction) {
+  const draftId = extractDraftId(interaction.customId, BIND_FULLKIT_CONTINUE_BUTTON_PREFIX);
+  if (!draftId) {
+    return false;
+  }
+
+  pruneExpiredBindFullkitDrafts();
+
+  const draft = bindFullkitDrafts.get(draftId);
+  if (!draft || draft.userId !== interaction.user.id || draft.guildId !== interaction.guildId) {
+    await replyEphemeral(interaction, "That fullkit bind draft expired. Run /bind fullkit again.");
+    return true;
+  }
+
+  await interaction.showModal(buildBindFullkitFinishModal(draftId).toJSON() as any);
+  return true;
+}
+
+export async function handleBindModalSubmit(interaction: ModalSubmitInteraction) {
+  if (interaction.customId === BIND_FULLKIT_STEP_ONE_MODAL_CUSTOM_ID) {
+    pruneExpiredBindFullkitDrafts();
+
+    const draftId = randomUUID();
+    bindFullkitDrafts.set(draftId, {
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+      weapon: getFieldValues(interaction, BIND_FULLKIT_WEAPON_CUSTOM_ID),
+      attachments: getFieldValues(interaction, BIND_FULLKIT_ATTACHMENTS_CUSTOM_ID),
+      ammo: getFieldValues(interaction, BIND_FULLKIT_AMMO_CUSTOM_ID),
+      ammoAmount: getFieldValues(interaction, BIND_FULLKIT_AMMO_AMOUNT_CUSTOM_ID),
+      barricadesAmount: getFieldValues(interaction, BIND_FULLKIT_BARRICADES_AMOUNT_CUSTOM_ID),
+      createdAt: Date.now(),
+    });
+
+    await replyEphemeral(
+      interaction,
+      "Step 1 saved. Please continue to step to via the button below.",
+      [createBindFullkitContinueRow(draftId)],
+    );
+    return true;
+  }
+
+  const draftId = extractDraftId(interaction.customId, BIND_FULLKIT_STEP_TWO_MODAL_PREFIX);
+  if (!draftId) {
+    return false;
+  }
+
+  pruneExpiredBindFullkitDrafts();
+
+  const draft = bindFullkitDrafts.get(draftId);
+  if (!draft || draft.userId !== interaction.user.id || draft.guildId !== interaction.guildId) {
+    await replyEphemeral(interaction, "That fullkit bind draft expired. Run /bind fullkit again.");
+    return true;
+  }
+
+  bindFullkitDrafts.delete(draftId);
+
+  const medsAmountResult = parseWholeNumber(
+    getFieldValues(interaction, BIND_FULLKIT_MEDS_AMOUNT_CUSTOM_ID),
+    "Amount of Meds",
+  );
+  if (medsAmountResult.error || medsAmountResult.value === null) {
+    await replyEphemeral(interaction, medsAmountResult.error ?? "Invalid meds amount.");
+    return true;
+  }
+
+  const medkitsAmountResult = parseWholeNumber(
+    getFieldValues(interaction, BIND_FULLKIT_MEDKITS_AMOUNT_CUSTOM_ID),
+    "Amount of Medkits",
+  );
+  if (medkitsAmountResult.error || medkitsAmountResult.value === null) {
+    await replyEphemeral(interaction, medkitsAmountResult.error ?? "Invalid medkits amount.");
+    return true;
+  }
+
+  const barricadesAmountResult = parseWholeNumber(
+    draft.barricadesAmount,
+    "Amount of Barricates",
+  );
+  if (barricadesAmountResult.error || barricadesAmountResult.value === null) {
+    await replyEphemeral(interaction, barricadesAmountResult.error ?? "Invalid barricades amount.");
+    return true;
+  }
+
+  const armorValues = getFieldValues(interaction, BIND_FULLKIT_ARMOR_CUSTOM_ID);
+  const anythingElseValues = getFieldValues(
+    interaction,
+    BIND_FULLKIT_ANYTHING_ELSE_CUSTOM_ID,
+  );
+  const bindKey = getFieldValues(interaction, BIND_FULLKIT_BIND_CUSTOM_ID)[0]?.trim() ?? "";
+  if (bindKey.length === 0) {
+    await replyEphemeral(interaction, "Bind is required.");
+    return true;
+  }
+
+  const craftCommands = buildCraftCommands(
+    draft,
+    medsAmountResult.value,
+    medkitsAmountResult.value,
+    barricadesAmountResult.value,
+    armorValues,
+    anythingElseValues,
+  );
+  if (craftCommands.error) {
+    await replyEphemeral(interaction, craftCommands.error);
+    return true;
+  }
+
+  const bindCommand = buildBindCommand(bindKey, craftCommands.commands);
+
+  await interaction.reply({
+    embeds: [buildFullkitBindEmbed(bindCommand)],
+  });
+
+  return true;
+}
+
+export const __testables = {
+  buildBindCommand,
+  buildCraftCommands,
+  buildBindFullkitFinishModal,
+  buildBindFullkitStartModal,
+  buildFullkitBindEmbed,
+  extractDraftId,
+  parseWholeNumber,
+};

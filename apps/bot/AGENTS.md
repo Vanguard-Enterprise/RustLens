@@ -22,13 +22,14 @@ src/
   backend-client.ts     # HTTP client for backend shard API (JWT auth)
   config.ts             # Env config loader
   setup-command.ts      # /setup start command registration + modal flow
+  bind-command.ts       # /bind fullkit registration + modal flow
   builders/             # Custom v2 modal component builders
 ```
 
 Current command flow:
 - `/setup start` opens a v2 modal with checkbox groups for roles and channels to create.
 - After modal submit, setup edits the deferred ephemeral reply into a text progress bar instead of leaving Discord's default "thinking" state visible.
-- The setup modal includes an `All` option in both checkbox groups. The `Bot` role is not shown in the modal — it is always created automatically when any role is selected. Role setup includes a hoisted soft-blue `Bot` role between `Co Leader` and `member`, assigned to the RustLens bot plus other bot members (fetched via `guild.members.fetch()` with cache fallback).
+- The setup modal includes an `All` option in both checkbox groups. The `Bot` role is not shown in the modal — it is always created automatically when any role is selected. Role setup includes a hoisted soft-blue `Bot` role between `Co Leader` and `member`, assigned to the RustLens bot.
 - Builder-only channels (`#build`, `builder call`) are skipped automatically when the `Builder` role is not selected.
 - Channel setup includes `#wipe log` at the bottom of `Important` when announcements or wipe react channels are requested, supports an `Invite` modal option that creates `#press for invite`, and creates an `afk` voice channel at the bottom of `Voice Channels` while setting the guild AFK channel and Discord's nearest supported AFK timeout of 15 minutes.
 - `/admin reset_setup` clears persisted setup state and removes roles and channels created by setup.
@@ -39,6 +40,7 @@ Current command flow:
 - Channel setup only bootstraps from a fresh guild with exactly one existing channel, and `/setup start` must be run from that channel because setup renames and deletes it after creating the new layout.
 - When channel setup creates `#join`, the bot also tries to set it as the guild system channel and unsuppress Discord join notifications so member join messages land there.
 - `/admin reset_setup` sends a summary reply after deletion, silently catching reply failures when the command channel was deleted during reset.
+- `/bind fullkit` uses a two-step v2 modal flow because Discord modals are limited to five top-level components. Step 1 collects Weapon, Attachments, Ammo, ammo amount, and `Amount of Barricates`; step 2 collects medkits amount, meds amount, Armor, Anything else, and `Bind` as the final field. The text-field character caps are ammo `3`, meds `2`, medkits `2`, barricades `2`, and `Bind` `1`. Submitting the second step posts a non-ephemeral embed with the generated bind command. The bind output uses `craft.add {id} {amount}` batching, keeps the order weapon -> meds -> medkits -> barricade -> attachments -> ammo -> armor, splits meds into commands of at most `10` and medkits into commands of at most `5`, crafts the meds required for medkits before the medkits themselves, then crafts the user-requested meds, and crafts barricades with item id `1373240771`. HV ammo uses item id `1712070256`. Armor always crafts `-194953424`, `1850456855`, `1751045826`, and `237239288`, except `Shorts` swaps out `237239288` for `-1695367501`; the armor selection adds `-2002277461` for `Road Sign`, `1110385766` for `Metal`, or `-1163532624` for `Jacket`, and `Boots` adds `-1549739227`.
 
 ## Custom V2 Modal Builders
 

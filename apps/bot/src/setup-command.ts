@@ -739,7 +739,7 @@ function buildSetupPlan(
 
   if (channelKeys.includes("voice_calls")) {
     channels.push({
-      name: "public vc",
+      name: "public",
       type: ChannelType.GuildVoice,
       permissionOverwrites: memberVoiceOverwrites,
     });
@@ -855,7 +855,7 @@ function getTargetChannelNames(
   }
 
   if (channelKeys.includes("voice_calls")) {
-    names.push("public vc", "Voice Channels", "private vc", "afk");
+    names.push("public", "Voice Channels", "private vc", "afk");
     if (hasBuilderRole) {
       names.push("builder call");
     }
@@ -987,33 +987,6 @@ async function createSetupRoles(guild: Guild, roleKeys: SetupRoleKey[], actorTag
     const botRole = createdRoles.find((role) => role.name === roleConfigByKey.get("bot")?.roleName);
     if (botRole) {
       await me.roles.add(botRole, `RustLens setup by ${actorTag}`);
-
-      // Best-effort: fetch all members to discover other bots. This
-      // requires the GuildMembers intent; if unavailable, we fall back
-      // to the cache which may only contain the bot itself.
-      let members = guild.members.cache;
-      try {
-        members = (await guild.members.fetch()).filter(
-          (member) => member.user.bot && member.id !== me.id,
-        );
-      } catch {
-        members = guild.members.cache.filter(
-          (member) => member.user.bot && member.id !== me.id,
-        );
-      }
-
-      await Promise.allSettled(
-        members.map((member) =>
-          member.roles
-            .add(botRole, `RustLens setup by ${actorTag}`)
-            .catch((error) => {
-              console.error(
-                `[bot] failed to assign Bot role to ${member.user.tag}`,
-                error,
-              );
-            }),
-        ),
-      );
     }
 
     return createdRoles;

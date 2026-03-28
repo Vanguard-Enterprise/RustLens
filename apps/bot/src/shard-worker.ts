@@ -1,5 +1,11 @@
 import { Client, GatewayIntentBits, MessageFlags } from "discord.js";
 import {
+  ensureBindCommand,
+  handleBindButtonInteraction,
+  handleBindChatInput,
+  handleBindModalSubmit,
+} from "./bind-command.js";
+import {
   ensureSetupCommand,
   handleAdminChatInput,
   handleSetupChatInput,
@@ -23,7 +29,10 @@ const client = new Client({
 client.once("clientReady", () => {
   console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);
 
-  ensureSetupCommand(client, shardID).catch((error) => {
+  Promise.all([
+    ensureSetupCommand(client, shardID),
+    ensureBindCommand(client, shardID),
+  ]).catch((error) => {
     console.error("[bot] command registration failed", error);
   });
 });
@@ -44,12 +53,25 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleBindChatInput(interaction)) {
+        return;
+      }
+
       await handleSetupChatInput(interaction);
       return;
     }
 
     if (interaction.isModalSubmit()) {
+      if (await handleBindModalSubmit(interaction)) {
+        return;
+      }
+
       await handleSetupModalSubmit(interaction);
+      return;
+    }
+
+    if (interaction.isButton()) {
+      await handleBindButtonInteraction(interaction);
     }
   } catch (error) {
     console.error("[bot] interaction handling failed", error);
@@ -58,11 +80,11 @@ client.on("interactionCreate", async (interaction) => {
       try {
         if (interaction.deferred || interaction.replied) {
           await interaction.editReply({
-            content: "Setup interaction failed.",
+            content: "Bot interaction failed.",
           });
         } else {
           await interaction.reply({
-            content: "Setup interaction failed.",
+            content: "Bot interaction failed.",
             flags: MessageFlags.Ephemeral,
           });
         }
