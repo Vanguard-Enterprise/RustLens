@@ -20,6 +20,11 @@ export type GuildSetupState = {
   selectedChannels: string[];
 };
 
+export type GuildSettings = {
+  guildId: string;
+  logChannelId: string;
+};
+
 type ClaimGuildSetupResponse = GuildSetupState & {
   claimed: boolean;
 };
@@ -112,5 +117,18 @@ export class BackendClient {
 
   resetGuildSetup(workerId: string, guildId: string) {
     return this.call<{ status: string }>(workerId, `/api/internal/bot/setup/guilds/${guildId}/reset`, "POST");
+  }
+
+  guildSettings(workerId: string, guildId: string) {
+    return this.call<GuildSettings>(workerId, `/api/internal/bot/setup/guilds/${guildId}/settings`, "GET");
+  }
+
+  setGuildLogChannel(workerId: string, guildId: string, logChannelId: string) {
+    return this.call<GuildSettings>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/settings/log-channel`,
+      "POST",
+      { logChannelId },
+    );
   }
 }

@@ -11,6 +11,13 @@ import {
   handleSetupChatInput,
   handleSetupModalSubmit,
 } from "./setup-command.js";
+import {
+  ensureWipeReactCommand,
+  handleWipeReactAutocomplete,
+  handleWipeReactButtonInteraction,
+  handleWipeReactChatInput,
+  handleWipeReactModalSubmit,
+} from "./wipereact-command.js";
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
 const shardCount = Number(process.env.SHARD_COUNT ?? "1");
@@ -32,6 +39,7 @@ client.once("clientReady", () => {
   Promise.all([
     ensureSetupCommand(client, shardID),
     ensureBindCommand(client, shardID),
+    ensureWipeReactCommand(client, shardID),
   ]).catch((error) => {
     console.error("[bot] command registration failed", error);
   });
@@ -48,12 +56,22 @@ function isIgnorableInteractionReplyError(error: unknown) {
 
 client.on("interactionCreate", async (interaction) => {
   try {
+    if (interaction.isAutocomplete()) {
+      if (await handleWipeReactAutocomplete(interaction)) {
+        return;
+      }
+    }
+
     if (interaction.isChatInputCommand()) {
       if (await handleAdminChatInput(interaction)) {
         return;
       }
 
       if (await handleBindChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleWipeReactChatInput(interaction)) {
         return;
       }
 
@@ -66,12 +84,20 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleWipeReactModalSubmit(interaction)) {
+        return;
+      }
+
       await handleSetupModalSubmit(interaction);
       return;
     }
 
     if (interaction.isButton()) {
-      await handleBindButtonInteraction(interaction);
+      if (await handleBindButtonInteraction(interaction)) {
+        return;
+      }
+
+      await handleWipeReactButtonInteraction(interaction);
     }
   } catch (error) {
     console.error("[bot] interaction handling failed", error);

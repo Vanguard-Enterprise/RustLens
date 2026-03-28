@@ -53,6 +53,8 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Post("/guilds/{guildID}/claim", handler.ClaimGuildSetup)
 		r.Post("/guilds/{guildID}/complete", handler.CompleteGuildSetup)
 		r.Post("/guilds/{guildID}/reset", handler.ResetGuildSetup)
+		r.Get("/guilds/{guildID}/settings", handler.GetGuildSettings)
+		r.Post("/guilds/{guildID}/settings/log-channel", handler.SetGuildLogChannel)
 	})
 
 	return r

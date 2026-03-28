@@ -21,6 +21,11 @@ type GuildSetupState struct {
 	SelectedChannels []string
 }
 
+type GuildSettings struct {
+	GuildID      string
+	LogChannelID string
+}
+
 func NewPostgresStore(ctx context.Context, connectionString string) (*PostgresStore, error) {
 	pool, err := pgxpool.New(ctx, connectionString)
 	if err != nil {
@@ -59,6 +64,13 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			configured_by TEXT NOT NULL DEFAULT '',
 			selected_roles JSONB NOT NULL DEFAULT '[]'::jsonb,
 			selected_channels JSONB NOT NULL DEFAULT '[]'::jsonb,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS guild_settings (
+			guild_id TEXT PRIMARY KEY,
+			log_channel_id TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
@@ -193,4 +205,46 @@ func (p *PostgresStore) ResetGuildSetup(ctx context.Context, guildID string) err
 	`, guildID)
 
 	return err
+}
+
+func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (GuildSettings, error) {
+	var logChannelID string
+
+	err := p.pool.QueryRow(ctx, `
+		SELECT log_channel_id
+		FROM guild_settings
+		WHERE guild_id = $1
+	`, guildID).Scan(&logChannelID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return GuildSettings{
+			GuildID:      guildID,
+			LogChannelID: "",
+		}, nil
+	}
+	if err != nil {
+		return GuildSettings{}, err
+	}
+
+	return GuildSettings{
+		GuildID:      guildID,
+		LogChannelID: logChannelID,
+	}, nil
+}
+
+func (p *PostgresStore) SetGuildLogChannel(ctx context.Context, guildID string, logChannelID string) (GuildSettings, error) {
+	_, err := p.pool.Exec(ctx, `
+		INSERT INTO guild_settings (guild_id, log_channel_id)
+		VALUES ($1, $2)
+		ON CONFLICT (guild_id) DO UPDATE
+		SET log_channel_id = EXCLUDED.log_channel_id,
+			updated_at = NOW()
+	`, guildID, logChannelID)
+	if err != nil {
+		return GuildSettings{}, err
+	}
+
+	return GuildSettings{
+		GuildID:      guildID,
+		LogChannelID: logChannelID,
+	}, nil
 }

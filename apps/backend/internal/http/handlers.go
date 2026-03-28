@@ -204,6 +204,13 @@ func writeGuildSetupState(w http.ResponseWriter, state store.GuildSetupState) {
 	})
 }
 
+func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"guildId":      settings.GuildID,
+		"logChannelId": settings.LogChannelID,
+	})
+}
+
 func (h *Handler) GetGuildSetupState(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateGuildID(w, r)
 	if !ok {
@@ -299,6 +306,57 @@ func (h *Handler) ResetGuildSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
+func (h *Handler) GetGuildSettings(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	settings, err := h.postgres.GetGuildSettings(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] GetGuildSettings error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild settings")
+		return
+	}
+
+	writeGuildSettings(w, settings)
+}
+
+type setGuildLogChannelRequest struct {
+	LogChannelID string `json:"logChannelId"`
+}
+
+func (h *Handler) SetGuildLogChannel(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	var request setGuildLogChannelRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if request.LogChannelID == "" {
+		writeError(w, http.StatusBadRequest, "logChannelId is required")
+		return
+	}
+	if !snowflakePattern.MatchString(request.LogChannelID) {
+		writeError(w, http.StatusBadRequest, "logChannelId must be a valid Discord snowflake")
+		return
+	}
+
+	settings, err := h.postgres.SetGuildLogChannel(r.Context(), guildID, request.LogChannelID)
+	if err != nil {
+		log.Printf("[backend] SetGuildLogChannel error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to save guild log channel")
+		return
+	}
+
+	writeGuildSettings(w, settings)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

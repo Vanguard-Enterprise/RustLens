@@ -276,6 +276,70 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}/settings": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get guild settings",
+					"description": "Returns persisted guild bot settings such as the logs channel.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild settings returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSettings"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/settings/log-channel": map[string]any{
+				"post": map[string]any{
+					"summary":     "Set guild logs channel",
+					"description": "Stores the logs channel used by wipe reacts and related bot logs.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/SetGuildLogChannelRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild settings updated",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSettings"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"securitySchemes": map[string]any{
@@ -414,6 +478,23 @@ func buildOpenAPIDocument() map[string]any {
 						},
 					},
 					"required": []string{"configuredBy", "selectedRoles", "selectedChannels"},
+				},
+				"GuildSettings": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId": map[string]any{"type": "string"},
+						"logChannelId": map[string]any{
+							"type": "string",
+						},
+					},
+					"required": []string{"guildId", "logChannelId"},
+				},
+				"SetGuildLogChannelRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"logChannelId": map[string]any{"type": "string"},
+					},
+					"required": []string{"logChannelId"},
 				},
 				"ErrorResponse": map[string]any{
 					"type": "object",
