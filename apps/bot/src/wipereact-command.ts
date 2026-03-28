@@ -1024,19 +1024,21 @@ function buildScheduleConfirmEmbed(config: ScheduleWipeReactConfig) {
   };
 }
 
-function createScheduleConfirmButtons(draftId: string) {
+function createScheduleConfirmButtons(draftId: string, disabled = false) {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`${WIPEREACT_SCHEDULE_CONFIRM_BUTTON_PREFIX}${draftId}`)
         .setLabel("Confirm")
         .setEmoji("✅")
-        .setStyle(ButtonStyle.Success),
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(disabled),
       new ButtonBuilder()
         .setCustomId(`${WIPEREACT_SCHEDULE_DENY_BUTTON_PREFIX}${draftId}`)
         .setLabel("Cancel")
         .setEmoji("❌")
-        .setStyle(ButtonStyle.Danger),
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(disabled),
     ),
   ];
 }
@@ -2122,7 +2124,9 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
     }
 
     scheduleDrafts.delete(draftId);
-    await deferEphemeral(interaction);
+    await interaction.update({
+      components: createScheduleConfirmButtons(draftId, true),
+    });
 
     try {
       if (draft.editScheduleId !== null) {
@@ -2132,22 +2136,34 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
           draft.editScheduleId,
           buildSchedulePayload(draft.config, interaction.user.id),
         );
-        await replyEphemeral(interaction, `Schedule updated (ID: ${draft.editScheduleId}).`);
+        await interaction.followUp({
+          content: `Schedule updated (ID: ${draft.editScheduleId}).`,
+          flags: MessageFlags.Ephemeral,
+        });
       } else {
         const schedule = await getBackend().createWipeReactSchedule(
           getWipeReactWorkerID(),
           draft.guildId,
           buildSchedulePayload(draft.config, interaction.user.id),
         );
-        await replyEphemeral(interaction, `Schedule created (ID: ${schedule.id}).`);
+        await interaction.followUp({
+          content: `Schedule created (ID: ${schedule.id}).`,
+          flags: MessageFlags.Ephemeral,
+        });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("409")) {
-        await replyEphemeral(interaction, "You can only have up to 3 schedules per server.");
+        await interaction.followUp({
+          content: "You can only have up to 3 schedules per server.",
+          flags: MessageFlags.Ephemeral,
+        });
         return true;
       }
-      await replyEphemeral(interaction, "Failed to save the schedule. Please try again.");
+      await interaction.followUp({
+        content: "Failed to save the schedule. Please try again.",
+        flags: MessageFlags.Ephemeral,
+      });
     }
     return true;
   }
@@ -2155,7 +2171,13 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
   if (interaction.customId.startsWith(WIPEREACT_SCHEDULE_DENY_BUTTON_PREFIX)) {
     const draftId = interaction.customId.slice(WIPEREACT_SCHEDULE_DENY_BUTTON_PREFIX.length);
     scheduleDrafts.delete(draftId);
-    await replyEphemeral(interaction, "Schedule cancelled.");
+    await interaction.update({
+      components: createScheduleConfirmButtons(draftId, true),
+    });
+    await interaction.followUp({
+      content: "Schedule cancelled.",
+      flags: MessageFlags.Ephemeral,
+    });
     return true;
   }
 
