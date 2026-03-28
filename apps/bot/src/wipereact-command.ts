@@ -1635,7 +1635,7 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
 
   const subcommandGroup = interaction.options.getSubcommandGroup(false);
   const subcommand = interaction.options.getSubcommand(false);
-  if (subcommand === WIPEREACT_CREATE_SUBCOMMAND_NAME) {
+  if (!subcommandGroup && subcommand === WIPEREACT_CREATE_SUBCOMMAND_NAME) {
     const logsChannel = await resolveLogsChannel(interaction);
     if (!logsChannel) {
       await replyEphemeral(
