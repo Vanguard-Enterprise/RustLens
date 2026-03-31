@@ -598,6 +598,218 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/steam/{steamID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get steam account",
+					"description": "Returns a steam account by Steam ID.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "steamID",
+							"in":          "path",
+							"required":    true,
+							"description": "17-digit Steam ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Steam account returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamAccount"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/{steamID}/links": map[string]any{
+				"get": map[string]any{
+					"summary":     "List links by Steam ID",
+					"description": "Returns all discord links for a steam account.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "steamID",
+							"in":          "path",
+							"required":    true,
+							"description": "17-digit Steam ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/by-bm/{bmID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get steam account by BattleMetrics ID",
+					"description": "Returns a steam account looked up by its BattleMetrics player ID.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "bmID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics player ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Steam account returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamAccount"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/links": map[string]any{
+				"post": map[string]any{
+					"summary":     "Create soft link",
+					"description": "Creates a soft steam-discord link. Auto-creates the steam account if needed.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateSoftLinkRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Soft link created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamDiscordLink"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"409": map[string]any{
+							"description": "Soft link already exists",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
+								},
+							},
+						},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/bulk-hard-links": map[string]any{
+				"post": map[string]any{
+					"summary":     "Bulk upsert hard links",
+					"description": "Creates or updates multiple hard steam-discord links in a single transaction.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/BulkHardLinksRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Hard links upserted",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/BulkHardLinksResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/{steamID}/links/{discordID}/soft": map[string]any{
+				"delete": map[string]any{
+					"summary":     "Delete soft link",
+					"description": "Deletes a soft link between a steam account and a discord user.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "steamID",
+							"in":          "path",
+							"required":    true,
+							"description": "17-digit Steam ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Soft link deleted",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/discord/{discordID}/links": map[string]any{
+				"get": map[string]any{
+					"summary":     "List links by Discord ID",
+					"description": "Returns all steam links for a discord user.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"securitySchemes": map[string]any{
@@ -618,6 +830,14 @@ func buildOpenAPIDocument() map[string]any {
 				},
 				"Unauthorized": map[string]any{
 					"description": "Unauthorized",
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
+						},
+					},
+				},
+				"NotFound": map[string]any{
+					"description": "Not found",
 					"content": map[string]any{
 						"application/json": map[string]any{
 							"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
@@ -822,6 +1042,73 @@ func buildOpenAPIDocument() map[string]any {
 						"wipeReact":   map[string]any{"$ref": "#/components/schemas/WipeReact"},
 					},
 					"required": []string{"changed", "wipeReact"},
+				},
+				"SteamAccount": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steamId":     map[string]any{"type": "string"},
+						"bmId":        map[string]any{"type": "string", "nullable": true},
+						"avatarImage": map[string]any{"type": "string"},
+						"createdAt":   map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"steamId", "bmId", "avatarImage", "createdAt"},
+				},
+				"SteamDiscordLink": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steamId":   map[string]any{"type": "string"},
+						"discordId": map[string]any{"type": "string"},
+						"type":      map[string]any{"type": "string", "enum": []string{"soft", "hard"}},
+						"source":    map[string]any{"type": "string"},
+						"createdAt": map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"steamId", "discordId", "type", "source", "createdAt"},
+				},
+				"SteamDiscordLinkList": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/SteamDiscordLink"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"CreateSoftLinkRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steamId":   map[string]any{"type": "string"},
+						"discordId": map[string]any{"type": "string"},
+						"source":    map[string]any{"type": "string"},
+					},
+					"required": []string{"steamId", "discordId", "source"},
+				},
+				"BulkHardLinksRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"links": map[string]any{
+							"type": "array",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"steamId":   map[string]any{"type": "string"},
+									"bmId":      map[string]any{"type": "string", "nullable": true},
+									"discordId": map[string]any{"type": "string"},
+									"source":    map[string]any{"type": "string"},
+								},
+								"required": []string{"steamId", "discordId", "source"},
+							},
+						},
+					},
+					"required": []string{"links"},
+				},
+				"BulkHardLinksResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"status": map[string]any{"type": "string"},
+						"count":  map[string]any{"type": "integer"},
+					},
+					"required": []string{"status", "count"},
 				},
 				"ErrorResponse": map[string]any{
 					"type": "object",

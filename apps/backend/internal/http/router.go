@@ -39,16 +39,6 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 	r.Get("/api/docs/openapi.json", handler.OpenAPISpec)
 	r.Get("/api/healthz", handler.Healthz)
 
-	r.Route("/api/users", func(r chi.Router) {
-		r.Get("/steam/by-bm/{bmID}", handler.GetSteamAccountByBmID)
-		r.Post("/steam/links", handler.CreateSoftLink)
-		r.Post("/steam/bulk-hard-links", handler.BulkUpsertHardLinks)
-		r.Get("/steam/{steamID}", handler.GetSteamAccount)
-		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
-		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
-		r.Get("/discord/{discordID}/links", handler.ListLinksByDiscordID)
-	})
-
 	r.Route("/api/internal/bot/shards", func(r chi.Router) {
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Post("/register", handler.RegisterShardWorker)
