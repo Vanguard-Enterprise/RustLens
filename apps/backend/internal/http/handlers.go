@@ -1261,6 +1261,140 @@ func (h *Handler) DeleteSoftLink(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+func guildSteamDiscordLinkToMap(link store.GuildSteamDiscordLink) map[string]any {
+	return map[string]any{
+		"guildId":   link.GuildID,
+		"discordId": link.DiscordID,
+		"steamId":   link.SteamID,
+		"createdAt": link.CreatedAt,
+	}
+}
+
+func writeGuildSteamDiscordLinkList(w http.ResponseWriter, links []store.GuildSteamDiscordLink) {
+	items := make([]map[string]any, 0, len(links))
+	for _, link := range links {
+		items = append(items, guildSteamDiscordLinkToMap(link))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+type createGuildLinkRequest struct {
+	DiscordID string `json:"discordId"`
+	SteamID   string `json:"steamId"`
+}
+
+func (h *Handler) CreateGuildSteamDiscordLink(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request createGuildLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if !validateSnowflakeValue(request.DiscordID) {
+		writeError(w, http.StatusBadRequest, "discordId must be a valid Discord snowflake")
+		return
+	}
+	if request.SteamID == "" || !steamIDPattern.MatchString(request.SteamID) {
+		writeError(w, http.StatusBadRequest, "steamId must be a 17-digit number")
+		return
+	}
+
+	link, err := h.postgres.CreateGuildSteamDiscordLink(r.Context(), guildID, request.DiscordID, request.SteamID)
+	if errors.Is(err, store.ErrLinkAlreadyExists) {
+		writeError(w, http.StatusConflict, "guild link already exists")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] CreateGuildSteamDiscordLink error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to create guild link")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, guildSteamDiscordLinkToMap(link))
+}
+
+func (h *Handler) ListGuildLinksByDiscord(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	links, err := h.postgres.ListGuildLinksByGuildAndDiscord(r.Context(), guildID, discordID)
+	if err != nil {
+		log.Printf("[backend] ListGuildLinksByDiscord error for %s/%s: %v", guildID, discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild links")
+		return
+	}
+
+	writeGuildSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) ListGuildLinksBySteam(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	links, err := h.postgres.ListGuildLinksByGuildAndSteam(r.Context(), guildID, steamID)
+	if err != nil {
+		log.Printf("[backend] ListGuildLinksBySteam error for %s/%s: %v", guildID, steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild links")
+		return
+	}
+
+	writeGuildSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) DeleteGuildSteamDiscordLink(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	err := h.postgres.DeleteGuildSteamDiscordLink(r.Context(), guildID, discordID, steamID)
+	if errors.Is(err, store.ErrGuildLinkNotFound) {
+		writeError(w, http.StatusNotFound, "guild link not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] DeleteGuildSteamDiscordLink error for %s/%s/%s: %v", guildID, discordID, steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to delete guild link")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }

@@ -145,6 +145,20 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS steam_discord_links_discord_idx
 		ON steam_discord_links (discord_id);
+
+		CREATE TABLE IF NOT EXISTS guild_steam_discord_links (
+			guild_id TEXT NOT NULL,
+			discord_id TEXT NOT NULL,
+			steam_id TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (guild_id, discord_id, steam_id)
+		);
+
+		CREATE INDEX IF NOT EXISTS guild_steam_discord_links_guild_discord_idx
+		ON guild_steam_discord_links (guild_id, discord_id);
+
+		CREATE INDEX IF NOT EXISTS guild_steam_discord_links_guild_steam_idx
+		ON guild_steam_discord_links (guild_id, steam_id);
 	`)
 	return err
 }

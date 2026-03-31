@@ -129,6 +129,23 @@ Maps Steam accounts to Discord users. A pair can have both soft and hard links.
 - **soft** — user self-reported, unverified. Admins can delete.
 - **hard** — from trusted source (BattleMetrics), authoritatively verified. Cannot be deleted via API.
 
+### `guild_steam_discord_links`
+
+Guild-scoped Steam-Discord associations managed by guild admins.
+
+| Column | Type | Notes |
+|---|---|---|
+| `guild_id` | `TEXT NOT NULL` | Discord guild snowflake |
+| `discord_id` | `TEXT NOT NULL` | Discord user snowflake |
+| `steam_id` | `TEXT NOT NULL` | 17-digit Steam ID |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**PK**: `(guild_id, discord_id, steam_id)`.
+
+**Indexes**:
+- `guild_steam_discord_links_guild_discord_idx ON (guild_id, discord_id)` — lookup by guild + Discord user.
+- `guild_steam_discord_links_guild_steam_idx ON (guild_id, steam_id)` — lookup by guild + Steam account.
+
 ## OpenAPI
 
 The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go map literal. **When adding, modifying, or removing any HTTP endpoint, always update the OpenAPI document to match.** This includes adding path entries, request/response schemas, and keeping parameter descriptions accurate. The spec is served at `/api/docs/openapi.json` and powers the interactive docs at `/api/docs`.

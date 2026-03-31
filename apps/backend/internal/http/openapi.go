@@ -810,6 +810,163 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}/links": map[string]any{
+				"post": map[string]any{
+					"summary":     "Create guild steam-discord link",
+					"description": "Creates a guild-scoped link between a Discord user and a Steam account.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateGuildLinkRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Guild link created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLink"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"409": map[string]any{
+							"description": "Link already exists",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
+								},
+							},
+						},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/discord/{discordID}/links": map[string]any{
+				"get": map[string]any{
+					"summary":     "List guild links by Discord ID",
+					"description": "Returns all guild-scoped steam links for a Discord user.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/steam/{steamID}/links": map[string]any{
+				"get": map[string]any{
+					"summary":     "List guild links by Steam ID",
+					"description": "Returns all guild-scoped discord links for a Steam account.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "steamID",
+							"in":          "path",
+							"required":    true,
+							"description": "17-digit Steam ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/discord/{discordID}/steam/{steamID}": map[string]any{
+				"delete": map[string]any{
+					"summary":     "Delete guild steam-discord link",
+					"description": "Deletes a guild-scoped link between a Discord user and a Steam account.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "steamID",
+							"in":          "path",
+							"required":    true,
+							"description": "17-digit Steam ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild link deleted",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"securitySchemes": map[string]any{
@@ -1109,6 +1266,34 @@ func buildOpenAPIDocument() map[string]any {
 						"count":  map[string]any{"type": "integer"},
 					},
 					"required": []string{"status", "count"},
+				},
+				"GuildSteamDiscordLink": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId":   map[string]any{"type": "string"},
+						"discordId": map[string]any{"type": "string"},
+						"steamId":   map[string]any{"type": "string"},
+						"createdAt": map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"guildId", "discordId", "steamId", "createdAt"},
+				},
+				"GuildSteamDiscordLinkList": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLink"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"CreateGuildLinkRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"discordId": map[string]any{"type": "string"},
+						"steamId":   map[string]any{"type": "string"},
+					},
+					"required": []string{"discordId", "steamId"},
 				},
 				"ErrorResponse": map[string]any{
 					"type": "object",

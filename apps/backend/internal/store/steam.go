@@ -10,6 +10,7 @@ import (
 
 var ErrSteamAccountNotFound = errors.New("steam account not found")
 var ErrLinkAlreadyExists = errors.New("steam discord link already exists")
+var ErrGuildLinkNotFound = errors.New("guild steam discord link not found")
 
 type SteamAccount struct {
 	SteamID     string
@@ -222,4 +223,97 @@ func (p *PostgresStore) BulkUpsertHardLinks(ctx context.Context, links []BulkHar
 	}
 
 	return tx.Commit(ctx)
+}
+
+type GuildSteamDiscordLink struct {
+	GuildID   string
+	DiscordID string
+	SteamID   string
+	CreatedAt time.Time
+}
+
+func scanGuildSteamDiscordLink(scanner rowScanner) (GuildSteamDiscordLink, error) {
+	var record GuildSteamDiscordLink
+	err := scanner.Scan(&record.GuildID, &record.DiscordID, &record.SteamID, &record.CreatedAt)
+	if err != nil {
+		return GuildSteamDiscordLink{}, err
+	}
+	return record, nil
+}
+
+func (p *PostgresStore) CreateGuildSteamDiscordLink(ctx context.Context, guildID, discordID, steamID string) (GuildSteamDiscordLink, error) {
+	var record GuildSteamDiscordLink
+	err := p.pool.QueryRow(ctx, `
+		INSERT INTO guild_steam_discord_links (guild_id, discord_id, steam_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (guild_id, discord_id, steam_id) DO NOTHING
+		RETURNING guild_id, discord_id, steam_id, created_at
+	`, guildID, discordID, steamID).Scan(&record.GuildID, &record.DiscordID, &record.SteamID, &record.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return GuildSteamDiscordLink{}, ErrLinkAlreadyExists
+	}
+	if err != nil {
+		return GuildSteamDiscordLink{}, err
+	}
+	return record, nil
+}
+
+func (p *PostgresStore) ListGuildLinksByGuildAndDiscord(ctx context.Context, guildID, discordID string) ([]GuildSteamDiscordLink, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT guild_id, discord_id, steam_id, created_at
+		FROM guild_steam_discord_links
+		WHERE guild_id = $1 AND discord_id = $2
+		ORDER BY created_at ASC
+	`, guildID, discordID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]GuildSteamDiscordLink, 0)
+	for rows.Next() {
+		record, err := scanGuildSteamDiscordLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (p *PostgresStore) ListGuildLinksByGuildAndSteam(ctx context.Context, guildID, steamID string) ([]GuildSteamDiscordLink, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT guild_id, discord_id, steam_id, created_at
+		FROM guild_steam_discord_links
+		WHERE guild_id = $1 AND steam_id = $2
+		ORDER BY created_at ASC
+	`, guildID, steamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]GuildSteamDiscordLink, 0)
+	for rows.Next() {
+		record, err := scanGuildSteamDiscordLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (p *PostgresStore) DeleteGuildSteamDiscordLink(ctx context.Context, guildID, discordID, steamID string) error {
+	tag, err := p.pool.Exec(ctx, `
+		DELETE FROM guild_steam_discord_links
+		WHERE guild_id = $1 AND discord_id = $2 AND steam_id = $3
+	`, guildID, discordID, steamID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrGuildLinkNotFound
+	}
+	return nil
 }
