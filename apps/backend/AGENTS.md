@@ -129,6 +129,10 @@ Maps Steam accounts to Discord users. A pair can have both soft and hard links.
 - **soft** — user self-reported, unverified. Admins can delete.
 - **hard** — from trusted source (BattleMetrics), authoritatively verified. Cannot be deleted via API.
 
+## OpenAPI
+
+The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go map literal. **When adding, modifying, or removing any HTTP endpoint, always update the OpenAPI document to match.** This includes adding path entries, request/response schemas, and keeping parameter descriptions accurate. The spec is served at `/api/docs/openapi.json` and powers the interactive docs at `/api/docs`.
+
 ## Conventions
 
 - Parameterized queries only (`$1`, `$2`, ...) — no string interpolation
