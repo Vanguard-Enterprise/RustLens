@@ -1,5 +1,9 @@
 import { Client, GatewayIntentBits, MessageFlags } from "discord.js";
 import {
+  ensureAnnounceCommand,
+  handleAnnounceChatInput,
+} from "./announce-command.js";
+import {
   ensureBindCommand,
   handleBindButtonInteraction,
   handleBindChatInput,
@@ -47,6 +51,7 @@ client.once("clientReady", () => {
     ensureBindCommand(client, shardID),
     ensureWipeReactCommand(client, shardID),
     ensureSummonCommand(client, shardID),
+    ensureAnnounceCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
   ]).then(() => {
     startWipeReactScheduler(client);
@@ -78,6 +83,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleSummonChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleAnnounceChatInput(interaction)) {
         return;
       }
 

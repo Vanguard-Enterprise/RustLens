@@ -25,6 +25,7 @@ src/
   bind-command.ts       # /bind fullkit/turret/rocket/c4 registration + modal flow
   wipereact-command.ts  # /wipereact create/delete/missing/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, and logs embeds
   summon-command.ts     # /summon {scope} — move voice-connected members of a role (or @everyone) into invoker's VC (admin-only)
+  announce-command.ts   # /announce {scope} {message} — DM an embed announcement to all members of a role (admin-only)
   builders/             # Custom v2 modal component builders
 ```
 
