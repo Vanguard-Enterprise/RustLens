@@ -82,6 +82,32 @@ export type WipeReactScheduleListResponse = {
   items: WipeReactSchedule[];
 };
 
+export type SteamAccount = {
+  steamId: string;
+  bmId: string | null;
+  avatarImage: string;
+  createdAt: string;
+};
+
+export type SteamDiscordLink = {
+  steamId: string;
+  discordId: string;
+  type: "soft" | "hard";
+  source: string;
+  createdAt: string;
+};
+
+export type SteamDiscordLinkListResponse = {
+  items: SteamDiscordLink[];
+};
+
+export type BulkHardLinkEntry = {
+  steamId: string;
+  bmId?: string | null;
+  discordId: string;
+  source: string;
+};
+
 type ClaimGuildSetupResponse = GuildSetupState & {
   claimed: boolean;
 };
@@ -302,6 +328,64 @@ export class BackendClient {
       `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules/${scheduleId}/mark-posted`,
       "POST",
       { lastPostedForUnix },
+    );
+  }
+
+  getSteamAccount(workerId: string, steamId: string) {
+    return this.call<SteamAccount>(
+      workerId,
+      `/api/internal/bot/setup/steam/${steamId}`,
+      "GET",
+    );
+  }
+
+  getSteamAccountByBmID(workerId: string, bmId: string) {
+    return this.call<SteamAccount>(
+      workerId,
+      `/api/internal/bot/setup/steam/by-bm/${bmId}`,
+      "GET",
+    );
+  }
+
+  getLinksBySteamID(workerId: string, steamId: string) {
+    return this.call<SteamDiscordLinkListResponse>(
+      workerId,
+      `/api/internal/bot/setup/steam/${steamId}/links`,
+      "GET",
+    );
+  }
+
+  getLinksByDiscordID(workerId: string, discordId: string) {
+    return this.call<SteamDiscordLinkListResponse>(
+      workerId,
+      `/api/internal/bot/setup/discord/${discordId}/links`,
+      "GET",
+    );
+  }
+
+  createSoftLink(workerId: string, steamId: string, discordId: string, source: string) {
+    return this.call<SteamDiscordLink>(
+      workerId,
+      `/api/internal/bot/setup/steam/links`,
+      "POST",
+      { steamId, discordId, source },
+    );
+  }
+
+  bulkUpsertHardLinks(workerId: string, links: BulkHardLinkEntry[]) {
+    return this.call<{ status: string; count: number }>(
+      workerId,
+      `/api/internal/bot/setup/steam/bulk-hard-links`,
+      "POST",
+      { links },
+    );
+  }
+
+  deleteSoftLink(workerId: string, steamId: string, discordId: string) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/steam/${steamId}/links/${discordId}/soft`,
+      "DELETE",
     );
   }
 }

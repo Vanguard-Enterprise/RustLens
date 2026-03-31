@@ -98,6 +98,37 @@ Recurring wipe-react schedule configs (max 3 per guild).
 
 **Limit**: 3 schedules per guild, enforced in `CreateWipeReactSchedule` via `SELECT COUNT(*)` before insert.
 
+### `steam_accounts`
+
+Known Steam player accounts with optional BattleMetrics ID.
+
+| Column | Type | Notes |
+|---|---|---|
+| `steam_id` | `TEXT` | PK (17-digit Steam ID) |
+| `bm_id` | `TEXT UNIQUE` | Nullable, BattleMetrics player ID |
+| `avatar_image` | `TEXT NOT NULL DEFAULT ''` | Steam avatar URL |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+### `steam_discord_links`
+
+Maps Steam accounts to Discord users. A pair can have both soft and hard links.
+
+| Column | Type | Notes |
+|---|---|---|
+| `steam_id` | `TEXT NOT NULL` | FK to `steam_accounts.steam_id` |
+| `discord_id` | `TEXT NOT NULL` | Discord snowflake |
+| `type` | `TEXT NOT NULL` | `soft` or `hard` (CHECK constraint) |
+| `source` | `TEXT NOT NULL DEFAULT ''` | Origin: `bot_command`, `frontend`, `battlemetrics` |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**PK**: `(steam_id, discord_id, type)` — allows both link types per pair.
+
+**Index**: `steam_discord_links_discord_idx ON (discord_id)` — reverse lookups by Discord user.
+
+**Link types:**
+- **soft** — user self-reported, unverified. Admins can delete.
+- **hard** — from trusted source (BattleMetrics), authoritatively verified. Cannot be deleted via API.
+
 ## Conventions
 
 - Parameterized queries only (`$1`, `$2`, ...) — no string interpolation

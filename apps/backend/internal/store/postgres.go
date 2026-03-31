@@ -126,6 +126,25 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS ask_declined_reason BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS channel_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS last_posted_for_unix BIGINT NOT NULL DEFAULT 0;
+
+		CREATE TABLE IF NOT EXISTS steam_accounts (
+			steam_id TEXT PRIMARY KEY,
+			bm_id TEXT UNIQUE,
+			avatar_image TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS steam_discord_links (
+			steam_id TEXT NOT NULL REFERENCES steam_accounts(steam_id),
+			discord_id TEXT NOT NULL,
+			type TEXT NOT NULL CHECK (type IN ('soft', 'hard')),
+			source TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (steam_id, discord_id, type)
+		);
+
+		CREATE INDEX IF NOT EXISTS steam_discord_links_discord_idx
+		ON steam_discord_links (discord_id);
 	`)
 	return err
 }

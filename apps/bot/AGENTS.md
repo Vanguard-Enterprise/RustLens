@@ -62,7 +62,7 @@ Key design decisions:
 - **No `this.data` pattern** — individual typed fields for better type safety and clean optional-field omission.
 - **Label auto-wrapping** — `ModalV2Builder.addComponent(label, builder)` handles wrapping; component builders produce clean single-purpose JSON.
 - **No base class** — builders are independent; they share almost no behavior.
-- V2 component raw API reference is at `.docs/discord-modal-v2-components.md`.
+- V2 component raw API reference is at `docs/discord-modal-v2-components.md` (repo root).
 
 ## Conventions
 
