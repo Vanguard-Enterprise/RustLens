@@ -12,6 +12,10 @@ import {
   handleSetupModalSubmit,
 } from "./setup-command.js";
 import {
+  ensureSummonCommand,
+  handleSummonChatInput,
+} from "./summon-command.js";
+import {
   ensureWipeReactCommand,
   handleWipeReactAutocomplete,
   handleWipeReactButtonInteraction,
@@ -30,7 +34,7 @@ if (!token) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildVoiceStates],
   shards: [shardID],
   shardCount,
 });
@@ -42,6 +46,7 @@ client.once("clientReady", () => {
     ensureSetupCommand(client, shardID),
     ensureBindCommand(client, shardID),
     ensureWipeReactCommand(client, shardID),
+    ensureSummonCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
   ]).then(() => {
     startWipeReactScheduler(client);
@@ -69,6 +74,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isChatInputCommand()) {
       if (await handleAdminChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleSummonChatInput(interaction)) {
         return;
       }
 
