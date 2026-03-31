@@ -1319,6 +1319,22 @@ func (h *Handler) CreateGuildSteamDiscordLink(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusCreated, guildSteamDiscordLinkToMap(link))
 }
 
+func (h *Handler) ListGuildLinks(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	links, err := h.postgres.ListGuildLinks(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildLinks error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild links")
+		return
+	}
+
+	writeGuildSteamDiscordLinkList(w, links)
+}
+
 func (h *Handler) ListGuildLinksByDiscord(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
 	if !ok {

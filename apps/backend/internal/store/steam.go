@@ -304,6 +304,29 @@ func (p *PostgresStore) ListGuildLinksByGuildAndSteam(ctx context.Context, guild
 	return records, rows.Err()
 }
 
+func (p *PostgresStore) ListGuildLinks(ctx context.Context, guildID string) ([]GuildSteamDiscordLink, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT guild_id, discord_id, steam_id, created_at
+		FROM guild_steam_discord_links
+		WHERE guild_id = $1
+		ORDER BY created_at ASC
+	`, guildID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]GuildSteamDiscordLink, 0)
+	for rows.Next() {
+		record, err := scanGuildSteamDiscordLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
 func (p *PostgresStore) DeleteGuildSteamDiscordLink(ctx context.Context, guildID, discordID, steamID string) error {
 	tag, err := p.pool.Exec(ctx, `
 		DELETE FROM guild_steam_discord_links

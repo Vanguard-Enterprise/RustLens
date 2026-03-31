@@ -101,6 +101,17 @@ export type SteamDiscordLinkListResponse = {
   items: SteamDiscordLink[];
 };
 
+export type GuildSteamDiscordLink = {
+  guildId: string;
+  discordId: string;
+  steamId: string;
+  createdAt: string;
+};
+
+export type GuildSteamDiscordLinkListResponse = {
+  items: GuildSteamDiscordLink[];
+};
+
 export type BulkHardLinkEntry = {
   steamId: string;
   bmId?: string | null;
@@ -386,6 +397,30 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/steam/${steamId}/links/${discordId}/soft`,
       "DELETE",
+    );
+  }
+
+  listGuildLinks(workerId: string, guildId: string) {
+    return this.call<GuildSteamDiscordLinkListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/links`,
+      "GET",
+    );
+  }
+
+  listGuildLinksByDiscord(workerId: string, guildId: string, discordId: string) {
+    return this.call<GuildSteamDiscordLinkListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/discord/${discordId}/links`,
+      "GET",
+    );
+  }
+
+  listGuildLinksBySteam(workerId: string, guildId: string, steamId: string) {
+    return this.call<GuildSteamDiscordLinkListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/steam/${steamId}/links`,
+      "GET",
     );
   }
 }

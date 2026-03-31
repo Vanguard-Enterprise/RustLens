@@ -139,6 +139,7 @@ apps/bot/src/
   wipereact-command.ts  # /wipereact create/delete/missing/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, and logs embeds
   summon-command.ts     # /summon {scope} — move all online voice members of a role into the invoker's voice channel (admin-only)
   announce-command.ts   # /announce {scope} {message} — DM an embed announcement to all members of a role (admin-only)
+  view-command.ts       # /view user {discord_user|identifier} and /view all — view guild-linked steam/discord accounts
 ```
 
 Flow: worker registers with backend -> polls `/assignments` -> reconciles local discord.js shards -> heartbeats leases -> releases on shutdown. Auth via self-signed JWT using `BOT_SERVICE_JWT_SECRET`.

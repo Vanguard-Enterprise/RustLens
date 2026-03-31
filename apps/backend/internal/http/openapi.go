@@ -811,6 +811,32 @@ func buildOpenAPIDocument() map[string]any {
 				},
 			},
 			"/api/internal/bot/setup/guilds/{guildID}/links": map[string]any{
+				"get": map[string]any{
+					"summary":     "List all guild steam-discord links",
+					"description": "Returns all guild-scoped steam-discord links for a guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
 				"post": map[string]any{
 					"summary":     "Create guild steam-discord link",
 					"description": "Creates a guild-scoped link between a Discord user and a Steam account.",

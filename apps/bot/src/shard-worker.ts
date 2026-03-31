@@ -20,6 +20,10 @@ import {
   handleSummonChatInput,
 } from "./summon-command.js";
 import {
+  ensureViewCommand,
+  handleViewChatInput,
+} from "./view-command.js";
+import {
   ensureWipeReactCommand,
   handleWipeReactAutocomplete,
   handleWipeReactButtonInteraction,
@@ -52,6 +56,7 @@ client.once("clientReady", () => {
     ensureWipeReactCommand(client, shardID),
     ensureSummonCommand(client, shardID),
     ensureAnnounceCommand(client, shardID),
+    ensureViewCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
   ]).then(() => {
     startWipeReactScheduler(client);
@@ -87,6 +92,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleAnnounceChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleViewChatInput(interaction)) {
         return;
       }
 
