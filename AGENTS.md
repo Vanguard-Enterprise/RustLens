@@ -83,7 +83,7 @@ apps/backend/
   internal/
     config/config.go         # Env-based config with defaults (PORT, POSTGRES_URL, REDIS_URL, etc.)
     http/
-      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/setup/* incl. steam/discord linking
+      router.go              # chi routes: /api/docs, /api/healthz, /api/users/*, /api/internal/bot/shards/*, /api/internal/bot/setup/* incl. steam/discord linking
       handlers.go            # Handler implementations incl. bot setup-state, guild-settings, and wipe-react persistence endpoints
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
     auth/jwt.go              # JWT signing/validation for bot service auth
@@ -106,6 +106,7 @@ Key patterns:
 - Bot guild settings routes (`/api/internal/bot/setup/guilds/*/settings*`) are JWT-protected and currently store the logs channel override used by wipe reacts.
 - Bot wipe-react routes (`/api/internal/bot/setup/guilds/*/wipe-reacts*`) are JWT-protected and persist wipe react metadata plus accepted/declined/late user lists in Postgres.
 - Bot wipe-react schedule routes (`/api/internal/bot/setup/guilds/*/wipe-react-schedules*`) are JWT-protected and persist recurring wipe-react schedule configs (max 3 per guild) with CRUD operations.
+- Public user routes (`/api/users/*`) expose full steam account and discord link CRUD (lookup, create soft/hard links, delete soft links) without authentication.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
 
 **Steam & Discord linking**
