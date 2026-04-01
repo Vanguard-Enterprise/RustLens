@@ -473,6 +473,23 @@ export class BackendClient {
     );
   }
 
+  createGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
+    return this.call<GuildSteamDiscordLink>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/links`,
+      "POST",
+      { discordId, steamId },
+    );
+  }
+
+  deleteGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/discord/${discordId}/steam/${steamId}`,
+      "DELETE",
+    );
+  }
+
   bulkUpsertHardLinks(workerId: string, links: BulkHardLinkEntry[]) {
     return this.call<{ status: string; count: number }>(
       workerId,

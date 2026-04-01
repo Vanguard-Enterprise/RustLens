@@ -8,6 +8,7 @@ import type {
 } from "discord.js";
 import {
   ChannelType,
+  EmbedBuilder,
   GuildSystemChannelFlags,
   MessageFlags,
   OverwriteType,
@@ -18,6 +19,7 @@ import {
 import { BackendClient } from "./backend-client.js";
 import { CheckboxGroupBuilder, ModalV2Builder } from "./builders/index.js";
 import { loadConfig } from "./config.js";
+import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const SETUP_COMMAND_NAME = "setup";
 export const ADMIN_COMMAND_NAME = "admin";
@@ -26,6 +28,10 @@ const SETUP_START_SUBCOMMAND_NAME = "start";
 const SETUP_LOG_CHANNEL_SUBCOMMAND_NAME = "logchannel";
 const SETUP_LOG_CHANNEL_OPTION_NAME = "channel";
 const ADMIN_RESET_SUBCOMMAND_NAME = "reset_setup";
+const ADMIN_SET_STEAM_SUBCOMMAND_NAME = "setsteam";
+const ADMIN_REMOVE_STEAM_SUBCOMMAND_NAME = "removesteam";
+const ADMIN_USER_OPTION_NAME = "user";
+const ADMIN_STEAM_ID_OPTION_NAME = "steam_id";
 const SETUP_MODAL_CUSTOM_ID = "setup_start_modal";
 const SETUP_CHANNELS_CUSTOM_ID = "setup_channels";
 const SETUP_ROLES_CUSTOM_ID = "setup_roles";
@@ -297,7 +303,37 @@ const adminCommand = new SlashCommandBuilder()
     subcommand
       .setName(ADMIN_RESET_SUBCOMMAND_NAME)
       .setDescription("Reset setup state so the guild can be configured again"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(ADMIN_SET_STEAM_SUBCOMMAND_NAME)
+      .setDescription("Set or replace a user's Steam ID in this guild")
+      .addUserOption((option) =>
+        option
+          .setName(ADMIN_USER_OPTION_NAME)
+          .setDescription("The user whose Steam ID should be set")
+          .setRequired(true),
+      )
+      .addStringOption((option) =>
+        option
+          .setName(ADMIN_STEAM_ID_OPTION_NAME)
+          .setDescription("The 17-digit Steam ID to set")
+          .setRequired(true),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(ADMIN_REMOVE_STEAM_SUBCOMMAND_NAME)
+      .setDescription("Remove a user's Steam ID from this guild")
+      .addUserOption((option) =>
+        option
+          .setName(ADMIN_USER_OPTION_NAME)
+          .setDescription("The user whose Steam ID should be removed")
+          .setRequired(true),
+      ),
   );
+
+const steamIDPattern = /^\d{17}$/;
 
 function buildSetupStartModal() {
   return new ModalV2Builder()
@@ -1181,6 +1217,21 @@ async function replyEphemeral(
   });
 }
 
+async function replyEphemeralEmbed(
+  interaction: ChatInputCommandInteraction | ModalSubmitInteraction,
+  embed: EmbedBuilder,
+) {
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply({ embeds: [embed] });
+    return;
+  }
+
+  await interaction.reply({
+    embeds: [embed],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
 async function deferEphemeral(
   interaction: ChatInputCommandInteraction | ModalSubmitInteraction,
 ) {
@@ -1191,6 +1242,27 @@ async function deferEphemeral(
   await interaction.deferReply({
     flags: MessageFlags.Ephemeral,
   });
+}
+
+function buildAdminSteamEmbed(title: string, description: string) {
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+async function removeGuildSteamLinks(guildID: string, discordID: string) {
+  const backend = getBackend();
+  const workerID = getSetupWorkerID();
+  const existing = await backend.listGuildLinksByDiscord(workerID, guildID, discordID);
+
+  for (const link of existing.items) {
+    await backend.deleteGuildLink(workerID, guildID, discordID, link.steamId);
+  }
+
+  return existing.items;
 }
 
 function renderProgressBar(step: number, totalSteps: number) {
@@ -1310,50 +1382,124 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
   }
 
   const subcommand = interaction.options.getSubcommand(false);
-  if (subcommand !== ADMIN_RESET_SUBCOMMAND_NAME) {
-    await replyEphemeral(
-      interaction,
-      `Unknown /${ADMIN_COMMAND_NAME} subcommand: ${subcommand}`,
-    );
-    return true;
+  switch (subcommand) {
+    case ADMIN_RESET_SUBCOMMAND_NAME: {
+      await deferEphemeral(interaction);
+
+      const state = await getBackend().guildSetup(getSetupWorkerID(), interaction.guildId);
+      if (state.status === "missing") {
+        await replyEphemeral(interaction, "Setup has not been completed for this server.");
+        return true;
+      }
+
+      const roleKeys = getSelectedRoleKeys(state.selectedRoles);
+      const channelKeys = getSelectedChannelKeys(state.selectedChannels);
+      const deletedChannels = await deleteSetupChannels(
+        guild,
+        channelKeys,
+        roleKeys,
+        interaction.user.tag,
+      );
+      const deletedRoles = await deleteSetupRoles(
+        guild,
+        roleKeys,
+        interaction.user.tag,
+      );
+      await getBackend().resetGuildSetup(getSetupWorkerID(), interaction.guildId);
+
+      const deletedRoleList = deletedRoles.length > 0 ? deletedRoles.join(", ") : "(none found)";
+      const deletedChannelList =
+        deletedChannels.length > 0 ? deletedChannels.join(", ") : "(none found)";
+      try {
+        await replyEphemeral(
+          interaction,
+          `Setup reset. Removed channels: ${deletedChannelList}. Removed roles: ${deletedRoleList}. You can run /setup start again now.`,
+        );
+      } catch {
+        // The command channel may have been deleted during reset.
+      }
+
+      return true;
+    }
+    case ADMIN_SET_STEAM_SUBCOMMAND_NAME: {
+      const targetUser = interaction.options.getUser(ADMIN_USER_OPTION_NAME, true);
+      const steamID = interaction.options.getString(ADMIN_STEAM_ID_OPTION_NAME, true).trim();
+      if (!steamIDPattern.test(steamID)) {
+        await replyEphemeralEmbed(
+          interaction,
+          buildAdminSteamEmbed("Error", "Steam ID must be a 17-digit number."),
+        );
+        return true;
+      }
+
+      await deferEphemeral(interaction);
+
+      try {
+        await getBackend().createSoftLink(getSetupWorkerID(), steamID, targetUser.id, "bot_command");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes("409")) {
+          await replyEphemeralEmbed(
+            interaction,
+            buildAdminSteamEmbed("Error", `RustLens could not save the Steam ID for <@${targetUser.id}>.`),
+          );
+          return true;
+        }
+      }
+
+      try {
+        await removeGuildSteamLinks(interaction.guildId, targetUser.id);
+        await getBackend().createGuildLink(getSetupWorkerID(), interaction.guildId, targetUser.id, steamID);
+      } catch {
+        await replyEphemeralEmbed(
+          interaction,
+          buildAdminSteamEmbed("Error", `RustLens could not set the Steam ID for <@${targetUser.id}> in this guild.`),
+        );
+        return true;
+      }
+
+      await replyEphemeralEmbed(
+        interaction,
+        buildAdminSteamEmbed("Steam ID updated", `Linked <@${targetUser.id}> to Steam ID \`${steamID}\` in this guild.`),
+      );
+      return true;
+    }
+    case ADMIN_REMOVE_STEAM_SUBCOMMAND_NAME: {
+      const targetUser = interaction.options.getUser(ADMIN_USER_OPTION_NAME, true);
+      await deferEphemeral(interaction);
+
+      let removed: { steamId: string }[] = [];
+      try {
+        removed = await removeGuildSteamLinks(interaction.guildId, targetUser.id);
+      } catch {
+        await replyEphemeralEmbed(
+          interaction,
+          buildAdminSteamEmbed("Error", `RustLens could not remove the Steam ID for <@${targetUser.id}>.`),
+        );
+        return true;
+      }
+
+      if (removed.length === 0) {
+        await replyEphemeralEmbed(
+          interaction,
+          buildAdminSteamEmbed("Nothing to remove", `<@${targetUser.id}> does not have a Steam ID linked in this guild.`),
+        );
+        return true;
+      }
+
+      await replyEphemeralEmbed(
+        interaction,
+        buildAdminSteamEmbed("Steam ID removed", `Removed ${removed.length} guild Steam link${removed.length === 1 ? "" : "s"} for <@${targetUser.id}>.`),
+      );
+      return true;
+    }
+    default:
+      await replyEphemeral(
+        interaction,
+        `Unknown /${ADMIN_COMMAND_NAME} subcommand: ${subcommand}`,
+      );
+      return true;
   }
-
-  await deferEphemeral(interaction);
-
-  const state = await getBackend().guildSetup(getSetupWorkerID(), interaction.guildId);
-  if (state.status === "missing") {
-    await replyEphemeral(interaction, "Setup has not been completed for this server.");
-    return true;
-  }
-
-  const roleKeys = getSelectedRoleKeys(state.selectedRoles);
-  const channelKeys = getSelectedChannelKeys(state.selectedChannels);
-  const deletedChannels = await deleteSetupChannels(
-    guild,
-    channelKeys,
-    roleKeys,
-    interaction.user.tag,
-  );
-  const deletedRoles = await deleteSetupRoles(
-    guild,
-    roleKeys,
-    interaction.user.tag,
-  );
-  await getBackend().resetGuildSetup(getSetupWorkerID(), interaction.guildId);
-
-  const deletedRoleList = deletedRoles.length > 0 ? deletedRoles.join(", ") : "(none found)";
-  const deletedChannelList =
-    deletedChannels.length > 0 ? deletedChannels.join(", ") : "(none found)";
-  try {
-    await replyEphemeral(
-      interaction,
-      `Setup reset. Removed channels: ${deletedChannelList}. Removed roles: ${deletedRoleList}. You can run /setup start again now.`,
-    );
-  } catch {
-    // The command channel may have been deleted during reset.
-  }
-
-  return true;
 }
 
 export async function handleSetupModalSubmit(interaction: ModalSubmitInteraction) {

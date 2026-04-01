@@ -14,6 +14,10 @@ import {
   handleOnlineChatInput,
 } from "./online-command.js";
 import {
+  ensureSetSteamCommand,
+  handleSetSteamChatInput,
+} from "./setsteam-command.js";
+import {
   ensureSetupCommand,
   handleAdminChatInput,
   handleSetupChatInput,
@@ -65,6 +69,7 @@ client.once("clientReady", () => {
     ensureSummonCommand(client, shardID),
     ensureAnnounceCommand(client, shardID),
     ensureOnlineCommand(client, shardID),
+    ensureSetSteamCommand(client, shardID),
     ensureViewCommand(client, shardID),
     ensureServerCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
@@ -110,6 +115,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleOnlineChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleSetSteamChatInput(interaction)) {
         return;
       }
 
