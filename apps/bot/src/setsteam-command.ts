@@ -3,6 +3,7 @@ import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { resolveSteamInputErrorMessage } from "./steam-input.js";
 
 export const SETSTEAM_COMMAND_NAME = "setsteam";
 
@@ -109,10 +110,10 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
   try {
     const resolved = await backend.resolveSteamID(workerId, rawInput);
     steamId = resolved.steamId;
-  } catch {
+  } catch (error) {
     await replyEphemeralEmbed(
       interaction,
-      buildEmbed("Error", "Enter a 17-digit Steam ID or a supported steamcommunity.com profile URL."),
+      buildEmbed("Error", resolveSteamInputErrorMessage(error)),
     );
     return true;
   }

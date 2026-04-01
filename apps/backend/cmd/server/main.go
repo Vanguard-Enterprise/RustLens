@@ -15,6 +15,8 @@ import (
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
+
+	_ "github.com/joho/godotenv/autoload"
 )
 
 func main() {

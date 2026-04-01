@@ -20,6 +20,7 @@ import { BackendClient } from "./backend-client.js";
 import { CheckboxGroupBuilder, ModalV2Builder } from "./builders/index.js";
 import { loadConfig } from "./config.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { resolveSteamInputErrorMessage } from "./steam-input.js";
 
 export const SETUP_COMMAND_NAME = "setup";
 export const ADMIN_COMMAND_NAME = "admin";
@@ -1429,10 +1430,10 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
       try {
         const resolved = await getBackend().resolveSteamID(getSetupWorkerID(), steamInput);
         steamID = resolved.steamId;
-      } catch {
+      } catch (error) {
         await replyEphemeralEmbed(
           interaction,
-          buildAdminSteamEmbed("Error", "Enter a 17-digit Steam ID or a supported steamcommunity.com profile URL."),
+          buildAdminSteamEmbed("Error", resolveSteamInputErrorMessage(error)),
         );
         return true;
       }
