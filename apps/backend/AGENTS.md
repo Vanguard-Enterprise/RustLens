@@ -118,6 +118,27 @@ Global BattleMetrics servers the bot should track.
 |---|---|---|
 | `bm_id` | `TEXT` | PK |
 | `name` | `TEXT NOT NULL` | Display name |
+| `last_polled_at` | `TIMESTAMPTZ` | Nullable, last successful or failed poll attempt time |
+| `last_poll_error` | `TEXT NOT NULL DEFAULT ''` | Most recent poll error, empty on success |
+
+### `player_states`
+
+BattleMetrics presence state per tracked server and player.
+
+| Column | Type | Notes |
+|---|---|---|
+| `server_bm_id` | `TEXT NOT NULL` | FK to `tracked_servers.bm_id` |
+| `player_bm_id` | `TEXT NOT NULL` | BattleMetrics player ID |
+| `is_online` | `BOOLEAN NOT NULL DEFAULT FALSE` | Current presence state for this server |
+| `online_since` | `TIMESTAMPTZ` | Start of current online streak |
+| `offline_since` | `TIMESTAMPTZ` | Start of current offline streak |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last sync update time |
+
+**PK**: `(server_bm_id, player_bm_id)`.
+
+**Indexes**:
+- `player_states_player_idx ON (player_bm_id)` — reverse lookup by BattleMetrics player.
+- `player_states_server_online_idx ON (server_bm_id, is_online, online_since DESC, updated_at DESC)` — current online players for a tracked server.
 
 ### `steam_discord_links`
 
@@ -167,6 +188,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - Handlers validate all snowflake inputs via `snowflakePattern` regex before touching the DB
 - Sentinel errors (e.g. `ErrWipeReactNotFound`) mapped to HTTP 404 in handlers
 - Reaction mutations use `SELECT ... FOR UPDATE` row locking to prevent races
+- The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval and updates `player_states` inside a single store transaction per server.
 
 ## Commands
 

@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	workersKey          = "rustlens:bot:workers"
-	leaseMapKey         = "rustlens:bot:leases"
-	workerHeartbeatPref = "rustlens:bot:worker:heartbeat:"
+	workersKey                 = "rustlens:bot:workers"
+	leaseMapKey                = "rustlens:bot:leases"
+	workerHeartbeatPref        = "rustlens:bot:worker:heartbeat:"
+	battleMetricsPollerLockKey = "rustlens:battlemetrics:poller:lock"
 )
 
 type RedisStore struct {
@@ -149,4 +150,19 @@ func (r *RedisStore) CurrentAssignments(ctx context.Context) (map[string][]int, 
 	}
 
 	return result, nil
+}
+
+func (r *RedisStore) TryAcquireBattleMetricsPollerLock(ctx context.Context, owner string, ttl time.Duration) (bool, error) {
+	return r.client.SetNX(ctx, battleMetricsPollerLockKey, owner, ttl).Result()
+}
+
+func (r *RedisStore) ReleaseBattleMetricsPollerLock(ctx context.Context, owner string) error {
+	const releaseScript = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+	return redis.call("del", KEYS[1])
+end
+return 0
+`
+
+	return r.client.Eval(ctx, releaseScript, []string{battleMetricsPollerLockKey}, owner).Err()
 }

@@ -764,6 +764,98 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/player-states/servers/{serverID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "List online player states by server",
+					"description": "Returns current online player states for a tracked BattleMetrics server.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "serverID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics server ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Player states returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/PlayerStateListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/player-states/servers/{serverID}/players/{playerID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get player state by server and player",
+					"description": "Returns the current stored presence state for one player on one tracked server.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "serverID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics server ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "playerID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics player ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Player state returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/PlayerState"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/player-states/players/{playerID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "List player states by player",
+					"description": "Returns stored presence states for one BattleMetrics player across all tracked servers.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "playerID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics player ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Player states returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/PlayerStateListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/steam/links": map[string]any{
 				"post": map[string]any{
 					"summary":     "Create soft link",
@@ -1240,10 +1332,12 @@ func buildOpenAPIDocument() map[string]any {
 				"TrackedServer": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"bmId": map[string]any{"type": "string"},
-						"name": map[string]any{"type": "string"},
+						"bmId":          map[string]any{"type": "string"},
+						"name":          map[string]any{"type": "string"},
+						"lastPolledAt":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"lastPollError": map[string]any{"type": "string"},
 					},
-					"required": []string{"bmId", "name"},
+					"required": []string{"bmId", "name", "lastPolledAt", "lastPollError"},
 				},
 				"TrackedServerListResponse": map[string]any{
 					"type": "object",
@@ -1262,6 +1356,29 @@ func buildOpenAPIDocument() map[string]any {
 						"name": map[string]any{"type": "string"},
 					},
 					"required": []string{"bmId", "name"},
+				},
+				"PlayerState": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"serverBmId":   map[string]any{"type": "string"},
+						"serverName":   map[string]any{"type": "string"},
+						"playerBmId":   map[string]any{"type": "string"},
+						"isOnline":     map[string]any{"type": "boolean"},
+						"onlineSince":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"offlineSince": map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"updatedAt":    map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"serverBmId", "serverName", "playerBmId", "isOnline", "onlineSince", "offlineSince", "updatedAt"},
+				},
+				"PlayerStateListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/PlayerState"},
+						},
+					},
+					"required": []string{"items"},
 				},
 				"WipeReact": map[string]any{
 					"type": "object",

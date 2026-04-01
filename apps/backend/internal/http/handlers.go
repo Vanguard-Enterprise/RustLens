@@ -234,16 +234,53 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 }
 
 func trackedServerToMap(item store.TrackedServer) map[string]any {
-	return map[string]any{
+	result := map[string]any{
 		"bmId": item.BmID,
 		"name": item.Name,
 	}
+	if item.LastPolledAt != nil {
+		result["lastPolledAt"] = *item.LastPolledAt
+	} else {
+		result["lastPolledAt"] = nil
+	}
+	result["lastPollError"] = item.LastPollError
+	return result
 }
 
 func writeTrackedServerList(w http.ResponseWriter, items []store.TrackedServer) {
 	response := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		response = append(response, trackedServerToMap(item))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
+func playerStateToMap(item store.PlayerState) map[string]any {
+	result := map[string]any{
+		"serverBmId": item.ServerBmID,
+		"serverName": item.ServerName,
+		"playerBmId": item.PlayerBmID,
+		"isOnline":   item.IsOnline,
+		"updatedAt":  item.UpdatedAt,
+	}
+	if item.OnlineSince != nil {
+		result["onlineSince"] = *item.OnlineSince
+	} else {
+		result["onlineSince"] = nil
+	}
+	if item.OfflineSince != nil {
+		result["offlineSince"] = *item.OfflineSince
+	} else {
+		result["offlineSince"] = nil
+	}
+	return result
+}
+
+func writePlayerStateList(w http.ResponseWriter, items []store.PlayerState) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, playerStateToMap(item))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"items": response})
@@ -1105,6 +1142,67 @@ func (h *Handler) DeleteTrackedServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (h *Handler) ListOnlinePlayerStatesByServer(w http.ResponseWriter, r *http.Request) {
+	serverID := strings.TrimSpace(chi.URLParam(r, "serverID"))
+	if serverID == "" {
+		writeError(w, http.StatusBadRequest, "serverID is required")
+		return
+	}
+
+	items, err := h.postgres.ListOnlinePlayerStatesByServer(r.Context(), serverID)
+	if err != nil {
+		log.Printf("[backend] ListOnlinePlayerStatesByServer error for %s: %v", serverID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list player states")
+		return
+	}
+
+	writePlayerStateList(w, items)
+}
+
+func (h *Handler) ListPlayerStatesByPlayer(w http.ResponseWriter, r *http.Request) {
+	playerID := strings.TrimSpace(chi.URLParam(r, "playerID"))
+	if playerID == "" {
+		writeError(w, http.StatusBadRequest, "playerID is required")
+		return
+	}
+
+	items, err := h.postgres.ListPlayerStatesByPlayer(r.Context(), playerID)
+	if err != nil {
+		log.Printf("[backend] ListPlayerStatesByPlayer error for %s: %v", playerID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list player states")
+		return
+	}
+
+	writePlayerStateList(w, items)
+}
+
+func (h *Handler) GetPlayerState(w http.ResponseWriter, r *http.Request) {
+	serverID := strings.TrimSpace(chi.URLParam(r, "serverID"))
+	if serverID == "" {
+		writeError(w, http.StatusBadRequest, "serverID is required")
+		return
+	}
+
+	playerID := strings.TrimSpace(chi.URLParam(r, "playerID"))
+	if playerID == "" {
+		writeError(w, http.StatusBadRequest, "playerID is required")
+		return
+	}
+
+	item, err := h.postgres.GetPlayerState(r.Context(), serverID, playerID)
+	if errors.Is(err, store.ErrPlayerStateNotFound) {
+		writeError(w, http.StatusNotFound, "player state not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetPlayerState error for %s/%s: %v", serverID, playerID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch player state")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, playerStateToMap(item))
 }
 
 func steamAccountToMap(record store.SteamAccount) map[string]any {

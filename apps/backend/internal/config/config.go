@@ -13,6 +13,7 @@ type Config struct {
 	BotServiceJWT      string
 	BotTargetShards    int
 	BotHeartbeatTTL    time.Duration
+	BattleMetricsPoll  time.Duration
 	AllowedJWTIssuer   string
 	AllowedJWTAudience string
 }
@@ -20,6 +21,7 @@ type Config struct {
 func Load() Config {
 	targetShards := getEnvInt("BOT_TARGET_SHARDS", 4)
 	heartbeatTTL := getEnvInt("BOT_HEARTBEAT_TTL_SECONDS", 45)
+	battleMetricsPoll := getEnvInt("BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS", 15)
 
 	return Config{
 		Port:               getEnv("PORT", "8080"),
@@ -28,6 +30,7 @@ func Load() Config {
 		BotServiceJWT:      getEnv("BOT_SERVICE_JWT_SECRET", "dev-bot-secret"),
 		BotTargetShards:    targetShards,
 		BotHeartbeatTTL:    time.Duration(heartbeatTTL) * time.Second,
+		BattleMetricsPoll:  time.Duration(battleMetricsPoll) * time.Second,
 		AllowedJWTIssuer:   getEnv("BOT_JWT_ISSUER", "rustlens-bot"),
 		AllowedJWTAudience: getEnv("BOT_JWT_AUDIENCE", "rustlens-backend"),
 	}

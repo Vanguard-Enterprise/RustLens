@@ -83,20 +83,24 @@ apps/backend/
   internal/
     config/config.go         # Env-based config with defaults (PORT, POSTGRES_URL, REDIS_URL, etc.)
     http/
-      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/setup/* incl. steam/discord linking
-      handlers.go            # Handler implementations incl. bot setup-state, guild-settings, tracked BattleMetrics servers, and wipe-react persistence endpoints
+      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/setup/* incl. steam/discord linking and player state lookups
+      handlers.go            # Handler implementations incl. bot setup-state, guild-settings, tracked BattleMetrics servers, player states, and wipe-react persistence endpoints
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
     auth/jwt.go              # JWT signing/validation for bot service auth
+    battlemetrics/
+      client.go              # BattleMetrics HTTP client for tracked server polling
+      poller.go              # Background rolling poller for tracked servers
     shards/
       service.go             # Shard coordination business logic
       allocator.go           # Shard assignment algorithm
       heartbeat.go           # Heartbeat/lease management
     store/
-      postgres.go            # pgx pool + schema auto-migration (bot_worker_events, guild_setups, guild_settings, tracked_servers, wipe_reacts)
+      postgres.go            # pgx pool + schema auto-migration (bot_worker_events, guild_setups, guild_settings, tracked_servers, player_states, wipe_reacts)
       wipe_reacts.go         # Persisted wipe react CRUD + reaction mutation helpers
       redis.go               # go-redis client for heartbeats and shard leases
       steam.go               # Steam account & Discord link CRUD (upsert, lookup, bulk hard links, soft link delete)
       tracked_servers.go     # Global tracked BattleMetrics server CRUD
+      player_states.go       # Per-server BattleMetrics player presence state sync and lookup
 ```
 
 Key patterns:
@@ -106,9 +110,11 @@ Key patterns:
 - Bot setup-state routes (`/api/internal/bot/setup/guilds/*`) are JWT-protected and persist one-time guild setup state in Postgres, including selected roles and selected channels.
 - Bot guild settings routes (`/api/internal/bot/setup/guilds/*/settings*`) are JWT-protected and currently store the logs channel override used by wipe reacts.
 - Bot tracked-server routes (`/api/internal/bot/setup/tracked-servers*`) are JWT-protected and persist the bot's global BattleMetrics server list in Postgres.
+- Bot player-state routes (`/api/internal/bot/setup/player-states/*`) are JWT-protected and expose BattleMetrics presence state by server and by player.
 - Bot wipe-react routes (`/api/internal/bot/setup/guilds/*/wipe-reacts*`) are JWT-protected and persist wipe react metadata plus accepted/declined/late user lists in Postgres.
 - Bot wipe-react schedule routes (`/api/internal/bot/setup/guilds/*/wipe-react-schedules*`) are JWT-protected and persist recurring wipe-react schedule configs (max 3 per guild) with CRUD operations.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
+- The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, updates `tracked_servers.last_polled_at` / `last_poll_error`, and syncs per-server player presence into `player_states`.
 
 **Steam & Discord linking**
 
@@ -172,6 +178,7 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `BOT_SERVICE_JWT_SECRET` | `dev-bot-secret` |
 | `BOT_TARGET_SHARDS` | `4` |
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
+| `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS` | `15` |
 
 The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
 

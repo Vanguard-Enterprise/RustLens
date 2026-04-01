@@ -71,6 +71,9 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Get("/tracked-servers", handler.ListTrackedServers)
 		r.Post("/tracked-servers", handler.CreateTrackedServer)
 		r.Delete("/tracked-servers/{bmID}", handler.DeleteTrackedServer)
+		r.Get("/player-states/servers/{serverID}", handler.ListOnlinePlayerStatesByServer)
+		r.Get("/player-states/servers/{serverID}/players/{playerID}", handler.GetPlayerState)
+		r.Get("/player-states/players/{playerID}", handler.ListPlayerStatesByPlayer)
 
 		// Steam & Discord linking endpoints
 		r.Get("/steam/by-bm/{bmID}", handler.GetSteamAccountByBmID)

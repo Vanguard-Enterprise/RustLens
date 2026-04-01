@@ -139,8 +139,29 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE TABLE IF NOT EXISTS tracked_servers (
 			bm_id TEXT PRIMARY KEY,
-			name TEXT NOT NULL
+			name TEXT NOT NULL,
+			last_polled_at TIMESTAMPTZ,
+			last_poll_error TEXT NOT NULL DEFAULT ''
 		);
+
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_polled_at TIMESTAMPTZ;
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_poll_error TEXT NOT NULL DEFAULT '';
+
+		CREATE TABLE IF NOT EXISTS player_states (
+			server_bm_id TEXT NOT NULL REFERENCES tracked_servers(bm_id) ON DELETE CASCADE,
+			player_bm_id TEXT NOT NULL,
+			is_online BOOLEAN NOT NULL DEFAULT FALSE,
+			online_since TIMESTAMPTZ,
+			offline_since TIMESTAMPTZ,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (server_bm_id, player_bm_id)
+		);
+
+		CREATE INDEX IF NOT EXISTS player_states_player_idx
+		ON player_states (player_bm_id);
+
+		CREATE INDEX IF NOT EXISTS player_states_server_online_idx
+		ON player_states (server_bm_id, is_online, online_since DESC, updated_at DESC);
 
 		CREATE TABLE IF NOT EXISTS steam_discord_links (
 			steam_id TEXT NOT NULL REFERENCES steam_accounts(steam_id),

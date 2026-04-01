@@ -116,10 +116,26 @@ export type GuildSteamDiscordLinkListResponse = {
 export type TrackedServer = {
   bmId: string;
   name: string;
+  lastPolledAt: string | null;
+  lastPollError: string;
 };
 
 export type TrackedServerListResponse = {
   items: TrackedServer[];
+};
+
+export type PlayerState = {
+  serverBmId: string;
+  serverName: string;
+  playerBmId: string;
+  isOnline: boolean;
+  onlineSince: string | null;
+  offlineSince: string | null;
+  updatedAt: string;
+};
+
+export type PlayerStateListResponse = {
+  items: PlayerState[];
 };
 
 export type BulkHardLinkEntry = {
@@ -374,6 +390,30 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/tracked-servers/${bmId}`,
       "DELETE",
+    );
+  }
+
+  listOnlinePlayerStatesByServer(workerId: string, serverId: string) {
+    return this.call<PlayerStateListResponse>(
+      workerId,
+      `/api/internal/bot/setup/player-states/servers/${serverId}`,
+      "GET",
+    );
+  }
+
+  getPlayerState(workerId: string, serverId: string, playerId: string) {
+    return this.call<PlayerState>(
+      workerId,
+      `/api/internal/bot/setup/player-states/servers/${serverId}/players/${playerId}`,
+      "GET",
+    );
+  }
+
+  listPlayerStatesByPlayer(workerId: string, playerId: string) {
+    return this.call<PlayerStateListResponse>(
+      workerId,
+      `/api/internal/bot/setup/player-states/players/${playerId}`,
+      "GET",
     );
   }
 
