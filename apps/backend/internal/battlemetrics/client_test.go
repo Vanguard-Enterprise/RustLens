@@ -15,10 +15,15 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 }
 
 func TestFetchServerPlayersFiltersIncludedPlayers(t *testing.T) {
+	var capturedAuth string
+	var capturedAccept string
 	client := &Client{
 		baseURL: "https://api.battlemetrics.com",
+		apiKey:  "test-api-key",
 		httpClient: &http.Client{
 			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				capturedAuth = request.Header.Get("Authorization")
+				capturedAccept = request.Header.Get("Accept")
 				body := `{
 					"data": {
 						"type": "server",
@@ -66,5 +71,13 @@ func TestFetchServerPlayersFiltersIncludedPlayers(t *testing.T) {
 
 	if players[0].Name != "turn it up" {
 		t.Fatalf("unexpected player name: %s", players[0].Name)
+	}
+
+	if capturedAuth != "Bearer test-api-key" {
+		t.Fatalf("unexpected auth header: %s", capturedAuth)
+	}
+
+	if capturedAccept != "application/json" {
+		t.Fatalf("unexpected accept header: %s", capturedAccept)
 	}
 }

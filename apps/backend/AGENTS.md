@@ -192,7 +192,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - Handlers validate all snowflake inputs via `snowflakePattern` regex before touching the DB
 - Sentinel errors (e.g. `ErrWipeReactNotFound`) mapped to HTTP 404 in handlers
 - Reaction mutations use `SELECT ... FOR UPDATE` row locking to prevent races
-- The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval and updates `player_states` inside a single store transaction per server.
+- The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, and updates `player_states` inside a single store transaction per server.
 
 ## Commands
 

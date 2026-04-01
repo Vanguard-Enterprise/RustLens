@@ -39,7 +39,7 @@ func main() {
 
 	shardService := shards.NewService(redisStore, postgresStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
 	router := httpapi.NewRouter(cfg, postgresStore, redisStore, shardService)
-	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(), postgresStore, redisStore, cfg.BattleMetricsPoll)
+	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(cfg.BattleMetricsAPIKey), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
 
 	server := &http.Server{

@@ -18,12 +18,14 @@ type Player struct {
 
 type Client struct {
 	baseURL    string
+	apiKey     string
 	httpClient *http.Client
 }
 
-func NewClient() *Client {
+func NewClient(apiKey string) *Client {
 	return &Client{
 		baseURL: defaultBaseURL,
+		apiKey:  apiKey,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -40,6 +42,10 @@ func (c *Client) FetchServerPlayers(ctx context.Context, serverID string) ([]Pla
 	if err != nil {
 		return nil, err
 	}
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	req.Header.Set("Accept", "application/json")
 
 	response, err := c.httpClient.Do(req)
 	if err != nil {
