@@ -856,6 +856,34 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}/online-summary": map[string]any{
+				"get": map[string]any{
+					"summary":     "List guild online summary",
+					"description": "Returns guild-linked users who are currently online on tracked BattleMetrics servers.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Online summary returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildOnlineSummaryListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/steam/links": map[string]any{
 				"post": map[string]any{
 					"summary":     "Create soft link",
@@ -1376,6 +1404,30 @@ func buildOpenAPIDocument() map[string]any {
 						"items": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"$ref": "#/components/schemas/PlayerState"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"GuildOnlineSummaryItem": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId":    map[string]any{"type": "string"},
+						"discordId":  map[string]any{"type": "string"},
+						"steamId":    map[string]any{"type": "string"},
+						"playerBmId": map[string]any{"type": "string"},
+						"bmName":     map[string]any{"type": "string"},
+						"serverBmId": map[string]any{"type": "string"},
+						"serverName": map[string]any{"type": "string"},
+						"onlineUnix": map[string]any{"type": "integer"},
+					},
+					"required": []string{"guildId", "discordId", "steamId", "playerBmId", "bmName", "serverBmId", "serverName", "onlineUnix"},
+				},
+				"GuildOnlineSummaryListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/GuildOnlineSummaryItem"},
 						},
 					},
 					"required": []string{"items"},

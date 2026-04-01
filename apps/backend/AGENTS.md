@@ -140,6 +140,10 @@ BattleMetrics presence state per tracked server and player.
 - `player_states_player_idx ON (player_bm_id)` — reverse lookup by BattleMetrics player.
 - `player_states_server_online_idx ON (server_bm_id, is_online, online_since DESC, updated_at DESC)` — current online players for a tracked server.
 
+### Guild Online Summary
+
+`online_summary.go` joins `guild_steam_discord_links`, `steam_accounts`, `player_states`, and `tracked_servers` to produce the guild online summary used by the bot's `/online` command. The query only returns rows where the linked Steam account has a non-null `bm_id` and the matching player state is currently online.
+
 ### `steam_discord_links`
 
 Maps Steam accounts to Discord users. A pair can have both soft and hard links.

@@ -113,6 +113,21 @@ export type GuildSteamDiscordLinkListResponse = {
   items: GuildSteamDiscordLink[];
 };
 
+export type GuildOnlineSummaryItem = {
+  guildId: string;
+  discordId: string;
+  steamId: string;
+  playerBmId: string;
+  bmName: string;
+  serverBmId: string;
+  serverName: string;
+  onlineUnix: number;
+};
+
+export type GuildOnlineSummaryListResponse = {
+  items: GuildOnlineSummaryItem[];
+};
+
 export type TrackedServer = {
   bmId: string;
   name: string;
@@ -479,6 +494,14 @@ export class BackendClient {
     return this.call<GuildSteamDiscordLinkListResponse>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/links`,
+      "GET",
+    );
+  }
+
+  listGuildOnlineSummary(workerId: string, guildId: string) {
+    return this.call<GuildOnlineSummaryListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/online-summary`,
       "GET",
     );
   }

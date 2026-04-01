@@ -83,8 +83,8 @@ apps/backend/
   internal/
     config/config.go         # Env-based config with defaults (PORT, POSTGRES_URL, REDIS_URL, etc.)
     http/
-      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/setup/* incl. steam/discord linking and player state lookups
-      handlers.go            # Handler implementations incl. bot setup-state, guild-settings, tracked BattleMetrics servers, player states, and wipe-react persistence endpoints
+      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/setup/* incl. steam/discord linking, player state lookups, and guild online summaries
+      handlers.go            # Handler implementations incl. bot setup-state, guild-settings, tracked BattleMetrics servers, player states, guild online summaries, and wipe-react persistence endpoints
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
     auth/jwt.go              # JWT signing/validation for bot service auth
     battlemetrics/
@@ -101,6 +101,7 @@ apps/backend/
       steam.go               # Steam account & Discord link CRUD (upsert, lookup, bulk hard links, soft link delete)
       tracked_servers.go     # Global tracked BattleMetrics server CRUD
       player_states.go       # Per-server BattleMetrics player presence state sync and lookup
+      online_summary.go      # Guild online summary join across guild links, steam accounts, and player states
 ```
 
 Key patterns:
@@ -111,6 +112,7 @@ Key patterns:
 - Bot guild settings routes (`/api/internal/bot/setup/guilds/*/settings*`) are JWT-protected and currently store the logs channel override used by wipe reacts.
 - Bot tracked-server routes (`/api/internal/bot/setup/tracked-servers*`) are JWT-protected and persist the bot's global BattleMetrics server list in Postgres.
 - Bot player-state routes (`/api/internal/bot/setup/player-states/*`) are JWT-protected and expose BattleMetrics presence state by server and by player.
+- Bot guild online summary route (`/api/internal/bot/setup/guilds/{guildID}/online-summary`) is JWT-protected and returns guild-linked users currently online on tracked BattleMetrics servers.
 - Bot wipe-react routes (`/api/internal/bot/setup/guilds/*/wipe-reacts*`) are JWT-protected and persist wipe react metadata plus accepted/declined/late user lists in Postgres.
 - Bot wipe-react schedule routes (`/api/internal/bot/setup/guilds/*/wipe-react-schedules*`) are JWT-protected and persist recurring wipe-react schedule configs (max 3 per guild) with CRUD operations.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
@@ -147,12 +149,13 @@ apps/bot/src/
   wipereact-command.ts  # /wipereact create/delete/missing/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, and logs embeds
   summon-command.ts     # /summon {scope} — move all online voice members of a role into the invoker's voice channel (admin-only)
   announce-command.ts   # /announce {scope} {message} — DM an embed announcement to all members of a role (admin-only)
+  online-command.ts     # /online — public guild command that lists linked users currently online on tracked BattleMetrics servers
   view-command.ts       # /view user {discord_user|identifier} and /view all — view guild-linked steam/discord accounts
   server-command.ts     # /server add|remove|list — owner-only tracked BattleMetrics server management in the control guild
 ```
 
 Flow: worker registers with backend -> polls `/assignments` -> reconciles local discord.js shards -> heartbeats leases -> releases on shutdown. Auth via self-signed JWT using `BOT_SERVICE_JWT_SECRET`.
-Command flow: shard `0` registers `/setup start`, `/setup logchannel`, `/wipereact ...`, `/bind ...`, `/summon`, `/announce`, `/view`, `/server`, and `/admin reset_setup` at startup. `/server add {bm_id} {name}`, `/server remove {bm_id}`, and `/server list` are owner-only commands registered only in the control guild from `BOT_OWNER_GUILD_ID`; runtime access is restricted to the comma-separated Discord ID list in `BOT_OWNER_DISCORD_IDS`, and successful responses are public RustLens-themed embeds. `/summon {scope}` is an administrator-only guild command that moves all online voice-connected members of the given role into the invoker's voice channel; requires the `GuildVoiceStates` intent. `/announce {scope} {message}` is an administrator-only guild command that DMs an embedded announcement to all members of the given role. `/setup logchannel {channel}` persists a logs-channel override in backend guild settings for wipe reacts and logs. `/wipereact` is an administrator-only guild command and uses in-command autocomplete for selecting active wipe reacts on `/wipereact delete`, `/wipereact missing {scope} {wipereact}`, `/wipereact react add {user} {type} {wipereact}`, and `/wipereact react remove {user} {wipereact}`. `/wipereact schedule create` opens a modal to create a recurring wipe-react schedule (max 3 per guild) with day selection (Mon-Sun + Force Wipe), time, timezone, repeat interval, and post-before timing; `/wipereact schedule delete` and `/wipereact schedule edit` manage existing schedules via autocomplete. Wipe reacts are persisted in Postgres through backend bot-only endpoints, including the message/channel IDs, config, and accepted/declined/late user lists, and shard workers rehydrate active wipe-react expiry timers on startup. `/wipereact missing` posts an embed titled `Missing reactants` listing members of the selected role who have not accepted, declined, or marked late; this requires the bot to have the Discord Guild Members privileged intent enabled.
+Command flow: shard `0` registers `/setup start`, `/setup logchannel`, `/wipereact ...`, `/bind ...`, `/summon`, `/announce`, `/online`, `/view`, `/server`, and `/admin reset_setup` at startup. `/online` is a public guild command that renders one or more non-ephemeral RustLens embeds grouping currently online linked users by tracked BattleMetrics server; if the embed limits are reached, follow-up embeds use the title `Online summary cont.`. `/server add {bm_id} {name}`, `/server remove {bm_id}`, and `/server list` are owner-only commands registered only in the control guild from `BOT_OWNER_GUILD_ID`; runtime access is restricted to the comma-separated Discord ID list in `BOT_OWNER_DISCORD_IDS`, and successful responses are public RustLens-themed embeds. `/summon {scope}` is an administrator-only guild command that moves all online voice-connected members of the given role into the invoker's voice channel; requires the `GuildVoiceStates` intent. `/announce {scope} {message}` is an administrator-only guild command that DMs an embedded announcement to all members of the given role. `/setup logchannel {channel}` persists a logs-channel override in backend guild settings for wipe reacts and logs. `/wipereact` is an administrator-only guild command and uses in-command autocomplete for selecting active wipe reacts on `/wipereact delete`, `/wipereact missing {scope} {wipereact}`, `/wipereact react add {user} {type} {wipereact}`, and `/wipereact react remove {user} {wipereact}`. `/wipereact schedule create` opens a modal to create a recurring wipe-react schedule (max 3 per guild) with day selection (Mon-Sun + Force Wipe), time, timezone, repeat interval, and post-before timing; `/wipereact schedule delete` and `/wipereact schedule edit` manage existing schedules via autocomplete. Wipe reacts are persisted in Postgres through backend bot-only endpoints, including the message/channel IDs, config, and accepted/declined/late user lists, and shard workers rehydrate active wipe-react expiry timers on startup. `/wipereact missing` posts an embed titled `Missing reactants` listing members of the selected role who have not accepted, declined, or marked late; this requires the bot to have the Discord Guild Members privileged intent enabled.
 
 ### Frontend (Next.js)
 

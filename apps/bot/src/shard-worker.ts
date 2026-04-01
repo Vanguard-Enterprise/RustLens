@@ -10,6 +10,10 @@ import {
   handleBindModalSubmit,
 } from "./bind-command.js";
 import {
+  ensureOnlineCommand,
+  handleOnlineChatInput,
+} from "./online-command.js";
+import {
   ensureSetupCommand,
   handleAdminChatInput,
   handleSetupChatInput,
@@ -60,6 +64,7 @@ client.once("clientReady", () => {
     ensureWipeReactCommand(client, shardID),
     ensureSummonCommand(client, shardID),
     ensureAnnounceCommand(client, shardID),
+    ensureOnlineCommand(client, shardID),
     ensureViewCommand(client, shardID),
     ensureServerCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
@@ -101,6 +106,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleViewChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleOnlineChatInput(interaction)) {
         return;
       }
 

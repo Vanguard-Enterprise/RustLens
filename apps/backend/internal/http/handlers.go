@@ -1463,6 +1463,27 @@ func writeGuildSteamDiscordLinkList(w http.ResponseWriter, links []store.GuildSt
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func guildOnlineSummaryItemToMap(item store.GuildOnlineSummaryItem) map[string]any {
+	return map[string]any{
+		"guildId":    item.GuildID,
+		"discordId":  item.DiscordID,
+		"steamId":    item.SteamID,
+		"playerBmId": item.PlayerBmID,
+		"bmName":     item.BmName,
+		"serverBmId": item.ServerBmID,
+		"serverName": item.ServerName,
+		"onlineUnix": item.OnlineUnix,
+	}
+}
+
+func writeGuildOnlineSummaryList(w http.ResponseWriter, items []store.GuildOnlineSummaryItem) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, guildOnlineSummaryItemToMap(item))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
 type createGuildLinkRequest struct {
 	DiscordID string `json:"discordId"`
 	SteamID   string `json:"steamId"`
@@ -1518,6 +1539,22 @@ func (h *Handler) ListGuildLinks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeGuildSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) ListGuildOnlineSummary(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	items, err := h.postgres.ListGuildOnlineSummary(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildOnlineSummary error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild online summary")
+		return
+	}
+
+	writeGuildOnlineSummaryList(w, items)
 }
 
 func (h *Handler) ListGuildLinksByDiscord(w http.ResponseWriter, r *http.Request) {
