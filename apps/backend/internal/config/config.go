@@ -13,6 +13,7 @@ type Config struct {
 	BotServiceJWT       string
 	BotTargetShards     int
 	BotHeartbeatTTL     time.Duration
+	SteamAPIKey         string
 	BattleMetricsAPIKey string
 	BattleMetricsPoll   time.Duration
 	AllowedJWTIssuer    string
@@ -31,6 +32,7 @@ func Load() Config {
 		BotServiceJWT:       getEnv("BOT_SERVICE_JWT_SECRET", "dev-bot-secret"),
 		BotTargetShards:     targetShards,
 		BotHeartbeatTTL:     time.Duration(heartbeatTTL) * time.Second,
+		SteamAPIKey:         getEnv("STEAM_API_KEY", ""),
 		BattleMetricsAPIKey: getEnv("BATTLEMETRICS_API_KEY", ""),
 		BattleMetricsPoll:   time.Duration(battleMetricsPoll) * time.Second,
 		AllowedJWTIssuer:    getEnv("BOT_JWT_ISSUER", "rustlens-bot"),

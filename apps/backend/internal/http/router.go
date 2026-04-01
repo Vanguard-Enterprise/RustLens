@@ -10,6 +10,7 @@ import (
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
+	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
 )
 
@@ -25,8 +26,8 @@ func claimsFromContext(ctx context.Context) *auth.Claims {
 	return claims
 }
 
-func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service) http.Handler {
-	handler := NewHandler(cfg, postgres, redis, shardService)
+func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service, steamClient *steamapi.Client) http.Handler {
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -77,6 +78,7 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 
 		// Steam & Discord linking endpoints
 		r.Get("/steam/by-bm/{bmID}", handler.GetSteamAccountByBmID)
+		r.Post("/steam/resolve", handler.ResolveSteamID)
 		r.Post("/steam/links", handler.CreateSoftLink)
 		r.Post("/steam/bulk-hard-links", handler.BulkUpsertHardLinks)
 		r.Get("/steam/{steamID}", handler.GetSteamAccount)

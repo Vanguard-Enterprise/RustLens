@@ -7,7 +7,6 @@ import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 export const SETSTEAM_COMMAND_NAME = "setsteam";
 
 const SETSTEAM_STEAM_ID_OPTION_NAME = "steam_id";
-const steamIDPattern = /^\d{17}$/;
 
 const setSteamCommand = new SlashCommandBuilder()
   .setName(SETSTEAM_COMMAND_NAME)
@@ -16,7 +15,7 @@ const setSteamCommand = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName(SETSTEAM_STEAM_ID_OPTION_NAME)
-      .setDescription("Your 17-digit Steam ID")
+      .setDescription("Your 17-digit Steam ID or steamcommunity.com profile URL")
       .setRequired(true),
   );
 
@@ -89,15 +88,6 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
-  const steamId = interaction.options.getString(SETSTEAM_STEAM_ID_OPTION_NAME, true).trim();
-  if (!steamIDPattern.test(steamId)) {
-    await replyEphemeralEmbed(
-      interaction,
-      buildEmbed("Error", "Steam ID must be a 17-digit number."),
-    );
-    return true;
-  }
-
   const backend = getBackend();
   const workerId = getWorkerID();
   const existingLinks = await backend.listGuildLinksByDiscord(workerId, interaction.guildId, interaction.user.id);
@@ -113,6 +103,19 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
   }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const rawInput = interaction.options.getString(SETSTEAM_STEAM_ID_OPTION_NAME, true).trim();
+  let steamId: string;
+  try {
+    const resolved = await backend.resolveSteamID(workerId, rawInput);
+    steamId = resolved.steamId;
+  } catch {
+    await replyEphemeralEmbed(
+      interaction,
+      buildEmbed("Error", "Enter a 17-digit Steam ID or a supported steamcommunity.com profile URL."),
+    );
+    return true;
+  }
 
   try {
     await backend.createSoftLink(workerId, steamId, interaction.user.id, "bot_command");

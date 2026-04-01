@@ -181,4 +181,22 @@ describe("BackendClient", () => {
     expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/discord/456/steam/76561198000000000");
     expect(init?.method).toBe("DELETE");
   });
+
+  it("posts steam id resolution requests", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({ steamId: "76561198000000000" }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.resolveSteamID("worker-a", "https://steamcommunity.com/id/rustlens");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/steam/resolve");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify({ input: "https://steamcommunity.com/id/rustlens" }));
+  });
 });

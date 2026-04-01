@@ -13,6 +13,7 @@ import (
 	"rustlens/backend/internal/config"
 	httpapi "rustlens/backend/internal/http"
 	"rustlens/backend/internal/shards"
+	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
 )
 
@@ -38,7 +39,7 @@ func main() {
 	}
 
 	shardService := shards.NewService(redisStore, postgresStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
-	router := httpapi.NewRouter(cfg, postgresStore, redisStore, shardService)
+	router := httpapi.NewRouter(cfg, postgresStore, redisStore, shardService, steamapi.NewClient(cfg.SteamAPIKey))
 	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(cfg.BattleMetricsAPIKey), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
 

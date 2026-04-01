@@ -884,6 +884,33 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/steam/resolve": map[string]any{
+				"post": map[string]any{
+					"summary":     "Resolve Steam profile input",
+					"description": "Resolves a 17-digit Steam ID or a supported steamcommunity.com profile URL into a 17-digit Steam ID.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/ResolveSteamIDRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Steam ID resolved",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/ResolveSteamIDResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/steam/links": map[string]any{
 				"post": map[string]any{
 					"summary":     "Create soft link",
@@ -1541,6 +1568,20 @@ func buildOpenAPIDocument() map[string]any {
 						"source":    map[string]any{"type": "string"},
 					},
 					"required": []string{"steamId", "discordId", "source"},
+				},
+				"ResolveSteamIDRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"input": map[string]any{"type": "string"},
+					},
+					"required": []string{"input"},
+				},
+				"ResolveSteamIDResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steamId": map[string]any{"type": "string"},
+					},
+					"required": []string{"steamId"},
 				},
 				"BulkHardLinksRequest": map[string]any{
 					"type": "object",

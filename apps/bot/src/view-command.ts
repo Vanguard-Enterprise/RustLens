@@ -247,9 +247,9 @@ async function handleViewAll(interaction: ChatInputCommandInteraction) {
 
   const lines = items.map((link) => {
     const acct = accountMap.get(link.steamId);
-    let line = `<@${link.discordId}> - ${VIEW_EMOJIS.steam} [${link.steamId}](https://steamcommunity.com/profiles/${link.steamId})`;
+    let line = `<@${link.discordId}> - [${link.steamId}](https://steamcommunity.com/profiles/${link.steamId})`;
     if (acct?.bmId) {
-      line += ` - ${VIEW_EMOJIS.battlemetrics} [${acct.bmId}](https://www.battlemetrics.com/players/${acct.bmId})`;
+      line += ` - [${acct.bmId}](https://www.battlemetrics.com/players/${acct.bmId})`;
     }
     return `> * ${line}`;
   });

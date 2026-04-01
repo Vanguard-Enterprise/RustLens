@@ -193,6 +193,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - Sentinel errors (e.g. `ErrWipeReactNotFound`) mapped to HTTP 404 in handlers
 - Reaction mutations use `SELECT ... FOR UPDATE` row locking to prevent races
 - The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, and updates `player_states` inside a single store transaction per server.
+- Steam profile resolution lives in `internal/steamapi/`. The bot uses `POST /api/internal/bot/setup/steam/resolve` to turn a raw 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` / `steamcommunity.com/id/...` URL into a canonical Steam ID. Vanity URLs are resolved live through `STEAM_API_KEY` and are not cached separately.
 
 ## Commands
 

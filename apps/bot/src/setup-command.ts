@@ -317,7 +317,7 @@ const adminCommand = new SlashCommandBuilder()
       .addStringOption((option) =>
         option
           .setName(ADMIN_STEAM_ID_OPTION_NAME)
-          .setDescription("The 17-digit Steam ID to set")
+          .setDescription("The Steam ID or steamcommunity.com profile URL to set")
           .setRequired(true),
       ),
   )
@@ -332,8 +332,6 @@ const adminCommand = new SlashCommandBuilder()
           .setRequired(true),
       ),
   );
-
-const steamIDPattern = /^\d{17}$/;
 
 function buildSetupStartModal() {
   return new ModalV2Builder()
@@ -1423,16 +1421,21 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
     }
     case ADMIN_SET_STEAM_SUBCOMMAND_NAME: {
       const targetUser = interaction.options.getUser(ADMIN_USER_OPTION_NAME, true);
-      const steamID = interaction.options.getString(ADMIN_STEAM_ID_OPTION_NAME, true).trim();
-      if (!steamIDPattern.test(steamID)) {
+      const steamInput = interaction.options.getString(ADMIN_STEAM_ID_OPTION_NAME, true).trim();
+
+      await deferEphemeral(interaction);
+
+      let steamID: string;
+      try {
+        const resolved = await getBackend().resolveSteamID(getSetupWorkerID(), steamInput);
+        steamID = resolved.steamId;
+      } catch {
         await replyEphemeralEmbed(
           interaction,
-          buildAdminSteamEmbed("Error", "Steam ID must be a 17-digit number."),
+          buildAdminSteamEmbed("Error", "Enter a 17-digit Steam ID or a supported steamcommunity.com profile URL."),
         );
         return true;
       }
-
-      await deferEphemeral(interaction);
 
       try {
         await getBackend().createSoftLink(getSetupWorkerID(), steamID, targetUser.id, "bot_command");

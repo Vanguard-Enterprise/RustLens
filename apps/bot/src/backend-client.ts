@@ -102,6 +102,10 @@ export type SteamDiscordLinkListResponse = {
   items: SteamDiscordLink[];
 };
 
+export type ResolveSteamIDResponse = {
+  steamId: string;
+};
+
 export type GuildSteamDiscordLink = {
   guildId: string;
   discordId: string;
@@ -461,6 +465,15 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/discord/${discordId}/links`,
       "GET",
+    );
+  }
+
+  resolveSteamID(workerId: string, input: string) {
+    return this.call<ResolveSteamIDResponse>(
+      workerId,
+      `/api/internal/bot/setup/steam/resolve`,
+      "POST",
+      { input },
     );
   }
 

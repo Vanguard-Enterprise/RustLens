@@ -16,6 +16,7 @@ import (
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
+	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
 )
 
@@ -30,15 +31,17 @@ type Handler struct {
 	redis        *store.RedisStore
 	shardService *shards.Service
 	jwtValidator *auth.Validator
+	steamClient  *steamapi.Client
 }
 
-func NewHandler(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service) *Handler {
+func NewHandler(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service, steamClient *steamapi.Client) *Handler {
 	return &Handler{
 		cfg:          cfg,
 		postgres:     postgres,
 		redis:        redis,
 		shardService: shardService,
 		jwtValidator: auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
+		steamClient:  steamClient,
 	}
 }
 
@@ -1322,6 +1325,32 @@ type createSoftLinkRequest struct {
 	SteamID   string `json:"steamId"`
 	DiscordID string `json:"discordId"`
 	Source    string `json:"source"`
+}
+
+type resolveSteamIDRequest struct {
+	Input string `json:"input"`
+}
+
+func (h *Handler) ResolveSteamID(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request resolveSteamIDRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	steamID, err := h.steamClient.ResolveSteamID(r.Context(), request.Input)
+	if errors.Is(err, steamapi.ErrUnsupportedProfileInput) || errors.Is(err, steamapi.ErrVanityNotFound) || errors.Is(err, steamapi.ErrSteamAPIKeyRequired) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] ResolveSteamID error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to resolve steam id")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"steamId": steamID})
 }
 
 func (h *Handler) CreateSoftLink(w http.ResponseWriter, r *http.Request) {
