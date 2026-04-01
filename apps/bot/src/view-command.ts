@@ -10,6 +10,17 @@ const VIEW_USER_SUBCOMMAND = "user";
 const VIEW_ALL_SUBCOMMAND = "all";
 
 const steamIDPattern = /^\d{17}$/;
+const VIEW_EMOJIS = {
+  steam: "<:steam:1444016467648581642>",
+  battlemetrics: "<:battlemetrics:1444011821529956472>",
+  vitality: "<:vitality:1444010131728629761>",
+  atlas: "<:atlas:1444010442778480700>",
+  vital: "<:vital:1444011141587271682>",
+  modded: "<:modded:1487586362600456333>",
+  official: "<:official:1487583814271242461>",
+  build: "<:build:1487584253775450225>",
+  rust: "<:rust:1444010153803382957>",
+} as const;
 
 const viewCommand = new SlashCommandBuilder()
   .setName(VIEW_COMMAND_NAME)
@@ -74,22 +85,22 @@ function buildUserEmbed(steamId: string, account: SteamAccount | null): EmbedBui
     embed.setThumbnail(account.avatarImage);
   }
 
-  let info = `:steam: [${steamId}](https://steamcommunity.com/profiles/${steamId})`;
+  let info = `${VIEW_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`;
   if (account?.bmId) {
-    info += `\n:battlemetrics: [${account.bmId}](https://www.battlemetrics.com/players/${account.bmId})`;
+    info += `\n${VIEW_EMOJIS.battlemetrics} [${account.bmId}](https://www.battlemetrics.com/players/${account.bmId})`;
   }
   embed.addFields({ name: "Information", value: info });
 
   const hourFields = [
-    { name: ":vitality: Vitality", value: "**—** hours" },
-    { name: ":atlas: Atlas", value: "**—** hours" },
-    { name: ":vital: Vital", value: "**—** hours" },
-    { name: ":modded: Modded", value: "**—** hours" },
-    { name: ":official: Official", value: "**—** hours" },
-    { name: ":build: Build", value: "**—** hours" },
+    { name: `${VIEW_EMOJIS.vitality} Vitality`, value: "**—** hours" },
+    { name: `${VIEW_EMOJIS.atlas} Atlas`, value: "**—** hours" },
+    { name: `${VIEW_EMOJIS.vital} Vital`, value: "**—** hours" },
+    { name: `${VIEW_EMOJIS.modded} Modded`, value: "**—** hours" },
+    { name: `${VIEW_EMOJIS.official} Official`, value: "**—** hours" },
+    { name: `${VIEW_EMOJIS.build} Build`, value: "**—** hours" },
     { name: "\u{1F50D} First seen", value: "—" },
-    { name: ":battlemetrics: BM", value: "**—** hours" },
-    { name: ":rust: Rust", value: "**—** hours" },
+    { name: `${VIEW_EMOJIS.battlemetrics} BM`, value: "**—** hours" },
+    { name: `${VIEW_EMOJIS.rust} Rust`, value: "**—** hours" },
   ];
 
   for (const field of hourFields) {
@@ -236,9 +247,9 @@ async function handleViewAll(interaction: ChatInputCommandInteraction) {
 
   const lines = items.map((link) => {
     const acct = accountMap.get(link.steamId);
-    let line = `<@${link.discordId}> - [${link.steamId}](https://steamcommunity.com/profiles/${link.steamId})`;
+    let line = `<@${link.discordId}> - ${VIEW_EMOJIS.steam} [${link.steamId}](https://steamcommunity.com/profiles/${link.steamId})`;
     if (acct?.bmId) {
-      line += ` - [${acct.bmId}](https://www.battlemetrics.com/players/${acct.bmId})`;
+      line += ` - ${VIEW_EMOJIS.battlemetrics} [${acct.bmId}](https://www.battlemetrics.com/players/${acct.bmId})`;
     }
     return `> * ${line}`;
   });
