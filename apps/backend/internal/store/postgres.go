@@ -134,6 +134,11 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
+		CREATE TABLE IF NOT EXISTS tracked_servers (
+			bm_id TEXT PRIMARY KEY,
+			name TEXT NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS steam_discord_links (
 			steam_id TEXT NOT NULL REFERENCES steam_accounts(steam_id),
 			discord_id TEXT NOT NULL,

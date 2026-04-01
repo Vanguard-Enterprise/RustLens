@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -230,6 +231,22 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 		"guildId":      settings.GuildID,
 		"logChannelId": settings.LogChannelID,
 	})
+}
+
+func trackedServerToMap(item store.TrackedServer) map[string]any {
+	return map[string]any{
+		"bmId": item.BmID,
+		"name": item.Name,
+	}
+}
+
+func writeTrackedServerList(w http.ResponseWriter, items []store.TrackedServer) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, trackedServerToMap(item))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
 }
 
 func wipeReactToMap(record store.WipeReact) map[string]any {
@@ -1019,6 +1036,75 @@ func (h *Handler) MarkWipeReactSchedulePosted(w http.ResponseWriter, r *http.Req
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+type createTrackedServerRequest struct {
+	BmID string `json:"bmId"`
+	Name string `json:"name"`
+}
+
+func (h *Handler) ListTrackedServers(w http.ResponseWriter, r *http.Request) {
+	items, err := h.postgres.ListTrackedServers(r.Context())
+	if err != nil {
+		log.Printf("[backend] ListTrackedServers error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to list tracked servers")
+		return
+	}
+
+	writeTrackedServerList(w, items)
+}
+
+func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request createTrackedServerRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	request.BmID = strings.TrimSpace(request.BmID)
+	request.Name = strings.Join(strings.Fields(request.Name), " ")
+
+	if request.BmID == "" {
+		writeError(w, http.StatusBadRequest, "bmId is required")
+		return
+	}
+	if request.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	item, err := h.postgres.CreateTrackedServer(r.Context(), request.BmID, request.Name)
+	if errors.Is(err, store.ErrTrackedServerAlreadyExists) {
+		writeError(w, http.StatusConflict, "tracked server already exists")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] CreateTrackedServer error for %s: %v", request.BmID, err)
+		writeError(w, http.StatusInternalServerError, "failed to create tracked server")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, trackedServerToMap(item))
+}
+
+func (h *Handler) DeleteTrackedServer(w http.ResponseWriter, r *http.Request) {
+	bmID := strings.TrimSpace(chi.URLParam(r, "bmID"))
+	if bmID == "" {
+		writeError(w, http.StatusBadRequest, "bmID is required")
+		return
+	}
+
+	if err := h.postgres.DeleteTrackedServer(r.Context(), bmID); errors.Is(err, store.ErrTrackedServerNotFound) {
+		writeError(w, http.StatusNotFound, "tracked server not found")
+		return
+	} else if err != nil {
+		log.Printf("[backend] DeleteTrackedServer error for %s: %v", bmID, err)
+		writeError(w, http.StatusInternalServerError, "failed to delete tracked server")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func steamAccountToMap(record store.SteamAccount) map[string]any {

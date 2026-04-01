@@ -76,4 +76,39 @@ describe("BackendClient", () => {
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ userId: "222", type: "accepted" }));
   });
+
+  it("posts tracked server creation", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({ bmId: "12345", name: "Vital EU Main" }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.createTrackedServer("worker-a", "12345", "Vital EU Main");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify({ bmId: "12345", name: "Vital EU Main" }));
+  });
+
+  it("loads tracked servers", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({ items: [{ bmId: "12345", name: "Vital EU Main" }] }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.listTrackedServers("worker-a");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers");
+    expect(init?.method).toBe("GET");
+  });
 });

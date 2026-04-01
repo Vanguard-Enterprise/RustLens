@@ -112,6 +112,15 @@ export type GuildSteamDiscordLinkListResponse = {
   items: GuildSteamDiscordLink[];
 };
 
+export type TrackedServer = {
+  bmId: string;
+  name: string;
+};
+
+export type TrackedServerListResponse = {
+  items: TrackedServer[];
+};
+
 export type BulkHardLinkEntry = {
   steamId: string;
   bmId?: string | null;
@@ -339,6 +348,31 @@ export class BackendClient {
       `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules/${scheduleId}/mark-posted`,
       "POST",
       { lastPostedForUnix },
+    );
+  }
+
+  listTrackedServers(workerId: string) {
+    return this.call<TrackedServerListResponse>(
+      workerId,
+      `/api/internal/bot/setup/tracked-servers`,
+      "GET",
+    );
+  }
+
+  createTrackedServer(workerId: string, bmId: string, name: string) {
+    return this.call<TrackedServer>(
+      workerId,
+      `/api/internal/bot/setup/tracked-servers`,
+      "POST",
+      { bmId, name },
+    );
+  }
+
+  deleteTrackedServer(workerId: string, bmId: string) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/tracked-servers/${bmId}`,
+      "DELETE",
     );
   }
 

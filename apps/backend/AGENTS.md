@@ -109,6 +109,15 @@ Known Steam player accounts with optional BattleMetrics ID.
 | `avatar_image` | `TEXT NOT NULL DEFAULT ''` | Steam avatar URL |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 
+### `tracked_servers`
+
+Global BattleMetrics servers the bot should track.
+
+| Column | Type | Notes |
+|---|---|---|
+| `bm_id` | `TEXT` | PK |
+| `name` | `TEXT NOT NULL` | Display name |
+
 ### `steam_discord_links`
 
 Maps Steam accounts to Discord users. A pair can have both soft and hard links.

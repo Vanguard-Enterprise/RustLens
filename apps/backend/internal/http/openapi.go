@@ -684,6 +684,86 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/tracked-servers": map[string]any{
+				"get": map[string]any{
+					"summary":     "List tracked servers",
+					"description": "Returns all tracked BattleMetrics servers configured for the bot.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Tracked servers returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/TrackedServerListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"post": map[string]any{
+					"summary":     "Create tracked server",
+					"description": "Adds a BattleMetrics server to the bot's tracked server list.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateTrackedServerRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Tracked server created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/TrackedServer"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"409": map[string]any{
+							"description": "Tracked server already exists",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
+								},
+							},
+						},
+					},
+				},
+			},
+			"/api/internal/bot/setup/tracked-servers/{bmID}": map[string]any{
+				"delete": map[string]any{
+					"summary":     "Delete tracked server",
+					"description": "Deletes a tracked BattleMetrics server by ID.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "bmID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics server ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Tracked server deleted",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/steam/links": map[string]any{
 				"post": map[string]any{
 					"summary":     "Create soft link",
@@ -1156,6 +1236,32 @@ func buildOpenAPIDocument() map[string]any {
 						"logChannelId": map[string]any{"type": "string"},
 					},
 					"required": []string{"logChannelId"},
+				},
+				"TrackedServer": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"bmId": map[string]any{"type": "string"},
+						"name": map[string]any{"type": "string"},
+					},
+					"required": []string{"bmId", "name"},
+				},
+				"TrackedServerListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/TrackedServer"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"CreateTrackedServerRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"bmId": map[string]any{"type": "string"},
+						"name": map[string]any{"type": "string"},
+					},
+					"required": []string{"bmId", "name"},
 				},
 				"WipeReact": map[string]any{
 					"type": "object",

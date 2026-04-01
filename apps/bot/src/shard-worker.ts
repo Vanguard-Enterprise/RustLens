@@ -16,6 +16,10 @@ import {
   handleSetupModalSubmit,
 } from "./setup-command.js";
 import {
+  ensureServerCommand,
+  handleServerChatInput,
+} from "./server-command.js";
+import {
   ensureSummonCommand,
   handleSummonChatInput,
 } from "./summon-command.js";
@@ -57,6 +61,7 @@ client.once("clientReady", () => {
     ensureSummonCommand(client, shardID),
     ensureAnnounceCommand(client, shardID),
     ensureViewCommand(client, shardID),
+    ensureServerCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
   ]).then(() => {
     startWipeReactScheduler(client);
@@ -96,6 +101,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleViewChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleServerChatInput(interaction)) {
         return;
       }
 
