@@ -1337,10 +1337,11 @@ func buildOpenAPIDocument() map[string]any {
 					"properties": map[string]any{
 						"steamId":     map[string]any{"type": "string"},
 						"bmId":        map[string]any{"type": "string", "nullable": true},
+						"bmName":      map[string]any{"type": "string"},
 						"avatarImage": map[string]any{"type": "string"},
 						"createdAt":   map[string]any{"type": "string", "format": "date-time"},
 					},
-					"required": []string{"steamId", "bmId", "avatarImage", "createdAt"},
+					"required": []string{"steamId", "bmId", "bmName", "avatarImage", "createdAt"},
 				},
 				"SteamDiscordLink": map[string]any{
 					"type": "object",

@@ -1110,6 +1110,7 @@ func (h *Handler) DeleteTrackedServer(w http.ResponseWriter, r *http.Request) {
 func steamAccountToMap(record store.SteamAccount) map[string]any {
 	result := map[string]any{
 		"steamId":     record.SteamID,
+		"bmName":      record.BmName,
 		"avatarImage": record.AvatarImage,
 		"createdAt":   record.CreatedAt,
 	}
