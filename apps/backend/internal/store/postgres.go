@@ -195,12 +195,24 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ;
 
-		UPDATE user_guilds
-		SET first_seen_at = COALESCE(first_seen_at, created_at),
-			last_seen_at = COALESCE(last_seen_at, created_at)
-		WHERE TRUE;
+		DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_name = 'user_guilds' AND column_name = 'created_at'
+			) THEN
+				EXECUTE '
+					UPDATE user_guilds
+					SET first_seen_at = COALESCE(first_seen_at, created_at),
+						last_seen_at = COALESCE(last_seen_at, created_at)
+					WHERE TRUE
+				';
 
-		ALTER TABLE user_guilds DROP COLUMN IF EXISTS created_at;
+				EXECUTE 'ALTER TABLE user_guilds DROP COLUMN created_at';
+			END IF;
+		END
+		$$;
 
 		CREATE INDEX IF NOT EXISTS user_guilds_guild_idx
 		ON user_guilds (guild_id);
