@@ -5,7 +5,7 @@ import type {
   Client,
   GuildMember,
 } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import {
   BackendClient,
   type SteamAccount,
@@ -13,7 +13,6 @@ import {
   type WipeReact,
 } from "./backend-client.js";
 import { loadConfig } from "./config.js";
-import { hasGuildAdminAccess } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const COMPARE_COMMAND_NAME = "compare";
@@ -25,6 +24,7 @@ const FOOTER_TEXT = "RustLens.com";
 const compareCommand = new SlashCommandBuilder()
   .setName(COMPARE_COMMAND_NAME)
   .setDescription("Compare your current voice channel against a wipe react or tracked server")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
   .addStringOption((option) =>
     option
@@ -224,7 +224,7 @@ async function resolveSelectedWipeReact(guildId: string, messageId: string | nul
   return mostRecentPassed;
 }
 
-async function fetchVoiceChannelMembers(interaction: ChatInputCommandInteraction) {
+async function fetchComparisonMembers(interaction: ChatInputCommandInteraction) {
   const guild = interaction.guild;
   if (!guild) {
     return null;
@@ -232,11 +232,12 @@ async function fetchVoiceChannelMembers(interaction: ChatInputCommandInteraction
 
   const member = await guild.members.fetch(interaction.user.id).catch(() => null);
   const voiceChannel = member?.voice.channel;
-  if (!voiceChannel) {
-    return null;
+  if (voiceChannel) {
+    return [...voiceChannel.members.values()].filter((voiceMember) => !voiceMember.user.bot);
   }
 
-  return [...voiceChannel.members.values()].filter((voiceMember) => !voiceMember.user.bot);
+  const members = await guild.members.fetch();
+  return [...members.values()].filter((guildMember) => !guildMember.user.bot);
 }
 
 type GuildMappings = {
@@ -445,18 +446,18 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
     return true;
   }
 
-  if (!(await hasGuildAdminAccess(interaction))) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
     await interaction.reply({
-      content: "Only the configured admin role or administrators can use /compare.",
+      content: "Only administrators can use /compare.",
       flags: MessageFlags.Ephemeral,
     });
     return true;
   }
 
-  const voiceMembers = await fetchVoiceChannelMembers(interaction);
-  if (!voiceMembers) {
+  const comparisonMembers = await fetchComparisonMembers(interaction);
+  if (!comparisonMembers) {
     await interaction.reply({
-      content: "You must be in a voice channel to use /compare.",
+      content: "RustLens could not load members for this server.",
       flags: MessageFlags.Ephemeral,
     });
     return true;
@@ -468,10 +469,10 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   if (wipeReactMessageId || !serverId) {
-    return handleWipeReactComparison(interaction, voiceMembers, wipeReactMessageId);
+    return handleWipeReactComparison(interaction, comparisonMembers, wipeReactMessageId);
   }
 
-  return handleServerComparison(interaction, voiceMembers, serverId);
+  return handleServerComparison(interaction, comparisonMembers, serverId);
 }
 
 export const __testables = {
