@@ -37,10 +37,10 @@ describe("nickname-command", () => {
     ).toJSON();
 
     expect(embed.title).toBe("Nickname Change Complete");
-    expect(embed.fields?.[0]?.name).toBe("> ✅ Changed: 7");
-    expect(embed.fields?.[1]?.name).toBe("> ❌ Failed: 2");
-    expect(embed.fields?.[1]?.value).toContain("<@111> - Missing BM ID.");
-    expect(embed.fields?.[2]?.name).toBe("👥 Processed: 9");
-    expect(embed.fields?.[2]?.value).toBe("\u200b");
+    expect(embed.fields?.[0]?.name).toBe("👥 Processed: 9");
+    expect(embed.fields?.[0]?.value).toBe("\u200b");
+    expect(embed.fields?.[1]?.name).toBe("✅ Changed: 7");
+    expect(embed.fields?.[2]?.name).toBe("❌ Failed: 2");
+    expect(embed.fields?.[2]?.value).toContain("<@111> - Missing BM ID.");
   });
 });

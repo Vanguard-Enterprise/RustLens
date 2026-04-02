@@ -124,18 +124,18 @@ function buildCompletionEmbed(
     .setFooter({ text: FOOTER_TEXT, iconURL: RUSTLENS_EMBED_ICON_URL })
     .addFields(
       {
-        name: `> ✅ Changed: ${successCount}`,
-        value: EMBED_FIELD_VALUE_FALLBACK,
-        inline: false,
-      },
-      {
-        name: `> ❌ Failed: ${failedCount}`,
-        value: formatOutcomeLines(failedItems),
-        inline: false,
-      },
-      {
         name: `👥 Processed: ${totalCount}`,
         value: EMBED_FIELD_VALUE_FALLBACK,
+        inline: false,
+      },
+      {
+        name: `✅ Changed: ${successCount}`,
+        value: EMBED_FIELD_VALUE_FALLBACK,
+        inline: false,
+      },
+      {
+        name: `❌ Failed: ${failedCount}`,
+        value: formatOutcomeLines(failedItems),
         inline: false,
       },
     );
