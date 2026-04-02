@@ -53,6 +53,7 @@ import {
   rehydratePersistedWipeReacts,
   startWipeReactScheduler,
 } from "./wipereact-command.js";
+import { registerUserGuildSync } from "./user-guilds.js";
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
 const shardCount = Number(process.env.SHARD_COUNT ?? "1");
@@ -67,6 +68,8 @@ const client = new Client({
   shards: [shardID],
   shardCount,
 });
+
+registerUserGuildSync(client);
 
 client.once("clientReady", () => {
   console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);

@@ -135,7 +135,7 @@ Bot-internal endpoints under `/api/internal/bot/setup/steam/` and `/api/internal
 
 Bot-internal endpoints under `/api/internal/bot/setup/guilds/{guildID}/` provide CRUD for guild-scoped links: create, list by discord ID, list by steam ID, and delete.
 
-`user_guilds` records Discord users and their current guild membership state with composite PK `(discord_id, guild_id)`, `is_active`, `first_seen_at`, `last_seen_at`, and nullable `left_at`. Bot-internal endpoints under `/api/internal/bot/setup/user-guilds` and `/api/internal/bot/setup/discord/{discordID}/guilds` support marking a user active/seen in a guild, marking that user inactive/left for a guild, and listing all guild state rows for a Discord user. It is not yet populated by current command flows.
+`user_guilds` records Discord users and their current guild membership state with composite PK `(discord_id, guild_id)`, `is_active`, `first_seen_at`, `last_seen_at`, and nullable `left_at`. Bot-internal endpoints under `/api/internal/bot/setup/user-guilds` and `/api/internal/bot/setup/discord/{discordID}/guilds` support marking a user active/seen in a guild, marking that user inactive/left for a guild, and listing all guild state rows for a Discord user. The bot now populates this table for non-bot users via `guildMemberAdd` and `guildMemberRemove` events.
 
 ### Bot (TypeScript)
 
@@ -157,6 +157,7 @@ apps/bot/src/
   announce-command.ts   # /announce {scope} {message} — DM an embed announcement to all members of a role (admin-only)
   online-command.ts     # /online — public guild command that lists linked users currently online on tracked BattleMetrics servers
   compare-command.ts    # /compare {server?} {wipereact?} — admin comparison of the invoker's current voice channel against a tracked server or the most recent passed / specified wipe react
+  user-guilds.ts        # Shared bot-side sync for user_guilds active/inactive membership state on guildMemberAdd/guildMemberRemove
   view-command.ts       # /view user {discord_user|identifier} and /view all — view guild-linked steam/discord accounts
   server-command.ts     # /server add|remove|list — owner-only tracked BattleMetrics server management in the control guild
 ```
