@@ -1,13 +1,15 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, MessageFlags, SlashCommandBuilder, type GuildMember } from "discord.js";
 import { BackendClient, type SteamAccount } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { hasGuildAdminAccess } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const VIEW_COMMAND_NAME = "view";
 
 const VIEW_USER_SUBCOMMAND = "user";
 const VIEW_ALL_SUBCOMMAND = "all";
+const VIEW_NOSTEAM_SUBCOMMAND = "nosteam";
 
 const steamIDPattern = /^\d{17}$/;
 const VIEW_EMOJIS = {
@@ -39,6 +41,9 @@ const viewCommand = new SlashCommandBuilder()
   )
   .addSubcommand((sub) =>
     sub.setName(VIEW_ALL_SUBCOMMAND).setDescription("List all linked users in this guild"),
+  )
+  .addSubcommand((sub) =>
+    sub.setName(VIEW_NOSTEAM_SUBCOMMAND).setDescription("List guild users without a linked Steam account"),
   );
 
 let _backend: BackendClient | undefined;
@@ -110,6 +115,29 @@ function buildUserEmbed(steamId: string, account: SteamAccount | null): EmbedBui
   return embed;
 }
 
+function buildNoSteamEmbed(userIds: readonly string[]) {
+  return new EmbedBuilder()
+    .setTitle("Unlinked Users")
+    .setDescription(
+      userIds.length > 0
+        ? userIds.map((userId) => `> * <@${userId}>`).join("\n")
+        : "> * None",
+    )
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+function sortMembers(left: GuildMember, right: GuildMember) {
+  const leftName = left.displayName.toLocaleLowerCase();
+  const rightName = right.displayName.toLocaleLowerCase();
+  if (leftName !== rightName) {
+    return leftName.localeCompare(rightName);
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
 export async function ensureViewCommand(client: Client, shardID: number) {
   if (shardID !== 0 || !client.application) {
     return;
@@ -150,6 +178,11 @@ export async function handleViewChatInput(interaction: ChatInputCommandInteracti
 
   if (subcommand === VIEW_ALL_SUBCOMMAND) {
     await handleViewAll(interaction);
+    return true;
+  }
+
+  if (subcommand === VIEW_NOSTEAM_SUBCOMMAND) {
+    await handleViewNoSteam(interaction);
     return true;
   }
 
@@ -262,4 +295,36 @@ async function handleViewAll(interaction: ChatInputCommandInteraction) {
     .setDescription(lines.join("\n"));
 
   await interaction.editReply({ embeds: [embed] });
+}
+
+async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await interaction.reply({
+      content: "Only the configured admin role or administrators can use /view nosteam.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const guildId = interaction.guildId!;
+  const backend = getBackend();
+  const workerId = getWorkerID();
+
+  const [members, links] = await Promise.all([
+    interaction.guild!.members.fetch(),
+    backend.listGuildLinks(workerId, guildId),
+  ]);
+
+  const linkedDiscordIds = new Set(links.items.map((link) => link.discordId));
+  const missingUserIds = [...members.values()]
+    .filter((member) => !member.user.bot)
+    .sort(sortMembers)
+    .filter((member) => !linkedDiscordIds.has(member.id))
+    .map((member) => member.id);
+
+  await interaction.editReply({
+    embeds: [buildNoSteamEmbed(missingUserIds)],
+  });
 }
