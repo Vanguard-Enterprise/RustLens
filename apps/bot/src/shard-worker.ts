@@ -14,6 +14,10 @@ import {
   handleBindModalSubmit,
 } from "./bind-command.js";
 import {
+  ensureNoSteamCommand,
+  handleNoSteamChatInput,
+} from "./nosteam-command.js";
+import {
   ensureOnlineCommand,
   handleOnlineChatInput,
 } from "./online-command.js";
@@ -72,6 +76,7 @@ client.once("clientReady", () => {
     ensureWipeReactCommand(client, shardID),
     ensureSummonCommand(client, shardID),
     ensureAnnounceCommand(client, shardID),
+    ensureNoSteamCommand(client, shardID),
     ensureOnlineCommand(client, shardID),
     ensureSetSteamCommand(client, shardID),
     ensureSettingsCommand(client, shardID),
@@ -120,6 +125,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleOnlineChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleNoSteamChatInput(interaction)) {
         return;
       }
 
