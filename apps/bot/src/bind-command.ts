@@ -784,8 +784,7 @@ async function handleMassInvite(interaction: ChatInputCommandInteraction) {
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const members = await guild.members.fetch();
-  let targetMembers = members.filter((member) => member.roles.cache.has(role.id));
+  let targetMembers = guild.members.cache.filter((member) => member.roles.cache.has(role.id));
 
   if (vcChannel) {
     targetMembers = targetMembers.filter(
