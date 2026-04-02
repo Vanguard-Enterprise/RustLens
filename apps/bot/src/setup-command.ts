@@ -1422,6 +1422,15 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
     }
     case ADMIN_SET_STEAM_SUBCOMMAND_NAME: {
       const targetUser = interaction.options.getUser(ADMIN_USER_OPTION_NAME, true);
+
+      if (targetUser.bot) {
+        await replyEphemeralEmbed(
+          interaction,
+          buildAdminSteamEmbed("Error", "You cannot link a Steam ID to a bot account."),
+        );
+        return true;
+      }
+
       const steamInput = interaction.options.getString(ADMIN_STEAM_ID_OPTION_NAME, true).trim();
 
       await deferEphemeral(interaction);
