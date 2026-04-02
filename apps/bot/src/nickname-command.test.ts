@@ -28,9 +28,23 @@ describe("nickname-command", () => {
     expect(nickname).toContain(" - ");
   });
 
-  it("builds the completion embed results field", () => {
-    const embed = __testables.buildCompletionEmbed(7, 2, 9).toJSON();
+  it("builds the completion embed results fields", () => {
+    const embed = __testables.buildCompletionEmbed(
+      7,
+      2,
+      9,
+      [{ discordId: "111", reason: "Missing BM ID." }],
+      [
+        { discordId: "222", reason: "Changed." },
+        { discordId: "111", reason: "Missing BM ID." },
+      ],
+    ).toJSON();
+
     expect(embed.title).toBe("Nickname Change Complete");
-    expect(embed.fields?.[0]?.value).toBe("> ✅ Changed: 7\n> ❌ Failed: 2\n> 👥 Processed: 9");
+    expect(embed.fields?.[0]?.name).toBe("> ✅ Changed: 7");
+    expect(embed.fields?.[1]?.name).toBe("> ❌ Failed: 2");
+    expect(embed.fields?.[1]?.value).toContain("<@111> - Missing BM ID.");
+    expect(embed.fields?.[2]?.name).toBe("👥 Processed: 9");
+    expect(embed.fields?.[2]?.value).toContain("<@222> - Changed.");
   });
 });
