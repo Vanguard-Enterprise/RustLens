@@ -116,7 +116,6 @@ function buildCompletionEmbed(
   failedCount: number,
   totalCount: number,
   failedItems: readonly NicknameOutcome[],
-  processedItems: readonly NicknameOutcome[],
 ) {
   return new EmbedBuilder()
     .setTitle("Nickname Change Complete")
@@ -136,7 +135,7 @@ function buildCompletionEmbed(
       },
       {
         name: `👥 Processed: ${totalCount}`,
-        value: formatOutcomeLines(processedItems),
+        value: EMBED_FIELD_VALUE_FALLBACK,
         inline: false,
       },
     );
@@ -232,7 +231,6 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
   let successCount = 0;
   let failedCount = 0;
   const failedItems: NicknameOutcome[] = [];
-  const processedItems: NicknameOutcome[] = [];
 
   for (const item of items) {
     const bmId = item.bmId?.trim() ?? "";
@@ -241,7 +239,6 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
       failedCount += 1;
       const outcome = { discordId: item.discordId, reason: NICKNAME_FAILURE_REASON_MISSING_BM_ID };
       failedItems.push(outcome);
-      processedItems.push(outcome);
       continue;
     }
 
@@ -249,7 +246,6 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
       failedCount += 1;
       const outcome = { discordId: item.discordId, reason: NICKNAME_FAILURE_REASON_MISSING_BM_NAME };
       failedItems.push(outcome);
-      processedItems.push(outcome);
       continue;
     }
 
@@ -258,7 +254,6 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
       failedCount += 1;
       const outcome = { discordId: item.discordId, reason: NICKNAME_FAILURE_REASON_INTERNAL };
       failedItems.push(outcome);
-      processedItems.push(outcome);
       continue;
     }
 
@@ -270,7 +265,6 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
         reason: resolveNicknameFailureReason(member, botMember, interaction.guild.ownerId),
       };
       failedItems.push(outcome);
-      processedItems.push(outcome);
       continue;
     }
 
@@ -279,18 +273,16 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
         await member.setNickname(targetNickname, "RustLens /nickname sync");
       }
       successCount += 1;
-      processedItems.push({ discordId: item.discordId, reason: NICKNAME_CHANGE_SUCCESS_REASON });
     } catch {
       failedCount += 1;
       const outcome = { discordId: item.discordId, reason: NICKNAME_FAILURE_REASON_INTERNAL };
       failedItems.push(outcome);
-      processedItems.push(outcome);
     }
   }
 
   await replyEphemeralEmbed(
     interaction,
-    buildCompletionEmbed(successCount, failedCount, items.length, failedItems, processedItems),
+    buildCompletionEmbed(successCount, failedCount, items.length, failedItems),
   );
   return true;
 }

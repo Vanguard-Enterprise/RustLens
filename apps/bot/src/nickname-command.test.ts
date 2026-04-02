@@ -34,10 +34,6 @@ describe("nickname-command", () => {
       2,
       9,
       [{ discordId: "111", reason: "Missing BM ID." }],
-      [
-        { discordId: "222", reason: "Changed." },
-        { discordId: "111", reason: "Missing BM ID." },
-      ],
     ).toJSON();
 
     expect(embed.title).toBe("Nickname Change Complete");
@@ -45,6 +41,6 @@ describe("nickname-command", () => {
     expect(embed.fields?.[1]?.name).toBe("> ❌ Failed: 2");
     expect(embed.fields?.[1]?.value).toContain("<@111> - Missing BM ID.");
     expect(embed.fields?.[2]?.name).toBe("👥 Processed: 9");
-    expect(embed.fields?.[2]?.value).toContain("<@222> - Changed.");
+    expect(embed.fields?.[2]?.value).toBe("\u200b");
   });
 });
