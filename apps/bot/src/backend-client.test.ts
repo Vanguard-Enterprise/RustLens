@@ -229,6 +229,51 @@ describe("BackendClient", () => {
     expect(init?.body).toBe(JSON.stringify({ discordId: "456", steamId: "76561198000000000" }));
   });
 
+  it("posts user guild links", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({
+        discordId: "456",
+        guildId: "123",
+        createdAt: "2026-04-01T10:00:00.000Z",
+      }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.createUserGuildLink("worker-a", "456", "123");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/user-guilds");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify({ discordId: "456", guildId: "123" }));
+  });
+
+  it("loads user guild links by discord id", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({
+        items: [{
+          discordId: "456",
+          guildId: "123",
+          createdAt: "2026-04-01T10:00:00.000Z",
+        }],
+      }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.listUserGuildLinksByDiscord("worker-a", "456");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/discord/456/guilds");
+    expect(init?.method).toBe("GET");
+  });
+
   it("deletes guild steam-discord links", async () => {
     const mockResponse = {
       ok: true,

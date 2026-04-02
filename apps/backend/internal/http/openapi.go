@@ -1003,6 +1003,61 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/discord/{discordID}/guilds": map[string]any{
+				"get": map[string]any{
+					"summary":     "List user guild links by Discord ID",
+					"description": "Returns all guild links recorded for a Discord user in user_guilds.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "User guild links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/UserGuildLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/user-guilds": map[string]any{
+				"post": map[string]any{
+					"summary":     "Create user guild link",
+					"description": "Creates or upserts a user_guilds entry for a Discord user and guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateUserGuildLinkRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "User guild link created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/UserGuildLink"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/guilds/{guildID}/links": map[string]any{
 				"get": map[string]any{
 					"summary":     "List all guild steam-discord links",
@@ -1592,6 +1647,33 @@ func buildOpenAPIDocument() map[string]any {
 						"steamId":   map[string]any{"type": "string"},
 					},
 					"required": []string{"discordId", "steamId"},
+				},
+				"UserGuildLink": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"discordId": map[string]any{"type": "string"},
+						"guildId":   map[string]any{"type": "string"},
+						"createdAt": map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"discordId", "guildId", "createdAt"},
+				},
+				"UserGuildLinkList": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/UserGuildLink"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"CreateUserGuildLinkRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"discordId": map[string]any{"type": "string"},
+						"guildId":   map[string]any{"type": "string"},
+					},
+					"required": []string{"discordId", "guildId"},
 				},
 				"ErrorResponse": map[string]any{
 					"type": "object",

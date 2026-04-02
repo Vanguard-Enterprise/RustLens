@@ -13,6 +13,7 @@ import {
   type WipeReact,
 } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { getGuildMembers } from "./guild-member-cache.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const COMPARE_COMMAND_NAME = "compare";
@@ -236,7 +237,7 @@ async function fetchComparisonMembers(interaction: ChatInputCommandInteraction) 
     return [...voiceChannel.members.values()].filter((voiceMember) => !voiceMember.user.bot);
   }
 
-  const members = await guild.members.fetch();
+  const members = await getGuildMembers(guild);
   return [...members.values()].filter((guildMember) => !guildMember.user.bot);
 }
 

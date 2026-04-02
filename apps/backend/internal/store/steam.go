@@ -233,11 +233,26 @@ type GuildSteamDiscordLink struct {
 	CreatedAt time.Time
 }
 
+type UserGuildLink struct {
+	DiscordID string
+	GuildID   string
+	CreatedAt time.Time
+}
+
 func scanGuildSteamDiscordLink(scanner rowScanner) (GuildSteamDiscordLink, error) {
 	var record GuildSteamDiscordLink
 	err := scanner.Scan(&record.GuildID, &record.DiscordID, &record.SteamID, &record.CreatedAt)
 	if err != nil {
 		return GuildSteamDiscordLink{}, err
+	}
+	return record, nil
+}
+
+func scanUserGuildLink(scanner rowScanner) (UserGuildLink, error) {
+	var record UserGuildLink
+	err := scanner.Scan(&record.DiscordID, &record.GuildID, &record.CreatedAt)
+	if err != nil {
+		return UserGuildLink{}, err
 	}
 	return record, nil
 }
@@ -320,6 +335,44 @@ func (p *PostgresStore) ListGuildLinks(ctx context.Context, guildID string) ([]G
 	records := make([]GuildSteamDiscordLink, 0)
 	for rows.Next() {
 		record, err := scanGuildSteamDiscordLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (p *PostgresStore) CreateUserGuildLink(ctx context.Context, discordID, guildID string) (UserGuildLink, error) {
+	var record UserGuildLink
+	err := p.pool.QueryRow(ctx, `
+		INSERT INTO user_guilds (discord_id, guild_id)
+		VALUES ($1, $2)
+		ON CONFLICT (discord_id, guild_id) DO UPDATE
+		SET guild_id = EXCLUDED.guild_id
+		RETURNING discord_id, guild_id, created_at
+	`, discordID, guildID).Scan(&record.DiscordID, &record.GuildID, &record.CreatedAt)
+	if err != nil {
+		return UserGuildLink{}, err
+	}
+	return record, nil
+}
+
+func (p *PostgresStore) ListUserGuildLinksByDiscordID(ctx context.Context, discordID string) ([]UserGuildLink, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT discord_id, guild_id, created_at
+		FROM user_guilds
+		WHERE discord_id = $1
+		ORDER BY created_at ASC, guild_id ASC
+	`, discordID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]UserGuildLink, 0)
+	for rows.Next() {
+		record, err := scanUserGuildLink(rows)
 		if err != nil {
 			return nil, err
 		}

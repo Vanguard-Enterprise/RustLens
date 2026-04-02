@@ -1,5 +1,6 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { MessageFlags, SlashCommandBuilder } from "discord.js";
+import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
 
 export const SUMMON_COMMAND_NAME = "summon";
@@ -78,7 +79,7 @@ export async function handleSummonChatInput(interaction: ChatInputCommandInterac
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const members = await guild.members.fetch();
+  const members = await getGuildMembers(guild);
   const targets = members.filter(
     (m) => m.roles.cache.has(role.id) && m.voice.channel && m.voice.channelId !== voiceChannel.id,
   );

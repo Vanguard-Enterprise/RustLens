@@ -34,6 +34,7 @@ import {
   TextInputStyle,
 } from "./builders/index.js";
 import { loadConfig } from "./config.js";
+import { getGuildMembers } from "./guild-member-cache.js";
 import {
   fetchGuildSettings,
   hasGuildAdminAccess,
@@ -1977,7 +1978,7 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     }
 
     try {
-      await guild.members.fetch();
+      await getGuildMembers(guild);
     } catch {
       await replyEphemeral(
         interaction,

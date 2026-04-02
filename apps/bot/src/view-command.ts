@@ -2,6 +2,7 @@ import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, type GuildMember } from "discord.js";
 import { BackendClient, type SteamAccount } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
@@ -314,7 +315,7 @@ async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
   const workerId = getWorkerID();
 
   const [members, links] = await Promise.all([
-    interaction.guild!.members.fetch(),
+    getGuildMembers(interaction.guild!),
     backend.listGuildLinks(workerId, guildId),
   ]);
 

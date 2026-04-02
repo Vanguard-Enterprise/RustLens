@@ -14,12 +14,12 @@ type PostgresStore struct {
 }
 
 type GuildSettings struct {
-	GuildID                  string
-	WipeReactLogChannelID    string
-	LinkingLogChannelID      string
+	GuildID                   string
+	WipeReactLogChannelID     string
+	LinkingLogChannelID       string
 	TrackedServerLogChannelID string
-	AlertsChannelID          string
-	AdminRoleID              string
+	AlertsChannelID           string
+	AdminRoleID               string
 }
 
 type GuildSettingsPatch struct {
@@ -179,6 +179,16 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS guild_tracked_servers_guild_idx
 		ON guild_tracked_servers (guild_id);
+
+		CREATE TABLE IF NOT EXISTS user_guilds (
+			discord_id TEXT NOT NULL,
+			guild_id TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (discord_id, guild_id)
+		);
+
+		CREATE INDEX IF NOT EXISTS user_guilds_guild_idx
+		ON user_guilds (guild_id);
 
 		CREATE TABLE IF NOT EXISTS steam_discord_links (
 			steam_id TEXT NOT NULL REFERENCES steam_accounts(steam_id),

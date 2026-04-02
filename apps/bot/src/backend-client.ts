@@ -115,6 +115,16 @@ export type GuildSteamDiscordLinkListResponse = {
   items: GuildSteamDiscordLink[];
 };
 
+export type UserGuildLink = {
+  discordId: string;
+  guildId: string;
+  createdAt: string;
+};
+
+export type UserGuildLinkListResponse = {
+  items: UserGuildLink[];
+};
+
 export type GuildOnlineSummaryItem = {
   guildId: string;
   discordId: string;
@@ -484,6 +494,15 @@ export class BackendClient {
     );
   }
 
+  createUserGuildLink(workerId: string, discordId: string, guildId: string) {
+    return this.call<UserGuildLink>(
+      workerId,
+      `/api/internal/bot/setup/user-guilds`,
+      "POST",
+      { discordId, guildId },
+    );
+  }
+
   createGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
     return this.call<GuildSteamDiscordLink>(
       workerId,
@@ -522,6 +541,14 @@ export class BackendClient {
     return this.call<GuildSteamDiscordLinkListResponse>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/links`,
+      "GET",
+    );
+  }
+
+  listUserGuildLinksByDiscord(workerId: string, discordId: string) {
+    return this.call<UserGuildLinkListResponse>(
+      workerId,
+      `/api/internal/bot/setup/discord/${discordId}/guilds`,
       "GET",
     );
   }

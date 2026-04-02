@@ -1,5 +1,6 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
@@ -75,7 +76,7 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const members = await guild.members.fetch();
+  const members = await getGuildMembers(guild);
   const targets = members.filter((m) => !m.user.bot && m.roles.cache.has(role.id));
 
   if (targets.size === 0) {

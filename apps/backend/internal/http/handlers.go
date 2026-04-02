@@ -1545,6 +1545,22 @@ func writeGuildSteamDiscordLinkList(w http.ResponseWriter, links []store.GuildSt
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func userGuildLinkToMap(link store.UserGuildLink) map[string]any {
+	return map[string]any{
+		"discordId": link.DiscordID,
+		"guildId":   link.GuildID,
+		"createdAt": link.CreatedAt,
+	}
+}
+
+func writeUserGuildLinkList(w http.ResponseWriter, links []store.UserGuildLink) {
+	items := make([]map[string]any, 0, len(links))
+	for _, link := range links {
+		items = append(items, userGuildLinkToMap(link))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func guildOnlineSummaryItemToMap(item store.GuildOnlineSummaryItem) map[string]any {
 	return map[string]any{
 		"guildId":    item.GuildID,
@@ -1569,6 +1585,11 @@ func writeGuildOnlineSummaryList(w http.ResponseWriter, items []store.GuildOnlin
 type createGuildLinkRequest struct {
 	DiscordID string `json:"discordId"`
 	SteamID   string `json:"steamId"`
+}
+
+type createUserGuildLinkRequest struct {
+	DiscordID string `json:"discordId"`
+	GuildID   string `json:"guildId"`
 }
 
 func (h *Handler) CreateGuildSteamDiscordLink(w http.ResponseWriter, r *http.Request) {
@@ -1605,6 +1626,33 @@ func (h *Handler) CreateGuildSteamDiscordLink(w http.ResponseWriter, r *http.Req
 	}
 
 	writeJSON(w, http.StatusCreated, guildSteamDiscordLinkToMap(link))
+}
+
+func (h *Handler) CreateUserGuildLink(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request createUserGuildLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if !validateSnowflakeValue(request.DiscordID) {
+		writeError(w, http.StatusBadRequest, "discordId must be a valid Discord snowflake")
+		return
+	}
+	if !validateSnowflakeValue(request.GuildID) {
+		writeError(w, http.StatusBadRequest, "guildId must be a valid Discord snowflake")
+		return
+	}
+
+	link, err := h.postgres.CreateUserGuildLink(r.Context(), request.DiscordID, request.GuildID)
+	if err != nil {
+		log.Printf("[backend] CreateUserGuildLink error for %s/%s: %v", request.DiscordID, request.GuildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to create user guild link")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, userGuildLinkToMap(link))
 }
 
 func (h *Handler) ListGuildLinks(w http.ResponseWriter, r *http.Request) {
@@ -1659,6 +1707,22 @@ func (h *Handler) ListGuildLinksByDiscord(w http.ResponseWriter, r *http.Request
 	}
 
 	writeGuildSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) ListUserGuildLinksByDiscord(w http.ResponseWriter, r *http.Request) {
+	discordID, ok := validateSnowflakePathParam(w, r, "discordID")
+	if !ok {
+		return
+	}
+
+	links, err := h.postgres.ListUserGuildLinksByDiscordID(r.Context(), discordID)
+	if err != nil {
+		log.Printf("[backend] ListUserGuildLinksByDiscord error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch user guild links")
+		return
+	}
+
+	writeUserGuildLinkList(w, links)
 }
 
 func (h *Handler) ListGuildLinksBySteam(w http.ResponseWriter, r *http.Request) {
