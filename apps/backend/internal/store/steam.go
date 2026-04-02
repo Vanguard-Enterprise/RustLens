@@ -233,6 +233,14 @@ type GuildSteamDiscordLink struct {
 	CreatedAt time.Time
 }
 
+type GuildNicknameTarget struct {
+	GuildID   string
+	DiscordID string
+	SteamID   string
+	BmID      *string
+	BmName    *string
+}
+
 type UserGuildLink struct {
 	DiscordID   string
 	GuildID     string
@@ -346,6 +354,53 @@ func (p *PostgresStore) ListGuildLinks(ctx context.Context, guildID string) ([]G
 	for rows.Next() {
 		record, err := scanGuildSteamDiscordLink(rows)
 		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (p *PostgresStore) ListGuildNicknameTargets(ctx context.Context, guildID string) ([]GuildNicknameTarget, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT guild_id, discord_id, steam_id, bm_id, bm_name
+		FROM (
+			SELECT
+				gsl.guild_id,
+				gsl.discord_id,
+				gsl.steam_id,
+				sa.bm_id,
+				NULLIF(sa.bm_name, '') AS bm_name,
+				ROW_NUMBER() OVER (
+					PARTITION BY gsl.discord_id
+					ORDER BY
+						CASE
+							WHEN sa.bm_id IS NOT NULL
+								AND sa.bm_id <> ''
+								AND sa.bm_name IS NOT NULL
+								AND sa.bm_name <> ''
+							THEN 0
+							ELSE 1
+						END ASC,
+						gsl.created_at ASC,
+						gsl.steam_id ASC
+				) AS nickname_rank
+			FROM guild_steam_discord_links gsl
+			LEFT JOIN steam_accounts sa ON sa.steam_id = gsl.steam_id
+			WHERE gsl.guild_id = $1
+		) nickname_targets
+		WHERE nickname_rank = 1
+		ORDER BY discord_id ASC
+	`, guildID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]GuildNicknameTarget, 0)
+	for rows.Next() {
+		var record GuildNicknameTarget
+		if err := rows.Scan(&record.GuildID, &record.DiscordID, &record.SteamID, &record.BmID, &record.BmName); err != nil {
 			return nil, err
 		}
 		records = append(records, record)

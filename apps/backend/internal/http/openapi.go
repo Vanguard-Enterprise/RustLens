@@ -1153,6 +1153,34 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}/nickname-targets": map[string]any{
+				"get": map[string]any{
+					"summary":     "List guild nickname targets",
+					"description": "Returns one guild-scoped steam-discord link per Discord user joined with steam_accounts bm_id and bm_name for nickname updates.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Nickname targets returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildNicknameTargetList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/guilds/{guildID}/discord/{discordID}/links": map[string]any{
 				"get": map[string]any{
 					"summary":     "List guild links by Discord ID",
@@ -1661,6 +1689,27 @@ func buildOpenAPIDocument() map[string]any {
 						"items": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLink"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"GuildNicknameTarget": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId":   map[string]any{"type": "string"},
+						"discordId": map[string]any{"type": "string"},
+						"steamId":   map[string]any{"type": "string"},
+						"bmId":      map[string]any{"type": "string", "nullable": true},
+						"bmName":    map[string]any{"type": "string", "nullable": true},
+					},
+					"required": []string{"guildId", "discordId", "steamId", "bmId", "bmName"},
+				},
+				"GuildNicknameTargetList": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/GuildNicknameTarget"},
 						},
 					},
 					"required": []string{"items"},

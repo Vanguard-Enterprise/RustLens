@@ -42,6 +42,7 @@ func TestOpenAPISpecContainsCoreRoutes(t *testing.T) {
 		"/api/internal/bot/setup/user-guilds",
 		"/api/internal/bot/setup/discord/{discordID}/guilds",
 		"/api/internal/bot/setup/guilds/{guildID}/online-summary",
+		"/api/internal/bot/setup/guilds/{guildID}/nickname-targets",
 	}
 
 	for _, path := range requiredPaths {

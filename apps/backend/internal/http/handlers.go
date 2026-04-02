@@ -1545,6 +1545,33 @@ func writeGuildSteamDiscordLinkList(w http.ResponseWriter, links []store.GuildSt
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func guildNicknameTargetToMap(item store.GuildNicknameTarget) map[string]any {
+	result := map[string]any{
+		"guildId":   item.GuildID,
+		"discordId": item.DiscordID,
+		"steamId":   item.SteamID,
+	}
+	if item.BmID != nil {
+		result["bmId"] = *item.BmID
+	} else {
+		result["bmId"] = nil
+	}
+	if item.BmName != nil {
+		result["bmName"] = *item.BmName
+	} else {
+		result["bmName"] = nil
+	}
+	return result
+}
+
+func writeGuildNicknameTargetList(w http.ResponseWriter, items []store.GuildNicknameTarget) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, guildNicknameTargetToMap(item))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
 func userGuildLinkToMap(link store.UserGuildLink) map[string]any {
 	result := map[string]any{
 		"discordId":   link.DiscordID,
@@ -1704,6 +1731,22 @@ func (h *Handler) ListGuildLinks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeGuildSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) ListGuildNicknameTargets(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	items, err := h.postgres.ListGuildNicknameTargets(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildNicknameTargets error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild nickname targets")
+		return
+	}
+
+	writeGuildNicknameTargetList(w, items)
 }
 
 func (h *Handler) ListGuildOnlineSummary(w http.ResponseWriter, r *http.Request) {

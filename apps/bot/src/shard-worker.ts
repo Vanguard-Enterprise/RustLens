@@ -23,6 +23,10 @@ import {
   handleOnlineChatInput,
 } from "./online-command.js";
 import {
+  ensureNicknameCommand,
+  handleNicknameChatInput,
+} from "./nickname-command.js";
+import {
   ensureSetSteamCommand,
   handleSetSteamChatInput,
 } from "./setsteam-command.js";
@@ -82,6 +86,7 @@ client.once("clientReady", () => {
     ensureSummonCommand(client, shardID),
     ensureAnnounceCommand(client, shardID),
     ensureOnlineCommand(client, shardID),
+    ensureNicknameCommand(client, shardID),
     ensureSetSteamCommand(client, shardID),
     ensureSettingsCommand(client, shardID),
     ensureViewCommand(client, shardID),
@@ -137,6 +142,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleOnlineChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleNicknameChatInput(interaction)) {
         return;
       }
 

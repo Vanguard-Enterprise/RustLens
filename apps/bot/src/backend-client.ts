@@ -115,6 +115,18 @@ export type GuildSteamDiscordLinkListResponse = {
   items: GuildSteamDiscordLink[];
 };
 
+export type GuildNicknameTarget = {
+  guildId: string;
+  discordId: string;
+  steamId: string;
+  bmId: string | null;
+  bmName: string | null;
+};
+
+export type GuildNicknameTargetListResponse = {
+  items: GuildNicknameTarget[];
+};
+
 export type UserGuildLink = {
   discordId: string;
   guildId: string;
@@ -553,6 +565,14 @@ export class BackendClient {
     return this.call<GuildSteamDiscordLinkListResponse>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/links`,
+      "GET",
+    );
+  }
+
+  listGuildNicknameTargets(workerId: string, guildId: string) {
+    return this.call<GuildNicknameTargetListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/nickname-targets`,
       "GET",
     );
   }

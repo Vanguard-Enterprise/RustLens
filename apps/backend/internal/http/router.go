@@ -91,6 +91,7 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		// Guild-scoped steam-discord links
 		r.Get("/guilds/{guildID}/online-summary", handler.ListGuildOnlineSummary)
 		r.Get("/guilds/{guildID}/links", handler.ListGuildLinks)
+		r.Get("/guilds/{guildID}/nickname-targets", handler.ListGuildNicknameTargets)
 		r.Post("/guilds/{guildID}/links", handler.CreateGuildSteamDiscordLink)
 		r.Get("/guilds/{guildID}/discord/{discordID}/links", handler.ListGuildLinksByDiscord)
 		r.Get("/guilds/{guildID}/steam/{steamID}/links", handler.ListGuildLinksBySteam)
