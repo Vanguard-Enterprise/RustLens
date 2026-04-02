@@ -239,6 +239,10 @@ function trimOptionLabel(value: string) {
   return value.length <= 100 ? value : `${value.slice(0, 97)}...`;
 }
 
+function trimOptionDescription(value: string) {
+  return value.length <= 100 ? value : `${value.slice(0, 97)}...`;
+}
+
 async function fetchGuildChannelOptions(guild: Guild) {
   await guild.channels.fetch();
 
@@ -317,6 +321,13 @@ function buildChannelSettingsModal(
           ...channels.slice(0, 24).map((channel) => ({
             label: trimOptionLabel(`#${channel.name}`),
             value: channel.id,
+            description: trimOptionDescription(
+              `Category: ${
+                channel.parent?.type === ChannelType.GuildCategory
+                  ? channel.parent.name
+                  : "None"
+              }`,
+            ),
             ...(channel.id === currentChannelId && { default: true }),
           })),
         ),
