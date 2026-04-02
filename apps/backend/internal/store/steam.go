@@ -234,9 +234,12 @@ type GuildSteamDiscordLink struct {
 }
 
 type UserGuildLink struct {
-	DiscordID string
-	GuildID   string
-	CreatedAt time.Time
+	DiscordID   string
+	GuildID     string
+	IsActive    bool
+	FirstSeenAt time.Time
+	LastSeenAt  time.Time
+	LeftAt      *time.Time
 }
 
 func scanGuildSteamDiscordLink(scanner rowScanner) (GuildSteamDiscordLink, error) {
@@ -250,7 +253,14 @@ func scanGuildSteamDiscordLink(scanner rowScanner) (GuildSteamDiscordLink, error
 
 func scanUserGuildLink(scanner rowScanner) (UserGuildLink, error) {
 	var record UserGuildLink
-	err := scanner.Scan(&record.DiscordID, &record.GuildID, &record.CreatedAt)
+	err := scanner.Scan(
+		&record.DiscordID,
+		&record.GuildID,
+		&record.IsActive,
+		&record.FirstSeenAt,
+		&record.LastSeenAt,
+		&record.LeftAt,
+	)
 	if err != nil {
 		return UserGuildLink{}, err
 	}
@@ -346,12 +356,45 @@ func (p *PostgresStore) ListGuildLinks(ctx context.Context, guildID string) ([]G
 func (p *PostgresStore) CreateUserGuildLink(ctx context.Context, discordID, guildID string) (UserGuildLink, error) {
 	var record UserGuildLink
 	err := p.pool.QueryRow(ctx, `
-		INSERT INTO user_guilds (discord_id, guild_id)
+		INSERT INTO user_guilds (discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at)
+		VALUES ($1, $2, TRUE, NOW(), NOW(), NULL)
+		ON CONFLICT (discord_id, guild_id) DO UPDATE
+		SET is_active = TRUE,
+			last_seen_at = NOW(),
+			left_at = NULL
+		RETURNING discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at
+	`, discordID, guildID).Scan(
+		&record.DiscordID,
+		&record.GuildID,
+		&record.IsActive,
+		&record.FirstSeenAt,
+		&record.LastSeenAt,
+		&record.LeftAt,
+	)
+	if err != nil {
+		return UserGuildLink{}, err
+	}
+	return record, nil
+}
+
+func (p *PostgresStore) MarkUserGuildLeft(ctx context.Context, discordID, guildID string) (UserGuildLink, error) {
+	var record UserGuildLink
+	err := p.pool.QueryRow(ctx, `
+		INSERT INTO user_guilds (discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at)
 		VALUES ($1, $2)
 		ON CONFLICT (discord_id, guild_id) DO UPDATE
-		SET guild_id = EXCLUDED.guild_id
-		RETURNING discord_id, guild_id, created_at
-	`, discordID, guildID).Scan(&record.DiscordID, &record.GuildID, &record.CreatedAt)
+		SET is_active = FALSE,
+			last_seen_at = NOW(),
+			left_at = NOW()
+		RETURNING discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at
+	`, discordID, guildID).Scan(
+		&record.DiscordID,
+		&record.GuildID,
+		&record.IsActive,
+		&record.FirstSeenAt,
+		&record.LastSeenAt,
+		&record.LeftAt,
+	)
 	if err != nil {
 		return UserGuildLink{}, err
 	}
@@ -360,10 +403,10 @@ func (p *PostgresStore) CreateUserGuildLink(ctx context.Context, discordID, guil
 
 func (p *PostgresStore) ListUserGuildLinksByDiscordID(ctx context.Context, discordID string) ([]UserGuildLink, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT discord_id, guild_id, created_at
+		SELECT discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at
 		FROM user_guilds
 		WHERE discord_id = $1
-		ORDER BY created_at ASC, guild_id ASC
+		ORDER BY guild_id ASC
 	`, discordID)
 	if err != nil {
 		return nil, err

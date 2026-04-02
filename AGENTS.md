@@ -135,7 +135,7 @@ Bot-internal endpoints under `/api/internal/bot/setup/steam/` and `/api/internal
 
 Bot-internal endpoints under `/api/internal/bot/setup/guilds/{guildID}/` provide CRUD for guild-scoped links: create, list by discord ID, list by steam ID, and delete.
 
-`user_guilds` records Discord users seen in guilds with composite PK `(discord_id, guild_id)` and `created_at`. Bot-internal endpoints under `/api/internal/bot/setup/user-guilds` and `/api/internal/bot/setup/discord/{discordID}/guilds` support upserting one user-guild link and listing all guild links for a Discord user. It is not yet populated by current command flows.
+`user_guilds` records Discord users and their current guild membership state with composite PK `(discord_id, guild_id)`, `is_active`, `first_seen_at`, `last_seen_at`, and nullable `left_at`. Bot-internal endpoints under `/api/internal/bot/setup/user-guilds` and `/api/internal/bot/setup/discord/{discordID}/guilds` support marking a user active/seen in a guild, marking that user inactive/left for a guild, and listing all guild state rows for a Discord user. It is not yet populated by current command flows.
 
 ### Bot (TypeScript)
 

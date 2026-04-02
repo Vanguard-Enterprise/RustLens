@@ -81,6 +81,7 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Post("/steam/links", handler.CreateSoftLink)
 		r.Post("/steam/bulk-hard-links", handler.BulkUpsertHardLinks)
 		r.Post("/user-guilds", handler.CreateUserGuildLink)
+		r.Delete("/user-guilds", handler.MarkUserGuildLeft)
 		r.Get("/steam/{steamID}", handler.GetSteamAccount)
 		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)

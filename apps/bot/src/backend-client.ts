@@ -118,7 +118,10 @@ export type GuildSteamDiscordLinkListResponse = {
 export type UserGuildLink = {
   discordId: string;
   guildId: string;
-  createdAt: string;
+  isActive: boolean;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  leftAt: string | null;
 };
 
 export type UserGuildLinkListResponse = {
@@ -499,6 +502,15 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/user-guilds`,
       "POST",
+      { discordId, guildId },
+    );
+  }
+
+  markUserGuildLeft(workerId: string, discordId: string, guildId: string) {
+    return this.call<UserGuildLink>(
+      workerId,
+      `/api/internal/bot/setup/user-guilds`,
+      "DELETE",
       { discordId, guildId },
     );
   }

@@ -1034,7 +1034,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/internal/bot/setup/user-guilds": map[string]any{
 				"post": map[string]any{
 					"summary":     "Create user guild link",
-					"description": "Creates or upserts a user_guilds entry for a Discord user and guild.",
+					"description": "Creates or upserts a user_guilds entry and marks the user active in the guild.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"requestBody": map[string]any{
 						"required": true,
@@ -1047,6 +1047,31 @@ func buildOpenAPIDocument() map[string]any {
 					"responses": map[string]any{
 						"201": map[string]any{
 							"description": "User guild link created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/UserGuildLink"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"delete": map[string]any{
+					"summary":     "Mark user guild link inactive",
+					"description": "Marks a user_guilds entry inactive for a Discord user and guild and sets leftAt.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateUserGuildLinkRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "User guild link updated",
 							"content": map[string]any{
 								"application/json": map[string]any{
 									"schema": map[string]any{"$ref": "#/components/schemas/UserGuildLink"},
@@ -1651,11 +1676,14 @@ func buildOpenAPIDocument() map[string]any {
 				"UserGuildLink": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"discordId": map[string]any{"type": "string"},
-						"guildId":   map[string]any{"type": "string"},
-						"createdAt": map[string]any{"type": "string", "format": "date-time"},
+						"discordId":   map[string]any{"type": "string"},
+						"guildId":     map[string]any{"type": "string"},
+						"isActive":    map[string]any{"type": "boolean"},
+						"firstSeenAt": map[string]any{"type": "string", "format": "date-time"},
+						"lastSeenAt":  map[string]any{"type": "string", "format": "date-time"},
+						"leftAt":      map[string]any{"type": "string", "format": "date-time", "nullable": true},
 					},
-					"required": []string{"discordId", "guildId", "createdAt"},
+					"required": []string{"discordId", "guildId", "isActive", "firstSeenAt", "lastSeenAt", "leftAt"},
 				},
 				"UserGuildLinkList": map[string]any{
 					"type": "object",

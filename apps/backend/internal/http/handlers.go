@@ -1546,11 +1546,19 @@ func writeGuildSteamDiscordLinkList(w http.ResponseWriter, links []store.GuildSt
 }
 
 func userGuildLinkToMap(link store.UserGuildLink) map[string]any {
-	return map[string]any{
-		"discordId": link.DiscordID,
-		"guildId":   link.GuildID,
-		"createdAt": link.CreatedAt,
+	result := map[string]any{
+		"discordId":   link.DiscordID,
+		"guildId":     link.GuildID,
+		"isActive":    link.IsActive,
+		"firstSeenAt": link.FirstSeenAt,
+		"lastSeenAt":  link.LastSeenAt,
 	}
+	if link.LeftAt != nil {
+		result["leftAt"] = *link.LeftAt
+	} else {
+		result["leftAt"] = nil
+	}
+	return result
 }
 
 func writeUserGuildLinkList(w http.ResponseWriter, links []store.UserGuildLink) {
@@ -1653,6 +1661,33 @@ func (h *Handler) CreateUserGuildLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, userGuildLinkToMap(link))
+}
+
+func (h *Handler) MarkUserGuildLeft(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request createUserGuildLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if !validateSnowflakeValue(request.DiscordID) {
+		writeError(w, http.StatusBadRequest, "discordId must be a valid Discord snowflake")
+		return
+	}
+	if !validateSnowflakeValue(request.GuildID) {
+		writeError(w, http.StatusBadRequest, "guildId must be a valid Discord snowflake")
+		return
+	}
+
+	link, err := h.postgres.MarkUserGuildLeft(r.Context(), request.DiscordID, request.GuildID)
+	if err != nil {
+		log.Printf("[backend] MarkUserGuildLeft error for %s/%s: %v", request.DiscordID, request.GuildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update user guild link")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, userGuildLinkToMap(link))
 }
 
 func (h *Handler) ListGuildLinks(w http.ResponseWriter, r *http.Request) {

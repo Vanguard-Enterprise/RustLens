@@ -235,7 +235,10 @@ describe("BackendClient", () => {
       json: async () => ({
         discordId: "456",
         guildId: "123",
-        createdAt: "2026-04-01T10:00:00.000Z",
+        isActive: true,
+        firstSeenAt: "2026-04-01T10:00:00.000Z",
+        lastSeenAt: "2026-04-01T10:00:00.000Z",
+        leftAt: null,
       }),
     } as Response;
 
@@ -251,6 +254,31 @@ describe("BackendClient", () => {
     expect(init?.body).toBe(JSON.stringify({ discordId: "456", guildId: "123" }));
   });
 
+  it("marks user guild links inactive", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({
+        discordId: "456",
+        guildId: "123",
+        isActive: false,
+        firstSeenAt: "2026-04-01T10:00:00.000Z",
+        lastSeenAt: "2026-04-02T10:00:00.000Z",
+        leftAt: "2026-04-02T10:00:00.000Z",
+      }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.markUserGuildLeft("worker-a", "456", "123");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/user-guilds");
+    expect(init?.method).toBe("DELETE");
+    expect(init?.body).toBe(JSON.stringify({ discordId: "456", guildId: "123" }));
+  });
+
   it("loads user guild links by discord id", async () => {
     const mockResponse = {
       ok: true,
@@ -258,7 +286,10 @@ describe("BackendClient", () => {
         items: [{
           discordId: "456",
           guildId: "123",
-          createdAt: "2026-04-01T10:00:00.000Z",
+          isActive: true,
+          firstSeenAt: "2026-04-01T10:00:00.000Z",
+          lastSeenAt: "2026-04-01T10:00:00.000Z",
+          leftAt: null,
         }],
       }),
     } as Response;

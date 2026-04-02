@@ -183,9 +183,24 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS user_guilds (
 			discord_id TEXT NOT NULL,
 			guild_id TEXT NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			is_active BOOLEAN NOT NULL DEFAULT TRUE,
+			first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			left_at TIMESTAMPTZ,
 			PRIMARY KEY (discord_id, guild_id)
 		);
+
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ;
+
+		UPDATE user_guilds
+		SET first_seen_at = COALESCE(first_seen_at, created_at),
+			last_seen_at = COALESCE(last_seen_at, created_at)
+		WHERE TRUE;
+
+		ALTER TABLE user_guilds DROP COLUMN IF EXISTS created_at;
 
 		CREATE INDEX IF NOT EXISTS user_guilds_guild_idx
 		ON user_guilds (guild_id);
