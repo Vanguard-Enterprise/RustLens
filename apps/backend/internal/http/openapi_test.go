@@ -28,6 +28,7 @@ func TestOpenAPISpecContainsCoreRoutes(t *testing.T) {
 		"/api/internal/bot/shards/release",
 		"/api/internal/bot/shards/assignments",
 		"/api/internal/bot/setup/guilds/{guildID}/settings",
+		"/api/internal/bot/setup/guilds/{guildID}/tracked-servers",
 		"/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/active",
 		"/api/internal/bot/setup/guilds/{guildID}/wipe-reacts",
 		"/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/{messageID}",

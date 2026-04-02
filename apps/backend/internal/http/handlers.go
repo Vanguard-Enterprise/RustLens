@@ -244,10 +244,27 @@ func trackedServerToMap(item store.TrackedServer) map[string]any {
 	return result
 }
 
+func guildTrackedServerToMap(item store.GuildTrackedServer) map[string]any {
+	return map[string]any{
+		"guildId": item.GuildID,
+		"bmId":    item.BmID,
+		"name":    item.Name,
+	}
+}
+
 func writeTrackedServerList(w http.ResponseWriter, items []store.TrackedServer) {
 	response := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		response = append(response, trackedServerToMap(item))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
+func writeGuildTrackedServerList(w http.ResponseWriter, items []store.GuildTrackedServer) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, guildTrackedServerToMap(item))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"items": response})
@@ -1075,6 +1092,96 @@ func (h *Handler) DeleteTrackedServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+type replaceGuildTrackedServersRequest struct {
+	BmIDs []string `json:"bmIds"`
+}
+
+func (h *Handler) ListGuildTrackedServers(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	items, err := h.postgres.ListGuildTrackedServers(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildTrackedServers error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list guild tracked servers")
+		return
+	}
+
+	writeGuildTrackedServerList(w, items)
+}
+
+func (h *Handler) ReplaceGuildTrackedServers(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request replaceGuildTrackedServersRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(request.BmIDs) > 100 {
+		writeError(w, http.StatusBadRequest, "bmIds exceeds maximum allowed size")
+		return
+	}
+
+	seen := make(map[string]struct{}, len(request.BmIDs))
+	bmIDs := make([]string, 0, len(request.BmIDs))
+	for _, bmID := range request.BmIDs {
+		trimmed := strings.TrimSpace(bmID)
+		if trimmed == "" {
+			writeError(w, http.StatusBadRequest, "bmIds must not contain empty values")
+			return
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		bmIDs = append(bmIDs, trimmed)
+	}
+
+	if len(bmIDs) > 0 {
+		trackedServers, err := h.postgres.ListTrackedServers(r.Context())
+		if err != nil {
+			log.Printf("[backend] ListTrackedServers validation error for guild %s: %v", guildID, err)
+			writeError(w, http.StatusInternalServerError, "failed to validate tracked servers")
+			return
+		}
+
+		available := make(map[string]struct{}, len(trackedServers))
+		for _, item := range trackedServers {
+			available[item.BmID] = struct{}{}
+		}
+
+		for _, bmID := range bmIDs {
+			if _, ok := available[bmID]; !ok {
+				writeError(w, http.StatusBadRequest, "bmIds must reference existing tracked servers")
+				return
+			}
+		}
+	}
+
+	if err := h.postgres.ReplaceGuildTrackedServers(r.Context(), guildID, bmIDs); err != nil {
+		log.Printf("[backend] ReplaceGuildTrackedServers error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to save guild tracked servers")
+		return
+	}
+
+	items, err := h.postgres.ListGuildTrackedServers(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildTrackedServers (post-update) error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list guild tracked servers")
+		return
+	}
+
+	writeGuildTrackedServerList(w, items)
 }
 
 func (h *Handler) ListOnlinePlayerStatesByServer(w http.ResponseWriter, r *http.Request) {

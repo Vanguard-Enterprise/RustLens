@@ -141,6 +141,16 @@ export type TrackedServerListResponse = {
   items: TrackedServer[];
 };
 
+export type GuildTrackedServer = {
+  guildId: string;
+  bmId: string;
+  name: string;
+};
+
+export type GuildTrackedServerListResponse = {
+  items: GuildTrackedServer[];
+};
+
 export type PlayerState = {
   serverBmId: string;
   serverName: string;
@@ -372,6 +382,23 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/tracked-servers/${bmId}`,
       "DELETE",
+    );
+  }
+
+  listGuildTrackedServers(workerId: string, guildId: string) {
+    return this.call<GuildTrackedServerListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/tracked-servers`,
+      "GET",
+    );
+  }
+
+  replaceGuildTrackedServers(workerId: string, guildId: string, bmIds: string[]) {
+    return this.call<GuildTrackedServerListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/tracked-servers`,
+      "PUT",
+      { bmIds },
     );
   }
 

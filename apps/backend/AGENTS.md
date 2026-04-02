@@ -111,6 +111,21 @@ Global BattleMetrics servers the bot should track.
 | `last_polled_at` | `TIMESTAMPTZ` | Nullable, last successful or failed poll attempt time |
 | `last_poll_error` | `TEXT NOT NULL DEFAULT ''` | Most recent poll error, empty on success |
 
+### `guild_tracked_servers`
+
+Guild-specific selection of servers from the global `tracked_servers` list.
+
+| Column | Type | Notes |
+|---|---|---|
+| `guild_id` | `TEXT NOT NULL` | Discord guild snowflake |
+| `server_bm_id` | `TEXT NOT NULL` | FK to `tracked_servers.bm_id` |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**PK**: `(guild_id, server_bm_id)`.
+
+**Index**:
+- `guild_tracked_servers_guild_idx ON (guild_id)` — used to load one guild's selected tracked servers.
+
 ### `player_states`
 
 BattleMetrics presence state per tracked server and player.
@@ -132,7 +147,7 @@ BattleMetrics presence state per tracked server and player.
 
 ### Guild Online Summary
 
-`online_summary.go` joins `guild_steam_discord_links`, `steam_accounts`, `player_states`, and `tracked_servers` to produce the guild online summary used by the bot's `/online` command. The query only returns rows where the linked Steam account has a non-null `bm_id` and the matching player state is currently online.
+`online_summary.go` joins `guild_steam_discord_links`, `guild_tracked_servers`, `steam_accounts`, `player_states`, and `tracked_servers` to produce the guild online summary used by the bot's `/online` command. The query only returns rows where the linked Steam account has a non-null `bm_id`, the matching player state is currently online, and the server is selected for that guild.
 
 ### `steam_discord_links`
 

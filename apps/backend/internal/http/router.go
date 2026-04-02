@@ -52,6 +52,8 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Get("/guilds/{guildID}/settings", handler.GetGuildSettings)
 		r.Put("/guilds/{guildID}/settings", handler.UpdateGuildSettings)
+		r.Get("/guilds/{guildID}/tracked-servers", handler.ListGuildTrackedServers)
+		r.Put("/guilds/{guildID}/tracked-servers", handler.ReplaceGuildTrackedServers)
 		r.Get("/guilds/{guildID}/wipe-reacts/active", handler.ListActiveWipeReacts)
 		r.Post("/guilds/{guildID}/wipe-reacts", handler.CreateWipeReact)
 		r.Get("/guilds/{guildID}/wipe-reacts/{messageID}", handler.GetWipeReact)

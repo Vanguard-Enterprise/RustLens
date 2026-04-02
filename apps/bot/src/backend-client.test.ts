@@ -119,6 +119,29 @@ describe("BackendClient", () => {
     expect(init?.method).toBe("GET");
   });
 
+  it("replaces guild tracked servers", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({
+        items: [
+          { guildId: "123", bmId: "111", name: "Atlas EU 10x" },
+          { guildId: "123", bmId: "222", name: "Vitality EU 10x" },
+        ],
+      }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.replaceGuildTrackedServers("worker-a", "123", ["111", "222"]);
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/tracked-servers");
+    expect(init?.method).toBe("PUT");
+    expect(init?.body).toBe(JSON.stringify({ bmIds: ["111", "222"] }));
+  });
+
   it("loads guild online summary", async () => {
     const mockResponse = {
       ok: true,

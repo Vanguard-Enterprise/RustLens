@@ -562,6 +562,68 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}/tracked-servers": map[string]any{
+				"get": map[string]any{
+					"summary":     "List guild tracked servers",
+					"description": "Returns the tracked BattleMetrics servers selected for one guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild tracked servers returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildTrackedServerListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"put": map[string]any{
+					"summary":     "Replace guild tracked servers",
+					"description": "Replaces the tracked BattleMetrics servers selected for one guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/ReplaceGuildTrackedServersRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild tracked servers updated",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildTrackedServerListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/tracked-servers": map[string]any{
 				"get": map[string]any{
 					"summary":     "List tracked servers",
@@ -1221,6 +1283,35 @@ func buildOpenAPIDocument() map[string]any {
 						"alertsChannelId":          map[string]any{"type": "string"},
 						"adminRoleId":              map[string]any{"type": "string"},
 					},
+				},
+				"GuildTrackedServer": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId": map[string]any{"type": "string"},
+						"bmId":    map[string]any{"type": "string"},
+						"name":    map[string]any{"type": "string"},
+					},
+					"required": []string{"guildId", "bmId", "name"},
+				},
+				"GuildTrackedServerListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/GuildTrackedServer"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"ReplaceGuildTrackedServersRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"bmIds": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
+					},
+					"required": []string{"bmIds"},
 				},
 				"TrackedServer": map[string]any{
 					"type": "object",

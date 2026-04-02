@@ -16,7 +16,7 @@ import {
   SlashCommandBuilder,
   StringSelectMenuBuilder,
 } from "discord.js";
-import { StringSelectBuilder, ModalV2Builder } from "./builders/index.js";
+import { CheckboxGroupBuilder, StringSelectBuilder, ModalV2Builder } from "./builders/index.js";
 import { BackendClient, type GuildSettingsPatch } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, updateGuildSettings } from "./guild-settings.js";
@@ -27,7 +27,9 @@ export const SETTINGS_COMMAND_NAME = "settings";
 const SETTINGS_SELECT_CUSTOM_ID = "settings:select";
 const SETTINGS_CHANNEL_MODAL_PREFIX = "settings:channel:";
 const SETTINGS_ROLE_MODAL_PREFIX = "settings:role:";
+const SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID = "settings:tracked-servers";
 const SETTINGS_SELECT_FIELD_CUSTOM_ID = "settings:value";
+const SETTINGS_TRACKED_SERVERS_FIELD_CUSTOM_ID = "settings:tracked-servers:value";
 const SETTINGS_UNSET_VALUE = "__unset__";
 
 const SETTINGS_OPTION_WIPE_REACT_LOGS = "wipe_react_logs";
@@ -70,7 +72,7 @@ const settingsChoices: readonly SettingsChoice[] = [
   {
     label: "Tracked Servers",
     value: SETTINGS_OPTION_TRACKED_SERVERS,
-    description: "View currently tracked servers",
+    description: "Choose the tracked servers for this guild",
   },
   {
     label: "Admin Role",
@@ -126,7 +128,7 @@ function buildTrackedServersValue(servers: { name: string }[]) {
 async function buildSettingsPayload(guild: Guild) {
   const [settings, trackedServers] = await Promise.all([
     fetchGuildSettings(guild.id),
-    getBackend().listTrackedServers(getWorkerID()),
+    getBackend().listGuildTrackedServers(getWorkerID(), guild.id),
   ]);
 
   const embed = new EmbedBuilder()
@@ -234,6 +236,30 @@ async function fetchGuildRoleOptions(guild: Guild) {
     .filter((role): role is Role => Boolean(role))
     .filter((role) => role.id !== guild.id && !role.managed)
     .sort((left, right) => right.position - left.position || left.name.localeCompare(right.name));
+}
+
+function buildTrackedServersModal(
+  trackedServers: { bmId: string; name: string }[],
+  selectedBmIds: Set<string>,
+) {
+  return new ModalV2Builder()
+    .setTitle("Server Settings")
+    .setCustomId(SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID)
+    .addComponent(
+      "Tracked Servers",
+      new CheckboxGroupBuilder()
+        .setCustomId(SETTINGS_TRACKED_SERVERS_FIELD_CUSTOM_ID)
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(Math.min(trackedServers.length, 25))
+        .addOptions(
+          ...trackedServers.slice(0, 25).map((server) => ({
+            label: trimOptionLabel(server.name),
+            value: server.bmId,
+            default: selectedBmIds.has(server.bmId),
+          })),
+        ),
+    );
 }
 
 function buildChannelSettingsModal(
@@ -388,11 +414,25 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
   const settings = await fetchGuildSettings(interaction.guildId);
 
   if (selected === SETTINGS_OPTION_TRACKED_SERVERS) {
-    await updateWithSettings(interaction, interaction.guild);
-    await interaction.followUp({
-      content: "Tracked servers are managed with /server add, /server remove, and /server list.",
-      flags: MessageFlags.Ephemeral,
-    });
+    const [allTrackedServers, guildTrackedServers] = await Promise.all([
+      getBackend().listTrackedServers(getWorkerID()),
+      getBackend().listGuildTrackedServers(getWorkerID(), interaction.guildId),
+    ]);
+
+    if (allTrackedServers.items.length === 0) {
+      await interaction.reply({
+        content: "No tracked servers are available yet. Add them first with /server in the owner guild.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    await interaction.showModal(
+      buildTrackedServersModal(
+        allTrackedServers.items,
+        new Set(guildTrackedServers.items.map((server) => server.bmId)),
+      ).toJSON() as any,
+    );
     return true;
   }
 
@@ -463,7 +503,8 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
 
 export async function handleSettingsModalSubmit(interaction: ModalSubmitInteraction) {
   if (!interaction.customId.startsWith(SETTINGS_CHANNEL_MODAL_PREFIX) &&
-      !interaction.customId.startsWith(SETTINGS_ROLE_MODAL_PREFIX)) {
+      !interaction.customId.startsWith(SETTINGS_ROLE_MODAL_PREFIX) &&
+      interaction.customId !== SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID) {
     return false;
   }
 
@@ -476,7 +517,7 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
   }
 
   const selectedValue = parseSettingsSelection(interaction);
-  if (selectedValue === null) {
+  if (interaction.customId !== SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID && selectedValue === null) {
     await interaction.reply({
       content: "Select a value before saving.",
       flags: MessageFlags.Ephemeral,
@@ -503,6 +544,13 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
     }
 
     await updateGuildSettings(interaction.guildId, { [field]: selectedValue });
+    await replyWithSettings(interaction, interaction.guild);
+    return true;
+  }
+
+  if (interaction.customId === SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID) {
+    const selectedBmIds = getFieldValues(interaction, SETTINGS_TRACKED_SERVERS_FIELD_CUSTOM_ID);
+    await getBackend().replaceGuildTrackedServers(getWorkerID(), interaction.guildId, selectedBmIds);
     await replyWithSettings(interaction, interaction.guild);
     return true;
   }

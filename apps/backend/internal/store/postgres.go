@@ -170,6 +170,16 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS player_states_server_online_idx
 		ON player_states (server_bm_id, is_online, online_since DESC, updated_at DESC);
 
+		CREATE TABLE IF NOT EXISTS guild_tracked_servers (
+			guild_id TEXT NOT NULL,
+			server_bm_id TEXT NOT NULL REFERENCES tracked_servers(bm_id) ON DELETE CASCADE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (guild_id, server_bm_id)
+		);
+
+		CREATE INDEX IF NOT EXISTS guild_tracked_servers_guild_idx
+		ON guild_tracked_servers (guild_id);
+
 		CREATE TABLE IF NOT EXISTS steam_discord_links (
 			steam_id TEXT NOT NULL REFERENCES steam_accounts(steam_id),
 			discord_id TEXT NOT NULL,
