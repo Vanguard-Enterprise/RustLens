@@ -51,6 +51,7 @@ type SettingsChoice = {
   label: string;
   value: string;
   description: string;
+  emoji: string;
 };
 
 const settingsChoices: readonly SettingsChoice[] = [
@@ -58,31 +59,37 @@ const settingsChoices: readonly SettingsChoice[] = [
     label: "Wipe React Logs",
     value: SETTINGS_OPTION_WIPE_REACT_LOGS,
     description: "Set the wipe react logs channel",
+    emoji: "📜",
   },
   {
     label: "Linking Logs",
     value: SETTINGS_OPTION_LINKING_LOGS,
     description: "Set the account linking logs channel",
+    emoji: "🔗",
   },
   {
     label: "Tracked Server Logs",
     value: SETTINGS_OPTION_TRACKED_SERVER_LOGS,
     description: "Set the tracked server logs channel",
+    emoji: "📃",
   },
   {
     label: "Tracked Servers",
     value: SETTINGS_OPTION_TRACKED_SERVERS,
     description: "Choose the tracked servers for this guild",
+    emoji: "🔍",
   },
   {
     label: "Admin Role",
     value: SETTINGS_OPTION_ADMIN_ROLE,
     description: "Set the admin role for protected commands",
+    emoji: "🗝️",
   },
   {
     label: "Alerts",
     value: SETTINGS_OPTION_ALERTS,
     description: "Set the alerts channel",
+    emoji: "🚨",
   },
 ] as const;
 
@@ -182,6 +189,7 @@ async function buildSettingsPayload(guild: Guild) {
             label: choice.label,
             value: choice.value,
             description: choice.description,
+            emoji: choice.emoji,
           })),
         ),
     ),
@@ -192,6 +200,25 @@ async function buildSettingsPayload(guild: Guild) {
 
 async function replyWithSettings(interaction: ChatInputCommandInteraction | ModalSubmitInteraction, guild: Guild) {
   const payload = await buildSettingsPayload(guild);
+
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply(payload);
+    return;
+  }
+
+  await interaction.reply({
+    ...payload,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function refreshSettingsMessage(interaction: ModalSubmitInteraction, guild: Guild) {
+  const payload = await buildSettingsPayload(guild);
+
+  if (interaction.isFromMessage()) {
+    await interaction.update(payload);
+    return;
+  }
 
   if (interaction.deferred || interaction.replied) {
     await interaction.editReply(payload);
@@ -544,14 +571,14 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
     }
 
     await updateGuildSettings(interaction.guildId, { [field]: selectedValue });
-    await replyWithSettings(interaction, interaction.guild);
+    await refreshSettingsMessage(interaction, interaction.guild);
     return true;
   }
 
   if (interaction.customId === SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID) {
     const selectedBmIds = getFieldValues(interaction, SETTINGS_TRACKED_SERVERS_FIELD_CUSTOM_ID);
     await getBackend().replaceGuildTrackedServers(getWorkerID(), interaction.guildId, selectedBmIds);
-    await replyWithSettings(interaction, interaction.guild);
+    await refreshSettingsMessage(interaction, interaction.guild);
     return true;
   }
 
@@ -573,6 +600,6 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
   }
 
   await updateGuildSettings(interaction.guildId, { [roleField]: selectedValue });
-  await replyWithSettings(interaction, interaction.guild);
+  await refreshSettingsMessage(interaction, interaction.guild);
   return true;
 }
