@@ -1,5 +1,5 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder, type GuildMember } from "discord.js";
+import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, type GuildMember } from "discord.js";
 import { BackendClient, type SteamAccount } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
@@ -27,6 +27,7 @@ const VIEW_EMOJIS = {
 const viewCommand = new SlashCommandBuilder()
   .setName(VIEW_COMMAND_NAME)
   .setDescription("View linked steam/discord accounts in this guild")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
   .addSubcommand((sub) =>
     sub
@@ -169,6 +170,14 @@ export async function handleViewChatInput(interaction: ChatInputCommandInteracti
     return true;
   }
 
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await interaction.reply({
+      content: "Only the configured admin role or administrators can use /view.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
   const subcommand = interaction.options.getSubcommand();
 
   if (subcommand === VIEW_USER_SUBCOMMAND) {
@@ -298,14 +307,6 @@ async function handleViewAll(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
-  if (!(await hasGuildAdminAccess(interaction))) {
-    await interaction.reply({
-      content: "Only the configured admin role or administrators can use /view nosteam.",
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const guildId = interaction.guildId!;
