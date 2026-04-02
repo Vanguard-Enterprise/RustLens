@@ -26,28 +26,18 @@ Append-only log of shard worker lifecycle events.
 | `payload` | `JSONB NOT NULL DEFAULT '{}'` | |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 
-### `guild_setups`
-
-One-time guild setup state (claim/pending/configured flow).
-
-| Column | Type | Notes |
-|---|---|---|
-| `guild_id` | `TEXT` | PK |
-| `status` | `TEXT NOT NULL` | `pending` or `configured` |
-| `configured_by` | `TEXT NOT NULL DEFAULT ''` | User snowflake |
-| `selected_roles` | `JSONB NOT NULL DEFAULT '[]'` | String array |
-| `selected_channels` | `JSONB NOT NULL DEFAULT '[]'` | String array |
-| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
-| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
-
 ### `guild_settings`
 
-Per-guild bot settings (currently only log channel).
+Per-guild bot settings for logs, alerts, and command authorization.
 
 | Column | Type | Notes |
 |---|---|---|
 | `guild_id` | `TEXT` | PK |
-| `log_channel_id` | `TEXT NOT NULL DEFAULT ''` | Channel snowflake |
+| `wipe_react_log_channel_id` | `TEXT NOT NULL DEFAULT ''` | Channel snowflake |
+| `linking_log_channel_id` | `TEXT NOT NULL DEFAULT ''` | Channel snowflake |
+| `tracked_server_log_channel_id` | `TEXT NOT NULL DEFAULT ''` | Channel snowflake |
+| `alerts_channel_id` | `TEXT NOT NULL DEFAULT ''` | Channel snowflake |
+| `admin_role_id` | `TEXT NOT NULL DEFAULT ''` | Role snowflake |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 

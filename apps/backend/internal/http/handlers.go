@@ -219,20 +219,14 @@ func validateSnowflakePathParam(w http.ResponseWriter, r *http.Request, paramNam
 	return value, true
 }
 
-func writeGuildSetupState(w http.ResponseWriter, state store.GuildSetupState) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"guildId":          state.GuildID,
-		"status":           state.Status,
-		"configuredBy":     state.ConfiguredBy,
-		"selectedRoles":    state.SelectedRoles,
-		"selectedChannels": state.SelectedChannels,
-	})
-}
-
 func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"guildId":      settings.GuildID,
-		"logChannelId": settings.LogChannelID,
+		"guildId":                  settings.GuildID,
+		"wipeReactLogChannelId":    settings.WipeReactLogChannelID,
+		"linkingLogChannelId":      settings.LinkingLogChannelID,
+		"trackedServerLogChannelId": settings.TrackedServerLogChannelID,
+		"alertsChannelId":          settings.AlertsChannelID,
+		"adminRoleId":              settings.AdminRoleID,
 	})
 }
 
@@ -346,104 +340,6 @@ func writeWipeReactReactionRemoval(w http.ResponseWriter, removal store.WipeReac
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (h *Handler) GetGuildSetupState(w http.ResponseWriter, r *http.Request) {
-	guildID, ok := validateGuildID(w, r)
-	if !ok {
-		return
-	}
-
-	state, err := h.postgres.GetGuildSetupState(r.Context(), guildID)
-	if err != nil {
-		log.Printf("[backend] GetGuildSetupState error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to fetch guild setup state")
-		return
-	}
-
-	writeGuildSetupState(w, state)
-}
-
-func (h *Handler) ClaimGuildSetup(w http.ResponseWriter, r *http.Request) {
-	guildID, ok := validateGuildID(w, r)
-	if !ok {
-		return
-	}
-
-	claimed, state, err := h.postgres.ClaimGuildSetup(r.Context(), guildID)
-	if err != nil {
-		log.Printf("[backend] ClaimGuildSetup error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to claim guild setup")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"claimed":          claimed,
-		"guildId":          state.GuildID,
-		"status":           state.Status,
-		"configuredBy":     state.ConfiguredBy,
-		"selectedRoles":    state.SelectedRoles,
-		"selectedChannels": state.SelectedChannels,
-	})
-}
-
-type completeGuildSetupRequest struct {
-	ConfiguredBy     string   `json:"configuredBy"`
-	SelectedRoles    []string `json:"selectedRoles"`
-	SelectedChannels []string `json:"selectedChannels"`
-}
-
-func (h *Handler) CompleteGuildSetup(w http.ResponseWriter, r *http.Request) {
-	guildID, ok := validateGuildID(w, r)
-	if !ok {
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var request completeGuildSetupRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if request.ConfiguredBy == "" {
-		writeError(w, http.StatusBadRequest, "configuredBy is required")
-		return
-	}
-	if len(request.SelectedRoles) == 0 {
-		writeError(w, http.StatusBadRequest, "selectedRoles must not be empty")
-		return
-	}
-
-	if err := h.postgres.CompleteGuildSetup(r.Context(), guildID, request.ConfiguredBy, request.SelectedRoles, request.SelectedChannels); err != nil {
-		log.Printf("[backend] CompleteGuildSetup error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to complete guild setup")
-		return
-	}
-
-	state, err := h.postgres.GetGuildSetupState(r.Context(), guildID)
-	if err != nil {
-		log.Printf("[backend] GetGuildSetupState (post-complete) error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to fetch guild setup state")
-		return
-	}
-
-	writeGuildSetupState(w, state)
-}
-
-func (h *Handler) ResetGuildSetup(w http.ResponseWriter, r *http.Request) {
-	guildID, ok := validateGuildID(w, r)
-	if !ok {
-		return
-	}
-
-	if err := h.postgres.ResetGuildSetup(r.Context(), guildID); err != nil {
-		log.Printf("[backend] ResetGuildSetup error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to reset guild setup")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
-}
-
 func (h *Handler) GetGuildSettings(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateGuildID(w, r)
 	if !ok {
@@ -460,36 +356,70 @@ func (h *Handler) GetGuildSettings(w http.ResponseWriter, r *http.Request) {
 	writeGuildSettings(w, settings)
 }
 
-type setGuildLogChannelRequest struct {
-	LogChannelID string `json:"logChannelId"`
+type updateGuildSettingsRequest struct {
+	WipeReactLogChannelID     *string `json:"wipeReactLogChannelId"`
+	LinkingLogChannelID       *string `json:"linkingLogChannelId"`
+	TrackedServerLogChannelID *string `json:"trackedServerLogChannelId"`
+	AlertsChannelID           *string `json:"alertsChannelId"`
+	AdminRoleID               *string `json:"adminRoleId"`
 }
 
-func (h *Handler) SetGuildLogChannel(w http.ResponseWriter, r *http.Request) {
+func validateSnowflakeOptionalField(w http.ResponseWriter, value *string, fieldName string) bool {
+	if value == nil {
+		return true
+	}
+
+	if *value == "" {
+		return true
+	}
+
+	if !snowflakePattern.MatchString(*value) {
+		writeError(w, http.StatusBadRequest, fieldName+" must be a valid Discord snowflake")
+		return false
+	}
+
+	return true
+}
+
+func (h *Handler) UpdateGuildSettings(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateGuildID(w, r)
 	if !ok {
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var request setGuildLogChannelRequest
+	var request updateGuildSettingsRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if request.LogChannelID == "" {
-		writeError(w, http.StatusBadRequest, "logChannelId is required")
+	if !validateSnowflakeOptionalField(w, request.WipeReactLogChannelID, "wipeReactLogChannelId") {
 		return
 	}
-	if !snowflakePattern.MatchString(request.LogChannelID) {
-		writeError(w, http.StatusBadRequest, "logChannelId must be a valid Discord snowflake")
+	if !validateSnowflakeOptionalField(w, request.LinkingLogChannelID, "linkingLogChannelId") {
+		return
+	}
+	if !validateSnowflakeOptionalField(w, request.TrackedServerLogChannelID, "trackedServerLogChannelId") {
+		return
+	}
+	if !validateSnowflakeOptionalField(w, request.AlertsChannelID, "alertsChannelId") {
+		return
+	}
+	if !validateSnowflakeOptionalField(w, request.AdminRoleID, "adminRoleId") {
 		return
 	}
 
-	settings, err := h.postgres.SetGuildLogChannel(r.Context(), guildID, request.LogChannelID)
+	settings, err := h.postgres.UpdateGuildSettings(r.Context(), guildID, store.GuildSettingsPatch{
+		WipeReactLogChannelID:     request.WipeReactLogChannelID,
+		LinkingLogChannelID:       request.LinkingLogChannelID,
+		TrackedServerLogChannelID: request.TrackedServerLogChannelID,
+		AlertsChannelID:           request.AlertsChannelID,
+		AdminRoleID:               request.AdminRoleID,
+	})
 	if err != nil {
-		log.Printf("[backend] SetGuildLogChannel error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to save guild log channel")
+		log.Printf("[backend] UpdateGuildSettings error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to save guild settings")
 		return
 	}
 

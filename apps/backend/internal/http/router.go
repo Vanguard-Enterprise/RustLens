@@ -50,12 +50,8 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 
 	r.Route("/api/internal/bot/setup", func(r chi.Router) {
 		r.Use(botJWTMiddleware(handler.jwtValidator))
-		r.Get("/guilds/{guildID}", handler.GetGuildSetupState)
-		r.Post("/guilds/{guildID}/claim", handler.ClaimGuildSetup)
-		r.Post("/guilds/{guildID}/complete", handler.CompleteGuildSetup)
-		r.Post("/guilds/{guildID}/reset", handler.ResetGuildSetup)
 		r.Get("/guilds/{guildID}/settings", handler.GetGuildSettings)
-		r.Post("/guilds/{guildID}/settings/log-channel", handler.SetGuildLogChannel)
+		r.Put("/guilds/{guildID}/settings", handler.UpdateGuildSettings)
 		r.Get("/guilds/{guildID}/wipe-reacts/active", handler.ListActiveWipeReacts)
 		r.Post("/guilds/{guildID}/wipe-reacts", handler.CreateWipeReact)
 		r.Get("/guilds/{guildID}/wipe-reacts/{messageID}", handler.GetWipeReact)

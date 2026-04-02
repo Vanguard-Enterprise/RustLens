@@ -30,6 +30,7 @@ import {
   getFieldValues,
   replyEphemeral,
 } from "./shared.js";
+import { hasGuildAdminAccess } from "./guild-settings.js";
 
 export const BIND_COMMAND_NAME = "bind";
 
@@ -767,8 +768,8 @@ function buildBindEmbed(title: string, command: string) {
 
 
 async function handleMassInvite(interaction: ChatInputCommandInteraction) {
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-    await replyEphemeral(interaction, "You need Administrator permissions to use this command.");
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await replyEphemeral(interaction, "Only the configured admin role or administrators can use this command.");
     return;
   }
 

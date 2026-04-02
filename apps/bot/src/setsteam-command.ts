@@ -2,6 +2,7 @@ import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 import { resolveSteamInputErrorMessage } from "./steam-input.js";
 
@@ -56,6 +57,32 @@ async function replyEphemeralEmbed(interaction: ChatInputCommandInteraction, emb
     embeds: [embed],
     flags: MessageFlags.Ephemeral,
   });
+}
+
+function buildLinkingLogEmbed(
+  interaction: ChatInputCommandInteraction,
+  steamId: string,
+  bmId: string | null,
+) {
+  const embed = new EmbedBuilder()
+    .setTitle("Steam account linked")
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setAuthor({
+      name: interaction.user.tag,
+      iconURL: interaction.user.displayAvatarURL({ size: 128 }),
+    })
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
+    .addFields(
+      { name: "Steam ID", value: `\`${steamId}\``, inline: true },
+      { name: "Discord", value: `<@${interaction.user.id}>`, inline: true },
+    );
+
+  if (bmId) {
+    embed.addFields({ name: "BM ID", value: `\`${bmId}\``, inline: true });
+  }
+
+  return embed;
 }
 
 export async function ensureSetSteamCommand(client: Client, shardID: number) {
@@ -139,6 +166,20 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
       buildEmbed("Error", "RustLens could not link your Steam ID in this guild."),
     );
     return true;
+  }
+
+  const [settings, steamAccount] = await Promise.all([
+    fetchGuildSettings(interaction.guildId),
+    backend.getSteamAccount(workerId, steamId).catch(() => null),
+  ]);
+
+  if (settings.linkingLogChannelId && interaction.guild) {
+    const channel = await resolveConfiguredGuildChannel(interaction.guild, settings.linkingLogChannelId);
+    if (channel?.isTextBased() && "send" in channel) {
+      await channel.send({
+        embeds: [buildLinkingLogEmbed(interaction, steamId, steamAccount?.bmId ?? null)],
+      }).catch(() => undefined);
+    }
   }
 
   await replyEphemeralEmbed(

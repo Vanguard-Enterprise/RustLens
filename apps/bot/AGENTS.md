@@ -21,7 +21,8 @@ src/
   shards.ts             # Shard delta computation
   backend-client.ts     # HTTP client for backend shard API (JWT auth)
   config.ts             # Env config loader
-  setup-command.ts      # /setup start command registration + modal flow
+  admin-command.ts      # /admin setsteam|removesteam registration + guild-link admin flow
+  settings-command.ts   # /settings embed + select-menu/modal flow for guild settings
   bind-command.ts       # /bind fullkit/turret/rocket/c4 registration + modal flow
   wipereact-command.ts  # /wipereact create/delete/missing/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, and logs embeds
   summon-command.ts     # /summon {scope} — move voice-connected members of a role (or @everyone) into invoker's VC (admin-only)

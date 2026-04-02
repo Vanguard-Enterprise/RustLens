@@ -35,6 +35,11 @@ import {
 } from "./builders/index.js";
 import { loadConfig } from "./config.js";
 import {
+  fetchGuildSettings,
+  hasGuildAdminAccess,
+  resolveConfiguredGuildChannel,
+} from "./guild-settings.js";
+import {
   RUSTLENS_EMBED_COLOR,
   RUSTLENS_EMBED_ICON_URL,
   type ModalComponentNode,
@@ -205,7 +210,6 @@ function getWipeReactWorkerID() {
 const wipeReactCommand = new SlashCommandBuilder()
   .setName(WIPEREACT_COMMAND_NAME)
   .setDescription("RustLens wipe react commands")
-  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
   .addSubcommand((subcommand) =>
     subcommand
@@ -328,16 +332,6 @@ const wipeReactCommand = new SlashCommandBuilder()
           ),
       ),
   );
-
-
-function hasAdministratorPermission(
-  interaction:
-    | ChatInputCommandInteraction
-    | ButtonInteraction
-    | ModalSubmitInteraction,
-) {
-  return interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
-}
 
 
 async function deferEphemeral(
@@ -1585,25 +1579,6 @@ function toWipeReactState(record: WipeReact): WipeReactMessageState {
   };
 }
 
-async function resolveConfiguredLogsChannel(guildId: string, guild: {
-  channels: {
-    cache: Map<string, GuildBasedChannel>;
-    fetch?: (id: string) => Promise<GuildBasedChannel | null>;
-  };
-}) {
-  const settings = await getBackend().guildSettings(getWipeReactWorkerID(), guildId);
-  if (!settings.logChannelId) {
-    return null;
-  }
-
-  const configured =
-    guild.channels.cache.get(settings.logChannelId) ??
-    (guild.channels.fetch
-      ? await guild.channels.fetch(settings.logChannelId).catch(() => null)
-      : null);
-  return configured?.type === ChannelType.GuildText ? (configured as TextChannel) : null;
-}
-
 async function listActiveWipeReacts(guildId: string) {
   const response = await getBackend().listActiveWipeReacts(getWipeReactWorkerID(), guildId);
   return response.items;
@@ -1615,24 +1590,24 @@ async function getPersistedWipeReact(guildId: string, messageId: string) {
 
 async function resolveLogsChannel(interaction: {
   guildId: string | null;
-  guild: { channels: { cache: Map<string, GuildBasedChannel> } } | null;
+  guild: Guild | null;
 }) {
   if (!interaction.guildId || !interaction.guild) {
     return null;
   }
 
-  const configured = await resolveConfiguredLogsChannel(
-    interaction.guildId,
-    interaction.guild,
-  );
-  if (configured) {
-    return configured;
+  const settings = await fetchGuildSettings(interaction.guildId);
+  if (!settings.wipeReactLogChannelId) {
+    return null;
   }
 
-  const namedLogsChannel = [...interaction.guild.channels.cache.values()].find(
-    (channel) => channel.type === ChannelType.GuildText && channel.name === "logs",
+  const configured = await resolveConfiguredGuildChannel(
+    interaction.guild,
+    settings.wipeReactLogChannelId,
   );
-  return namedLogsChannel ? (namedLogsChannel as TextChannel) : null;
+  return configured?.type === ChannelType.GuildText || configured?.type === ChannelType.GuildAnnouncement
+    ? (configured as TextChannel)
+    : null;
 }
 
 async function fetchWipeReactMessage(
@@ -1791,7 +1766,7 @@ async function processWipeReactAction(
   if (!logsChannel) {
     await replyEphemeral(
       interaction,
-      "RustLens needs a logs channel before wipe reacts can be used. Run /setup logchannel and try again.",
+      "RustLens needs Wipe React Logs configured before wipe reacts can be used. Run /settings and set Wipe React Logs.",
     );
     return true;
   }
@@ -1884,8 +1859,8 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     return true;
   }
 
-  if (!hasAdministratorPermission(interaction)) {
-    await replyEphemeral(interaction, "Only administrators can use /wipereact.");
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await replyEphemeral(interaction, "Only the configured admin role or administrators can use /wipereact.");
     return true;
   }
 
@@ -1902,7 +1877,7 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     if (!logsChannel) {
       await replyEphemeral(
         interaction,
-        "RustLens could not find a logs channel. Run /setup logchannel {channel} before creating a wipe react.",
+        "RustLens could not find Wipe React Logs. Run /settings and set Wipe React Logs before creating a wipe react.",
       );
       return true;
     }
@@ -2046,7 +2021,7 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     if (!logsChannel) {
       await replyEphemeral(
         interaction,
-        "RustLens needs a logs channel before wipe reacts can be managed. Run /setup logchannel and try again.",
+        "RustLens needs Wipe React Logs configured before wipe reacts can be managed. Run /settings and set Wipe React Logs.",
       );
       return true;
     }
@@ -2325,8 +2300,8 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
     return false;
   }
 
-  if (!hasAdministratorPermission(interaction)) {
-    await replyEphemeral(interaction, "Only administrators can edit a wipe react.");
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await replyEphemeral(interaction, "Only the configured admin role or administrators can edit a wipe react.");
     return true;
   }
 
@@ -2509,7 +2484,7 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
     if (!logsChannel) {
       await replyEphemeral(
         interaction,
-        "RustLens could not find a logs channel. Run /setup logchannel {channel} before creating a wipe react.",
+        "RustLens could not find Wipe React Logs. Run /settings and set Wipe React Logs before creating a wipe react.",
       );
       return true;
     }

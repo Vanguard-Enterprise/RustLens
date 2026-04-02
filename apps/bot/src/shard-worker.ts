@@ -1,5 +1,9 @@
 import { Client, GatewayIntentBits, MessageFlags } from "discord.js";
 import {
+  ensureAdminCommand,
+  handleAdminChatInput,
+} from "./admin-command.js";
+import {
   ensureAnnounceCommand,
   handleAnnounceChatInput,
 } from "./announce-command.js";
@@ -18,15 +22,15 @@ import {
   handleSetSteamChatInput,
 } from "./setsteam-command.js";
 import {
-  ensureSetupCommand,
-  handleAdminChatInput,
-  handleSetupChatInput,
-  handleSetupModalSubmit,
-} from "./setup-command.js";
-import {
   ensureServerCommand,
   handleServerChatInput,
 } from "./server-command.js";
+import {
+  ensureSettingsCommand,
+  handleSettingsChatInput,
+  handleSettingsModalSubmit,
+  handleSettingsSelect,
+} from "./settings-command.js";
 import {
   ensureSummonCommand,
   handleSummonChatInput,
@@ -63,13 +67,14 @@ client.once("clientReady", () => {
   console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);
 
   Promise.all([
-    ensureSetupCommand(client, shardID),
+    ensureAdminCommand(client, shardID),
     ensureBindCommand(client, shardID),
     ensureWipeReactCommand(client, shardID),
     ensureSummonCommand(client, shardID),
     ensureAnnounceCommand(client, shardID),
     ensureOnlineCommand(client, shardID),
     ensureSetSteamCommand(client, shardID),
+    ensureSettingsCommand(client, shardID),
     ensureViewCommand(client, shardID),
     ensureServerCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
@@ -134,7 +139,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      await handleSetupChatInput(interaction);
+      await handleSettingsChatInput(interaction);
+      return;
+    }
+
+    if (interaction.isStringSelectMenu()) {
+      await handleSettingsSelect(interaction);
       return;
     }
 
@@ -147,7 +157,7 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      await handleSetupModalSubmit(interaction);
+      await handleSettingsModalSubmit(interaction);
       return;
     }
 

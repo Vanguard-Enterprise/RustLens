@@ -1,5 +1,6 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { hasGuildAdminAccess } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const ANNOUNCE_COMMAND_NAME = "announce";
@@ -7,7 +8,6 @@ export const ANNOUNCE_COMMAND_NAME = "announce";
 const announceCommand = new SlashCommandBuilder()
   .setName(ANNOUNCE_COMMAND_NAME)
   .setDescription("DM an announcement to all members of a role")
-  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
   .addRoleOption((option) =>
     option
@@ -57,6 +57,14 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
   if (!guild) {
     await interaction.reply({
       content: "Could not resolve guild.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await interaction.reply({
+      content: "Only the configured admin role or administrators can use /announce.",
       flags: MessageFlags.Ephemeral,
     });
     return true;

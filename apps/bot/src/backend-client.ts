@@ -12,18 +12,16 @@ type AssignmentsResponse = {
   shardIds: number[];
 };
 
-export type GuildSetupState = {
-  guildId: string;
-  status: "missing" | "pending" | "configured";
-  configuredBy: string;
-  selectedRoles: string[];
-  selectedChannels: string[];
-};
-
 export type GuildSettings = {
   guildId: string;
-  logChannelId: string;
+  wipeReactLogChannelId: string;
+  linkingLogChannelId: string;
+  trackedServerLogChannelId: string;
+  alertsChannelId: string;
+  adminRoleId: string;
 };
+
+export type GuildSettingsPatch = Partial<Omit<GuildSettings, "guildId">>;
 
 export type WipeReactReactionType = "accepted" | "declined" | "late";
 
@@ -164,10 +162,6 @@ export type BulkHardLinkEntry = {
   source: string;
 };
 
-type ClaimGuildSetupResponse = GuildSetupState & {
-  claimed: boolean;
-};
-
 export class BackendClient {
   constructor(
     private readonly backendUrl: string,
@@ -227,47 +221,16 @@ export class BackendClient {
     return this.call<AssignmentsResponse>(workerId, `/api/internal/bot/shards/assignments?${query}`, "GET");
   }
 
-  guildSetup(workerId: string, guildId: string) {
-    return this.call<GuildSetupState>(workerId, `/api/internal/bot/setup/guilds/${guildId}`, "GET");
-  }
-
-  claimGuildSetup(workerId: string, guildId: string) {
-    return this.call<ClaimGuildSetupResponse>(
-      workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/claim`,
-      "POST",
-    );
-  }
-
-  completeGuildSetup(
-    workerId: string,
-    guildId: string,
-    configuredBy: string,
-    selectedRoles: string[],
-    selectedChannels: string[],
-  ) {
-    return this.call<GuildSetupState>(
-      workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/complete`,
-      "POST",
-      { configuredBy, selectedRoles, selectedChannels },
-    );
-  }
-
-  resetGuildSetup(workerId: string, guildId: string) {
-    return this.call<{ status: string }>(workerId, `/api/internal/bot/setup/guilds/${guildId}/reset`, "POST");
-  }
-
   guildSettings(workerId: string, guildId: string) {
     return this.call<GuildSettings>(workerId, `/api/internal/bot/setup/guilds/${guildId}/settings`, "GET");
   }
 
-  setGuildLogChannel(workerId: string, guildId: string, logChannelId: string) {
+  updateGuildSettings(workerId: string, guildId: string, patch: GuildSettingsPatch) {
     return this.call<GuildSettings>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/settings/log-channel`,
-      "POST",
-      { logChannelId },
+      `/api/internal/bot/setup/guilds/${guildId}/settings`,
+      "PUT",
+      patch,
     );
   }
 

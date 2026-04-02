@@ -13,17 +13,21 @@ type PostgresStore struct {
 	pool *pgxpool.Pool
 }
 
-type GuildSetupState struct {
-	GuildID          string
-	Status           string
-	ConfiguredBy     string
-	SelectedRoles    []string
-	SelectedChannels []string
+type GuildSettings struct {
+	GuildID                  string
+	WipeReactLogChannelID    string
+	LinkingLogChannelID      string
+	TrackedServerLogChannelID string
+	AlertsChannelID          string
+	AdminRoleID              string
 }
 
-type GuildSettings struct {
-	GuildID      string
-	LogChannelID string
+type GuildSettingsPatch struct {
+	WipeReactLogChannelID     *string
+	LinkingLogChannelID       *string
+	TrackedServerLogChannelID *string
+	AlertsChannelID           *string
+	AdminRoleID               *string
 }
 
 func NewPostgresStore(ctx context.Context, connectionString string) (*PostgresStore, error) {
@@ -58,22 +62,25 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
-		CREATE TABLE IF NOT EXISTS guild_setups (
+		CREATE TABLE IF NOT EXISTS guild_settings (
 			guild_id TEXT PRIMARY KEY,
-			status TEXT NOT NULL,
-			configured_by TEXT NOT NULL DEFAULT '',
-			selected_roles JSONB NOT NULL DEFAULT '[]'::jsonb,
-			selected_channels JSONB NOT NULL DEFAULT '[]'::jsonb,
+			wipe_react_log_channel_id TEXT NOT NULL DEFAULT '',
+			linking_log_channel_id TEXT NOT NULL DEFAULT '',
+			tracked_server_log_channel_id TEXT NOT NULL DEFAULT '',
+			alerts_channel_id TEXT NOT NULL DEFAULT '',
+			admin_role_id TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
-		CREATE TABLE IF NOT EXISTS guild_settings (
-			guild_id TEXT PRIMARY KEY,
-			log_channel_id TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
+		DROP TABLE IF EXISTS guild_setups;
+
+		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS wipe_react_log_channel_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS linking_log_channel_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS tracked_server_log_channel_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS alerts_channel_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS admin_role_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE guild_settings DROP COLUMN IF EXISTS log_channel_id;
 
 		CREATE TABLE IF NOT EXISTS wipe_reacts (
 			message_id TEXT PRIMARY KEY,
@@ -206,159 +213,72 @@ func (p *PostgresStore) InsertWorkerEvent(ctx context.Context, workerID string, 
 	return err
 }
 
-func (p *PostgresStore) GetGuildSetupState(ctx context.Context, guildID string) (GuildSetupState, error) {
-	var (
-		status               string
-		configuredBy         string
-		selectedJSON         []byte
-		selectedChannelsJSON []byte
-	)
+func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (GuildSettings, error) {
+	var settings GuildSettings
 
 	err := p.pool.QueryRow(ctx, `
-		SELECT status, configured_by, selected_roles, selected_channels
-		FROM guild_setups
+		SELECT wipe_react_log_channel_id,
+			linking_log_channel_id,
+			tracked_server_log_channel_id,
+			alerts_channel_id,
+			admin_role_id
+		FROM guild_settings
 		WHERE guild_id = $1
-	`, guildID).Scan(&status, &configuredBy, &selectedJSON, &selectedChannelsJSON)
+	`, guildID).Scan(
+		&settings.WipeReactLogChannelID,
+		&settings.LinkingLogChannelID,
+		&settings.TrackedServerLogChannelID,
+		&settings.AlertsChannelID,
+		&settings.AdminRoleID,
+	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return GuildSetupState{
-			GuildID:          guildID,
-			Status:           "missing",
-			ConfiguredBy:     "",
-			SelectedRoles:    []string{},
-			SelectedChannels: []string{},
+		return GuildSettings{
+			GuildID:                   guildID,
+			WipeReactLogChannelID:     "",
+			LinkingLogChannelID:       "",
+			TrackedServerLogChannelID: "",
+			AlertsChannelID:           "",
+			AdminRoleID:               "",
 		}, nil
 	}
 	if err != nil {
-		return GuildSetupState{}, err
+		return GuildSettings{}, err
 	}
 
-	var selectedRoles []string
-	var selectedChannels []string
-	if len(selectedJSON) > 0 {
-		if err := json.Unmarshal(selectedJSON, &selectedRoles); err != nil {
-			return GuildSetupState{}, err
-		}
-	}
-	if len(selectedChannelsJSON) > 0 {
-		if err := json.Unmarshal(selectedChannelsJSON, &selectedChannels); err != nil {
-			return GuildSetupState{}, err
-		}
-	}
-
-	return GuildSetupState{
-		GuildID:          guildID,
-		Status:           status,
-		ConfiguredBy:     configuredBy,
-		SelectedRoles:    selectedRoles,
-		SelectedChannels: selectedChannels,
-	}, nil
+	settings.GuildID = guildID
+	return settings, nil
 }
 
-func (p *PostgresStore) ClaimGuildSetup(ctx context.Context, guildID string) (bool, GuildSetupState, error) {
-	tag, err := p.pool.Exec(ctx, `
-		INSERT INTO guild_setups (guild_id, status)
-		VALUES ($1, 'pending')
+func (p *PostgresStore) UpdateGuildSettings(ctx context.Context, guildID string, patch GuildSettingsPatch) (GuildSettings, error) {
+	_, err := p.pool.Exec(ctx, `
+		INSERT INTO guild_settings (guild_id)
+		VALUES ($1)
 		ON CONFLICT (guild_id) DO NOTHING
 	`, guildID)
 	if err != nil {
-		return false, GuildSetupState{}, err
+		return GuildSettings{}, err
 	}
 
-	if tag.RowsAffected() == 1 {
-		return true, GuildSetupState{
-			GuildID:          guildID,
-			Status:           "pending",
-			ConfiguredBy:     "",
-			SelectedRoles:    []string{},
-			SelectedChannels: []string{},
-		}, nil
-	}
-
-	state, err := p.GetGuildSetupState(ctx, guildID)
-	if err != nil {
-		return false, GuildSetupState{}, err
-	}
-
-	return false, state, nil
-}
-
-func (p *PostgresStore) CompleteGuildSetup(ctx context.Context, guildID string, configuredBy string, selectedRoles []string, selectedChannels []string) error {
-	encoded, err := json.Marshal(selectedRoles)
-	if err != nil {
-		return err
-	}
-	encodedChannels, err := json.Marshal(selectedChannels)
-	if err != nil {
-		return err
-	}
-
-	tag, err := p.pool.Exec(ctx, `
-		UPDATE guild_setups
-		SET status = 'configured',
-			configured_by = $2,
-			selected_roles = $3::jsonb,
-			selected_channels = $4::jsonb,
+	_, err = p.pool.Exec(ctx, `
+		UPDATE guild_settings
+		SET wipe_react_log_channel_id = COALESCE($2, wipe_react_log_channel_id),
+			linking_log_channel_id = COALESCE($3, linking_log_channel_id),
+			tracked_server_log_channel_id = COALESCE($4, tracked_server_log_channel_id),
+			alerts_channel_id = COALESCE($5, alerts_channel_id),
+			admin_role_id = COALESCE($6, admin_role_id),
 			updated_at = NOW()
-		WHERE guild_id = $1 AND status = 'pending'
-	`, guildID, configuredBy, string(encoded), string(encodedChannels))
-	if err != nil {
-		return err
-	}
-
-	if tag.RowsAffected() == 0 {
-		return errors.New("guild setup is not in pending state")
-	}
-
-	return nil
-}
-
-func (p *PostgresStore) ResetGuildSetup(ctx context.Context, guildID string) error {
-	_, err := p.pool.Exec(ctx, `
-		DELETE FROM guild_setups
 		WHERE guild_id = $1
-	`, guildID)
-
-	return err
-}
-
-func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (GuildSettings, error) {
-	var logChannelID string
-
-	err := p.pool.QueryRow(ctx, `
-		SELECT log_channel_id
-		FROM guild_settings
-		WHERE guild_id = $1
-	`, guildID).Scan(&logChannelID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return GuildSettings{
-			GuildID:      guildID,
-			LogChannelID: "",
-		}, nil
-	}
+	`,
+		guildID,
+		patch.WipeReactLogChannelID,
+		patch.LinkingLogChannelID,
+		patch.TrackedServerLogChannelID,
+		patch.AlertsChannelID,
+		patch.AdminRoleID,
+	)
 	if err != nil {
 		return GuildSettings{}, err
 	}
 
-	return GuildSettings{
-		GuildID:      guildID,
-		LogChannelID: logChannelID,
-	}, nil
-}
-
-func (p *PostgresStore) SetGuildLogChannel(ctx context.Context, guildID string, logChannelID string) (GuildSettings, error) {
-	_, err := p.pool.Exec(ctx, `
-		INSERT INTO guild_settings (guild_id, log_channel_id)
-		VALUES ($1, $2)
-		ON CONFLICT (guild_id) DO UPDATE
-		SET log_channel_id = EXCLUDED.log_channel_id,
-			updated_at = NOW()
-	`, guildID, logChannelID)
-	if err != nil {
-		return GuildSettings{}, err
-	}
-
-	return GuildSettings{
-		GuildID:      guildID,
-		LogChannelID: logChannelID,
-	}, nil
+	return p.GetGuildSettings(ctx, guildID)
 }

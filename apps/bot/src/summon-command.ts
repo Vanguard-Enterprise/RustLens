@@ -1,12 +1,12 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { MessageFlags, SlashCommandBuilder } from "discord.js";
+import { hasGuildAdminAccess } from "./guild-settings.js";
 
 export const SUMMON_COMMAND_NAME = "summon";
 
 const summonCommand = new SlashCommandBuilder()
   .setName(SUMMON_COMMAND_NAME)
   .setDescription("Move all online members of a role into your voice channel")
-  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
   .addRoleOption((option) =>
     option
@@ -50,6 +50,14 @@ export async function handleSummonChatInput(interaction: ChatInputCommandInterac
   if (!guild) {
     await interaction.reply({
       content: "Could not resolve guild.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await interaction.reply({
+      content: "Only the configured admin role or administrators can use /summon.",
       flags: MessageFlags.Ephemeral,
     });
     return true;
