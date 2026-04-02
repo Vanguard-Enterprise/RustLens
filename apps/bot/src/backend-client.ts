@@ -252,6 +252,14 @@ export class BackendClient {
     );
   }
 
+  listWipeReacts(workerId: string, guildId: string) {
+    return this.call<WipeReactListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts`,
+      "GET",
+    );
+  }
+
   getWipeReact(workerId: string, guildId: string, messageId: string) {
     return this.call<WipeReact>(
       workerId,

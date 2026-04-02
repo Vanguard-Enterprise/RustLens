@@ -247,6 +247,32 @@ func buildOpenAPIDocument() map[string]any {
 				},
 			},
 			"/api/internal/bot/setup/guilds/{guildID}/wipe-reacts": map[string]any{
+				"get": map[string]any{
+					"summary":     "List wipe reacts",
+					"description": "Returns persisted wipe reacts for a guild, newest first.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Wipe reacts returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/WipeReactListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
 				"post": map[string]any{
 					"summary":     "Create wipe react",
 					"description": "Persists a wipe react message after Discord message creation.",
@@ -1258,12 +1284,12 @@ func buildOpenAPIDocument() map[string]any {
 				"GuildSettings": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"guildId":                  map[string]any{"type": "string"},
-						"wipeReactLogChannelId":    map[string]any{"type": "string"},
-						"linkingLogChannelId":      map[string]any{"type": "string"},
+						"guildId":                   map[string]any{"type": "string"},
+						"wipeReactLogChannelId":     map[string]any{"type": "string"},
+						"linkingLogChannelId":       map[string]any{"type": "string"},
 						"trackedServerLogChannelId": map[string]any{"type": "string"},
-						"alertsChannelId":          map[string]any{"type": "string"},
-						"adminRoleId":              map[string]any{"type": "string"},
+						"alertsChannelId":           map[string]any{"type": "string"},
+						"adminRoleId":               map[string]any{"type": "string"},
 					},
 					"required": []string{
 						"guildId",
@@ -1277,11 +1303,11 @@ func buildOpenAPIDocument() map[string]any {
 				"UpdateGuildSettingsRequest": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"wipeReactLogChannelId":    map[string]any{"type": "string"},
-						"linkingLogChannelId":      map[string]any{"type": "string"},
+						"wipeReactLogChannelId":     map[string]any{"type": "string"},
+						"linkingLogChannelId":       map[string]any{"type": "string"},
 						"trackedServerLogChannelId": map[string]any{"type": "string"},
-						"alertsChannelId":          map[string]any{"type": "string"},
-						"adminRoleId":              map[string]any{"type": "string"},
+						"alertsChannelId":           map[string]any{"type": "string"},
+						"adminRoleId":               map[string]any{"type": "string"},
 					},
 				},
 				"GuildTrackedServer": map[string]any{

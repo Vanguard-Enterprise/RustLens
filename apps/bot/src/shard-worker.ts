@@ -14,6 +14,11 @@ import {
   handleBindModalSubmit,
 } from "./bind-command.js";
 import {
+  ensureCompareCommand,
+  handleCompareAutocomplete,
+  handleCompareChatInput,
+} from "./compare-command.js";
+import {
   ensureOnlineCommand,
   handleOnlineChatInput,
 } from "./online-command.js";
@@ -69,6 +74,7 @@ client.once("clientReady", () => {
   Promise.all([
     ensureAdminCommand(client, shardID),
     ensureBindCommand(client, shardID),
+    ensureCompareCommand(client, shardID),
     ensureWipeReactCommand(client, shardID),
     ensureSummonCommand(client, shardID),
     ensureAnnounceCommand(client, shardID),
@@ -97,6 +103,10 @@ function isIgnorableInteractionReplyError(error: unknown) {
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isAutocomplete()) {
+      if (await handleCompareAutocomplete(interaction)) {
+        return;
+      }
+
       if (await handleWipeReactAutocomplete(interaction)) {
         return;
       }
@@ -116,6 +126,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleViewChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleCompareChatInput(interaction)) {
         return;
       }
 

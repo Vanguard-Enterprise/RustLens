@@ -221,12 +221,12 @@ func validateSnowflakePathParam(w http.ResponseWriter, r *http.Request, paramNam
 
 func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"guildId":                  settings.GuildID,
-		"wipeReactLogChannelId":    settings.WipeReactLogChannelID,
-		"linkingLogChannelId":      settings.LinkingLogChannelID,
+		"guildId":                   settings.GuildID,
+		"wipeReactLogChannelId":     settings.WipeReactLogChannelID,
+		"linkingLogChannelId":       settings.LinkingLogChannelID,
 		"trackedServerLogChannelId": settings.TrackedServerLogChannelID,
-		"alertsChannelId":          settings.AlertsChannelID,
-		"adminRoleId":              settings.AdminRoleID,
+		"alertsChannelId":           settings.AlertsChannelID,
+		"adminRoleId":               settings.AdminRoleID,
 	})
 }
 
@@ -542,6 +542,22 @@ func (h *Handler) ListActiveWipeReacts(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[backend] ListActiveWipeReacts error for guild %s: %v", guildID, err)
 		writeError(w, http.StatusInternalServerError, "failed to list active wipe reacts")
+		return
+	}
+
+	writeWipeReactList(w, records)
+}
+
+func (h *Handler) ListWipeReacts(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	records, err := h.postgres.ListWipeReacts(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListWipeReacts error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list wipe reacts")
 		return
 	}
 

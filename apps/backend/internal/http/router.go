@@ -55,6 +55,7 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Get("/guilds/{guildID}/tracked-servers", handler.ListGuildTrackedServers)
 		r.Put("/guilds/{guildID}/tracked-servers", handler.ReplaceGuildTrackedServers)
 		r.Get("/guilds/{guildID}/wipe-reacts/active", handler.ListActiveWipeReacts)
+		r.Get("/guilds/{guildID}/wipe-reacts", handler.ListWipeReacts)
 		r.Post("/guilds/{guildID}/wipe-reacts", handler.CreateWipeReact)
 		r.Get("/guilds/{guildID}/wipe-reacts/{messageID}", handler.GetWipeReact)
 		r.Put("/guilds/{guildID}/wipe-reacts/{messageID}", handler.UpdateWipeReact)
