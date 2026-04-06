@@ -11,7 +11,13 @@ permissions:
 
 jobs:
   publish:
-    runs-on: self-hosted
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - ubuntu
+      - vanguard-enterprise
+      - ve-runner
     strategy:
       matrix:
         service: [backend, frontend, bot]

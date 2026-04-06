@@ -8,7 +8,13 @@ on:
 
 jobs:
   javascript:
-    runs-on: self-hosted
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - ubuntu
+      - vanguard-enterprise
+      - ve-runner
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +41,13 @@ jobs:
         run: pnpm build
 
   backend:
-    runs-on: self-hosted
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - ubuntu
+      - vanguard-enterprise
+      - ve-runner
     defaults:
       run:
         working-directory: apps/backend
@@ -59,7 +71,13 @@ jobs:
         run: go build ./cmd/server
 
   manifests:
-    runs-on: self-hosted
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - ubuntu
+      - vanguard-enterprise
+      - ve-runner
     steps:
       - uses: actions/checkout@v4
 
