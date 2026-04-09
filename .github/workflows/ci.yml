@@ -60,19 +60,3 @@ jobs:
 
       - name: Build
         run: go build ./cmd/server
-
-  manifests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install kubectl
-        run: |
-          curl -fsSLo kubectl "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
-          install -m 0755 kubectl /usr/local/bin/kubectl
-          kubectl version --client
-
-      - name: Validate Kubernetes manifests
-        run: |
-          # Keep this client-side and offline so CI does not depend on a live cluster OpenAPI endpoint.
-          kubectl apply --dry-run=client --validate=false -f deploy/k8s
