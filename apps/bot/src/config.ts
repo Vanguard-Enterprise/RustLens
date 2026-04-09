@@ -28,7 +28,7 @@ export function loadConfig(): BotConfig {
       .split(",")
       .map((value) => value.trim())
       .filter((value) => value.length > 0),
-    reconcileIntervalMs: Number(process.env.BOT_RECONCILE_INTERVAL_MS ?? "15000"),
-    heartbeatIntervalMs: Number(process.env.BOT_HEARTBEAT_INTERVAL_MS ?? "8000"),
+    reconcileIntervalMs: Number(process.env.BOT_RECONCILE_INTERVAL_MS ?? "15000") || 15000,
+    heartbeatIntervalMs: Number(process.env.BOT_HEARTBEAT_INTERVAL_MS ?? "8000") || 8000,
   };
 }

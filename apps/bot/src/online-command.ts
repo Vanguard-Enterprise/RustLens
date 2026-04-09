@@ -207,9 +207,15 @@ export async function handleOnlineChatInput(interaction: ChatInputCommandInterac
 
   await interaction.deferReply();
 
-  const backend = getBackend();
-  const workerId = getWorkerID();
-  const { items } = await backend.listGuildOnlineSummary(workerId, interaction.guildId);
+  let items: GuildOnlineSummaryItem[];
+  try {
+    const response = await getBackend().listGuildOnlineSummary(getWorkerID(), interaction.guildId);
+    items = response.items;
+  } catch (error) {
+    console.error("[bot] /online backend call failed", error);
+    await interaction.editReply({ content: "Failed to fetch online summary." });
+    return true;
+  }
   const embeds = buildPagedEmbeds(items);
 
   await interaction.editReply({ embeds: [embeds[0]] });

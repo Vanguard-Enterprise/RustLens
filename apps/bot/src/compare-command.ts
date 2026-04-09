@@ -14,6 +14,7 @@ import {
 } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { getGuildMembers } from "./guild-member-cache.js";
+import { hasGuildAdminAccess } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const COMPARE_COMMAND_NAME = "compare";
@@ -313,8 +314,9 @@ async function handleWipeReactComparison(
   const lateNotInVoice = uniqueSorted(
     wipeReact.lateUserIds.filter((userId) => !voiceUserIds.has(userId)),
   );
+  const declinedSet = new Set(wipeReact.declinedUserIds);
   const declinedInVoice = uniqueSorted(
-    [...voiceUserIds].filter((userId) => wipeReact.declinedUserIds.includes(userId)),
+    [...voiceUserIds].filter((userId) => declinedSet.has(userId)),
   );
 
   await interaction.editReply({
@@ -447,18 +449,9 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
     return true;
   }
 
-  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+  if (!(await hasGuildAdminAccess(interaction))) {
     await interaction.reply({
-      content: "Only administrators can use /compare.",
-      flags: MessageFlags.Ephemeral,
-    });
-    return true;
-  }
-
-  const comparisonMembers = await fetchComparisonMembers(interaction);
-  if (!comparisonMembers) {
-    await interaction.reply({
-      content: "RustLens could not load members for this server.",
+      content: "Only the configured admin role or administrators can use /compare.",
       flags: MessageFlags.Ephemeral,
     });
     return true;
@@ -468,6 +461,14 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
   const wipeReactMessageId = interaction.options.getString(COMPARE_WIPEREACT_OPTION_NAME);
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const comparisonMembers = await fetchComparisonMembers(interaction);
+  if (!comparisonMembers) {
+    await interaction.editReply({
+      content: "RustLens could not load members for this server.",
+    });
+    return true;
+  }
 
   if (wipeReactMessageId || !serverId) {
     return handleWipeReactComparison(interaction, comparisonMembers, wipeReactMessageId);

@@ -74,6 +74,14 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
   const role = interaction.options.getRole("scope", true);
   const message = interaction.options.getString("message", true);
 
+  if (message.length > 4096) {
+    await interaction.reply({
+      content: "The announcement message must be 4096 characters or fewer.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const members = await getGuildMembers(guild);

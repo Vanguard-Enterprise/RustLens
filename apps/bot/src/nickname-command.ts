@@ -62,13 +62,13 @@ function truncateWithEllipsis(value: string, maxLength: number) {
   return `${value.slice(0, maxLength - 3)}...`;
 }
 
-function resolveBaseNickname(member: GuildMember, bmName: string) {
+function resolveBaseNickname(member: GuildMember, _bmName: string) {
   const fallback = member.user.globalName?.trim() || member.user.username.trim() || member.user.username;
   const source = member.nickname?.trim() || fallback;
-  const suffix = `${NICKNAME_SEPARATOR}${bmName}`;
+  const separatorIndex = source.lastIndexOf(NICKNAME_SEPARATOR);
 
-  if (source.endsWith(suffix)) {
-    const stripped = source.slice(0, source.length - suffix.length).trimEnd();
+  if (separatorIndex > 0) {
+    const stripped = source.slice(0, separatorIndex).trimEnd();
     return stripped || fallback;
   }
 

@@ -118,13 +118,15 @@ function buildUserEmbed(steamId: string, account: SteamAccount | null): EmbedBui
 }
 
 function buildNoSteamEmbed(userIds: readonly string[]) {
+  let description = userIds.length > 0
+    ? userIds.map((userId) => `> * <@${userId}>`).join("\n")
+    : "> * None";
+  if (description.length > 4096) {
+    description = `${description.slice(0, 4093)}...`;
+  }
   return new EmbedBuilder()
     .setTitle("Unlinked Users")
-    .setDescription(
-      userIds.length > 0
-        ? userIds.map((userId) => `> * <@${userId}>`).join("\n")
-        : "> * None",
-    )
+    .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
@@ -227,7 +229,6 @@ async function handleViewUser(interaction: ChatInputCommandInteraction) {
     const steamId = items[0].steamId;
     const account = await fetchSteamAccount(steamId);
     const embed = buildUserEmbed(steamId, account);
-    embed.setTitle(account?.bmId ? "Player Profile" : "Player Profile");
     await interaction.editReply({ embeds: [embed] });
     return;
   }
@@ -297,12 +298,17 @@ async function handleViewAll(interaction: ChatInputCommandInteraction) {
     return `> * ${line}`;
   });
 
+  let description = lines.join("\n");
+  if (description.length > 4096) {
+    description = `${description.slice(0, 4093)}...`;
+  }
+
   const embed = new EmbedBuilder()
     .setTitle("Links summary")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
-    .setDescription(lines.join("\n"));
+    .setDescription(description);
 
   await interaction.editReply({ embeds: [embed] });
 }

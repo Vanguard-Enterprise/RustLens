@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 )
+
+var numericPattern = regexp.MustCompile(`^\d+$`)
 
 const defaultBaseURL = "https://api.battlemetrics.com"
 
@@ -33,6 +36,10 @@ func NewClient(apiKey string) *Client {
 }
 
 func (c *Client) FetchServerPlayers(ctx context.Context, serverID string) ([]Player, error) {
+	if !numericPattern.MatchString(serverID) {
+		return nil, fmt.Errorf("invalid server ID: %q", serverID)
+	}
+
 	endpoint, err := url.Parse(fmt.Sprintf("%s/servers/%s?include=player", c.baseURL, serverID))
 	if err != nil {
 		return nil, err

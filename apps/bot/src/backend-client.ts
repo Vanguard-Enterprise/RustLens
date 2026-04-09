@@ -229,11 +229,14 @@ export class BackendClient {
         authorization: `Bearer ${this.token(workerId)}`,
       },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
       const message = await response.text();
-      throw new Error(`backend call failed (${response.status}): ${message}`);
+      const error = new Error(`backend call failed (${response.status}): ${message}`);
+      (error as any).status = response.status;
+      throw error;
     }
 
     return (await response.json()) as T;
@@ -521,8 +524,8 @@ export class BackendClient {
   markUserGuildLeft(workerId: string, discordId: string, guildId: string) {
     return this.call<UserGuildLink>(
       workerId,
-      `/api/internal/bot/setup/user-guilds`,
-      "DELETE",
+      `/api/internal/bot/setup/user-guilds/leave`,
+      "POST",
       { discordId, guildId },
     );
   }

@@ -947,7 +947,7 @@ func (h *Handler) CreateWipeReactSchedule(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	writeJSON(w, http.StatusOK, wipeReactScheduleToMap(record))
+	writeJSON(w, http.StatusCreated, wipeReactScheduleToMap(record))
 }
 
 func (h *Handler) UpdateWipeReactSchedule(w http.ResponseWriter, r *http.Request) {
@@ -1393,7 +1393,11 @@ func (h *Handler) ResolveSteamID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	steamID, err := h.steamClient.ResolveSteamID(r.Context(), request.Input)
-	if errors.Is(err, steamapi.ErrUnsupportedProfileInput) || errors.Is(err, steamapi.ErrVanityNotFound) || errors.Is(err, steamapi.ErrSteamAPIKeyRequired) {
+	if errors.Is(err, steamapi.ErrSteamAPIKeyRequired) {
+		writeError(w, http.StatusBadRequest, "vanity URL resolution is not available")
+		return
+	}
+	if errors.Is(err, steamapi.ErrUnsupportedProfileInput) || errors.Is(err, steamapi.ErrVanityNotFound) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -1467,6 +1471,11 @@ func (h *Handler) BulkUpsertHardLinks(w http.ResponseWriter, r *http.Request) {
 
 	if len(request.Links) == 0 {
 		writeError(w, http.StatusBadRequest, "links array must not be empty")
+		return
+	}
+
+	if len(request.Links) > 1000 {
+		writeError(w, http.StatusBadRequest, "links array must not exceed 1000 entries")
 		return
 	}
 

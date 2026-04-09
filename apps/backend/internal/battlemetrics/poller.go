@@ -112,6 +112,7 @@ func (p *Poller) runCycle(ctx context.Context) {
 	}
 
 	recordCtx, recordCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer recordCancel()
 	pollErrorMessage := ""
 	if pollErr != nil {
 		pollErrorMessage = pollErr.Error()
@@ -119,7 +120,6 @@ func (p *Poller) runCycle(ctx context.Context) {
 	if err := p.postgres.RecordTrackedServerPollResult(recordCtx, server.BmID, observedAt, pollErrorMessage); err != nil {
 		log.Printf("[battlemetrics] failed to record poll result for server %s: %v", server.BmID, err)
 	}
-	recordCancel()
 
 	if pollErr != nil {
 		log.Printf("[battlemetrics] poll failed for server %s (%s): %v", server.BmID, server.Name, pollErr)

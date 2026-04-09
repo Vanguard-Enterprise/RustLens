@@ -78,7 +78,7 @@ registerUserGuildSync(client);
 client.once("clientReady", () => {
   console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);
 
-  Promise.all([
+  Promise.allSettled([
     ensureAdminCommand(client, shardID),
     ensureBindCommand(client, shardID),
     ensureCompareCommand(client, shardID),
@@ -92,10 +92,13 @@ client.once("clientReady", () => {
     ensureViewCommand(client, shardID),
     ensureServerCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
-  ]).then(() => {
+  ]).then((results) => {
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error("[bot] command registration failed", result.reason);
+      }
+    }
     startWipeReactScheduler(client);
-  }).catch((error) => {
-    console.error("[bot] command registration failed", error);
   });
 });
 

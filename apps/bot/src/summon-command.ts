@@ -64,8 +64,8 @@ export async function handleSummonChatInput(interaction: ChatInputCommandInterac
     return true;
   }
 
-  const member = await guild.members.fetch(interaction.user.id);
-  const voiceChannel = member.voice.channel;
+  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  const voiceChannel = member?.voice.channel;
 
   if (!voiceChannel) {
     await interaction.reply({

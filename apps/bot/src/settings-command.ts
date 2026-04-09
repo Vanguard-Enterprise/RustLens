@@ -564,7 +564,15 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
   }
 
   if (interaction.customId.startsWith(SETTINGS_CHANNEL_MODAL_PREFIX)) {
-    const field = interaction.customId.slice(SETTINGS_CHANNEL_MODAL_PREFIX.length) as keyof GuildSettingsPatch;
+    const field = interaction.customId.slice(SETTINGS_CHANNEL_MODAL_PREFIX.length);
+    const validChannelFields = new Set(["wipeReactLogChannelId", "linkingLogChannelId", "trackedServerLogChannelId", "alertsChannelId"]);
+    if (!validChannelFields.has(field)) {
+      await interaction.reply({
+        content: "That setting is not valid.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
     let channel: GuildBasedChannel | null = null;
 
     if (selectedValue) {
@@ -581,7 +589,7 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
       }
     }
 
-    await updateGuildSettings(interaction.guildId, { [field]: selectedValue });
+    await updateGuildSettings(interaction.guildId, { [field]: selectedValue ?? undefined });
     await refreshSettingsMessage(interaction, interaction.guild);
     return true;
   }
@@ -593,7 +601,14 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
     return true;
   }
 
-  const roleField = interaction.customId.slice(SETTINGS_ROLE_MODAL_PREFIX.length) as keyof GuildSettingsPatch;
+  const roleField = interaction.customId.slice(SETTINGS_ROLE_MODAL_PREFIX.length);
+  if (roleField !== "adminRoleId") {
+    await interaction.reply({
+      content: "That setting is not valid.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
   let role: Role | null = null;
 
   if (selectedValue) {
@@ -610,7 +625,7 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
     }
   }
 
-  await updateGuildSettings(interaction.guildId, { [roleField]: selectedValue });
+  await updateGuildSettings(interaction.guildId, { [roleField]: selectedValue ?? undefined });
   await refreshSettingsMessage(interaction, interaction.guild);
   return true;
 }

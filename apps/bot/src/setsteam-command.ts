@@ -116,6 +116,8 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   const backend = getBackend();
   const workerId = getWorkerID();
   const existingLinks = await backend.listGuildLinksByDiscord(workerId, interaction.guildId, interaction.user.id);
@@ -129,8 +131,6 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     );
     return true;
   }
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const rawInput = interaction.options.getString(SETSTEAM_STEAM_ID_OPTION_NAME, true).trim();
   let steamId: string;
@@ -148,8 +148,8 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
   try {
     await backend.createSoftLink(workerId, steamId, interaction.user.id, "bot_command");
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes("409")) {
+    const status = error instanceof Error ? (error as any).status : undefined;
+    if (status !== 409) {
       await replyEphemeralEmbed(
         interaction,
         buildEmbed("Error", "RustLens could not save your Steam ID."),

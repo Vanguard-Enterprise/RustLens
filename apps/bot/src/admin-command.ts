@@ -187,8 +187,8 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
     try {
       await getBackend().createSoftLink(getWorkerID(), steamID, targetUser.id, "bot_command");
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!message.includes("409")) {
+      const status = error instanceof Error ? (error as any).status : undefined;
+      if (status !== 409) {
         await replyEphemeralEmbed(
           interaction,
           buildAdminSteamEmbed("Error", `RustLens could not save the Steam ID for <@${targetUser.id}>.`),

@@ -436,7 +436,7 @@ func (p *PostgresStore) MarkUserGuildLeft(ctx context.Context, discordID, guildI
 	var record UserGuildLink
 	err := p.pool.QueryRow(ctx, `
 		INSERT INTO user_guilds (discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at)
-		VALUES ($1, $2)
+		VALUES ($1, $2, FALSE, NOW(), NOW(), NOW())
 		ON CONFLICT (discord_id, guild_id) DO UPDATE
 		SET is_active = FALSE,
 			last_seen_at = NOW(),

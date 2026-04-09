@@ -274,8 +274,8 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/user-guilds");
-    expect(init?.method).toBe("DELETE");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/user-guilds/leave");
+    expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ discordId: "456", guildId: "123" }));
   });
 
