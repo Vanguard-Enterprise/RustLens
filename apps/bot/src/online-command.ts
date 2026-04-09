@@ -65,15 +65,15 @@ function buildSummaryLine(item: GuildOnlineSummaryItem) {
 }
 
 function groupSummaryItems(items: GuildOnlineSummaryItem[]) {
-  const groups = new Map<string, string[]>();
+  const groups = new Map<string, { serverName: string; lines: string[] }>();
 
   for (const item of items) {
-    const current = groups.get(item.serverName) ?? [];
-    current.push(buildSummaryLine(item));
-    groups.set(item.serverName, current);
+    const current = groups.get(item.serverBmId) ?? { serverName: item.serverName, lines: [] };
+    current.lines.push(buildSummaryLine(item));
+    groups.set(item.serverBmId, current);
   }
 
-  return [...groups.entries()].map(([serverName, lines]) => ({ serverName, lines }));
+  return [...groups.values()];
 }
 
 function splitFieldValues(serverName: string, lines: string[]): APIEmbedField[] {
