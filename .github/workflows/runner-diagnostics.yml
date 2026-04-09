@@ -1,0 +1,42 @@
+name: Self-Hosted Runner Diagnostics
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  diagnostics:
+    runs-on: self-hosted
+    steps:
+      - name: Record runner context before checkout
+        run: |
+          echo "runner_name=${RUNNER_NAME}"
+          echo "runner_os=${RUNNER_OS}"
+          echo "runner_arch=${RUNNER_ARCH}"
+          echo "workspace=${GITHUB_WORKSPACE}"
+          pwd
+          ls -la
+
+      - uses: actions/checkout@v5
+
+      - name: Verify workspace after checkout
+        run: |
+          test -d "$GITHUB_WORKSPACE/.git"
+          echo "workspace=${GITHUB_WORKSPACE}"
+          pwd
+          ls -la
+          git status --short
+
+      - name: Verify repository commands
+        run: |
+          git rev-parse --show-toplevel
+          test -f AGENTS.md
+
+      - name: Capture action cache layout
+        if: always()
+        run: |
+          ls -la "${RUNNER_WORKSPACE}" || true
+          ls -la "${RUNNER_WORKSPACE}/_actions" || true
+          ls -la "${RUNNER_WORKSPACE}/_actions/actions" || true

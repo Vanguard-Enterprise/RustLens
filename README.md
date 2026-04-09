@@ -110,9 +110,13 @@ Backend computes assignments from active workers and configured shard count (`BO
 - `.github/workflows/ci.yml`
   - Runs lint/test/build for JS workspace.
   - Runs vet/test/build for Go backend.
-  - Validates Kubernetes manifests.
+  - Validates Kubernetes manifests with offline client-side validation so CI does not depend on a live cluster OpenAPI endpoint.
+  - Runs on `ubuntu-latest` while the self-hosted fleet is being remediated.
 - `.github/workflows/publish.yml`
-  - On `main`, builds and pushes `backend`, `frontend`, and `bot` images to GHCR.
+  - On `main`, builds and pushes `backend`, `frontend`, and `bot` images to GHCR using lowercase owner tags.
+  - Runs on `ubuntu-latest` while the self-hosted fleet is being remediated.
+- `.github/workflows/runner-diagnostics.yml`
+  - Manual self-hosted runner validation workflow for checkout, workspace, and post-job path issues.
 
 ## Kubernetes Deployment
 
