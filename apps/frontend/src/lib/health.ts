@@ -6,9 +6,11 @@ export type HealthResponse = {
   redis: string;
 };
 
-export async function fetchHealth(): Promise<HealthResponse | null> {
+export async function fetchHealth(baseUrl?: string): Promise<HealthResponse | null> {
   try {
-    const response = await fetch(HEALTH_ENDPOINT, {
+    const endpoint = baseUrl ? new URL(HEALTH_ENDPOINT, baseUrl).toString() : HEALTH_ENDPOINT;
+
+    const response = await fetch(endpoint, {
       method: "GET",
       cache: "no-store",
     });

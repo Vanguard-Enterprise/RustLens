@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "baseUrl": ".",
     "lib": [
       "DOM",
       "DOM.Iterable",
@@ -20,6 +21,11 @@
       "vitest/globals"
     ],
     "esModuleInterop": true,
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
     "plugins": [
       {
         "name": "next"
