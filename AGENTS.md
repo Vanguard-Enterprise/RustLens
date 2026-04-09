@@ -73,7 +73,7 @@ Local dev runs Traefik on `http://localhost`:
 - `/api/*` -> backend on `:8080`
 - Everything else -> frontend on `:3000`
 
-Production uses the same split via Kubernetes Ingress (`deploy/k8s/ingress.yaml`).
+Production routing is handled outside this repository.
 
 ### Backend (Go)
 
@@ -181,6 +181,3 @@ Current skills:
 |---|---|
 | `battlemetrics-api` | BattleMetrics REST API reference (endpoints, auth, pagination, JSON:API shapes) |
 
-## Kubernetes
-
-Manifests in `deploy/k8s/`. Apply in order: namespace -> configmap -> secrets -> backend -> frontend -> bot -> hpa -> ingress.

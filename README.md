@@ -23,12 +23,9 @@ Traefik routes from `http://localhost`:
 - `PathPrefix(/api)` -> backend on `localhost:8080`
 - everything else -> frontend on `localhost:3000`
 
-### Production (Kubernetes + Traefik)
+### Production
 
-Kubernetes ingress in `deploy/k8s/ingress.yaml` routes:
-
-- `/api/*` -> `backend` service
-- `/` -> `frontend` service
+Production deployment manifests are not maintained in this repository.
 
 ## Backend API Docs
 
@@ -117,19 +114,3 @@ Backend computes assignments from active workers and configured shard count (`BO
 - `.github/workflows/runner-diagnostics.yml`
   - Manual self-hosted runner validation workflow for checkout, workspace, and post-job path issues.
 
-## Kubernetes Deployment
-
-Apply manifests in order:
-
-```bash
-kubectl apply -f deploy/k8s/namespace.yaml
-kubectl apply -f deploy/k8s/configmap.yaml
-kubectl apply -f deploy/k8s/secrets.example.yaml
-kubectl apply -f deploy/k8s/backend.yaml
-kubectl apply -f deploy/k8s/frontend.yaml
-kubectl apply -f deploy/k8s/bot.yaml
-kubectl apply -f deploy/k8s/hpa.yaml
-kubectl apply -f deploy/k8s/ingress.yaml
-```
-
-Update `ghcr.io/OWNER/...` images and secret values before production use.
