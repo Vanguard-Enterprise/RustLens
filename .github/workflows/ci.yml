@@ -11,7 +11,7 @@ env:
 
 jobs:
   javascript:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -38,7 +38,7 @@ jobs:
         run: pnpm build
 
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     defaults:
       run:
         working-directory: apps/backend
@@ -60,3 +60,15 @@ jobs:
 
       - name: Build
         run: go build ./cmd/server
+
+  manifests:
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Validate Kubernetes manifests
+        run: kubectl apply --dry-run=client -f deploy/k8s

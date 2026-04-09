@@ -199,9 +199,8 @@ The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` 
 
 ## CI/CD
 
-- **`.github/workflows/ci.yml`** — On PR and push to `main`: lint/test/build for JS workspace and vet/test/build for Go backend. Runs on `ubuntu-latest` as a temporary rollback while the self-hosted runner fleet is remediated.
-- **`.github/workflows/publish.yml`** — On `main`: builds and pushes `backend`, `frontend`, `bot` Docker images to GHCR using lowercase owner tags. Runs on `ubuntu-latest` while the self-hosted runner fleet is remediated.
-- **`.github/workflows/runner-diagnostics.yml`** — Manual self-hosted runner validation workflow that checks checkout, workspace paths, and action cache layout to catch runner-hook regressions early.
+- **`.github/workflows/ci.yml`** — On PR and push to `main`: lint/test/build for JS workspace, vet/test/build for Go backend, dry-run validate K8s manifests. PR jobs run on `ubuntu-latest`; pushes to `main` run on self-hosted runners.
+- **`.github/workflows/publish.yml`** — On `main`: builds and pushes `backend`, `frontend`, `bot` Docker images to GHCR.
 
 ## Skills
 
