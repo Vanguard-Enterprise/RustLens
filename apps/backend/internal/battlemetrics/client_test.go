@@ -3,6 +3,7 @@ package battlemetrics
 import (
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"testing"
@@ -20,7 +21,7 @@ func TestFetchServerPlayersFiltersIncludedPlayers(t *testing.T) {
 	client := &Client{
 		baseURL: "https://api.battlemetrics.com",
 		apiKey:  "test-api-key",
-		httpClient: &http.Client{
+		provider: staticProvider{client: &http.Client{
 			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 				capturedAuth = request.Header.Get("Authorization")
 				capturedAccept = request.Header.Get("Accept")
@@ -53,7 +54,7 @@ func TestFetchServerPlayersFiltersIncludedPlayers(t *testing.T) {
 					Header:     make(http.Header),
 				}, nil
 			}),
-		},
+		}},
 	}
 
 	players, err := client.FetchServerPlayers(context.Background(), "16741517")
@@ -80,4 +81,50 @@ func TestFetchServerPlayersFiltersIncludedPlayers(t *testing.T) {
 	if capturedAccept != "application/json" {
 		t.Fatalf("unexpected accept header: %s", capturedAccept)
 	}
+}
+
+func TestFetchServerPlayersLogsSelectedProxy(t *testing.T) {
+	var logOutput strings.Builder
+	originalWriter := log.Writer()
+	log.SetOutput(&logOutput)
+	defer log.SetOutput(originalWriter)
+
+	client := &Client{
+		baseURL: "https://api.battlemetrics.com",
+		provider: staticProvider{
+			client: &http.Client{
+				Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(`{"included":[]}`)),
+						Header:     make(http.Header),
+					}, nil
+				}),
+			},
+			endpoint: "http://user:secret@proxy-one:8080",
+			proxied:  true,
+		},
+	}
+
+	if _, err := client.FetchServerPlayers(context.Background(), "16741517"); err != nil {
+		t.Fatalf("FetchServerPlayers returned error: %v", err)
+	}
+
+	logged := logOutput.String()
+	if !strings.Contains(logged, `proxied=true`) {
+		t.Fatalf("expected proxied log entry, got %q", logged)
+	}
+	if !strings.Contains(logged, `proxy="http://user@proxy-one:8080"`) {
+		t.Fatalf("expected redacted proxy endpoint in log, got %q", logged)
+	}
+}
+
+type staticProvider struct {
+	client   *http.Client
+	endpoint string
+	proxied  bool
+}
+
+func (p staticProvider) Prepare() (*http.Client, string, bool) {
+	return p.client, p.endpoint, p.proxied
 }

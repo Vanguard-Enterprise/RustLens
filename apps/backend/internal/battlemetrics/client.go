@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
 	"time"
+
+	"rustlens/backend/internal/outboundhttp"
 )
 
 var numericPattern = regexp.MustCompile(`^\d+$`)
@@ -20,18 +23,25 @@ type Player struct {
 }
 
 type Client struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
+	baseURL  string
+	apiKey   string
+	provider requestPreparer
 }
 
-func NewClient(apiKey string) *Client {
+type requestPreparer interface {
+	Prepare() (*http.Client, string, bool)
+}
+
+func NewClient(apiKey string, provider requestPreparer) *Client {
+	if provider == nil {
+		fallbackProvider, _ := outboundhttp.NewProvider(false, nil, 10*time.Second)
+		provider = fallbackProvider
+	}
+
 	return &Client{
-		baseURL: defaultBaseURL,
-		apiKey:  apiKey,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		baseURL:  defaultBaseURL,
+		apiKey:   apiKey,
+		provider: provider,
 	}
 }
 
@@ -54,7 +64,10 @@ func (c *Client) FetchServerPlayers(ctx context.Context, serverID string) ([]Pla
 	}
 	req.Header.Set("Accept", "application/json")
 
-	response, err := c.httpClient.Do(req)
+	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
+	log.Printf("[battlemetrics] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+
+	response, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
