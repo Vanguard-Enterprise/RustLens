@@ -1,7 +1,9 @@
 ifeq ($(OS),Windows_NT)
 DOCTOR_CMD := powershell -ExecutionPolicy Bypass -File scripts/setup/doctor.ps1
+DEV_CMD := powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/start-dev.ps1
 else
 DOCTOR_CMD := bash scripts/setup/doctor.sh
+DEV_CMD := pnpm run dev:all
 endif
 
 .PHONY: setup doctor infra-up infra-down dev dev-backend dev-frontend dev-bot lint test build
@@ -21,7 +23,7 @@ infra-down:
 	docker compose -f infra/docker-compose.yml down
 
 dev: infra-up
-	pnpm run dev:all
+	$(DEV_CMD)
 
 dev-backend:
 	cd apps/backend && go run github.com/air-verse/air@latest -c .air.toml
