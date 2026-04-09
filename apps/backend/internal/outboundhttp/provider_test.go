@@ -1,6 +1,7 @@
 package outboundhttp
 
 import (
+	"net/http"
 	"testing"
 	"time"
 )
@@ -48,6 +49,21 @@ func TestPrepareDirectWhenDisabled(t *testing.T) {
 	client, endpoint, proxied := provider.Prepare()
 	if client == nil {
 		t.Fatal("expected direct client")
+	}
+	if proxied {
+		t.Fatal("expected proxied to be false")
+	}
+	if endpoint != "" {
+		t.Fatalf("endpoint = %q, want empty", endpoint)
+	}
+}
+
+func TestPrepareNilProviderFallsBackToDefaultClient(t *testing.T) {
+	var provider *Provider
+
+	client, endpoint, proxied := provider.Prepare()
+	if client != http.DefaultClient {
+		t.Fatal("expected default client")
 	}
 	if proxied {
 		t.Fatal("expected proxied to be false")

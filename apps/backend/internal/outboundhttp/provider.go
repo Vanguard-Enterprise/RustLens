@@ -67,7 +67,11 @@ func NewProvider(enabled bool, endpoints []string, timeout time.Duration) (*Prov
 }
 
 func (p *Provider) Prepare() (*http.Client, string, bool) {
-	if p == nil || !p.enabled || len(p.proxies) == 0 {
+	if p == nil {
+		return http.DefaultClient, "", false
+	}
+
+	if !p.enabled || len(p.proxies) == 0 {
 		return p.direct, "", false
 	}
 
