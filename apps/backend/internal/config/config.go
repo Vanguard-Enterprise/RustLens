@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,12 +19,15 @@ type Config struct {
 	BattleMetricsPoll   time.Duration
 	AllowedJWTIssuer    string
 	AllowedJWTAudience  string
+	ProxyEnabled        bool
+	ProxyEndpoints      []string
 }
 
 func Load() Config {
 	targetShards := getEnvInt("BOT_TARGET_SHARDS", 4)
 	heartbeatTTL := getEnvInt("BOT_HEARTBEAT_TTL_SECONDS", 45)
 	battleMetricsPoll := getEnvInt("BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS", 10)
+	proxyEnabled := getEnvBool("PROXY_ENABLED", false)
 
 	return Config{
 		Port:                getEnv("PORT", "8080"),
@@ -37,6 +41,8 @@ func Load() Config {
 		BattleMetricsPoll:   time.Duration(battleMetricsPoll) * time.Second,
 		AllowedJWTIssuer:    getEnv("BOT_JWT_ISSUER", "rustlens-bot"),
 		AllowedJWTAudience:  getEnv("BOT_JWT_AUDIENCE", "rustlens-backend"),
+		ProxyEnabled:        proxyEnabled,
+		ProxyEndpoints:      getEnvCSV("PROXY_ENDPOINTS"),
 	}
 }
 
@@ -55,4 +61,36 @@ func getEnvInt(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if value, ok := os.LookupEnv(key); ok {
+		parsed, err := strconv.ParseBool(value)
+		if err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func getEnvCSV(key string) []string {
+	value, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		values = append(values, trimmed)
+	}
+
+	if len(values) == 0 {
+		return nil
+	}
+	return values
 }

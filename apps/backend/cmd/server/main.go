@@ -12,6 +12,7 @@ import (
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/config"
 	httpapi "rustlens/backend/internal/http"
+	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
@@ -40,9 +41,14 @@ func main() {
 		log.Fatalf("schema migration failed: %v", err)
 	}
 
+	outboundProvider, err := outboundhttp.NewProvider(cfg.ProxyEnabled, cfg.ProxyEndpoints, 10*time.Second)
+	if err != nil {
+		log.Fatalf("outbound proxy init failed: %v", err)
+	}
+
 	shardService := shards.NewService(redisStore, postgresStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
-	router := httpapi.NewRouter(cfg, postgresStore, redisStore, shardService, steamapi.NewClient(cfg.SteamAPIKey))
-	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(cfg.BattleMetricsAPIKey), postgresStore, redisStore, cfg.BattleMetricsPoll)
+	router := httpapi.NewRouter(cfg, postgresStore, redisStore, shardService, steamapi.NewClient(cfg.SteamAPIKey, outboundProvider))
+	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(cfg.BattleMetricsAPIKey, outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
 
 	server := &http.Server{
