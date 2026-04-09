@@ -7,6 +7,8 @@ export type BotConfig = {
   jwtAudience: string;
   workerId: string;
   discordToken: string;
+  ownerGuildId: string;
+  ownerDiscordIds: string[];
   reconcileIntervalMs: number;
   heartbeatIntervalMs: number;
 };
@@ -21,7 +23,12 @@ export function loadConfig(): BotConfig {
     jwtAudience: process.env.BOT_JWT_AUDIENCE ?? "rustlens-backend",
     workerId: process.env.BOT_WORKER_ID ?? workerFallback,
     discordToken: process.env.DISCORD_TOKEN ?? "",
-    reconcileIntervalMs: Number(process.env.BOT_RECONCILE_INTERVAL_MS ?? "15000"),
-    heartbeatIntervalMs: Number(process.env.BOT_HEARTBEAT_INTERVAL_MS ?? "8000"),
+    ownerGuildId: process.env.BOT_OWNER_GUILD_ID ?? "",
+    ownerDiscordIds: (process.env.BOT_OWNER_DISCORD_IDS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0),
+    reconcileIntervalMs: Number(process.env.BOT_RECONCILE_INTERVAL_MS ?? "15000") || 15000,
+    heartbeatIntervalMs: Number(process.env.BOT_HEARTBEAT_INTERVAL_MS ?? "8000") || 8000,
   };
 }

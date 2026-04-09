@@ -106,9 +106,15 @@ func (p *PostgresStore) GetWipeReactSchedule(ctx context.Context, guildID string
 }
 
 func (p *PostgresStore) CreateWipeReactSchedule(ctx context.Context, record WipeReactSchedule) (WipeReactSchedule, error) {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return WipeReactSchedule{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	var count int
-	err := p.pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM wipe_react_schedules WHERE guild_id = $1
+	err = tx.QueryRow(ctx, `
+		SELECT COUNT(*) FROM wipe_react_schedules WHERE guild_id = $1 FOR UPDATE
 	`, record.GuildID).Scan(&count)
 	if err != nil {
 		return WipeReactSchedule{}, err
@@ -122,7 +128,7 @@ func (p *PostgresStore) CreateWipeReactSchedule(ctx context.Context, record Wipe
 		return WipeReactSchedule{}, err
 	}
 
-	err = p.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO wipe_react_schedules (
 			guild_id, days, includes_force_wipe, time, time_zone, repeat, post_before, name, description, ask_late_reason, ask_declined_reason, channel_id, last_posted_for_unix, created_by
 		)
@@ -131,6 +137,10 @@ func (p *PostgresStore) CreateWipeReactSchedule(ctx context.Context, record Wipe
 	`, record.GuildID, daysJSON, record.IncludesForceWipe, record.Time, record.TimeZone,
 		record.Repeat, record.PostBefore, record.Name, record.Description, record.AskLateReason, record.AskDeclinedReason, record.ChannelID, record.LastPostedForUnix, record.CreatedBy).Scan(&record.ID)
 	if err != nil {
+		return WipeReactSchedule{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return WipeReactSchedule{}, err
 	}
 

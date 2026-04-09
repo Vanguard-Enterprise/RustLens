@@ -146,6 +146,36 @@ func (p *PostgresStore) ListActiveWipeReacts(ctx context.Context, guildID string
 	return records, nil
 }
 
+func (p *PostgresStore) ListWipeReacts(ctx context.Context, guildID string) ([]WipeReact, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT guild_id, channel_id, message_id, creator_id, name, description, time_zone,
+			scheduled_unix, ask_late_reason, ask_declined_reason,
+			accepted_user_ids, declined_user_ids, late_user_ids, embed_timestamp
+		FROM wipe_reacts
+		WHERE guild_id = $1
+		ORDER BY scheduled_unix DESC, message_id DESC
+	`, guildID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]WipeReact, 0)
+	for rows.Next() {
+		record, err := scanWipeReact(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return records, nil
+}
+
 func (p *PostgresStore) GetWipeReact(ctx context.Context, guildID string, messageID string) (WipeReact, error) {
 	record, err := scanWipeReact(p.pool.QueryRow(ctx, `
 		SELECT guild_id, channel_id, message_id, creator_id, name, description, time_zone,

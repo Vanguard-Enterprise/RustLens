@@ -10,6 +10,7 @@ import (
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
+	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
 )
 
@@ -25,8 +26,8 @@ func claimsFromContext(ctx context.Context) *auth.Claims {
 	return claims
 }
 
-func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service) http.Handler {
-	handler := NewHandler(cfg, postgres, redis, shardService)
+func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service, steamClient *steamapi.Client) http.Handler {
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -49,13 +50,12 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 
 	r.Route("/api/internal/bot/setup", func(r chi.Router) {
 		r.Use(botJWTMiddleware(handler.jwtValidator))
-		r.Get("/guilds/{guildID}", handler.GetGuildSetupState)
-		r.Post("/guilds/{guildID}/claim", handler.ClaimGuildSetup)
-		r.Post("/guilds/{guildID}/complete", handler.CompleteGuildSetup)
-		r.Post("/guilds/{guildID}/reset", handler.ResetGuildSetup)
 		r.Get("/guilds/{guildID}/settings", handler.GetGuildSettings)
-		r.Post("/guilds/{guildID}/settings/log-channel", handler.SetGuildLogChannel)
+		r.Put("/guilds/{guildID}/settings", handler.UpdateGuildSettings)
+		r.Get("/guilds/{guildID}/tracked-servers", handler.ListGuildTrackedServers)
+		r.Put("/guilds/{guildID}/tracked-servers", handler.ReplaceGuildTrackedServers)
 		r.Get("/guilds/{guildID}/wipe-reacts/active", handler.ListActiveWipeReacts)
+		r.Get("/guilds/{guildID}/wipe-reacts", handler.ListWipeReacts)
 		r.Post("/guilds/{guildID}/wipe-reacts", handler.CreateWipeReact)
 		r.Get("/guilds/{guildID}/wipe-reacts/{messageID}", handler.GetWipeReact)
 		r.Put("/guilds/{guildID}/wipe-reacts/{messageID}", handler.UpdateWipeReact)
@@ -68,15 +68,34 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Put("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.UpdateWipeReactSchedule)
 		r.Delete("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.DeleteWipeReactSchedule)
 		r.Post("/guilds/{guildID}/wipe-react-schedules/{scheduleID}/mark-posted", handler.MarkWipeReactSchedulePosted)
+		r.Get("/tracked-servers", handler.ListTrackedServers)
+		r.Post("/tracked-servers", handler.CreateTrackedServer)
+		r.Delete("/tracked-servers/{bmID}", handler.DeleteTrackedServer)
+		r.Get("/player-states/servers/{serverID}", handler.ListOnlinePlayerStatesByServer)
+		r.Get("/player-states/servers/{serverID}/players/{playerID}", handler.GetPlayerState)
+		r.Get("/player-states/players/{playerID}", handler.ListPlayerStatesByPlayer)
 
 		// Steam & Discord linking endpoints
 		r.Get("/steam/by-bm/{bmID}", handler.GetSteamAccountByBmID)
+		r.Post("/steam/resolve", handler.ResolveSteamID)
 		r.Post("/steam/links", handler.CreateSoftLink)
 		r.Post("/steam/bulk-hard-links", handler.BulkUpsertHardLinks)
+		r.Post("/user-guilds", handler.CreateUserGuildLink)
+		r.Post("/user-guilds/leave", handler.MarkUserGuildLeft)
 		r.Get("/steam/{steamID}", handler.GetSteamAccount)
 		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
 		r.Get("/discord/{discordID}/links", handler.ListLinksByDiscordID)
+		r.Get("/discord/{discordID}/guilds", handler.ListUserGuildLinksByDiscord)
+
+		// Guild-scoped steam-discord links
+		r.Get("/guilds/{guildID}/online-summary", handler.ListGuildOnlineSummary)
+		r.Get("/guilds/{guildID}/links", handler.ListGuildLinks)
+		r.Get("/guilds/{guildID}/nickname-targets", handler.ListGuildNicknameTargets)
+		r.Post("/guilds/{guildID}/links", handler.CreateGuildSteamDiscordLink)
+		r.Get("/guilds/{guildID}/discord/{discordID}/links", handler.ListGuildLinksByDiscord)
+		r.Get("/guilds/{guildID}/steam/{steamID}/links", handler.ListGuildLinksBySteam)
+		r.Delete("/guilds/{guildID}/discord/{discordID}/steam/{steamID}", handler.DeleteGuildSteamDiscordLink)
 	})
 
 	return r

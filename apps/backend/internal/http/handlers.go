@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -15,6 +16,7 @@ import (
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
+	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
 )
 
@@ -29,15 +31,17 @@ type Handler struct {
 	redis        *store.RedisStore
 	shardService *shards.Service
 	jwtValidator *auth.Validator
+	steamClient  *steamapi.Client
 }
 
-func NewHandler(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service) *Handler {
+func NewHandler(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service, steamClient *steamapi.Client) *Handler {
 	return &Handler{
 		cfg:          cfg,
 		postgres:     postgres,
 		redis:        redis,
 		shardService: shardService,
 		jwtValidator: auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
+		steamClient:  steamClient,
 	}
 }
 
@@ -215,21 +219,85 @@ func validateSnowflakePathParam(w http.ResponseWriter, r *http.Request, paramNam
 	return value, true
 }
 
-func writeGuildSetupState(w http.ResponseWriter, state store.GuildSetupState) {
+func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"guildId":          state.GuildID,
-		"status":           state.Status,
-		"configuredBy":     state.ConfiguredBy,
-		"selectedRoles":    state.SelectedRoles,
-		"selectedChannels": state.SelectedChannels,
+		"guildId":                   settings.GuildID,
+		"wipeReactLogChannelId":     settings.WipeReactLogChannelID,
+		"linkingLogChannelId":       settings.LinkingLogChannelID,
+		"trackedServerLogChannelId": settings.TrackedServerLogChannelID,
+		"alertsChannelId":           settings.AlertsChannelID,
+		"adminRoleId":               settings.AdminRoleID,
 	})
 }
 
-func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"guildId":      settings.GuildID,
-		"logChannelId": settings.LogChannelID,
-	})
+func trackedServerToMap(item store.TrackedServer) map[string]any {
+	result := map[string]any{
+		"bmId": item.BmID,
+		"name": item.Name,
+	}
+	if item.LastPolledAt != nil {
+		result["lastPolledAt"] = *item.LastPolledAt
+	} else {
+		result["lastPolledAt"] = nil
+	}
+	result["lastPollError"] = item.LastPollError
+	return result
+}
+
+func guildTrackedServerToMap(item store.GuildTrackedServer) map[string]any {
+	return map[string]any{
+		"guildId": item.GuildID,
+		"bmId":    item.BmID,
+		"name":    item.Name,
+	}
+}
+
+func writeTrackedServerList(w http.ResponseWriter, items []store.TrackedServer) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, trackedServerToMap(item))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
+func writeGuildTrackedServerList(w http.ResponseWriter, items []store.GuildTrackedServer) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, guildTrackedServerToMap(item))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
+func playerStateToMap(item store.PlayerState) map[string]any {
+	result := map[string]any{
+		"serverBmId": item.ServerBmID,
+		"serverName": item.ServerName,
+		"playerBmId": item.PlayerBmID,
+		"isOnline":   item.IsOnline,
+		"updatedAt":  item.UpdatedAt,
+	}
+	if item.OnlineSince != nil {
+		result["onlineSince"] = *item.OnlineSince
+	} else {
+		result["onlineSince"] = nil
+	}
+	if item.OfflineSince != nil {
+		result["offlineSince"] = *item.OfflineSince
+	} else {
+		result["offlineSince"] = nil
+	}
+	return result
+}
+
+func writePlayerStateList(w http.ResponseWriter, items []store.PlayerState) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, playerStateToMap(item))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
 }
 
 func wipeReactToMap(record store.WipeReact) map[string]any {
@@ -289,104 +357,6 @@ func writeWipeReactReactionRemoval(w http.ResponseWriter, removal store.WipeReac
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (h *Handler) GetGuildSetupState(w http.ResponseWriter, r *http.Request) {
-	guildID, ok := validateGuildID(w, r)
-	if !ok {
-		return
-	}
-
-	state, err := h.postgres.GetGuildSetupState(r.Context(), guildID)
-	if err != nil {
-		log.Printf("[backend] GetGuildSetupState error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to fetch guild setup state")
-		return
-	}
-
-	writeGuildSetupState(w, state)
-}
-
-func (h *Handler) ClaimGuildSetup(w http.ResponseWriter, r *http.Request) {
-	guildID, ok := validateGuildID(w, r)
-	if !ok {
-		return
-	}
-
-	claimed, state, err := h.postgres.ClaimGuildSetup(r.Context(), guildID)
-	if err != nil {
-		log.Printf("[backend] ClaimGuildSetup error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to claim guild setup")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"claimed":          claimed,
-		"guildId":          state.GuildID,
-		"status":           state.Status,
-		"configuredBy":     state.ConfiguredBy,
-		"selectedRoles":    state.SelectedRoles,
-		"selectedChannels": state.SelectedChannels,
-	})
-}
-
-type completeGuildSetupRequest struct {
-	ConfiguredBy     string   `json:"configuredBy"`
-	SelectedRoles    []string `json:"selectedRoles"`
-	SelectedChannels []string `json:"selectedChannels"`
-}
-
-func (h *Handler) CompleteGuildSetup(w http.ResponseWriter, r *http.Request) {
-	guildID, ok := validateGuildID(w, r)
-	if !ok {
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var request completeGuildSetupRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if request.ConfiguredBy == "" {
-		writeError(w, http.StatusBadRequest, "configuredBy is required")
-		return
-	}
-	if len(request.SelectedRoles) == 0 {
-		writeError(w, http.StatusBadRequest, "selectedRoles must not be empty")
-		return
-	}
-
-	if err := h.postgres.CompleteGuildSetup(r.Context(), guildID, request.ConfiguredBy, request.SelectedRoles, request.SelectedChannels); err != nil {
-		log.Printf("[backend] CompleteGuildSetup error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to complete guild setup")
-		return
-	}
-
-	state, err := h.postgres.GetGuildSetupState(r.Context(), guildID)
-	if err != nil {
-		log.Printf("[backend] GetGuildSetupState (post-complete) error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to fetch guild setup state")
-		return
-	}
-
-	writeGuildSetupState(w, state)
-}
-
-func (h *Handler) ResetGuildSetup(w http.ResponseWriter, r *http.Request) {
-	guildID, ok := validateGuildID(w, r)
-	if !ok {
-		return
-	}
-
-	if err := h.postgres.ResetGuildSetup(r.Context(), guildID); err != nil {
-		log.Printf("[backend] ResetGuildSetup error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to reset guild setup")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
-}
-
 func (h *Handler) GetGuildSettings(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateGuildID(w, r)
 	if !ok {
@@ -403,36 +373,70 @@ func (h *Handler) GetGuildSettings(w http.ResponseWriter, r *http.Request) {
 	writeGuildSettings(w, settings)
 }
 
-type setGuildLogChannelRequest struct {
-	LogChannelID string `json:"logChannelId"`
+type updateGuildSettingsRequest struct {
+	WipeReactLogChannelID     *string `json:"wipeReactLogChannelId"`
+	LinkingLogChannelID       *string `json:"linkingLogChannelId"`
+	TrackedServerLogChannelID *string `json:"trackedServerLogChannelId"`
+	AlertsChannelID           *string `json:"alertsChannelId"`
+	AdminRoleID               *string `json:"adminRoleId"`
 }
 
-func (h *Handler) SetGuildLogChannel(w http.ResponseWriter, r *http.Request) {
+func validateSnowflakeOptionalField(w http.ResponseWriter, value *string, fieldName string) bool {
+	if value == nil {
+		return true
+	}
+
+	if *value == "" {
+		return true
+	}
+
+	if !snowflakePattern.MatchString(*value) {
+		writeError(w, http.StatusBadRequest, fieldName+" must be a valid Discord snowflake")
+		return false
+	}
+
+	return true
+}
+
+func (h *Handler) UpdateGuildSettings(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateGuildID(w, r)
 	if !ok {
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var request setGuildLogChannelRequest
+	var request updateGuildSettingsRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if request.LogChannelID == "" {
-		writeError(w, http.StatusBadRequest, "logChannelId is required")
+	if !validateSnowflakeOptionalField(w, request.WipeReactLogChannelID, "wipeReactLogChannelId") {
 		return
 	}
-	if !snowflakePattern.MatchString(request.LogChannelID) {
-		writeError(w, http.StatusBadRequest, "logChannelId must be a valid Discord snowflake")
+	if !validateSnowflakeOptionalField(w, request.LinkingLogChannelID, "linkingLogChannelId") {
+		return
+	}
+	if !validateSnowflakeOptionalField(w, request.TrackedServerLogChannelID, "trackedServerLogChannelId") {
+		return
+	}
+	if !validateSnowflakeOptionalField(w, request.AlertsChannelID, "alertsChannelId") {
+		return
+	}
+	if !validateSnowflakeOptionalField(w, request.AdminRoleID, "adminRoleId") {
 		return
 	}
 
-	settings, err := h.postgres.SetGuildLogChannel(r.Context(), guildID, request.LogChannelID)
+	settings, err := h.postgres.UpdateGuildSettings(r.Context(), guildID, store.GuildSettingsPatch{
+		WipeReactLogChannelID:     request.WipeReactLogChannelID,
+		LinkingLogChannelID:       request.LinkingLogChannelID,
+		TrackedServerLogChannelID: request.TrackedServerLogChannelID,
+		AlertsChannelID:           request.AlertsChannelID,
+		AdminRoleID:               request.AdminRoleID,
+	})
 	if err != nil {
-		log.Printf("[backend] SetGuildLogChannel error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to save guild log channel")
+		log.Printf("[backend] UpdateGuildSettings error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to save guild settings")
 		return
 	}
 
@@ -538,6 +542,22 @@ func (h *Handler) ListActiveWipeReacts(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[backend] ListActiveWipeReacts error for guild %s: %v", guildID, err)
 		writeError(w, http.StatusInternalServerError, "failed to list active wipe reacts")
+		return
+	}
+
+	writeWipeReactList(w, records)
+}
+
+func (h *Handler) ListWipeReacts(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	records, err := h.postgres.ListWipeReacts(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListWipeReacts error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list wipe reacts")
 		return
 	}
 
@@ -927,7 +947,7 @@ func (h *Handler) CreateWipeReactSchedule(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	writeJSON(w, http.StatusOK, wipeReactScheduleToMap(record))
+	writeJSON(w, http.StatusCreated, wipeReactScheduleToMap(record))
 }
 
 func (h *Handler) UpdateWipeReactSchedule(w http.ResponseWriter, r *http.Request) {
@@ -1021,9 +1041,230 @@ func (h *Handler) MarkWipeReactSchedulePosted(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+type createTrackedServerRequest struct {
+	BmID string `json:"bmId"`
+	Name string `json:"name"`
+}
+
+func (h *Handler) ListTrackedServers(w http.ResponseWriter, r *http.Request) {
+	items, err := h.postgres.ListTrackedServers(r.Context())
+	if err != nil {
+		log.Printf("[backend] ListTrackedServers error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to list tracked servers")
+		return
+	}
+
+	writeTrackedServerList(w, items)
+}
+
+func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request createTrackedServerRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	request.BmID = strings.TrimSpace(request.BmID)
+	request.Name = strings.Join(strings.Fields(request.Name), " ")
+
+	if request.BmID == "" {
+		writeError(w, http.StatusBadRequest, "bmId is required")
+		return
+	}
+	if request.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	item, err := h.postgres.CreateTrackedServer(r.Context(), request.BmID, request.Name)
+	if errors.Is(err, store.ErrTrackedServerAlreadyExists) {
+		writeError(w, http.StatusConflict, "tracked server already exists")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] CreateTrackedServer error for %s: %v", request.BmID, err)
+		writeError(w, http.StatusInternalServerError, "failed to create tracked server")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, trackedServerToMap(item))
+}
+
+func (h *Handler) DeleteTrackedServer(w http.ResponseWriter, r *http.Request) {
+	bmID := strings.TrimSpace(chi.URLParam(r, "bmID"))
+	if bmID == "" {
+		writeError(w, http.StatusBadRequest, "bmID is required")
+		return
+	}
+
+	if err := h.postgres.DeleteTrackedServer(r.Context(), bmID); errors.Is(err, store.ErrTrackedServerNotFound) {
+		writeError(w, http.StatusNotFound, "tracked server not found")
+		return
+	} else if err != nil {
+		log.Printf("[backend] DeleteTrackedServer error for %s: %v", bmID, err)
+		writeError(w, http.StatusInternalServerError, "failed to delete tracked server")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+type replaceGuildTrackedServersRequest struct {
+	BmIDs []string `json:"bmIds"`
+}
+
+func (h *Handler) ListGuildTrackedServers(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	items, err := h.postgres.ListGuildTrackedServers(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildTrackedServers error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list guild tracked servers")
+		return
+	}
+
+	writeGuildTrackedServerList(w, items)
+}
+
+func (h *Handler) ReplaceGuildTrackedServers(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request replaceGuildTrackedServersRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(request.BmIDs) > 100 {
+		writeError(w, http.StatusBadRequest, "bmIds exceeds maximum allowed size")
+		return
+	}
+
+	seen := make(map[string]struct{}, len(request.BmIDs))
+	bmIDs := make([]string, 0, len(request.BmIDs))
+	for _, bmID := range request.BmIDs {
+		trimmed := strings.TrimSpace(bmID)
+		if trimmed == "" {
+			writeError(w, http.StatusBadRequest, "bmIds must not contain empty values")
+			return
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		bmIDs = append(bmIDs, trimmed)
+	}
+
+	if len(bmIDs) > 0 {
+		trackedServers, err := h.postgres.ListTrackedServers(r.Context())
+		if err != nil {
+			log.Printf("[backend] ListTrackedServers validation error for guild %s: %v", guildID, err)
+			writeError(w, http.StatusInternalServerError, "failed to validate tracked servers")
+			return
+		}
+
+		available := make(map[string]struct{}, len(trackedServers))
+		for _, item := range trackedServers {
+			available[item.BmID] = struct{}{}
+		}
+
+		for _, bmID := range bmIDs {
+			if _, ok := available[bmID]; !ok {
+				writeError(w, http.StatusBadRequest, "bmIds must reference existing tracked servers")
+				return
+			}
+		}
+	}
+
+	if err := h.postgres.ReplaceGuildTrackedServers(r.Context(), guildID, bmIDs); err != nil {
+		log.Printf("[backend] ReplaceGuildTrackedServers error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to save guild tracked servers")
+		return
+	}
+
+	items, err := h.postgres.ListGuildTrackedServers(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildTrackedServers (post-update) error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list guild tracked servers")
+		return
+	}
+
+	writeGuildTrackedServerList(w, items)
+}
+
+func (h *Handler) ListOnlinePlayerStatesByServer(w http.ResponseWriter, r *http.Request) {
+	serverID := strings.TrimSpace(chi.URLParam(r, "serverID"))
+	if serverID == "" {
+		writeError(w, http.StatusBadRequest, "serverID is required")
+		return
+	}
+
+	items, err := h.postgres.ListOnlinePlayerStatesByServer(r.Context(), serverID)
+	if err != nil {
+		log.Printf("[backend] ListOnlinePlayerStatesByServer error for %s: %v", serverID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list player states")
+		return
+	}
+
+	writePlayerStateList(w, items)
+}
+
+func (h *Handler) ListPlayerStatesByPlayer(w http.ResponseWriter, r *http.Request) {
+	playerID := strings.TrimSpace(chi.URLParam(r, "playerID"))
+	if playerID == "" {
+		writeError(w, http.StatusBadRequest, "playerID is required")
+		return
+	}
+
+	items, err := h.postgres.ListPlayerStatesByPlayer(r.Context(), playerID)
+	if err != nil {
+		log.Printf("[backend] ListPlayerStatesByPlayer error for %s: %v", playerID, err)
+		writeError(w, http.StatusInternalServerError, "failed to list player states")
+		return
+	}
+
+	writePlayerStateList(w, items)
+}
+
+func (h *Handler) GetPlayerState(w http.ResponseWriter, r *http.Request) {
+	serverID := strings.TrimSpace(chi.URLParam(r, "serverID"))
+	if serverID == "" {
+		writeError(w, http.StatusBadRequest, "serverID is required")
+		return
+	}
+
+	playerID := strings.TrimSpace(chi.URLParam(r, "playerID"))
+	if playerID == "" {
+		writeError(w, http.StatusBadRequest, "playerID is required")
+		return
+	}
+
+	item, err := h.postgres.GetPlayerState(r.Context(), serverID, playerID)
+	if errors.Is(err, store.ErrPlayerStateNotFound) {
+		writeError(w, http.StatusNotFound, "player state not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetPlayerState error for %s/%s: %v", serverID, playerID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch player state")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, playerStateToMap(item))
+}
+
 func steamAccountToMap(record store.SteamAccount) map[string]any {
 	result := map[string]any{
 		"steamId":     record.SteamID,
+		"bmName":      record.BmName,
 		"avatarImage": record.AvatarImage,
 		"createdAt":   record.CreatedAt,
 	}
@@ -1139,6 +1380,36 @@ type createSoftLinkRequest struct {
 	Source    string `json:"source"`
 }
 
+type resolveSteamIDRequest struct {
+	Input string `json:"input"`
+}
+
+func (h *Handler) ResolveSteamID(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request resolveSteamIDRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	steamID, err := h.steamClient.ResolveSteamID(r.Context(), request.Input)
+	if errors.Is(err, steamapi.ErrSteamAPIKeyRequired) {
+		writeError(w, http.StatusBadRequest, "vanity URL resolution is not available")
+		return
+	}
+	if errors.Is(err, steamapi.ErrUnsupportedProfileInput) || errors.Is(err, steamapi.ErrVanityNotFound) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] ResolveSteamID error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to resolve steam id")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"steamId": steamID})
+}
+
 func (h *Handler) CreateSoftLink(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var request createSoftLinkRequest
@@ -1203,6 +1474,11 @@ func (h *Handler) BulkUpsertHardLinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(request.Links) > 1000 {
+		writeError(w, http.StatusBadRequest, "links array must not exceed 1000 entries")
+		return
+	}
+
 	storeLinks := make([]store.BulkHardLink, 0, len(request.Links))
 	for i, entry := range request.Links {
 		if entry.SteamID == "" || !steamIDPattern.MatchString(entry.SteamID) {
@@ -1255,6 +1531,335 @@ func (h *Handler) DeleteSoftLink(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[backend] DeleteSoftLink error for %s/%s: %v", steamID, discordID, err)
 		writeError(w, http.StatusInternalServerError, "failed to delete soft link")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func guildSteamDiscordLinkToMap(link store.GuildSteamDiscordLink) map[string]any {
+	return map[string]any{
+		"guildId":   link.GuildID,
+		"discordId": link.DiscordID,
+		"steamId":   link.SteamID,
+		"createdAt": link.CreatedAt,
+	}
+}
+
+func writeGuildSteamDiscordLinkList(w http.ResponseWriter, links []store.GuildSteamDiscordLink) {
+	items := make([]map[string]any, 0, len(links))
+	for _, link := range links {
+		items = append(items, guildSteamDiscordLinkToMap(link))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func guildNicknameTargetToMap(item store.GuildNicknameTarget) map[string]any {
+	result := map[string]any{
+		"guildId":   item.GuildID,
+		"discordId": item.DiscordID,
+		"steamId":   item.SteamID,
+	}
+	if item.BmID != nil {
+		result["bmId"] = *item.BmID
+	} else {
+		result["bmId"] = nil
+	}
+	if item.BmName != nil {
+		result["bmName"] = *item.BmName
+	} else {
+		result["bmName"] = nil
+	}
+	return result
+}
+
+func writeGuildNicknameTargetList(w http.ResponseWriter, items []store.GuildNicknameTarget) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, guildNicknameTargetToMap(item))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
+func userGuildLinkToMap(link store.UserGuildLink) map[string]any {
+	result := map[string]any{
+		"discordId":   link.DiscordID,
+		"guildId":     link.GuildID,
+		"isActive":    link.IsActive,
+		"firstSeenAt": link.FirstSeenAt,
+		"lastSeenAt":  link.LastSeenAt,
+	}
+	if link.LeftAt != nil {
+		result["leftAt"] = *link.LeftAt
+	} else {
+		result["leftAt"] = nil
+	}
+	return result
+}
+
+func writeUserGuildLinkList(w http.ResponseWriter, links []store.UserGuildLink) {
+	items := make([]map[string]any, 0, len(links))
+	for _, link := range links {
+		items = append(items, userGuildLinkToMap(link))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func guildOnlineSummaryItemToMap(item store.GuildOnlineSummaryItem) map[string]any {
+	return map[string]any{
+		"guildId":    item.GuildID,
+		"discordId":  item.DiscordID,
+		"steamId":    item.SteamID,
+		"playerBmId": item.PlayerBmID,
+		"bmName":     item.BmName,
+		"serverBmId": item.ServerBmID,
+		"serverName": item.ServerName,
+		"onlineUnix": item.OnlineUnix,
+	}
+}
+
+func writeGuildOnlineSummaryList(w http.ResponseWriter, items []store.GuildOnlineSummaryItem) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, guildOnlineSummaryItemToMap(item))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
+type createGuildLinkRequest struct {
+	DiscordID string `json:"discordId"`
+	SteamID   string `json:"steamId"`
+}
+
+type createUserGuildLinkRequest struct {
+	DiscordID string `json:"discordId"`
+	GuildID   string `json:"guildId"`
+}
+
+func (h *Handler) CreateGuildSteamDiscordLink(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request createGuildLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if !validateSnowflakeValue(request.DiscordID) {
+		writeError(w, http.StatusBadRequest, "discordId must be a valid Discord snowflake")
+		return
+	}
+	if request.SteamID == "" || !steamIDPattern.MatchString(request.SteamID) {
+		writeError(w, http.StatusBadRequest, "steamId must be a 17-digit number")
+		return
+	}
+
+	link, err := h.postgres.CreateGuildSteamDiscordLink(r.Context(), guildID, request.DiscordID, request.SteamID)
+	if errors.Is(err, store.ErrLinkAlreadyExists) {
+		writeError(w, http.StatusConflict, "guild link already exists")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] CreateGuildSteamDiscordLink error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to create guild link")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, guildSteamDiscordLinkToMap(link))
+}
+
+func (h *Handler) CreateUserGuildLink(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request createUserGuildLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if !validateSnowflakeValue(request.DiscordID) {
+		writeError(w, http.StatusBadRequest, "discordId must be a valid Discord snowflake")
+		return
+	}
+	if !validateSnowflakeValue(request.GuildID) {
+		writeError(w, http.StatusBadRequest, "guildId must be a valid Discord snowflake")
+		return
+	}
+
+	link, err := h.postgres.CreateUserGuildLink(r.Context(), request.DiscordID, request.GuildID)
+	if err != nil {
+		log.Printf("[backend] CreateUserGuildLink error for %s/%s: %v", request.DiscordID, request.GuildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to create user guild link")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, userGuildLinkToMap(link))
+}
+
+func (h *Handler) MarkUserGuildLeft(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request createUserGuildLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if !validateSnowflakeValue(request.DiscordID) {
+		writeError(w, http.StatusBadRequest, "discordId must be a valid Discord snowflake")
+		return
+	}
+	if !validateSnowflakeValue(request.GuildID) {
+		writeError(w, http.StatusBadRequest, "guildId must be a valid Discord snowflake")
+		return
+	}
+
+	link, err := h.postgres.MarkUserGuildLeft(r.Context(), request.DiscordID, request.GuildID)
+	if err != nil {
+		log.Printf("[backend] MarkUserGuildLeft error for %s/%s: %v", request.DiscordID, request.GuildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update user guild link")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, userGuildLinkToMap(link))
+}
+
+func (h *Handler) ListGuildLinks(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	links, err := h.postgres.ListGuildLinks(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildLinks error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild links")
+		return
+	}
+
+	writeGuildSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) ListGuildNicknameTargets(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	items, err := h.postgres.ListGuildNicknameTargets(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildNicknameTargets error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild nickname targets")
+		return
+	}
+
+	writeGuildNicknameTargetList(w, items)
+}
+
+func (h *Handler) ListGuildOnlineSummary(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	items, err := h.postgres.ListGuildOnlineSummary(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildOnlineSummary error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild online summary")
+		return
+	}
+
+	writeGuildOnlineSummaryList(w, items)
+}
+
+func (h *Handler) ListGuildLinksByDiscord(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	links, err := h.postgres.ListGuildLinksByGuildAndDiscord(r.Context(), guildID, discordID)
+	if err != nil {
+		log.Printf("[backend] ListGuildLinksByDiscord error for %s/%s: %v", guildID, discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild links")
+		return
+	}
+
+	writeGuildSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) ListUserGuildLinksByDiscord(w http.ResponseWriter, r *http.Request) {
+	discordID, ok := validateSnowflakePathParam(w, r, "discordID")
+	if !ok {
+		return
+	}
+
+	links, err := h.postgres.ListUserGuildLinksByDiscordID(r.Context(), discordID)
+	if err != nil {
+		log.Printf("[backend] ListUserGuildLinksByDiscord error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch user guild links")
+		return
+	}
+
+	writeUserGuildLinkList(w, links)
+}
+
+func (h *Handler) ListGuildLinksBySteam(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	links, err := h.postgres.ListGuildLinksByGuildAndSteam(r.Context(), guildID, steamID)
+	if err != nil {
+		log.Printf("[backend] ListGuildLinksBySteam error for %s/%s: %v", guildID, steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild links")
+		return
+	}
+
+	writeGuildSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) DeleteGuildSteamDiscordLink(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	err := h.postgres.DeleteGuildSteamDiscordLink(r.Context(), guildID, discordID, steamID)
+	if errors.Is(err, store.ErrGuildLinkNotFound) {
+		writeError(w, http.StatusNotFound, "guild link not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] DeleteGuildSteamDiscordLink error for %s/%s/%s: %v", guildID, discordID, steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to delete guild link")
 		return
 	}
 

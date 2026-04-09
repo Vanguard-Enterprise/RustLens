@@ -9,6 +9,9 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelType,
+  MessageFlags,
+  PermissionFlagsBits,
   SlashCommandBuilder,
 } from "discord.js";
 import {
@@ -18,6 +21,8 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from "./builders/index.js";
+import { BackendClient } from "./backend-client.js";
+import { loadConfig } from "./config.js";
 import {
   RUSTLENS_EMBED_COLOR,
   RUSTLENS_EMBED_ICON_URL,
@@ -25,10 +30,29 @@ import {
   getFieldValues,
   replyEphemeral,
 } from "./shared.js";
+import { hasGuildAdminAccess } from "./guild-settings.js";
 
 export const BIND_COMMAND_NAME = "bind";
 
+const BIND_MASSINVITE_SUBCOMMAND_NAME = "massinvite";
 const BIND_FULLKIT_SUBCOMMAND_NAME = "fullkit";
+
+let _backend: BackendClient | undefined;
+let _workerID: string | undefined;
+
+function getBackend() {
+  if (!_backend) {
+    const config = loadConfig();
+    _backend = new BackendClient(config.backendUrl, config.jwtSecret, config.jwtIssuer, config.jwtAudience);
+    _workerID = `${config.workerId}-bind`;
+  }
+  return _backend;
+}
+
+function getWorkerID() {
+  getBackend();
+  return _workerID!;
+}
 const BIND_TURRET_SUBCOMMAND_NAME = "turret";
 const BIND_ROCKET_SUBCOMMAND_NAME = "rocket";
 const BIND_C4_SUBCOMMAND_NAME = "c4";
@@ -181,6 +205,31 @@ const bindCommand = new SlashCommandBuilder()
     subcommand
       .setName(BIND_C4_SUBCOMMAND_NAME)
       .setDescription("Open the c4 bind modal"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(BIND_MASSINVITE_SUBCOMMAND_NAME)
+      .setDescription("Generate a clan invite bind for all linked Steam IDs in a role")
+      .addStringOption((option) =>
+        option
+          .setName("key")
+          .setDescription("The key to bind to")
+          .setRequired(true)
+          .setMaxLength(1),
+      )
+      .addRoleOption((option) =>
+        option
+          .setName("scope")
+          .setDescription("The role whose members to invite")
+          .setRequired(true),
+      )
+      .addChannelOption((option) =>
+        option
+          .setName("vc")
+          .setDescription("Only include members in this voice channel")
+          .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice)
+          .setRequired(false),
+      ),
   );
 
 function buildBindFullkitStartModal() {
@@ -718,6 +767,75 @@ function buildBindEmbed(title: string, command: string) {
 }
 
 
+async function handleMassInvite(interaction: ChatInputCommandInteraction) {
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await replyEphemeral(interaction, "Only the configured admin role or administrators can use this command.");
+    return;
+  }
+
+  const guild = interaction.guild;
+  if (!guild) {
+    await replyEphemeral(interaction, "Could not resolve guild.");
+    return;
+  }
+
+  const key = interaction.options.getString("key", true).trim();
+  const role = interaction.options.getRole("scope", true);
+  const vcChannel = interaction.options.getChannel("vc", false);
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  let targetMembers = guild.members.cache.filter((member) => member.roles.cache.has(role.id));
+
+  if (vcChannel) {
+    targetMembers = targetMembers.filter(
+      (member) => member.voice.channelId === vcChannel.id,
+    );
+  }
+
+  if (targetMembers.size === 0) {
+    await interaction.editReply({
+      content: vcChannel
+        ? `No members found with <@&${role.id}> in <#${vcChannel.id}>.`
+        : `No members found with <@&${role.id}>.`,
+    });
+    return;
+  }
+
+  const backend = getBackend();
+  const workerId = getWorkerID();
+  const { items: guildLinks } = await backend.listGuildLinks(workerId, guild.id);
+
+  const discordToSteam = new Map<string, string>();
+  for (const link of guildLinks) {
+    discordToSteam.set(link.discordId, link.steamId);
+  }
+
+  const steamIds: string[] = [];
+  for (const [, member] of targetMembers) {
+    const steamId = discordToSteam.get(member.id);
+    if (steamId) {
+      steamIds.push(steamId);
+    }
+  }
+
+  if (steamIds.length === 0) {
+    await interaction.editReply({
+      content: vcChannel
+        ? `No linked Steam IDs found for members with <@&${role.id}> in <#${vcChannel.id}>.`
+        : `No linked Steam IDs found for members with <@&${role.id}>.`,
+    });
+    return;
+  }
+
+  const chatCommands = steamIds.map((id) => `/clan invite ${id}`);
+  const bindStr = `bind ${key} chat.say "${chatCommands.join(";")}"`;
+
+  await interaction.editReply({
+    embeds: [buildBindEmbed("Mass invite bind", bindStr)],
+  });
+}
+
 export async function ensureBindCommand(client: Client, shardID: number) {
   if (shardID !== 0 || !client.application) {
     return;
@@ -759,6 +877,9 @@ export async function handleBindChatInput(interaction: ChatInputCommandInteracti
       return true;
     case BIND_C4_SUBCOMMAND_NAME:
       await interaction.showModal(buildBindC4Modal().toJSON() as any);
+      return true;
+    case BIND_MASSINVITE_SUBCOMMAND_NAME:
+      await handleMassInvite(interaction);
       return true;
     default:
       await replyEphemeral(

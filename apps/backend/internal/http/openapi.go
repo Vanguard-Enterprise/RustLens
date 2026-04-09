@@ -156,130 +156,10 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
-			"/api/internal/bot/setup/guilds/{guildID}": map[string]any{
-				"get": map[string]any{
-					"summary":     "Get guild setup state",
-					"description": "Returns the persisted setup state for a guild.",
-					"security":    []map[string][]string{{"bearerAuth": {}}},
-					"parameters": []map[string]any{
-						{
-							"name":        "guildID",
-							"in":          "path",
-							"required":    true,
-							"description": "Discord guild ID.",
-							"schema":      map[string]any{"type": "string"},
-						},
-					},
-					"responses": map[string]any{
-						"200": map[string]any{
-							"description": "Setup state returned",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/GuildSetupState"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-					},
-				},
-			},
-			"/api/internal/bot/setup/guilds/{guildID}/claim": map[string]any{
-				"post": map[string]any{
-					"summary":     "Claim guild setup",
-					"description": "Attempts to claim setup for a guild before role creation begins.",
-					"security":    []map[string][]string{{"bearerAuth": {}}},
-					"parameters": []map[string]any{
-						{
-							"name":        "guildID",
-							"in":          "path",
-							"required":    true,
-							"description": "Discord guild ID.",
-							"schema":      map[string]any{"type": "string"},
-						},
-					},
-					"responses": map[string]any{
-						"200": map[string]any{
-							"description": "Claim result returned",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/ClaimGuildSetupResponse"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-					},
-				},
-			},
-			"/api/internal/bot/setup/guilds/{guildID}/complete": map[string]any{
-				"post": map[string]any{
-					"summary":     "Complete guild setup",
-					"description": "Marks a guild setup as configured and stores selected role keys.",
-					"security":    []map[string][]string{{"bearerAuth": {}}},
-					"parameters": []map[string]any{
-						{
-							"name":        "guildID",
-							"in":          "path",
-							"required":    true,
-							"description": "Discord guild ID.",
-							"schema":      map[string]any{"type": "string"},
-						},
-					},
-					"requestBody": map[string]any{
-						"required": true,
-						"content": map[string]any{
-							"application/json": map[string]any{
-								"schema": map[string]any{"$ref": "#/components/schemas/CompleteGuildSetupRequest"},
-							},
-						},
-					},
-					"responses": map[string]any{
-						"200": map[string]any{
-							"description": "Setup marked configured",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/GuildSetupState"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-					},
-				},
-			},
-			"/api/internal/bot/setup/guilds/{guildID}/reset": map[string]any{
-				"post": map[string]any{
-					"summary":     "Reset guild setup",
-					"description": "Clears the persisted guild setup state.",
-					"security":    []map[string][]string{{"bearerAuth": {}}},
-					"parameters": []map[string]any{
-						{
-							"name":        "guildID",
-							"in":          "path",
-							"required":    true,
-							"description": "Discord guild ID.",
-							"schema":      map[string]any{"type": "string"},
-						},
-					},
-					"responses": map[string]any{
-						"200": map[string]any{
-							"description": "Setup reset",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-					},
-				},
-			},
 			"/api/internal/bot/setup/guilds/{guildID}/settings": map[string]any{
 				"get": map[string]any{
 					"summary":     "Get guild settings",
-					"description": "Returns persisted guild bot settings such as the logs channel.",
+					"description": "Returns persisted guild bot settings such as log channels and the admin role.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -303,11 +183,9 @@ func buildOpenAPIDocument() map[string]any {
 						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
 					},
 				},
-			},
-			"/api/internal/bot/setup/guilds/{guildID}/settings/log-channel": map[string]any{
-				"post": map[string]any{
-					"summary":     "Set guild logs channel",
-					"description": "Stores the logs channel used by wipe reacts and related bot logs.",
+				"put": map[string]any{
+					"summary":     "Update guild settings",
+					"description": "Updates persisted guild bot settings such as log channels and the admin role.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -322,7 +200,7 @@ func buildOpenAPIDocument() map[string]any {
 						"required": true,
 						"content": map[string]any{
 							"application/json": map[string]any{
-								"schema": map[string]any{"$ref": "#/components/schemas/SetGuildLogChannelRequest"},
+								"schema": map[string]any{"$ref": "#/components/schemas/UpdateGuildSettingsRequest"},
 							},
 						},
 					},
@@ -369,6 +247,32 @@ func buildOpenAPIDocument() map[string]any {
 				},
 			},
 			"/api/internal/bot/setup/guilds/{guildID}/wipe-reacts": map[string]any{
+				"get": map[string]any{
+					"summary":     "List wipe reacts",
+					"description": "Returns persisted wipe reacts for a guild, newest first.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Wipe reacts returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/WipeReactListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
 				"post": map[string]any{
 					"summary":     "Create wipe react",
 					"description": "Persists a wipe react message after Discord message creation.",
@@ -598,6 +502,798 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/steam/{steamID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get steam account",
+					"description": "Returns a steam account by Steam ID.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "steamID",
+							"in":          "path",
+							"required":    true,
+							"description": "17-digit Steam ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Steam account returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamAccount"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/{steamID}/links": map[string]any{
+				"get": map[string]any{
+					"summary":     "List links by Steam ID",
+					"description": "Returns all discord links for a steam account.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "steamID",
+							"in":          "path",
+							"required":    true,
+							"description": "17-digit Steam ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/by-bm/{bmID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get steam account by BattleMetrics ID",
+					"description": "Returns a steam account looked up by its BattleMetrics player ID.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "bmID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics player ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Steam account returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamAccount"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/tracked-servers": map[string]any{
+				"get": map[string]any{
+					"summary":     "List guild tracked servers",
+					"description": "Returns the tracked BattleMetrics servers selected for one guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild tracked servers returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildTrackedServerListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"put": map[string]any{
+					"summary":     "Replace guild tracked servers",
+					"description": "Replaces the tracked BattleMetrics servers selected for one guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/ReplaceGuildTrackedServersRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild tracked servers updated",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildTrackedServerListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/tracked-servers": map[string]any{
+				"get": map[string]any{
+					"summary":     "List tracked servers",
+					"description": "Returns all tracked BattleMetrics servers configured for the bot.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Tracked servers returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/TrackedServerListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"post": map[string]any{
+					"summary":     "Create tracked server",
+					"description": "Adds a BattleMetrics server to the bot's tracked server list.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateTrackedServerRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Tracked server created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/TrackedServer"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"409": map[string]any{
+							"description": "Tracked server already exists",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
+								},
+							},
+						},
+					},
+				},
+			},
+			"/api/internal/bot/setup/tracked-servers/{bmID}": map[string]any{
+				"delete": map[string]any{
+					"summary":     "Delete tracked server",
+					"description": "Deletes a tracked BattleMetrics server by ID.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "bmID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics server ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Tracked server deleted",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/player-states/servers/{serverID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "List online player states by server",
+					"description": "Returns current online player states for a tracked BattleMetrics server.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "serverID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics server ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Player states returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/PlayerStateListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/player-states/servers/{serverID}/players/{playerID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get player state by server and player",
+					"description": "Returns the current stored presence state for one player on one tracked server.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "serverID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics server ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "playerID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics player ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Player state returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/PlayerState"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/player-states/players/{playerID}": map[string]any{
+				"get": map[string]any{
+					"summary":     "List player states by player",
+					"description": "Returns stored presence states for one BattleMetrics player across all tracked servers.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "playerID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics player ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Player states returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/PlayerStateListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/online-summary": map[string]any{
+				"get": map[string]any{
+					"summary":     "List guild online summary",
+					"description": "Returns guild-linked users who are currently online on tracked BattleMetrics servers.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Online summary returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildOnlineSummaryListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/resolve": map[string]any{
+				"post": map[string]any{
+					"summary":     "Resolve Steam profile input",
+					"description": "Resolves a 17-digit Steam ID or a supported steamcommunity.com profile URL into a 17-digit Steam ID.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/ResolveSteamIDRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Steam ID resolved",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/ResolveSteamIDResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/links": map[string]any{
+				"post": map[string]any{
+					"summary":     "Create soft link",
+					"description": "Creates a soft steam-discord link. Auto-creates the steam account if needed.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateSoftLinkRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Soft link created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamDiscordLink"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"409": map[string]any{
+							"description": "Soft link already exists",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
+								},
+							},
+						},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/bulk-hard-links": map[string]any{
+				"post": map[string]any{
+					"summary":     "Bulk upsert hard links",
+					"description": "Creates or updates multiple hard steam-discord links in a single transaction.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/BulkHardLinksRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Hard links upserted",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/BulkHardLinksResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam/{steamID}/links/{discordID}/soft": map[string]any{
+				"delete": map[string]any{
+					"summary":     "Delete soft link",
+					"description": "Deletes a soft link between a steam account and a discord user.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "steamID",
+							"in":          "path",
+							"required":    true,
+							"description": "17-digit Steam ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Soft link deleted",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/discord/{discordID}/links": map[string]any{
+				"get": map[string]any{
+					"summary":     "List links by Discord ID",
+					"description": "Returns all steam links for a discord user.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/discord/{discordID}/guilds": map[string]any{
+				"get": map[string]any{
+					"summary":     "List user guild links by Discord ID",
+					"description": "Returns all guild links recorded for a Discord user in user_guilds.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "User guild links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/UserGuildLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/user-guilds": map[string]any{
+				"post": map[string]any{
+					"summary":     "Create user guild link",
+					"description": "Creates or upserts a user_guilds entry and marks the user active in the guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateUserGuildLinkRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "User guild link created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/UserGuildLink"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"delete": map[string]any{
+					"summary":     "Mark user guild link inactive",
+					"description": "Marks a user_guilds entry inactive for a Discord user and guild and sets leftAt.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateUserGuildLinkRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "User guild link updated",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/UserGuildLink"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/links": map[string]any{
+				"get": map[string]any{
+					"summary":     "List all guild steam-discord links",
+					"description": "Returns all guild-scoped steam-discord links for a guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"post": map[string]any{
+					"summary":     "Create guild steam-discord link",
+					"description": "Creates a guild-scoped link between a Discord user and a Steam account.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateGuildLinkRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Guild link created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLink"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"409": map[string]any{
+							"description": "Link already exists",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
+								},
+							},
+						},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/nickname-targets": map[string]any{
+				"get": map[string]any{
+					"summary":     "List guild nickname targets",
+					"description": "Returns one guild-scoped steam-discord link per Discord user joined with steam_accounts bm_id and bm_name for nickname updates.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Nickname targets returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildNicknameTargetList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/discord/{discordID}/links": map[string]any{
+				"get": map[string]any{
+					"summary":     "List guild links by Discord ID",
+					"description": "Returns all guild-scoped steam links for a Discord user.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/steam/{steamID}/links": map[string]any{
+				"get": map[string]any{
+					"summary":     "List guild links by Steam ID",
+					"description": "Returns all guild-scoped discord links for a Steam account.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "steamID",
+							"in":          "path",
+							"required":    true,
+							"description": "17-digit Steam ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild links returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/discord/{discordID}/steam/{steamID}": map[string]any{
+				"delete": map[string]any{
+					"summary":     "Delete guild steam-discord link",
+					"description": "Deletes a guild-scoped link between a Discord user and a Steam account.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "steamID",
+							"in":          "path",
+							"required":    true,
+							"description": "17-digit Steam ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild link deleted",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"securitySchemes": map[string]any{
@@ -618,6 +1314,14 @@ func buildOpenAPIDocument() map[string]any {
 				},
 				"Unauthorized": map[string]any{
 					"description": "Unauthorized",
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
+						},
+					},
+				},
+				"NotFound": map[string]any{
+					"description": "Not found",
 					"content": map[string]any{
 						"application/json": map[string]any{
 							"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
@@ -685,74 +1389,138 @@ func buildOpenAPIDocument() map[string]any {
 					},
 					"required": []string{"workerId", "targetShards", "shardIds"},
 				},
-				"GuildSetupState": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"guildId": map[string]any{"type": "string"},
-						"status":  map[string]any{"type": "string"},
-						"configuredBy": map[string]any{
-							"type": "string",
-						},
-						"selectedRoles": map[string]any{
-							"type":  "array",
-							"items": map[string]any{"type": "string"},
-						},
-						"selectedChannels": map[string]any{
-							"type":  "array",
-							"items": map[string]any{"type": "string"},
-						},
-					},
-					"required": []string{"guildId", "status", "configuredBy", "selectedRoles", "selectedChannels"},
-				},
-				"ClaimGuildSetupResponse": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"claimed":      map[string]any{"type": "boolean"},
-						"guildId":      map[string]any{"type": "string"},
-						"status":       map[string]any{"type": "string"},
-						"configuredBy": map[string]any{"type": "string"},
-						"selectedRoles": map[string]any{
-							"type":  "array",
-							"items": map[string]any{"type": "string"},
-						},
-						"selectedChannels": map[string]any{
-							"type":  "array",
-							"items": map[string]any{"type": "string"},
-						},
-					},
-					"required": []string{"claimed", "guildId", "status", "configuredBy", "selectedRoles", "selectedChannels"},
-				},
-				"CompleteGuildSetupRequest": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"configuredBy": map[string]any{"type": "string"},
-						"selectedRoles": map[string]any{
-							"type":  "array",
-							"items": map[string]any{"type": "string"},
-						},
-						"selectedChannels": map[string]any{
-							"type":  "array",
-							"items": map[string]any{"type": "string"},
-						},
-					},
-					"required": []string{"configuredBy", "selectedRoles", "selectedChannels"},
-				},
 				"GuildSettings": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"guildId": map[string]any{"type": "string"},
-						"logChannelId": map[string]any{
-							"type": "string",
-						},
+						"guildId":                   map[string]any{"type": "string"},
+						"wipeReactLogChannelId":     map[string]any{"type": "string"},
+						"linkingLogChannelId":       map[string]any{"type": "string"},
+						"trackedServerLogChannelId": map[string]any{"type": "string"},
+						"alertsChannelId":           map[string]any{"type": "string"},
+						"adminRoleId":               map[string]any{"type": "string"},
 					},
-					"required": []string{"guildId", "logChannelId"},
+					"required": []string{
+						"guildId",
+						"wipeReactLogChannelId",
+						"linkingLogChannelId",
+						"trackedServerLogChannelId",
+						"alertsChannelId",
+						"adminRoleId",
+					},
 				},
-				"SetGuildLogChannelRequest": map[string]any{
+				"UpdateGuildSettingsRequest": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"logChannelId": map[string]any{"type": "string"},
+						"wipeReactLogChannelId":     map[string]any{"type": "string"},
+						"linkingLogChannelId":       map[string]any{"type": "string"},
+						"trackedServerLogChannelId": map[string]any{"type": "string"},
+						"alertsChannelId":           map[string]any{"type": "string"},
+						"adminRoleId":               map[string]any{"type": "string"},
 					},
-					"required": []string{"logChannelId"},
+				},
+				"GuildTrackedServer": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId": map[string]any{"type": "string"},
+						"bmId":    map[string]any{"type": "string"},
+						"name":    map[string]any{"type": "string"},
+					},
+					"required": []string{"guildId", "bmId", "name"},
+				},
+				"GuildTrackedServerListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/GuildTrackedServer"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"ReplaceGuildTrackedServersRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"bmIds": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
+					},
+					"required": []string{"bmIds"},
+				},
+				"TrackedServer": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"bmId":          map[string]any{"type": "string"},
+						"name":          map[string]any{"type": "string"},
+						"lastPolledAt":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"lastPollError": map[string]any{"type": "string"},
+					},
+					"required": []string{"bmId", "name", "lastPolledAt", "lastPollError"},
+				},
+				"TrackedServerListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/TrackedServer"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"CreateTrackedServerRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"bmId": map[string]any{"type": "string"},
+						"name": map[string]any{"type": "string"},
+					},
+					"required": []string{"bmId", "name"},
+				},
+				"PlayerState": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"serverBmId":   map[string]any{"type": "string"},
+						"serverName":   map[string]any{"type": "string"},
+						"playerBmId":   map[string]any{"type": "string"},
+						"isOnline":     map[string]any{"type": "boolean"},
+						"onlineSince":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"offlineSince": map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"updatedAt":    map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"serverBmId", "serverName", "playerBmId", "isOnline", "onlineSince", "offlineSince", "updatedAt"},
+				},
+				"PlayerStateListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/PlayerState"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"GuildOnlineSummaryItem": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId":    map[string]any{"type": "string"},
+						"discordId":  map[string]any{"type": "string"},
+						"steamId":    map[string]any{"type": "string"},
+						"playerBmId": map[string]any{"type": "string"},
+						"bmName":     map[string]any{"type": "string"},
+						"serverBmId": map[string]any{"type": "string"},
+						"serverName": map[string]any{"type": "string"},
+						"onlineUnix": map[string]any{"type": "integer"},
+					},
+					"required": []string{"guildId", "discordId", "steamId", "playerBmId", "bmName", "serverBmId", "serverName", "onlineUnix"},
+				},
+				"GuildOnlineSummaryListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/GuildOnlineSummaryItem"},
+						},
+					},
+					"required": []string{"items"},
 				},
 				"WipeReact": map[string]any{
 					"type": "object",
@@ -822,6 +1590,167 @@ func buildOpenAPIDocument() map[string]any {
 						"wipeReact":   map[string]any{"$ref": "#/components/schemas/WipeReact"},
 					},
 					"required": []string{"changed", "wipeReact"},
+				},
+				"SteamAccount": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steamId":     map[string]any{"type": "string"},
+						"bmId":        map[string]any{"type": "string", "nullable": true},
+						"bmName":      map[string]any{"type": "string"},
+						"avatarImage": map[string]any{"type": "string"},
+						"createdAt":   map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"steamId", "bmId", "bmName", "avatarImage", "createdAt"},
+				},
+				"SteamDiscordLink": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steamId":   map[string]any{"type": "string"},
+						"discordId": map[string]any{"type": "string"},
+						"type":      map[string]any{"type": "string", "enum": []string{"soft", "hard"}},
+						"source":    map[string]any{"type": "string"},
+						"createdAt": map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"steamId", "discordId", "type", "source", "createdAt"},
+				},
+				"SteamDiscordLinkList": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/SteamDiscordLink"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"CreateSoftLinkRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steamId":   map[string]any{"type": "string"},
+						"discordId": map[string]any{"type": "string"},
+						"source":    map[string]any{"type": "string"},
+					},
+					"required": []string{"steamId", "discordId", "source"},
+				},
+				"ResolveSteamIDRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"input": map[string]any{"type": "string"},
+					},
+					"required": []string{"input"},
+				},
+				"ResolveSteamIDResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steamId": map[string]any{"type": "string"},
+					},
+					"required": []string{"steamId"},
+				},
+				"BulkHardLinksRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"links": map[string]any{
+							"type": "array",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"steamId":   map[string]any{"type": "string"},
+									"bmId":      map[string]any{"type": "string", "nullable": true},
+									"discordId": map[string]any{"type": "string"},
+									"source":    map[string]any{"type": "string"},
+								},
+								"required": []string{"steamId", "discordId", "source"},
+							},
+						},
+					},
+					"required": []string{"links"},
+				},
+				"BulkHardLinksResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"status": map[string]any{"type": "string"},
+						"count":  map[string]any{"type": "integer"},
+					},
+					"required": []string{"status", "count"},
+				},
+				"GuildSteamDiscordLink": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId":   map[string]any{"type": "string"},
+						"discordId": map[string]any{"type": "string"},
+						"steamId":   map[string]any{"type": "string"},
+						"createdAt": map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"guildId", "discordId", "steamId", "createdAt"},
+				},
+				"GuildSteamDiscordLinkList": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/GuildSteamDiscordLink"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"GuildNicknameTarget": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId":   map[string]any{"type": "string"},
+						"discordId": map[string]any{"type": "string"},
+						"steamId":   map[string]any{"type": "string"},
+						"bmId":      map[string]any{"type": "string", "nullable": true},
+						"bmName":    map[string]any{"type": "string", "nullable": true},
+					},
+					"required": []string{"guildId", "discordId", "steamId", "bmId", "bmName"},
+				},
+				"GuildNicknameTargetList": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/GuildNicknameTarget"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"CreateGuildLinkRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"discordId": map[string]any{"type": "string"},
+						"steamId":   map[string]any{"type": "string"},
+					},
+					"required": []string{"discordId", "steamId"},
+				},
+				"UserGuildLink": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"discordId":   map[string]any{"type": "string"},
+						"guildId":     map[string]any{"type": "string"},
+						"isActive":    map[string]any{"type": "boolean"},
+						"firstSeenAt": map[string]any{"type": "string", "format": "date-time"},
+						"lastSeenAt":  map[string]any{"type": "string", "format": "date-time"},
+						"leftAt":      map[string]any{"type": "string", "format": "date-time", "nullable": true},
+					},
+					"required": []string{"discordId", "guildId", "isActive", "firstSeenAt", "lastSeenAt", "leftAt"},
+				},
+				"UserGuildLinkList": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/UserGuildLink"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"CreateUserGuildLinkRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"discordId": map[string]any{"type": "string"},
+						"guildId":   map[string]any{"type": "string"},
+					},
+					"required": []string{"discordId", "guildId"},
 				},
 				"ErrorResponse": map[string]any{
 					"type": "object",

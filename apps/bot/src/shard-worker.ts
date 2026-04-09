@@ -1,16 +1,53 @@
 import { Client, GatewayIntentBits, MessageFlags } from "discord.js";
 import {
+  ensureAdminCommand,
+  handleAdminChatInput,
+} from "./admin-command.js";
+import {
+  ensureAnnounceCommand,
+  handleAnnounceChatInput,
+} from "./announce-command.js";
+import {
   ensureBindCommand,
   handleBindButtonInteraction,
   handleBindChatInput,
   handleBindModalSubmit,
 } from "./bind-command.js";
 import {
-  ensureSetupCommand,
-  handleAdminChatInput,
-  handleSetupChatInput,
-  handleSetupModalSubmit,
-} from "./setup-command.js";
+  ensureCompareCommand,
+  handleCompareAutocomplete,
+  handleCompareChatInput,
+} from "./compare-command.js";
+import {
+  ensureOnlineCommand,
+  handleOnlineChatInput,
+} from "./online-command.js";
+import {
+  ensureNicknameCommand,
+  handleNicknameChatInput,
+} from "./nickname-command.js";
+import {
+  ensureSetSteamCommand,
+  handleSetSteamChatInput,
+} from "./setsteam-command.js";
+import {
+  ensureServerCommand,
+  handleServerChatInput,
+} from "./server-command.js";
+import {
+  ensureSettingsCommand,
+  handleSettingsChatInput,
+  handleSettingsModalSubmit,
+  handleSettingsSelect,
+} from "./settings-command.js";
+import {
+  ensureSummonCommand,
+  handleSummonChatInput,
+} from "./summon-command.js";
+import {
+  ensureViewCommand,
+  handleViewChatInput,
+} from "./view-command.js";
 import {
   ensureWipeReactCommand,
   handleWipeReactAutocomplete,
@@ -20,6 +57,7 @@ import {
   rehydratePersistedWipeReacts,
   startWipeReactScheduler,
 } from "./wipereact-command.js";
+import { registerUserGuildSync } from "./user-guilds.js";
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
 const shardCount = Number(process.env.SHARD_COUNT ?? "1");
@@ -30,23 +68,37 @@ if (!token) {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildVoiceStates],
   shards: [shardID],
   shardCount,
 });
 
+registerUserGuildSync(client);
+
 client.once("clientReady", () => {
   console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);
 
-  Promise.all([
-    ensureSetupCommand(client, shardID),
+  Promise.allSettled([
+    ensureAdminCommand(client, shardID),
     ensureBindCommand(client, shardID),
+    ensureCompareCommand(client, shardID),
     ensureWipeReactCommand(client, shardID),
+    ensureSummonCommand(client, shardID),
+    ensureAnnounceCommand(client, shardID),
+    ensureOnlineCommand(client, shardID),
+    ensureNicknameCommand(client, shardID),
+    ensureSetSteamCommand(client, shardID),
+    ensureSettingsCommand(client, shardID),
+    ensureViewCommand(client, shardID),
+    ensureServerCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
-  ]).then(() => {
+  ]).then((results) => {
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error("[bot] command registration failed", result.reason);
+      }
+    }
     startWipeReactScheduler(client);
-  }).catch((error) => {
-    console.error("[bot] command registration failed", error);
   });
 });
 
@@ -62,6 +114,10 @@ function isIgnorableInteractionReplyError(error: unknown) {
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isAutocomplete()) {
+      if (await handleCompareAutocomplete(interaction)) {
+        return;
+      }
+
       if (await handleWipeReactAutocomplete(interaction)) {
         return;
       }
@@ -69,6 +125,38 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isChatInputCommand()) {
       if (await handleAdminChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleSummonChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleAnnounceChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleViewChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleCompareChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleOnlineChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleNicknameChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleSetSteamChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleServerChatInput(interaction)) {
         return;
       }
 
@@ -80,7 +168,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      await handleSetupChatInput(interaction);
+      await handleSettingsChatInput(interaction);
+      return;
+    }
+
+    if (interaction.isStringSelectMenu()) {
+      await handleSettingsSelect(interaction);
       return;
     }
 
@@ -93,7 +186,7 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      await handleSetupModalSubmit(interaction);
+      await handleSettingsModalSubmit(interaction);
       return;
     }
 

@@ -9,15 +9,20 @@ import (
 	"syscall"
 	"time"
 
+	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/config"
 	httpapi "rustlens/backend/internal/http"
 	"rustlens/backend/internal/shards"
+	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
+
+	_ "github.com/joho/godotenv/autoload"
 )
 
 func main() {
 	cfg := config.Load()
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	postgresStore, err := store.NewPostgresStore(ctx, cfg.PostgresURL)
 	if err != nil {
@@ -36,7 +41,9 @@ func main() {
 	}
 
 	shardService := shards.NewService(redisStore, postgresStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
-	router := httpapi.NewRouter(cfg, postgresStore, redisStore, shardService)
+	router := httpapi.NewRouter(cfg, postgresStore, redisStore, shardService, steamapi.NewClient(cfg.SteamAPIKey))
+	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(cfg.BattleMetricsAPIKey), postgresStore, redisStore, cfg.BattleMetricsPoll)
+	battleMetricsPoller.Start(ctx)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -54,6 +61,7 @@ func main() {
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 	<-shutdown
+	cancel()
 
 	ctxShutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -12,18 +12,16 @@ type AssignmentsResponse = {
   shardIds: number[];
 };
 
-export type GuildSetupState = {
-  guildId: string;
-  status: "missing" | "pending" | "configured";
-  configuredBy: string;
-  selectedRoles: string[];
-  selectedChannels: string[];
-};
-
 export type GuildSettings = {
   guildId: string;
-  logChannelId: string;
+  wipeReactLogChannelId: string;
+  linkingLogChannelId: string;
+  trackedServerLogChannelId: string;
+  alertsChannelId: string;
+  adminRoleId: string;
 };
+
+export type GuildSettingsPatch = Partial<Omit<GuildSettings, "guildId">>;
 
 export type WipeReactReactionType = "accepted" | "declined" | "late";
 
@@ -85,6 +83,7 @@ export type WipeReactScheduleListResponse = {
 export type SteamAccount = {
   steamId: string;
   bmId: string | null;
+  bmName: string;
   avatarImage: string;
   createdAt: string;
 };
@@ -101,15 +100,101 @@ export type SteamDiscordLinkListResponse = {
   items: SteamDiscordLink[];
 };
 
+export type ResolveSteamIDResponse = {
+  steamId: string;
+};
+
+export type GuildSteamDiscordLink = {
+  guildId: string;
+  discordId: string;
+  steamId: string;
+  createdAt: string;
+};
+
+export type GuildSteamDiscordLinkListResponse = {
+  items: GuildSteamDiscordLink[];
+};
+
+export type GuildNicknameTarget = {
+  guildId: string;
+  discordId: string;
+  steamId: string;
+  bmId: string | null;
+  bmName: string | null;
+};
+
+export type GuildNicknameTargetListResponse = {
+  items: GuildNicknameTarget[];
+};
+
+export type UserGuildLink = {
+  discordId: string;
+  guildId: string;
+  isActive: boolean;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  leftAt: string | null;
+};
+
+export type UserGuildLinkListResponse = {
+  items: UserGuildLink[];
+};
+
+export type GuildOnlineSummaryItem = {
+  guildId: string;
+  discordId: string;
+  steamId: string;
+  playerBmId: string;
+  bmName: string;
+  serverBmId: string;
+  serverName: string;
+  onlineUnix: number;
+};
+
+export type GuildOnlineSummaryListResponse = {
+  items: GuildOnlineSummaryItem[];
+};
+
+export type TrackedServer = {
+  bmId: string;
+  name: string;
+  lastPolledAt: string | null;
+  lastPollError: string;
+};
+
+export type TrackedServerListResponse = {
+  items: TrackedServer[];
+};
+
+export type GuildTrackedServer = {
+  guildId: string;
+  bmId: string;
+  name: string;
+};
+
+export type GuildTrackedServerListResponse = {
+  items: GuildTrackedServer[];
+};
+
+export type PlayerState = {
+  serverBmId: string;
+  serverName: string;
+  playerBmId: string;
+  isOnline: boolean;
+  onlineSince: string | null;
+  offlineSince: string | null;
+  updatedAt: string;
+};
+
+export type PlayerStateListResponse = {
+  items: PlayerState[];
+};
+
 export type BulkHardLinkEntry = {
   steamId: string;
   bmId?: string | null;
   discordId: string;
   source: string;
-};
-
-type ClaimGuildSetupResponse = GuildSetupState & {
-  claimed: boolean;
 };
 
 export class BackendClient {
@@ -144,11 +229,14 @@ export class BackendClient {
         authorization: `Bearer ${this.token(workerId)}`,
       },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
       const message = await response.text();
-      throw new Error(`backend call failed (${response.status}): ${message}`);
+      const error = new Error(`backend call failed (${response.status}): ${message}`);
+      (error as any).status = response.status;
+      throw error;
     }
 
     return (await response.json()) as T;
@@ -171,47 +259,16 @@ export class BackendClient {
     return this.call<AssignmentsResponse>(workerId, `/api/internal/bot/shards/assignments?${query}`, "GET");
   }
 
-  guildSetup(workerId: string, guildId: string) {
-    return this.call<GuildSetupState>(workerId, `/api/internal/bot/setup/guilds/${guildId}`, "GET");
-  }
-
-  claimGuildSetup(workerId: string, guildId: string) {
-    return this.call<ClaimGuildSetupResponse>(
-      workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/claim`,
-      "POST",
-    );
-  }
-
-  completeGuildSetup(
-    workerId: string,
-    guildId: string,
-    configuredBy: string,
-    selectedRoles: string[],
-    selectedChannels: string[],
-  ) {
-    return this.call<GuildSetupState>(
-      workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/complete`,
-      "POST",
-      { configuredBy, selectedRoles, selectedChannels },
-    );
-  }
-
-  resetGuildSetup(workerId: string, guildId: string) {
-    return this.call<{ status: string }>(workerId, `/api/internal/bot/setup/guilds/${guildId}/reset`, "POST");
-  }
-
   guildSettings(workerId: string, guildId: string) {
     return this.call<GuildSettings>(workerId, `/api/internal/bot/setup/guilds/${guildId}/settings`, "GET");
   }
 
-  setGuildLogChannel(workerId: string, guildId: string, logChannelId: string) {
+  updateGuildSettings(workerId: string, guildId: string, patch: GuildSettingsPatch) {
     return this.call<GuildSettings>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/settings/log-channel`,
-      "POST",
-      { logChannelId },
+      `/api/internal/bot/setup/guilds/${guildId}/settings`,
+      "PUT",
+      patch,
     );
   }
 
@@ -219,6 +276,14 @@ export class BackendClient {
     return this.call<WipeReactListResponse>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts/active`,
+      "GET",
+    );
+  }
+
+  listWipeReacts(workerId: string, guildId: string) {
+    return this.call<WipeReactListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/wipe-reacts`,
       "GET",
     );
   }
@@ -331,6 +396,72 @@ export class BackendClient {
     );
   }
 
+  listTrackedServers(workerId: string) {
+    return this.call<TrackedServerListResponse>(
+      workerId,
+      `/api/internal/bot/setup/tracked-servers`,
+      "GET",
+    );
+  }
+
+  createTrackedServer(workerId: string, bmId: string, name: string) {
+    return this.call<TrackedServer>(
+      workerId,
+      `/api/internal/bot/setup/tracked-servers`,
+      "POST",
+      { bmId, name },
+    );
+  }
+
+  deleteTrackedServer(workerId: string, bmId: string) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/tracked-servers/${bmId}`,
+      "DELETE",
+    );
+  }
+
+  listGuildTrackedServers(workerId: string, guildId: string) {
+    return this.call<GuildTrackedServerListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/tracked-servers`,
+      "GET",
+    );
+  }
+
+  replaceGuildTrackedServers(workerId: string, guildId: string, bmIds: string[]) {
+    return this.call<GuildTrackedServerListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/tracked-servers`,
+      "PUT",
+      { bmIds },
+    );
+  }
+
+  listOnlinePlayerStatesByServer(workerId: string, serverId: string) {
+    return this.call<PlayerStateListResponse>(
+      workerId,
+      `/api/internal/bot/setup/player-states/servers/${serverId}`,
+      "GET",
+    );
+  }
+
+  getPlayerState(workerId: string, serverId: string, playerId: string) {
+    return this.call<PlayerState>(
+      workerId,
+      `/api/internal/bot/setup/player-states/servers/${serverId}/players/${playerId}`,
+      "GET",
+    );
+  }
+
+  listPlayerStatesByPlayer(workerId: string, playerId: string) {
+    return this.call<PlayerStateListResponse>(
+      workerId,
+      `/api/internal/bot/setup/player-states/players/${playerId}`,
+      "GET",
+    );
+  }
+
   getSteamAccount(workerId: string, steamId: string) {
     return this.call<SteamAccount>(
       workerId,
@@ -363,12 +494,56 @@ export class BackendClient {
     );
   }
 
+  resolveSteamID(workerId: string, input: string) {
+    return this.call<ResolveSteamIDResponse>(
+      workerId,
+      `/api/internal/bot/setup/steam/resolve`,
+      "POST",
+      { input },
+    );
+  }
+
   createSoftLink(workerId: string, steamId: string, discordId: string, source: string) {
     return this.call<SteamDiscordLink>(
       workerId,
       `/api/internal/bot/setup/steam/links`,
       "POST",
       { steamId, discordId, source },
+    );
+  }
+
+  createUserGuildLink(workerId: string, discordId: string, guildId: string) {
+    return this.call<UserGuildLink>(
+      workerId,
+      `/api/internal/bot/setup/user-guilds`,
+      "POST",
+      { discordId, guildId },
+    );
+  }
+
+  markUserGuildLeft(workerId: string, discordId: string, guildId: string) {
+    return this.call<UserGuildLink>(
+      workerId,
+      `/api/internal/bot/setup/user-guilds/leave`,
+      "POST",
+      { discordId, guildId },
+    );
+  }
+
+  createGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
+    return this.call<GuildSteamDiscordLink>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/links`,
+      "POST",
+      { discordId, steamId },
+    );
+  }
+
+  deleteGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/discord/${discordId}/steam/${steamId}`,
+      "DELETE",
     );
   }
 
@@ -386,6 +561,54 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/steam/${steamId}/links/${discordId}/soft`,
       "DELETE",
+    );
+  }
+
+  listGuildLinks(workerId: string, guildId: string) {
+    return this.call<GuildSteamDiscordLinkListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/links`,
+      "GET",
+    );
+  }
+
+  listGuildNicknameTargets(workerId: string, guildId: string) {
+    return this.call<GuildNicknameTargetListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/nickname-targets`,
+      "GET",
+    );
+  }
+
+  listUserGuildLinksByDiscord(workerId: string, discordId: string) {
+    return this.call<UserGuildLinkListResponse>(
+      workerId,
+      `/api/internal/bot/setup/discord/${discordId}/guilds`,
+      "GET",
+    );
+  }
+
+  listGuildOnlineSummary(workerId: string, guildId: string) {
+    return this.call<GuildOnlineSummaryListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/online-summary`,
+      "GET",
+    );
+  }
+
+  listGuildLinksByDiscord(workerId: string, guildId: string, discordId: string) {
+    return this.call<GuildSteamDiscordLinkListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/discord/${discordId}/links`,
+      "GET",
+    );
+  }
+
+  listGuildLinksBySteam(workerId: string, guildId: string, steamId: string) {
+    return this.call<GuildSteamDiscordLinkListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/steam/${steamId}/links`,
+      "GET",
     );
   }
 }
