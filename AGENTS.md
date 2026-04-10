@@ -10,15 +10,14 @@ Symlinked as `CLAUDE.md` so it is automatically picked up by Claude Code, Codex,
 
 ## Repository Overview
 
-RustLens is a monorepo with three services:
+RustLens is a monorepo with two services:
 
 | App | Stack | Description |
 |---|---|---|
 | `apps/backend` | Go 1.24 (chi, pgx, go-redis) | API server and shard coordinator for bot workers |
-| `apps/frontend` | Next.js 14 (React 18, TypeScript) | Web UI |
 | `apps/bot` | Discord.js (TypeScript, ESM) | Sharded worker runtime |
 
-Orchestrated with **pnpm 10 workspaces** + **Turborepo**. The Go backend is outside the pnpm workspace graph but integrated via the root `dev:all` script and Makefile targets.
+Orchestrated with **pnpm 10 workspaces** + **Turborepo** for the bot package. The Go backend is outside the pnpm workspace graph but integrated via the root `dev:all` script and Makefile targets.
 
 ## Common Commands
 
@@ -27,7 +26,7 @@ All commands run from the repo root unless noted.
 ```bash
 make doctor          # Verify toolchain (Node, pnpm, Go, Docker, etc.)
 make setup           # pnpm install + go mod tidy + install Air
-make dev             # Start infra (Postgres, Redis, Traefik) + hot-reload all three apps
+make dev             # Start infra (Postgres, Redis, Traefik) + hot-reload backend and bot
 make infra-up        # Start only infra containers
 make infra-down      # Stop infra containers
 ```
@@ -36,16 +35,15 @@ make infra-down      # Stop infra containers
 
 ```bash
 make dev-backend     # Air hot-reload for Go backend
-make dev-frontend    # Next.js dev server on :3000
 make dev-bot         # tsx watch for bot
 ```
 
 ### Lint / Test / Build
 
 ```bash
-make lint            # pnpm lint (TS type-check) + go vet
-make test            # pnpm test (vitest) + go test
-make build           # pnpm build (Next.js + tsc) + go build
+make lint            # pnpm lint (bot type-check) + go vet
+make test            # pnpm test (bot vitest) + go test
+make build           # pnpm build (bot tsc) + go build
 ```
 
 ### Running a single app's tests
@@ -55,13 +53,12 @@ make build           # pnpm build (Next.js + tsc) + go build
 cd apps/backend && go test ./internal/shards/...
 
 # TypeScript (vitest)
-pnpm --filter @rustlens/frontend test
 pnpm --filter @rustlens/bot test
 ```
 
 ### Lint details
 
-- **Frontend & Bot**: `tsc --noEmit` (type-check only, no ESLint).
+- **Bot**: `tsc --noEmit` (type-check only, no ESLint).
 - **Backend**: `go vet ./...`
 
 ## Architecture
@@ -71,7 +68,6 @@ pnpm --filter @rustlens/bot test
 Local dev runs Traefik on `http://localhost`:
 
 - `/api/*` -> backend on `:8080`
-- Everything else -> frontend on `:3000`
 
 Production routing is handled outside this repository.
 
@@ -167,10 +163,6 @@ apps/bot/src/
 Flow: worker registers with backend -> polls `/assignments` -> reconciles local discord.js shards -> heartbeats leases -> releases on shutdown. Auth via self-signed JWT using `BOT_SERVICE_JWT_SECRET`.
 Command flow: shard `0` registers `/settings`, `/setsteam`, `/wipereact ...`, `/bind ...`, `/summon`, `/announce`, `/online`, `/nickname`, `/compare`, `/view`, `/server`, and `/admin ...` at startup. `/settings` is a guild-administrator-only command that renders an ephemeral settings embed with a select menu for configuring wipe-react logs, linking logs, tracked-server logs, alerts, the admin role, and the guild's selected tracked servers. Guild tracked servers are chosen from the owner-managed global `/server` list and are persisted separately from guild settings. `/setsteam {steam_id}` is a public guild command that accepts either a 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` or `steamcommunity.com/id/...` URL, resolves vanity URLs through the backend with `STEAM_API_KEY`, then creates a soft link in both the global `steam_discord_links` table and the guild-scoped `guild_steam_discord_links` table; if the user already has a guild Steam link, RustLens replies with an error embed instructing them to contact an administrator. When Linking Logs is configured, successful `/setsteam` calls emit an embed containing the Steam ID, optional BattleMetrics ID, and Discord user mention. `/admin setsteam {user} {steam_id}` and `/admin removesteam {user}` are protected by either Discord Administrator or the configured admin role and manage guild-scoped Steam links for other users; they never delete existing rows from the global `steam_discord_links` table, and `/admin setsteam` ensures a global soft link exists before replacing the guild link. `/online` is a public guild command that renders one or more non-ephemeral RustLens embeds grouping currently online linked users by tracked BattleMetrics server selected for that guild; if the embed limits are reached, follow-up embeds use the title `Online summary cont.`. `/nickname` allows either Discord Administrator or the configured admin role, reads one guild-scoped Steam link per Discord user from `/api/internal/bot/setup/guilds/{guildID}/nickname-targets`, and attempts to set each member nickname to `{discord nickname} - {bm_name}` while counting missing `bm_id` / `bm_name` entries and Discord edit failures as failed. Commands that need full-guild member scans must use `apps/bot/src/guild-member-cache.ts` instead of calling `guild.members.fetch()` directly; the cache is in-memory, shared within the bot process, only refreshes on demand when expired, and deduplicates concurrent refreshes per guild to reduce `Request Guild Members` rate limits. `/compare {server?} {wipereact?}` is administrator-only, autocompletes tracked servers from global `tracked_servers`, autocompletes past guild wipe reacts by title/date, defaults to the most recently passed wipe react when no options are given, compares either the invoker's current voice channel or the full guild member list when the invoker is not in voice, prefers the specified/default wipe react over the server option when both are provided, and ignores members or guild links that do not resolve through `guild_steam_discord_links -> steam_accounts.bm_id`. `/server add {bm_id} {name}`, `/server remove {bm_id}`, and `/server list` are owner-only commands registered only in the control guild from `BOT_OWNER_GUILD_ID`; runtime access is restricted to the comma-separated Discord ID list in `BOT_OWNER_DISCORD_IDS`, and successful responses are public RustLens-themed embeds. `/summon {scope}`, `/announce {scope} {message}`, `/wipereact`, and `/bind massinvite` allow either Discord Administrator or the configured admin role. `/wipereact` uses in-command autocomplete for selecting active wipe reacts on `/wipereact delete`, `/wipereact missing {scope} {wipereact}`, `/wipereact react add {user} {type} {wipereact}`, and `/wipereact react remove {user} {wipereact}`. Wipe reacts now require Wipe React Logs to be configured in `/settings`; successful wipe-react reaction changes continue to emit the existing log embeds to that configured channel. `/wipereact schedule create` opens a modal to create a recurring wipe-react schedule (max 3 per guild) with day selection (Mon-Sun + Force Wipe), time, timezone, repeat interval, and post-before timing; `/wipereact schedule delete` and `/wipereact schedule edit` manage existing schedules via autocomplete. Wipe reacts are persisted in Postgres through backend bot-only endpoints, including the message/channel IDs, config, and accepted/declined/late user lists, and shard workers rehydrate active wipe-react expiry timers on startup. `/wipereact missing` posts an embed titled `Missing reactants` listing members of the selected role who have not accepted, declined, or marked late; this requires the bot to have the Discord Guild Members privileged intent enabled.
 
-### Frontend (Next.js)
-
-Minimal at this stage. Source in `apps/frontend/src/`.
-
 ## Infrastructure
 
 Local infra is defined in `infra/docker-compose.yml`:
@@ -199,8 +191,8 @@ The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` 
 
 ## CI/CD
 
-- **`.github/workflows/ci.yml`** — On PR and push to `main`: lint/test/build for JS workspace and vet/test/build for Go backend. Runs on `ubuntu-latest` as a temporary rollback while the self-hosted runner fleet is remediated.
-- **`.github/workflows/publish.yml`** — On `main`: builds and pushes `backend`, `frontend`, `bot` Docker images to GHCR using lowercase owner tags. Runs on `ubuntu-latest` while the self-hosted runner fleet is remediated.
+- **`.github/workflows/ci.yml`** — On PR and push to `main`: lint/test/build for the bot workspace and vet/test/build for Go backend. Runs on `ubuntu-latest` as a temporary rollback while the self-hosted runner fleet is remediated.
+- **`.github/workflows/publish.yml`** — On `main`: builds and pushes `backend` and `bot` Docker images to GHCR using lowercase owner tags. Runs on `ubuntu-latest` while the self-hosted runner fleet is remediated.
 - **`.github/workflows/runner-diagnostics.yml`** — Manual self-hosted runner validation workflow that checks checkout, workspace paths, and action cache layout to catch runner-hook regressions early.
 
 ## Skills

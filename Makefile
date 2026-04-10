@@ -6,7 +6,7 @@ DOCTOR_CMD := bash scripts/setup/doctor.sh
 DEV_CMD := pnpm run dev:all
 endif
 
-.PHONY: setup doctor infra-up infra-down dev dev-backend dev-frontend dev-bot lint test build
+.PHONY: setup doctor infra-up infra-down dev dev-backend dev-bot lint test build
 
 setup:
 	pnpm install
@@ -27,9 +27,6 @@ dev: infra-up
 
 dev-backend:
 	cd apps/backend && go run github.com/air-verse/air@latest -c .air.toml
-
-dev-frontend:
-	pnpm --filter @rustlens/frontend dev
 
 dev-bot:
 	pnpm --filter @rustlens/bot dev

@@ -67,7 +67,6 @@ function Wait-BackendReady {
 }
 
 Write-Host "[dev] clearing stale RustLens dev processes..." -ForegroundColor Cyan
-Stop-ListenerOnPort -Port 3000
 Stop-ListenerOnPort -Port 8080
 Stop-RustLensDevProcess -Pattern "*tsx watch src/index.ts*"
 Stop-RustLensDevProcess -Pattern "*air@latest -c .air.toml*"
@@ -75,17 +74,15 @@ Stop-RustLensDevProcess -Pattern "*air@latest -c .air.toml*"
 Write-Host "[dev] starting docker infrastructure..." -ForegroundColor Cyan
 docker compose -f infra/docker-compose.yml up -d
 
-Write-Host "[dev] starting backend, frontend, and bot..." -ForegroundColor Cyan
+Write-Host "[dev] starting backend and bot..." -ForegroundColor Cyan
 
 $backendCommand = "Set-Location '$repoRoot\apps\backend'; go run github.com/air-verse/air@latest -c .air.toml"
-$frontendCommand = "pnpm --dir `"$repoRoot\apps\frontend`" dev"
 $botCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$repoRoot\scripts\dev\start-bot-dev.ps1`""
 
 pnpm exec concurrently `
   -k `
-  --names "backend,frontend,bot" `
+  --names "backend,bot" `
   --prefix "[{name}]" `
-  --prefix-colors "blue.bold,green.bold,magenta.bold" `
+  --prefix-colors "blue.bold,magenta.bold" `
   "powershell -NoProfile -ExecutionPolicy Bypass -Command $backendCommand" `
-  $frontendCommand `
   $botCommand
