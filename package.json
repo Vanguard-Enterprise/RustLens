@@ -5,9 +5,9 @@
   "scripts": {
     "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/start-dev.ps1",
     "dev:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/start-dev.ps1",
-    "lint": "turbo run lint --filter=@rustlens/bot",
-    "test": "turbo run test --filter=@rustlens/bot",
-    "build": "turbo run build --filter=@rustlens/bot"
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "build": "turbo run build"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

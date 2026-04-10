@@ -8,7 +8,7 @@ RustLens is a multi-application monorepo with three services:
 
 ## Architecture
 
-- Frontend handles user-facing web traffic.
+- Frontend handles user-facing web traffic and currently ships as a public landing-first surface only.
 - Backend handles all API traffic under `/api/*`.
 - Bot workers register with backend, fetch shard assignments, heartbeat leases, and release on shutdown.
 - Postgres stores worker event history.
@@ -91,6 +91,7 @@ Copy examples and fill values:
 - `apps/bot/.env.example`
 
 The bot requires a real `DISCORD_TOKEN` for gateway login.
+The frontend currently only needs `PORT` when overriding the default Next.js port.
 
 ## Bot Sharding Model
 

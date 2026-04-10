@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [backend, bot]
+        service: [backend, frontend, bot]
     steps:
       - uses: actions/checkout@v5
 

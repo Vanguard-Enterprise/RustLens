@@ -10,14 +10,15 @@ Symlinked as `CLAUDE.md` so it is automatically picked up by Claude Code, Codex,
 
 ## Repository Overview
 
-RustLens is a monorepo with two services:
+RustLens is a monorepo with three services:
 
 | App | Stack | Description |
 |---|---|---|
 | `apps/backend` | Go 1.24 (chi, pgx, go-redis) | API server and shard coordinator for bot workers |
+| `apps/frontend` | Next.js 16 (React 19, TypeScript, App Router, Tailwind v4, shadcn/ui) | Public landing-first web frontend; currently a marketing/launch surface with no browser auth or protected backend integration |
 | `apps/bot` | Discord.js (TypeScript, ESM) | Sharded worker runtime |
 
-Orchestrated with **pnpm 10 workspaces** + **Turborepo** for the bot package. The Go backend is outside the pnpm workspace graph but integrated via the root `dev:all` script and Makefile targets.
+Orchestrated with **pnpm 10 workspaces** + **Turborepo** for the frontend and bot packages. The Go backend is outside the pnpm workspace graph but integrated via the root `dev:all` script and Makefile targets.
 
 ## Common Commands
 
@@ -26,7 +27,7 @@ All commands run from the repo root unless noted.
 ```bash
 make doctor          # Verify toolchain (Node, pnpm, Go, Docker, etc.)
 make setup           # pnpm install + go mod tidy + install Air
-make dev             # Start infra (Postgres, Redis, Traefik) + hot-reload backend and bot
+make dev             # Start infra (Postgres, Redis, Traefik) + hot-reload backend, frontend, and bot
 make infra-up        # Start only infra containers
 make infra-down      # Stop infra containers
 ```
@@ -35,15 +36,16 @@ make infra-down      # Stop infra containers
 
 ```bash
 make dev-backend     # Air hot-reload for Go backend
+make dev-frontend    # Next.js dev server for the landing app
 make dev-bot         # tsx watch for bot
 ```
 
 ### Lint / Test / Build
 
 ```bash
-make lint            # pnpm lint (bot type-check) + go vet
-make test            # pnpm test (bot vitest) + go test
-make build           # pnpm build (bot tsc) + go build
+make lint            # pnpm lint (frontend + bot) + go vet
+make test            # pnpm test (frontend + bot) + go test
+make build           # pnpm build (frontend + bot) + go build
 ```
 
 ### Running a single app's tests
@@ -68,8 +70,34 @@ pnpm --filter @rustlens/bot test
 Local dev runs Traefik on `http://localhost`:
 
 - `/api/*` -> backend on `:8080`
+- everything else -> frontend on `:3000`
 
 Production routing is handled outside this repository.
+
+### Frontend (Next.js)
+
+```
+apps/frontend/
+  app/
+    layout.tsx           # App Router root layout + metadata
+    page.tsx             # Public landing page only
+    globals.css          # Tailwind v4 theme tokens and global styling
+  components/
+    header.tsx           # Sticky top navigation with docs / add-bot CTAs
+    hero.tsx             # RustLens launch hero based on the @efferd/hero-3 block
+    logos-section.tsx    # System/integration strip for the landing page
+    ui/                  # shadcn/ui primitives added as source
+  lib/
+    site-content.ts      # Landing-page content model used by the page and tests
+  Dockerfile             # Frontend image for GHCR publish workflow
+```
+
+Key patterns:
+
+- The frontend is **landing-first**: only `/` is implemented for now.
+- There is **no browser auth** in this milestone.
+- The frontend makes **no calls to bot-JWT-protected backend routes** in this milestone.
+- Next.js runs as a **hybrid Node server** in dev/prod rather than a static export, so future Discord OAuth and admin routes can be added without re-architecting.
 
 ### Backend (Go)
 
@@ -191,8 +219,8 @@ The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` 
 
 ## CI/CD
 
-- **`.github/workflows/ci.yml`** — On PR and push to `main`: lint/test/build for the bot workspace and vet/test/build for Go backend. Runs on `ubuntu-latest` as a temporary rollback while the self-hosted runner fleet is remediated.
-- **`.github/workflows/publish.yml`** — On `main`: builds and pushes `backend` and `bot` Docker images to GHCR using lowercase owner tags. Runs on `ubuntu-latest` while the self-hosted runner fleet is remediated.
+- **`.github/workflows/ci.yml`** — On PR and push to `main`: lint/test/build for the pnpm workspace (`apps/frontend` + `apps/bot`) and vet/test/build for Go backend. Runs on `ubuntu-latest` as a temporary rollback while the self-hosted runner fleet is remediated.
+- **`.github/workflows/publish.yml`** — On `main`: builds and pushes `backend`, `frontend`, and `bot` Docker images to GHCR using lowercase owner tags. Runs on `ubuntu-latest` while the self-hosted runner fleet is remediated.
 - **`.github/workflows/runner-diagnostics.yml`** — Manual self-hosted runner validation workflow that checks checkout, workspace paths, and action cache layout to catch runner-hook regressions early.
 
 ## Skills

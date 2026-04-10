@@ -10,7 +10,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  bot:
+  workspace:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -29,13 +29,13 @@ jobs:
         run: pnpm install --frozen-lockfile=false
 
       - name: Lint
-        run: pnpm --filter @rustlens/bot lint
+        run: pnpm lint
 
       - name: Test
-        run: pnpm --filter @rustlens/bot test
+        run: pnpm test
 
       - name: Build
-        run: pnpm --filter @rustlens/bot build
+        run: pnpm build
 
   backend:
     runs-on: ubuntu-latest
