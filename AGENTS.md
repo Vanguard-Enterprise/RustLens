@@ -80,15 +80,22 @@ Production routing is handled outside this repository.
 apps/frontend/
   app/
     layout.tsx           # App Router root layout + metadata
+    not-found.tsx        # App Router 404 route that reuses the landing shell and RustLens-themed empty state
     page.tsx             # Public landing page only
+    sign-in/page.tsx     # Public sign-in route using the RustLens-adapted @efferd/auth-3 block
     globals.css          # Tailwind v4 theme tokens and global styling
   components/
+    auth-page.tsx        # RustLens sign-in panel adapted from the @efferd/auth-3 block with email + Discord actions
+    faqs-section.tsx     # FAQ accordion adapted from the @efferd/faqs-1 block with RustLens-specific questions
+    feature-section.tsx  # Feature strip adapted from the @efferd/features-1 block using landingFeatures content
     header.tsx           # Sticky top navigation with docs / add-bot CTAs
     hero.tsx             # RustLens launch hero based on the @efferd/hero-3 block
     logos-section.tsx    # System/integration strip for the landing page
+    not-found.tsx        # RustLens-themed 404 state adapted from the @efferd/not-found-2 block
+    footer.tsx           # RustLens footer adapted from the @efferd/footer-1 block with repo/docs links
     ui/                  # shadcn/ui primitives added as source
   lib/
-    site-content.ts      # Landing-page content model used by the page and tests
+    site-content.ts      # Landing-page content model used by the page, FAQ section, and tests
   Dockerfile             # Frontend image for GHCR publish workflow
 ```
 
