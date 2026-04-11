@@ -36,7 +36,7 @@ type requestPreparer interface {
 
 func NewClient(apiKey string, provider requestPreparer) *Client {
 	if provider == nil {
-		fallbackProvider, _ := outboundhttp.NewProvider(false, nil, 10*time.Second)
+		fallbackProvider, _ := outboundhttp.NewProvider(false, nil, 20*time.Second)
 		provider = fallbackProvider
 	}
 

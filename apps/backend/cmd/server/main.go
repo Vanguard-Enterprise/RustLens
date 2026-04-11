@@ -41,7 +41,7 @@ func main() {
 		log.Fatalf("schema migration failed: %v", err)
 	}
 
-	outboundProvider, err := outboundhttp.NewProvider(cfg.ProxyEnabled, cfg.ProxyEndpoints, 10*time.Second)
+	outboundProvider, err := outboundhttp.NewProvider(cfg.ProxyEnabled, cfg.ProxyEndpoints, 20*time.Second)
 	if err != nil {
 		log.Fatalf("outbound proxy init failed: %v", err)
 	}
