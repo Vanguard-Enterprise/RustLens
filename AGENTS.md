@@ -15,7 +15,7 @@ RustLens is a monorepo with three services:
 | App | Stack | Description |
 |---|---|---|
 | `apps/backend` | Go 1.24 (chi, pgx, go-redis) | API server and shard coordinator for bot workers |
-| `apps/frontend` | Next.js 16 (React 19, TypeScript, App Router, Tailwind v4, shadcn/ui) | Public landing-first web frontend; currently a marketing/launch surface with no browser auth or protected backend integration |
+| `apps/frontend` | Next.js 16 (React 19, TypeScript, App Router, Tailwind v4, shadcn/ui) | Marketing site plus browser-authenticated user dashboard at `/dashboard` and internal ops dashboard at `/admin` |
 | `apps/bot` | Discord.js (TypeScript, ESM) | Sharded worker runtime |
 
 Orchestrated with **pnpm 10 workspaces** + **Turborepo** for the frontend and bot packages. The Go backend is outside the pnpm workspace graph but integrated via the root `dev:all` script and Makefile targets.
@@ -80,12 +80,23 @@ Production routing is handled outside this repository.
 apps/frontend/
   app/
     layout.tsx           # App Router root layout + metadata
+    auth/                # Browser auth routes: email/password register/login/reset/verify plus optional Discord OAuth start/callback
+    admin/               # Internal RustLens ops dashboard routes guarded by app-user internal_admin role
+    dashboard/           # Authenticated user dashboard routes built on the Efferd app shell
+    logout/route.ts      # Session clear + redirect route
     not-found.tsx        # App Router 404 route that reuses the landing shell and RustLens-themed empty state
     page.tsx             # Public landing page only
-    sign-in/page.tsx     # Public sign-in route using the RustLens-adapted @efferd/auth-3 block
+    login/page.tsx       # Public login route using the RustLens-adapted auth block with email/password first and optional Discord entry
+    sign-in/page.tsx     # Legacy alias that redirects to /login
+    signin/page.tsx      # Legacy alias that redirects to /login
+    signup/page.tsx      # Legacy alias that redirects to /login
+    sign-up/page.tsx     # Legacy alias that redirects to /login
     globals.css          # Tailwind v4 theme tokens and global styling
   components/
-    auth-page.tsx        # RustLens sign-in panel adapted from the @efferd/auth-3 block with email + Discord actions
+    app-shell.tsx        # Efferd app-shell-4-based authenticated shell shared by /dashboard and /admin
+    app-sidebar.tsx      # Route-aware RustLens sidebar navigation for dashboard/admin
+    app-header.tsx       # Authenticated shell header with breadcrumbs and session-aware user menu
+    auth-page.tsx        # RustLens sign-in panel adapted from the @efferd/auth-3 block with email/password auth and optional Discord action
     faqs-section.tsx     # FAQ accordion adapted from the @efferd/faqs-1 block with RustLens-specific questions
     feature-section.tsx  # Feature strip adapted from the @efferd/features-1 block using landingFeatures content
     header.tsx           # Sticky top navigation with docs / add-bot CTAs
@@ -95,16 +106,19 @@ apps/frontend/
     footer.tsx           # RustLens footer adapted from the @efferd/footer-1 block with repo/docs links
     ui/                  # shadcn/ui primitives added as source
   lib/
+    rustlens-api.ts      # Server-side frontend client for app-auth and /api/app aggregate/admin routes
+    session.ts           # Signed Next.js session cookie helpers for browser auth
     site-content.ts      # Landing-page content model used by the page, FAQ section, and tests
   Dockerfile             # Frontend image for GHCR publish workflow
 ```
 
 Key patterns:
 
-- The frontend is **landing-first**: only `/` is implemented for now.
-- There is **no browser auth** in this milestone.
-- The frontend makes **no calls to bot-JWT-protected backend routes** in this milestone.
-- Next.js runs as a **hybrid Node server** in dev/prod rather than a static export, so future Discord OAuth and admin routes can be added without re-architecting.
+- The frontend now has three surfaces: public marketing/auth routes, authenticated user routes under `/dashboard`, and internal ops routes under `/admin`.
+- Browser auth is **Next.js-owned** using a signed session cookie. Email + password is the primary login, with password reset and email verification flows. Discord OAuth is optional and used for account linking or convenience login when configured.
+- The frontend calls **app-facing backend routes** under `/api/app/*` with a shared internal app secret from server-side code only. It does **not** call the bot JWT routes from the browser.
+- The authenticated shell is based on `@efferd/app-shell-4` installed through the shadcn CLI and adapted to RustLens navigation/state.
+- Next.js still runs as a **hybrid Node server** in dev/prod rather than a static export.
 
 ### Backend (Go)
 
@@ -116,6 +130,7 @@ apps/backend/
     http/
       router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/setup/* incl. guild settings, steam/discord linking, player state lookups, guild online summaries, and nickname targets
       handlers.go            # Handler implementations incl. guild-settings, tracked BattleMetrics servers, player states, guild online summaries, nickname-target lookups, and wipe-react persistence/history endpoints
+      app_handlers.go        # App-auth and /api/app aggregate/admin handlers for browser sessions and internal ops
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
     auth/jwt.go              # JWT signing/validation for bot service auth
     battlemetrics/
@@ -127,6 +142,8 @@ apps/backend/
       heartbeat.go           # Heartbeat/lease management
     store/
       postgres.go            # pgx pool + schema auto-migration (bot_worker_events, guild_settings, tracked_servers, player_states, wipe_reacts, user_guilds)
+      app_users.go           # App-user, connected-account, aggregate, and admin listing store logic
+      app_password_auth.go   # Password credential, reset-token, and email-verification store logic
       wipe_reacts.go         # Persisted wipe react CRUD + reaction mutation helpers
       redis.go               # go-redis client for heartbeats and shard leases
       steam.go               # Steam account & Discord link CRUD (upsert, lookup, bulk hard links, soft link delete, guild nickname target joins)
@@ -149,7 +166,20 @@ Key patterns:
 - Bot wipe-react routes (`/api/internal/bot/setup/guilds/*/wipe-reacts*`) are JWT-protected and persist wipe react metadata plus accepted/declined/late user lists in Postgres.
 - Bot wipe-react schedule routes (`/api/internal/bot/setup/guilds/*/wipe-react-schedules*`) are JWT-protected and persist recurring wipe-react schedule configs (max 3 per guild) with CRUD operations.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
+- App-facing routes under `/api/app/*` are protected by an internal shared-secret header used only by Next.js server-side code. Current-user and admin authorization resolve through `app_users` roles, not through bot JWT claims.
 - The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, updates `tracked_servers.last_polled_at` / `last_poll_error`, and syncs per-server player presence into `player_states`.
+
+**App users & browser auth**
+
+`app_users` stores first-class browser-facing RustLens users with roles such as `user` and `internal_admin`.
+
+`user_connected_accounts` stores external identities attached to an app user. Discord is optional here and is used for guild/game identity enrichment and convenience sign-in when enabled.
+
+`user_emails` stores primary and secondary email identities for app users.
+
+`user_password_credentials` stores password hashes and password update timestamps. `password_reset_tokens` and `email_verification_tokens` store one-time password reset and email verification tokens.
+
+`app_audit_events` stores browser-auth and internal-admin audit events. The frontend signs users into Next.js sessions after successful email/password auth, password reset, email verification, or optional Discord OAuth completion via `/api/app/auth/*`.
 
 **Steam & Discord linking**
 
@@ -216,13 +246,13 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `POSTGRES_URL` | `postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable` |
 | `REDIS_URL` | `redis://localhost:6379/0` |
 | `BOT_SERVICE_JWT_SECRET` | `dev-bot-secret` |
+| `APP_API_INTERNAL_SECRET` | `dev-app-internal-secret` |
 | `BOT_TARGET_SHARDS` | `4` |
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
 | `STEAM_API_KEY` | `` |
 | `BATTLEMETRICS_API_KEY` | `` |
 | `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS` | `10` |
-
-The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY` and `BATTLEMETRICS_API_KEY` can be provided there without separate shell export. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
+The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY`, `BATTLEMETRICS_API_KEY`, `APP_API_INTERNAL_SECRET`, and `APP_ADMIN_DISCORD_IDS` can be provided there without separate shell export. The frontend expects `APP_SESSION_SECRET` and usually `RUSTLENS_API_URL`; `NEXT_PUBLIC_APP_URL` is used for absolute callback/reset/verify links. `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` are optional and only needed when Discord login/linking is enabled. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
 
 ## CI/CD
 
