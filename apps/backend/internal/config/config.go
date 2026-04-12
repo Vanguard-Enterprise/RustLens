@@ -38,7 +38,7 @@ func Load() Config {
 		Port:                 getEnv("PORT", "8080"),
 		PostgresURL:          getEnv("POSTGRES_URL", "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable"),
 		RedisURL:             getEnv("REDIS_URL", "redis://localhost:6379/0"),
-		BotServiceJWT:        getEnv("BOT_SERVICE_JWT_SECRET", "dev-bot-secret"),
+		BotServiceJWT:        getRequiredEnv("BOT_SERVICE_JWT_SECRET"),
 		AppAPIInternalSecret: getRequiredEnv("APP_API_INTERNAL_SECRET"),
 		AllowAuthDebugTokens: getEnvBool("ALLOW_AUTH_DEBUG_TOKENS", false),
 		BotTargetShards:      targetShards,

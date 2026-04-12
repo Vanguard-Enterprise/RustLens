@@ -120,6 +120,7 @@ Key patterns:
 
 - The frontend now has three surfaces: public marketing/auth routes, authenticated user routes under `/dashboard`, and internal ops routes under `/admin`.
 - Browser auth is **Next.js-owned** using a signed session cookie. `APP_SESSION_SECRET` is required; there is no insecure fallback. Email + password is the primary login, with explicit sign-in vs registration selection in the frontend, password reset and email verification flows, and lightweight in-memory rate limiting on the public auth route handlers. Discord OAuth is optional and used for account linking or convenience login when configured.
+- Browser auth form posts now use a shared double-submit CSRF token helper on the Next.js side for `/auth/*` and `/logout` POST routes, alongside the signed session cookie.
 - Email verification no longer creates a browser session by itself; verification links redirect back to `/login` with a success notice after the token is consumed.
 - The frontend calls **app-facing backend routes** under `/api/app/*` with a shared internal app secret from server-side code only. It does **not** call the bot JWT routes from the browser.
 - The authenticated shell is based on `@efferd/app-shell-4` installed through the shadcn CLI and adapted to RustLens navigation/state.
@@ -250,7 +251,7 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `PORT` | `8080` |
 | `POSTGRES_URL` | `postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable` |
 | `REDIS_URL` | `redis://localhost:6379/0` |
-| `BOT_SERVICE_JWT_SECRET` | `dev-bot-secret` |
+| `BOT_SERVICE_JWT_SECRET` | required |
 | `APP_API_INTERNAL_SECRET` | required |
 | `BOT_TARGET_SHARDS` | `4` |
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
