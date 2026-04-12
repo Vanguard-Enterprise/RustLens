@@ -26,7 +26,7 @@ jobs:
         run: corepack prepare pnpm@10.6.0 --activate
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         run: pnpm lint
@@ -51,6 +51,9 @@ jobs:
 
       - name: Download modules
         run: go mod download
+
+      - name: Vulnerability scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
       - name: Vet
         run: go vet ./...
