@@ -1,0 +1,91 @@
+{
+  "generated_at": "2026-04-12T19:11:26.615671+00:00",
+  "repo": "B:\\.dev\\RustLens\\RustLens-monorepo",
+  "parameters": {
+    "since": "12 months ago",
+    "until": null,
+    "half_life_days": 180.0,
+    "bus_factor_threshold": 1,
+    "stale_days": 365,
+    "owner_threshold": 0.5,
+    "sensitive_config": null,
+    "identity": "author",
+    "date_field": "author",
+    "include_merges": false,
+    "cochange_enabled": true,
+    "cochange_max_files": 50,
+    "cochange_min_count": 2,
+    "cochange_min_jaccard": 0.05,
+    "cochange_default_excludes": true,
+    "cochange_excludes": [
+      "**/Cargo.lock",
+      "**/Cargo.toml",
+      "**/package-lock.json",
+      "**/yarn.lock",
+      "**/pnpm-lock.yaml",
+      "**/go.sum",
+      "**/go.mod",
+      "**/Gemfile.lock",
+      "**/Pipfile.lock",
+      "**/poetry.lock",
+      "**/composer.lock",
+      "**/.github/**",
+      "**/.gitignore",
+      "**/.gitattributes",
+      "**/.gitmodules",
+      "**/.editorconfig",
+      "**/.vscode/**",
+      "**/.idea/**"
+    ],
+    "author_default_excludes": true,
+    "author_exclude_regexes": [
+      "dependabot"
+    ],
+    "community_top_owners": 5
+  },
+  "orphaned_sensitive_code": [],
+  "hidden_owners": [
+    {
+      "person": "frankdobrovolny@outlook.com",
+      "name": "Frank Dobrovolny",
+      "controls": "100% of auth code",
+      "category": "auth",
+      "share": 1.0
+    }
+  ],
+  "bus_factor_hotspots": [
+    {
+      "path": "apps/backend/internal/auth/jwt.go",
+      "bus_factor": 1,
+      "last_touch": "2026-03-27T08:08:29-04:00",
+      "sensitivity_tags": [
+        "auth"
+      ],
+      "top_owner": "frankdobrovolny@outlook.com"
+    },
+    {
+      "path": "apps/backend/internal/auth/jwt_test.go",
+      "bus_factor": 1,
+      "last_touch": "2026-03-27T08:08:29-04:00",
+      "sensitivity_tags": [
+        "auth"
+      ],
+      "top_owner": "frankdobrovolny@outlook.com"
+    }
+  ],
+  "stats": {
+    "commits": 91,
+    "commits_seen": 91,
+    "commits_excluded_identities": 0,
+    "commits_excluded_merges": 0,
+    "edges": 586,
+    "people": 3,
+    "files": 170,
+    "cochange_pairs_total": 1554,
+    "cochange_edges": 446,
+    "cochange_commits_used": 61,
+    "cochange_commits_skipped": 1,
+    "cochange_commits_filtered": 2,
+    "cochange_files_excluded": 19
+  }
+}

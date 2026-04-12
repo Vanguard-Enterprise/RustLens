@@ -10,12 +10,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const minPasswordLength = 8
+const minPasswordLength = 12
 
 var (
 	ErrInvalidCredentials        = errors.New("invalid credentials")
 	ErrEmailAlreadyRegistered    = errors.New("email already registered")
-	ErrWeakPassword              = errors.New("password must be at least 8 characters")
+	ErrWeakPassword              = errors.New("password must be at least 12 characters")
 	ErrPasswordResetTokenInvalid = errors.New("password reset token invalid")
 	ErrEmailVerificationInvalid  = errors.New("email verification token invalid")
 	ErrEmailAlreadyVerified      = errors.New("email already verified")
@@ -34,36 +34,6 @@ func hashPassword(password string) (string, error) {
 		return "", err
 	}
 	return string(hash), nil
-}
-
-type EmailAuthStatus struct {
-	Email       string
-	HasPassword bool
-}
-
-func (p *PostgresStore) GetEmailAuthStatus(ctx context.Context, email string) (EmailAuthStatus, error) {
-	normalizedEmail := normalizeEmail(email)
-	if normalizedEmail == "" {
-		return EmailAuthStatus{}, ErrEmailNotLinked
-	}
-
-	var hasPassword bool
-	err := p.pool.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM user_emails ue
-			INNER JOIN user_password_credentials upc ON upc.user_id = ue.user_id
-			WHERE ue.email = $1
-		)
-	`, normalizedEmail).Scan(&hasPassword)
-	if err != nil {
-		return EmailAuthStatus{}, err
-	}
-
-	return EmailAuthStatus{
-		Email:       normalizedEmail,
-		HasPassword: hasPassword,
-	}, nil
 }
 
 func (p *PostgresStore) CreatePasswordUser(ctx context.Context, email string, password string, displayName string) (CurrentUser, error) {

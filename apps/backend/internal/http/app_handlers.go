@@ -180,30 +180,6 @@ type passwordRegisterRequest struct {
 	DisplayName string `json:"displayName"`
 }
 
-func (h *Handler) GetEmailAuthStatus(w http.ResponseWriter, r *http.Request) {
-	email := r.URL.Query().Get("email")
-	if email == "" {
-		writeError(w, http.StatusBadRequest, "email is required")
-		return
-	}
-
-	status, err := h.postgres.GetEmailAuthStatus(r.Context(), email)
-	if errors.Is(err, store.ErrEmailNotLinked) {
-		writeError(w, http.StatusBadRequest, "email is required")
-		return
-	}
-	if err != nil {
-		log.Printf("[backend] GetEmailAuthStatus error for %s: %v", email, err)
-		writeError(w, http.StatusInternalServerError, "failed to load email auth status")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"email":       status.Email,
-		"hasPassword": status.HasPassword,
-	})
-}
-
 func (h *Handler) RegisterPasswordUser(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var request passwordRegisterRequest
@@ -226,7 +202,7 @@ func (h *Handler) RegisterPasswordUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, store.ErrWeakPassword) {
-		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		writeError(w, http.StatusBadRequest, "password must be at least 12 characters")
 		return
 	}
 	if err != nil {
@@ -302,12 +278,14 @@ func (h *Handler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]any{
-		"status": linked,
+		"status": "unlinked",
 		"linked": linked,
 	}
 	if linked {
 		response["status"] = "sent"
-		response["token"] = token
+		if h.cfg.AllowAuthDebugTokens {
+			response["debugToken"] = token
+		}
 	} else {
 		response["status"] = "unlinked"
 	}
@@ -342,7 +320,7 @@ func (h *Handler) ConsumePasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, store.ErrWeakPassword) {
-		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		writeError(w, http.StatusBadRequest, "password must be at least 12 characters")
 		return
 	}
 	if err != nil {
@@ -376,9 +354,16 @@ func (h *Handler) RequestEmailVerification(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if h.cfg.AllowAuthDebugTokens {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":     "sent",
+			"debugToken": token,
+		})
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "sent",
-		"token":  token,
 	})
 }
 

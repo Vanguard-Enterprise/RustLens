@@ -13,6 +13,7 @@ type Config struct {
 	RedisURL             string
 	BotServiceJWT        string
 	AppAPIInternalSecret string
+	AllowAuthDebugTokens bool
 	BotTargetShards      int
 	BotHeartbeatTTL      time.Duration
 	SteamAPIKey          string
@@ -38,7 +39,8 @@ func Load() Config {
 		PostgresURL:          getEnv("POSTGRES_URL", "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable"),
 		RedisURL:             getEnv("REDIS_URL", "redis://localhost:6379/0"),
 		BotServiceJWT:        getEnv("BOT_SERVICE_JWT_SECRET", "dev-bot-secret"),
-		AppAPIInternalSecret: getEnv("APP_API_INTERNAL_SECRET", "dev-app-internal-secret"),
+		AppAPIInternalSecret: getRequiredEnv("APP_API_INTERNAL_SECRET"),
+		AllowAuthDebugTokens: getEnvBool("ALLOW_AUTH_DEBUG_TOKENS", false),
 		BotTargetShards:      targetShards,
 		BotHeartbeatTTL:      time.Duration(heartbeatTTL) * time.Second,
 		SteamAPIKey:          getEnv("STEAM_API_KEY", ""),
@@ -58,6 +60,14 @@ func getEnv(key string, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func getRequiredEnv(key string) string {
+	value, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(value) == "" {
+		panic("missing required environment variable: " + key)
+	}
+	return value
 }
 
 func getEnvInt(key string, fallback int) int {

@@ -80,7 +80,7 @@ Production routing is handled outside this repository.
 apps/frontend/
   app/
     layout.tsx           # App Router root layout + metadata
-    auth/                # Browser auth routes: email/password register/login/reset/verify plus optional Discord OAuth start/callback
+    auth/                # Browser auth routes: explicit email/password sign-in, register, reset, verify, plus optional Discord OAuth start/callback
     admin/               # Internal RustLens ops dashboard routes guarded by app-user internal_admin role
     dashboard/           # Authenticated user dashboard routes built on the Efferd app shell
     logout/route.ts      # Session clear + redirect route
@@ -96,7 +96,7 @@ apps/frontend/
     app-shell.tsx        # Efferd app-shell-4-based authenticated shell shared by /dashboard and /admin
     app-sidebar.tsx      # Route-aware RustLens sidebar navigation for dashboard/admin
     app-header.tsx       # Authenticated shell header with breadcrumbs and session-aware user menu
-    auth-page.tsx        # RustLens sign-in panel adapted from the @efferd/auth-3 block with email/password auth and optional Discord action
+    auth-page.tsx        # RustLens sign-in panel adapted from the @efferd/auth-3 block with explicit sign-in vs create-account email flows and optional Discord action
     faqs-section.tsx     # FAQ accordion adapted from the @efferd/faqs-1 block with RustLens-specific questions
     feature-section.tsx  # Feature strip adapted from the @efferd/features-1 block using landingFeatures content
     header.tsx           # Sticky top navigation with docs / add-bot CTAs
@@ -115,7 +115,7 @@ apps/frontend/
 Key patterns:
 
 - The frontend now has three surfaces: public marketing/auth routes, authenticated user routes under `/dashboard`, and internal ops routes under `/admin`.
-- Browser auth is **Next.js-owned** using a signed session cookie. Email + password is the primary login, with password reset and email verification flows. Discord OAuth is optional and used for account linking or convenience login when configured.
+- Browser auth is **Next.js-owned** using a signed session cookie. `APP_SESSION_SECRET` is required; there is no insecure fallback. Email + password is the primary login, with explicit sign-in vs registration selection in the frontend, password reset and email verification flows, and lightweight in-memory rate limiting on the public auth route handlers. Discord OAuth is optional and used for account linking or convenience login when configured.
 - The frontend calls **app-facing backend routes** under `/api/app/*` with a shared internal app secret from server-side code only. It does **not** call the bot JWT routes from the browser.
 - The authenticated shell is based on `@efferd/app-shell-4` installed through the shadcn CLI and adapted to RustLens navigation/state.
 - Next.js still runs as a **hybrid Node server** in dev/prod rather than a static export.
@@ -166,7 +166,7 @@ Key patterns:
 - Bot wipe-react routes (`/api/internal/bot/setup/guilds/*/wipe-reacts*`) are JWT-protected and persist wipe react metadata plus accepted/declined/late user lists in Postgres.
 - Bot wipe-react schedule routes (`/api/internal/bot/setup/guilds/*/wipe-react-schedules*`) are JWT-protected and persist recurring wipe-react schedule configs (max 3 per guild) with CRUD operations.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
-- App-facing routes under `/api/app/*` are protected by an internal shared-secret header used only by Next.js server-side code. Current-user and admin authorization resolve through `app_users` roles, not through bot JWT claims.
+- App-facing routes under `/api/app/*` are protected by an internal shared-secret header used only by Next.js server-side code. Current-user and admin authorization resolve through `app_users` roles, not through bot JWT claims. The backend no longer exposes an email-status lookup route for browser auth.
 - The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, updates `tracked_servers.last_polled_at` / `last_poll_error`, and syncs per-server player presence into `player_states`.
 
 **App users & browser auth**
@@ -177,9 +177,9 @@ Key patterns:
 
 `user_emails` stores primary and secondary email identities for app users.
 
-`user_password_credentials` stores password hashes and password update timestamps. `password_reset_tokens` and `email_verification_tokens` store one-time password reset and email verification tokens.
+`user_password_credentials` stores bcrypt password hashes and password update timestamps. New and reset passwords require at least 12 characters. `password_reset_tokens` and `email_verification_tokens` store one-time password reset and email verification token hashes, not raw tokens.
 
-`app_audit_events` stores browser-auth and internal-admin audit events. The frontend signs users into Next.js sessions after successful email/password auth, password reset, email verification, or optional Discord OAuth completion via `/api/app/auth/*`.
+`app_audit_events` stores browser-auth and internal-admin audit events. The frontend signs users into Next.js sessions after successful email/password auth, password reset, email verification, or optional Discord OAuth completion via `/api/app/auth/*`. Raw reset / verification tokens are not returned by default; explicit local debug previews require both backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`.
 
 **Steam & Discord linking**
 
@@ -246,13 +246,13 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `POSTGRES_URL` | `postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable` |
 | `REDIS_URL` | `redis://localhost:6379/0` |
 | `BOT_SERVICE_JWT_SECRET` | `dev-bot-secret` |
-| `APP_API_INTERNAL_SECRET` | `dev-app-internal-secret` |
+| `APP_API_INTERNAL_SECRET` | required |
 | `BOT_TARGET_SHARDS` | `4` |
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
 | `STEAM_API_KEY` | `` |
 | `BATTLEMETRICS_API_KEY` | `` |
 | `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS` | `10` |
-The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY`, `BATTLEMETRICS_API_KEY`, `APP_API_INTERNAL_SECRET`, and `APP_ADMIN_DISCORD_IDS` can be provided there without separate shell export. The frontend expects `APP_SESSION_SECRET` and usually `RUSTLENS_API_URL`; `NEXT_PUBLIC_APP_URL` is used for absolute callback/reset/verify links. `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` are optional and only needed when Discord login/linking is enabled. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
+The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY`, `BATTLEMETRICS_API_KEY`, `APP_API_INTERNAL_SECRET`, and `APP_ADMIN_DISCORD_IDS` can be provided there without separate shell export. The frontend expects `APP_SESSION_SECRET`, `APP_API_INTERNAL_SECRET`, and usually `RUSTLENS_API_URL`; `NEXT_PUBLIC_APP_URL` is used for absolute callback/reset/verify links. `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` are optional and only needed when Discord login/linking is enabled. Local auth debug previews are disabled by default and only appear when backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
 
 ## CI/CD
 

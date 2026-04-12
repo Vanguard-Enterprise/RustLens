@@ -1,0 +1,4 @@
+person_id,name,email,first_seen,last_seen,commit_count,touches,sensitive_touches,primary_tz_offset,primary_tz_minutes,timezone_offsets
+ba.buska6912@gmail.com,Kappu,ba.buska6912@gmail.com,2026-03-28T12:24:54+02:00,2026-04-03T00:41:48+03:00,35,233,0.00,+03:00,180,+02:00:8;+03:00:27
+frankdobrovolny@outlook.com,Frank Dobrovolny,frankdobrovolny@outlook.com,2026-03-27T08:08:29-04:00,2026-04-12T11:02:52-04:00,14,196,2.00,-04:00,-240,-04:00:14
+sem@osesem.xyz,OseSem,sem@osesem.xyz,2026-03-27T14:22:05+01:00,2026-04-09T19:54:21+02:00,42,157,0.00,+01:00,60,+01:00:29;+02:00:13

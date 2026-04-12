@@ -6,6 +6,7 @@ import (
 )
 
 func TestLoadParsesProxyConfig(t *testing.T) {
+	t.Setenv("APP_API_INTERNAL_SECRET", "test-app-secret")
 	t.Setenv("PROXY_ENABLED", "true")
 	t.Setenv("PROXY_ENDPOINTS", " http://proxy-one:8080,https://proxy-two:8443 ")
 
@@ -22,6 +23,7 @@ func TestLoadParsesProxyConfig(t *testing.T) {
 }
 
 func TestLoadDefaultsProxyDisabled(t *testing.T) {
+	t.Setenv("APP_API_INTERNAL_SECRET", "test-app-secret")
 	t.Setenv("PROXY_ENABLED", "false")
 	t.Setenv("PROXY_ENDPOINTS", "http://proxy-one:8080")
 

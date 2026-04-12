@@ -102,7 +102,6 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 	r.Route("/api/app", func(r chi.Router) {
 		r.Use(appInternalMiddleware(cfg.AppAPIInternalSecret))
 		r.Post("/auth/discord/complete", handler.CompleteDiscordAuth)
-		r.Get("/auth/email/status", handler.GetEmailAuthStatus)
 		r.Post("/auth/register", handler.RegisterPasswordUser)
 		r.Post("/auth/login", handler.LoginPasswordUser)
 		r.Post("/auth/password/reset/request", handler.RequestPasswordReset)
