@@ -119,10 +119,10 @@ apps/frontend/
 Key patterns:
 
 - The frontend now has three surfaces: public marketing/auth routes, authenticated user routes under `/dashboard`, and internal ops routes under `/admin`.
-- Browser auth is **Next.js-owned** using a signed session cookie. `APP_SESSION_SECRET` is required; there is no insecure fallback. Email + password is the primary login, with explicit sign-in vs registration selection in the frontend, password reset and email verification flows, and lightweight in-memory rate limiting on the public auth route handlers. Discord OAuth is optional and used for account linking or convenience login when configured.
+- Browser auth is **Next.js-owned** using a signed session cookie. `APP_SESSION_SECRET` is required; there is no insecure fallback. Email + password is the primary login, with explicit sign-in vs registration selection in the frontend, password reset and email verification flows, and Redis-backed shared rate limiting on the public auth route handlers. Discord OAuth is optional and used for account linking or convenience login when configured.
 - Browser auth form posts now use a shared double-submit CSRF token helper on the Next.js side for `/auth/*` and `/logout` POST routes, alongside the signed session cookie.
 - Email verification no longer creates a browser session by itself; verification links redirect back to `/login` with a success notice after the token is consumed.
-- The frontend calls **app-facing backend routes** under `/api/app/*` with a shared internal app secret from server-side code only. It does **not** call the bot JWT routes from the browser.
+- The frontend calls **app-facing backend routes** under `/api/app/*` with a shared internal app secret from server-side code only. Authenticated `/api/app/*` routes also receive the signed `rustlens_session` token via a server-only header so the backend derives the acting user from the validated session instead of trusting a caller-supplied user ID. The browser never calls these routes directly and the frontend does **not** call the bot JWT routes from the browser.
 - The authenticated shell is based on `@efferd/app-shell-4` installed through the shadcn CLI and adapted to RustLens navigation/state.
 - Next.js still runs as a **hybrid Node server** in dev/prod rather than a static export.
 
@@ -172,7 +172,7 @@ Key patterns:
 - Bot wipe-react routes (`/api/internal/bot/setup/guilds/*/wipe-reacts*`) are JWT-protected and persist wipe react metadata plus accepted/declined/late user lists in Postgres.
 - Bot wipe-react schedule routes (`/api/internal/bot/setup/guilds/*/wipe-react-schedules*`) are JWT-protected and persist recurring wipe-react schedule configs (max 3 per guild) with CRUD operations.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
-- App-facing routes under `/api/app/*` are protected by an internal shared-secret header used only by Next.js server-side code. Current-user and admin authorization resolve through `app_users` roles, not through bot JWT claims. The backend no longer exposes an email-status lookup route for browser auth.
+- App-facing routes under `/api/app/*` are protected by an internal shared-secret header used only by Next.js server-side code. Session-authenticated `/api/app/*` routes also validate the signed frontend session token with `APP_SESSION_SECRET` and derive the actor from that session before resolving current-user/admin authorization through `app_users` roles. The backend no longer exposes an email-status lookup route for browser auth.
 - The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, updates `tracked_servers.last_polled_at` / `last_poll_error`, and syncs per-server player presence into `player_states`.
 
 **App users & browser auth**
@@ -253,16 +253,17 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `REDIS_URL` | `redis://localhost:6379/0` |
 | `BOT_SERVICE_JWT_SECRET` | required |
 | `APP_API_INTERNAL_SECRET` | required |
+| `APP_SESSION_SECRET` | required |
 | `BOT_TARGET_SHARDS` | `4` |
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
 | `STEAM_API_KEY` | `` |
 | `BATTLEMETRICS_API_KEY` | `` |
 | `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS` | `10` |
-The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY`, `BATTLEMETRICS_API_KEY`, `APP_API_INTERNAL_SECRET`, and `APP_ADMIN_DISCORD_IDS` can be provided there without separate shell export. The frontend expects `APP_SESSION_SECRET`, `APP_API_INTERNAL_SECRET`, and usually `RUSTLENS_API_URL`; `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be set to the canonical external origin for Discord OAuth callbacks and local auth debug preview links. `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` are optional and only needed when Discord login/linking is enabled. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects canonical client IP headers for the frontend auth rate limiter. Local auth debug previews are disabled by default and only appear when backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
+The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY`, `BATTLEMETRICS_API_KEY`, `APP_API_INTERNAL_SECRET`, `APP_SESSION_SECRET`, and `APP_ADMIN_DISCORD_IDS` can be provided there without separate shell export. The frontend expects `APP_SESSION_SECRET`, `APP_API_INTERNAL_SECRET`, and usually `RUSTLENS_API_URL`; `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be set to the canonical external origin for Discord OAuth callbacks and local auth debug preview links. Frontend auth throttling also requires `REDIS_URL` (or `RATE_LIMIT_REDIS_URL`) in production. `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` are optional and only needed when Discord login/linking is enabled; the frontend now uses PKCE plus OAuth `state` for the Discord code flow. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects a dedicated canonical client-IP header configured via `TRUST_PROXY_IP_HEADER` for the frontend auth rate limiter. Local auth debug previews are disabled by default and only appear when backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
 
 ## CI/CD
 
-- **`.github/workflows/ci.yml`** — On PR and push to `main`: lint/test/build for the pnpm workspace (`apps/frontend` + `apps/bot`) and vet/test/build for Go backend. Runs on `ubuntu-latest` as a temporary rollback while the self-hosted runner fleet is remediated.
+- **`.github/workflows/ci.yml`** — On PR and push to `main`: lint/test/build for the pnpm workspace (`apps/frontend` + `apps/bot`) and govulncheck/vet/test/`go test -race`/build for Go backend. Runs on `ubuntu-latest` as a temporary rollback while the self-hosted runner fleet is remediated.
 - **`.github/workflows/publish.yml`** — On `main`: builds and pushes `backend`, `frontend`, and `bot` Docker images to GHCR using lowercase owner tags. Runs on `ubuntu-latest` while the self-hosted runner fleet is remediated.
 - **`.github/workflows/runner-diagnostics.yml`** — Manual self-hosted runner validation workflow that checks checkout, workspace paths, and action cache layout to catch runner-hook regressions early.
 

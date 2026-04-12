@@ -107,12 +107,12 @@ func currentUserToMap(current store.CurrentUser) map[string]any {
 }
 
 func requireAppActor(r *http.Request, postgres *store.PostgresStore) (store.AppUser, bool, int, string) {
-	userID := r.Header.Get("X-RustLens-User-Id")
-	if userID == "" {
-		return store.AppUser{}, false, http.StatusUnauthorized, "missing app user id"
+	session := appSessionFromContext(r.Context())
+	if session == nil || session.UserID == "" {
+		return store.AppUser{}, false, http.StatusUnauthorized, "missing app session"
 	}
 
-	user, err := postgres.GetAppUserByID(r.Context(), userID)
+	user, err := postgres.GetAppUserByID(r.Context(), session.UserID)
 	if errors.Is(err, store.ErrAppUserNotFound) {
 		return store.AppUser{}, false, http.StatusUnauthorized, "app user not found"
 	}

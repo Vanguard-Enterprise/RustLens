@@ -61,5 +61,8 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Race test
+        run: go test -race ./...
+
       - name: Build
         run: go build ./cmd/server

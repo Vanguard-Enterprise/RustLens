@@ -13,6 +13,7 @@ type Config struct {
 	RedisURL             string
 	BotServiceJWT        string
 	AppAPIInternalSecret string
+	AppSessionSecret     string
 	AllowAuthDebugTokens bool
 	BotTargetShards      int
 	BotHeartbeatTTL      time.Duration
@@ -40,6 +41,7 @@ func Load() Config {
 		RedisURL:             getEnv("REDIS_URL", "redis://localhost:6379/0"),
 		BotServiceJWT:        getRequiredEnv("BOT_SERVICE_JWT_SECRET"),
 		AppAPIInternalSecret: getRequiredEnv("APP_API_INTERNAL_SECRET"),
+		AppSessionSecret:     getRequiredEnv("APP_SESSION_SECRET"),
 		AllowAuthDebugTokens: getEnvBool("ALLOW_AUTH_DEBUG_TOKENS", false),
 		BotTargetShards:      targetShards,
 		BotHeartbeatTTL:      time.Duration(heartbeatTTL) * time.Second,
