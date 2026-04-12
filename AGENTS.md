@@ -91,6 +91,8 @@ apps/frontend/
     signin/page.tsx      # Legacy alias that redirects to /login
     signup/page.tsx      # Legacy alias that redirects to /login
     sign-up/page.tsx     # Legacy alias that redirects to /login
+    privacy/page.tsx     # Public privacy-policy route for the entire RustLens service
+    terms/page.tsx       # Public terms-of-service route for the entire RustLens service
     globals.css          # Tailwind v4 theme tokens and global styling
   components/
     app-shell.tsx        # Efferd app-shell-4-based authenticated shell shared by /dashboard and /admin
@@ -104,8 +106,10 @@ apps/frontend/
     logos-section.tsx    # System/integration strip for the landing page
     not-found.tsx        # RustLens-themed 404 state adapted from the @efferd/not-found-2 block
     footer.tsx           # RustLens footer adapted from the @efferd/footer-1 block with repo/docs links
+    legal-page.tsx       # Shared long-form legal page shell used by /terms and /privacy
     ui/                  # shadcn/ui primitives added as source
   lib/
+    legal-content.ts     # Shared terms/privacy copy, effective date, and legal contact placeholders
     rustlens-api.ts      # Server-side frontend client for app-auth and /api/app aggregate/admin routes
     session.ts           # Signed Next.js session cookie helpers for browser auth
     site-content.ts      # Landing-page content model used by the page, FAQ section, and tests
@@ -116,6 +120,7 @@ Key patterns:
 
 - The frontend now has three surfaces: public marketing/auth routes, authenticated user routes under `/dashboard`, and internal ops routes under `/admin`.
 - Browser auth is **Next.js-owned** using a signed session cookie. `APP_SESSION_SECRET` is required; there is no insecure fallback. Email + password is the primary login, with explicit sign-in vs registration selection in the frontend, password reset and email verification flows, and lightweight in-memory rate limiting on the public auth route handlers. Discord OAuth is optional and used for account linking or convenience login when configured.
+- Email verification no longer creates a browser session by itself; verification links redirect back to `/login` with a success notice after the token is consumed.
 - The frontend calls **app-facing backend routes** under `/api/app/*` with a shared internal app secret from server-side code only. It does **not** call the bot JWT routes from the browser.
 - The authenticated shell is based on `@efferd/app-shell-4` installed through the shadcn CLI and adapted to RustLens navigation/state.
 - Next.js still runs as a **hybrid Node server** in dev/prod rather than a static export.
@@ -179,7 +184,7 @@ Key patterns:
 
 `user_password_credentials` stores bcrypt password hashes and password update timestamps. New and reset passwords require at least 12 characters. `password_reset_tokens` and `email_verification_tokens` store one-time password reset and email verification token hashes, not raw tokens.
 
-`app_audit_events` stores browser-auth and internal-admin audit events. The frontend signs users into Next.js sessions after successful email/password auth, password reset, email verification, or optional Discord OAuth completion via `/api/app/auth/*`. Raw reset / verification tokens are not returned by default; explicit local debug previews require both backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`.
+`app_audit_events` stores browser-auth and internal-admin audit events. The frontend signs users into Next.js sessions after successful email/password auth, password reset, or optional Discord OAuth completion via `/api/app/auth/*`. Email verification only marks the email verified and redirects back to the login flow. Raw reset / verification tokens are not returned by default; explicit local debug previews require both backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`.
 
 **Steam & Discord linking**
 
@@ -252,7 +257,7 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `STEAM_API_KEY` | `` |
 | `BATTLEMETRICS_API_KEY` | `` |
 | `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS` | `10` |
-The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY`, `BATTLEMETRICS_API_KEY`, `APP_API_INTERNAL_SECRET`, and `APP_ADMIN_DISCORD_IDS` can be provided there without separate shell export. The frontend expects `APP_SESSION_SECRET`, `APP_API_INTERNAL_SECRET`, and usually `RUSTLENS_API_URL`; `NEXT_PUBLIC_APP_URL` is used for absolute callback/reset/verify links. `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` are optional and only needed when Discord login/linking is enabled. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects canonical client IP headers for the frontend auth rate limiter. Local auth debug previews are disabled by default and only appear when backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
+The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY`, `BATTLEMETRICS_API_KEY`, `APP_API_INTERNAL_SECRET`, and `APP_ADMIN_DISCORD_IDS` can be provided there without separate shell export. The frontend expects `APP_SESSION_SECRET`, `APP_API_INTERNAL_SECRET`, and usually `RUSTLENS_API_URL`; `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be set to the canonical external origin for Discord OAuth callbacks and local auth debug preview links. `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` are optional and only needed when Discord login/linking is enabled. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects canonical client IP headers for the frontend auth rate limiter. Local auth debug previews are disabled by default and only appear when backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
 
 ## CI/CD
 
