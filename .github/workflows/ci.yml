@@ -47,13 +47,13 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24.x'
+          go-version: '1.25.9'
 
       - name: Download modules
         run: go mod download
 
       - name: Vulnerability scan
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
       - name: Vet
         run: go vet ./...
