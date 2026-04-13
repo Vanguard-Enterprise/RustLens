@@ -5,7 +5,7 @@ COPY . .
 
 RUN corepack enable
 RUN corepack prepare pnpm@10.6.0 --activate
-RUN pnpm install --frozen-lockfile=false
+RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @rustlens/frontend build
 
 EXPOSE 3000
