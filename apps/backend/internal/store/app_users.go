@@ -763,7 +763,7 @@ func (p *PostgresStore) ListAdminUsers(ctx context.Context) ([]AdminUserListItem
 func (p *PostgresStore) ListAdminGuilds(ctx context.Context) ([]AdminGuildOverview, error) {
 	rows, err := p.pool.Query(ctx, `
 		SELECT ug.guild_id,
-			COUNT(*) FILTER (WHERE ug.is_active)::int AS active_members,
+			COUNT(DISTINCT CASE WHEN ug.is_active THEN ug.discord_id END)::int AS active_members,
 			COUNT(DISTINCT gsl.discord_id)::int AS linked_members,
 			COUNT(DISTINCT gts.server_bm_id)::int AS tracked_servers,
 			COALESCE(gs.admin_role_id, '') AS admin_role_id
