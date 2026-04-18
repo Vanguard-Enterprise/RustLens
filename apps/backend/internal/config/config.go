@@ -8,41 +8,52 @@ import (
 )
 
 type Config struct {
-	Port                string
-	PostgresURL         string
-	RedisURL            string
-	BotServiceJWT       string
-	BotTargetShards     int
-	BotHeartbeatTTL     time.Duration
-	SteamAPIKey         string
-	BattleMetricsAPIKey string
-	BattleMetricsPoll   time.Duration
-	AllowedJWTIssuer    string
-	AllowedJWTAudience  string
-	ProxyEnabled        bool
-	ProxyEndpoints      []string
+	Port                 string
+	PostgresURL          string
+	RedisURL             string
+	BotServiceJWT        string
+	AppAPIInternalSecret string
+	AppSessionSecret     string
+	AllowAuthDebugTokens bool
+	BotTargetShards      int
+	BotHeartbeatTTL      time.Duration
+	SteamAPIKey          string
+	BattleMetricsAPIKey  string
+	BattleMetricsPoll    time.Duration
+	AppEmailTokenTTL     time.Duration
+	AllowedJWTIssuer     string
+	AllowedJWTAudience   string
+	AppAdminDiscordIDs   []string
+	ProxyEnabled         bool
+	ProxyEndpoints       []string
 }
 
 func Load() Config {
 	targetShards := getEnvInt("BOT_TARGET_SHARDS", 4)
 	heartbeatTTL := getEnvInt("BOT_HEARTBEAT_TTL_SECONDS", 45)
 	battleMetricsPoll := getEnvInt("BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS", 10)
+	appEmailTokenTTL := getEnvInt("APP_EMAIL_TOKEN_TTL_MINUTES", 20)
 	proxyEnabled := getEnvBool("PROXY_ENABLED", false)
 
 	return Config{
-		Port:                getEnv("PORT", "8080"),
-		PostgresURL:         getEnv("POSTGRES_URL", "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable"),
-		RedisURL:            getEnv("REDIS_URL", "redis://localhost:6379/0"),
-		BotServiceJWT:       getEnv("BOT_SERVICE_JWT_SECRET", "dev-bot-secret"),
-		BotTargetShards:     targetShards,
-		BotHeartbeatTTL:     time.Duration(heartbeatTTL) * time.Second,
-		SteamAPIKey:         getEnv("STEAM_API_KEY", ""),
-		BattleMetricsAPIKey: getEnv("BATTLEMETRICS_API_KEY", ""),
-		BattleMetricsPoll:   time.Duration(battleMetricsPoll) * time.Second,
-		AllowedJWTIssuer:    getEnv("BOT_JWT_ISSUER", "rustlens-bot"),
-		AllowedJWTAudience:  getEnv("BOT_JWT_AUDIENCE", "rustlens-backend"),
-		ProxyEnabled:        proxyEnabled,
-		ProxyEndpoints:      getEnvCSV("PROXY_ENDPOINTS"),
+		Port:                 getEnv("PORT", "8080"),
+		PostgresURL:          getEnv("POSTGRES_URL", "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable"),
+		RedisURL:             getEnv("REDIS_URL", "redis://localhost:6379/0"),
+		BotServiceJWT:        getRequiredEnv("BOT_SERVICE_JWT_SECRET"),
+		AppAPIInternalSecret: getRequiredEnv("APP_API_INTERNAL_SECRET"),
+		AppSessionSecret:     getRequiredEnv("APP_SESSION_SECRET"),
+		AllowAuthDebugTokens: getEnvBool("ALLOW_AUTH_DEBUG_TOKENS", false),
+		BotTargetShards:      targetShards,
+		BotHeartbeatTTL:      time.Duration(heartbeatTTL) * time.Second,
+		SteamAPIKey:          getEnv("STEAM_API_KEY", ""),
+		BattleMetricsAPIKey:  getEnv("BATTLEMETRICS_API_KEY", ""),
+		BattleMetricsPoll:    time.Duration(battleMetricsPoll) * time.Second,
+		AppEmailTokenTTL:     time.Duration(appEmailTokenTTL) * time.Minute,
+		AllowedJWTIssuer:     getEnv("BOT_JWT_ISSUER", "rustlens-bot"),
+		AllowedJWTAudience:   getEnv("BOT_JWT_AUDIENCE", "rustlens-backend"),
+		AppAdminDiscordIDs:   getEnvCSV("APP_ADMIN_DISCORD_IDS"),
+		ProxyEnabled:         proxyEnabled,
+		ProxyEndpoints:       getEnvCSV("PROXY_ENDPOINTS"),
 	}
 }
 
@@ -51,6 +62,14 @@ func getEnv(key string, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func getRequiredEnv(key string) string {
+	value, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(value) == "" {
+		panic("missing required environment variable: " + key)
+	}
+	return value
 }
 
 func getEnvInt(key string, fallback int) int {

@@ -6,11 +6,11 @@ http:
       rule: "Host(`localhost`) && PathPrefix(`/api`)"
       priority: 100
       service: backend
-
     frontend:
       entryPoints:
         - web
       rule: "Host(`localhost`)"
+      priority: 1
       service: frontend
 
   services:
@@ -18,7 +18,6 @@ http:
       loadBalancer:
         servers:
           - url: "http://host.docker.internal:8080"
-
     frontend:
       loadBalancer:
         servers:

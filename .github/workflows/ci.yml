@@ -10,7 +10,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  javascript:
+  workspace:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -26,7 +26,7 @@ jobs:
         run: corepack prepare pnpm@10.6.0 --activate
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         run: pnpm lint
@@ -47,16 +47,22 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24.x'
+          go-version: '1.25.9'
 
       - name: Download modules
         run: go mod download
+
+      - name: Vulnerability scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
       - name: Vet
         run: go vet ./...
 
       - name: Test
         run: go test ./...
+
+      - name: Race test
+        run: go test -race ./...
 
       - name: Build
         run: go build ./cmd/server
