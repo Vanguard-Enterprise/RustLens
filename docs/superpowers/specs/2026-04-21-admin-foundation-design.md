@@ -6,6 +6,8 @@
 
 ## Motivation
 
+Stack reference: Go 1.24 backend (chi, pgx), Next.js 16 / React 19 frontend, Postgres. Frontend code must follow current Next.js 16 and React 19 APIs — check `apps/frontend/node_modules/next/dist/docs/` before writing components.
+
 The existing `/admin` area (users, guilds, servers, audit, settings) is a read-only v1 scaffold gated by a single `internal_admin` boolean. The next phase requires real operator and moderation capability across four areas:
 
 - **C — Outbound proxy management**

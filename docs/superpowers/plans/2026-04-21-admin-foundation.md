@@ -6,7 +6,9 @@
 
 **Architecture:** Go backend packages for RBAC and actions under `internal/admin/*`; schema managed by the existing `EnsureSchema` pattern in `store/postgres.go`; single HTTP dispatcher at `POST /api/app/admin/actions/:type`; frontend shared components under `components/admin/*` consumed by pages under `app/admin/*`.
 
-**Tech Stack:** Go 1.24 (chi, pgx), Next.js 14 (React 18, TypeScript), Postgres, shadcn/ui.
+**Tech Stack:** Go 1.24 (chi, pgx), Next.js 16 (React 19, TypeScript), Postgres, shadcn/ui.
+
+> Next.js 16 and React 19 have breaking changes from prior versions — APIs, conventions, and file structure may differ from what your training data suggests. Before writing frontend code, check the installed docs in `apps/frontend/node_modules/next/dist/docs/` (or equivalent) for the relevant APIs. In particular: `useSearchParams`/`usePathname`/`useRouter` imports, server-component async APIs, and any required Suspense boundaries.
 
 ## Prerequisite Notes
 
