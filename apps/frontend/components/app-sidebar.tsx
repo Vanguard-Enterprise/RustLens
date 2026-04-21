@@ -25,10 +25,11 @@ import { Link2Icon, SearchIcon } from "lucide-react";
 type AppSidebarProps = {
 	pathname: string;
 	variant: AppShellVariant;
+	permissions?: string[];
 };
 
-export function AppSidebar({ pathname, variant }: AppSidebarProps) {
-	const navGroups = getNavGroups(variant, pathname);
+export function AppSidebar({ pathname, permissions = [], variant }: AppSidebarProps) {
+	const navGroups = getNavGroups(variant, pathname, permissions);
 	const footerNavLinks = getFooterNavLinks(variant, pathname);
 
 	return (

@@ -9,7 +9,7 @@ export default async function AdminLayout({
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
-	await requireInternalAdminSession();
+	const session = await requireInternalAdminSession();
 	const currentUser = await getCurrentUser();
 	const csrfToken = await getCsrfToken();
 	if (!currentUser.user.roles.includes("internal_admin")) {
@@ -24,6 +24,7 @@ export default async function AdminLayout({
 				email: currentUser.primaryEmail?.email,
 				avatarUrl: currentUser.user.avatarUrl,
 				isInternalAdmin: true,
+				permissions: session.permissions ?? [],
 			}}
 			variant="admin"
 		>
