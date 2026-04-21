@@ -11,8 +11,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"rustlens/backend/internal/outboundhttp"
 )
 
 const defaultBaseURL = "https://api.steampowered.com"
@@ -25,25 +23,16 @@ var (
 )
 
 type Client struct {
-	baseURL  string
-	apiKey   string
-	provider requestPreparer
+	baseURL string
+	apiKey  string
+	client  *http.Client
 }
 
-type requestPreparer interface {
-	Prepare() (*http.Client, string, bool)
-}
-
-func NewClient(apiKey string, provider requestPreparer) *Client {
-	if provider == nil {
-		fallbackProvider, _ := outboundhttp.NewProvider(false, nil, 10*time.Second)
-		provider = fallbackProvider
-	}
-
+func NewClient(apiKey string) *Client {
 	return &Client{
-		baseURL:  defaultBaseURL,
-		apiKey:   apiKey,
-		provider: provider,
+		baseURL: defaultBaseURL,
+		apiKey:  apiKey,
+		client:  &http.Client{Timeout: 20 * time.Second},
 	}
 }
 
@@ -114,10 +103,9 @@ func (c *Client) resolveVanityURL(ctx context.Context, vanity string) (string, e
 	}
 	req.Header.Set("Accept", "application/json")
 
-	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
-	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+	log.Printf("[steamapi] sending request host=%s proxied=false proxy=%q", endpoint.Host, "")
 
-	response, err := httpClient.Do(req)
+	response, err := c.client.Do(req)
 	if err != nil {
 		return "", err
 	}
