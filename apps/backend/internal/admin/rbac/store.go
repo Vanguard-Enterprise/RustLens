@@ -139,6 +139,26 @@ func (s *Store) RolesForUser(ctx context.Context, userID uuid.UUID) ([]Role, err
 	return out, rows.Err()
 }
 
+func (s *Store) PermissionsForRole(ctx context.Context, roleID uuid.UUID) ([]string, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT permission_key FROM admin_role_permissions WHERE role_id = $1 ORDER BY permission_key`,
+		roleID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) PermissionsForUser(ctx context.Context, userID uuid.UUID) ([]string, error) {
 	roles, err := s.RolesForUser(ctx, userID)
 	if err != nil {

@@ -1925,6 +1925,61 @@ func (h *Handler) DeleteGuildSteamDiscordLink(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// adminRoleItem is the JSON shape for a single role in the ListAdminRoles response.
+type adminRoleItem struct {
+	ID          string   `json:"id"`
+	Key         string   `json:"key"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	IsSystem    bool     `json:"isSystem"`
+	Permissions []string `json:"permissions"`
+}
+
+// ListAdminRoles handles GET /api/app/admin/roles.
+// For the superadmin role the full permission list is returned in-process
+// (admin_role_permissions has no explicit rows for superadmin). For all other
+// roles the permissions are queried from admin_role_permissions.
+func (h *Handler) ListAdminRoles(w http.ResponseWriter, r *http.Request) {
+	roles, err := h.rbacStore.ListRoles(r.Context())
+	if err != nil {
+		log.Printf("[backend] ListAdminRoles: ListRoles error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to list roles")
+		return
+	}
+
+	items := make([]adminRoleItem, 0, len(roles))
+	for _, rl := range roles {
+		var perms []string
+		if rl.Key == rbac.RoleSuperadmin {
+			all := rbac.AllPermissions()
+			perms = make([]string, len(all))
+			for i, p := range all {
+				perms[i] = p.Key
+			}
+		} else {
+			perms, err = h.rbacStore.PermissionsForRole(r.Context(), rl.ID)
+			if err != nil {
+				log.Printf("[backend] ListAdminRoles: PermissionsForRole(%s) error: %v", rl.Key, err)
+				writeError(w, http.StatusInternalServerError, "failed to load role permissions")
+				return
+			}
+		}
+		if perms == nil {
+			perms = []string{}
+		}
+		items = append(items, adminRoleItem{
+			ID:          rl.ID.String(),
+			Key:         rl.Key,
+			Name:        rl.Name,
+			Description: rl.Description,
+			IsSystem:    rl.IsSystem,
+			Permissions: perms,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }

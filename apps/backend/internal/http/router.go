@@ -100,6 +100,7 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 
 	r.Route("/api/app/admin", func(r chi.Router) {
 		r.Post("/actions/{type}", handler.actionDispatcher.ServeHTTP)
+		r.Get("/roles", handler.ListAdminRoles)
 	})
 
 	return r
