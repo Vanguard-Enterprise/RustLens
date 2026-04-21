@@ -3,6 +3,8 @@ package actions
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -105,7 +107,7 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var body requestBody
 	if decErr := json.NewDecoder(r.Body).Decode(&body); decErr != nil {
 		// Ignore EOF (empty body); any other decode error is a bad request.
-		if decErr.Error() != "EOF" {
+		if !errors.Is(decErr, io.EOF) {
 			writeJSON(w, http.StatusBadRequest, errResponse{Error: "invalid_json", Message: decErr.Error()})
 			return
 		}
