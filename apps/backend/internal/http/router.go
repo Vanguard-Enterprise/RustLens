@@ -119,6 +119,10 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 			r.Use(requireSession)
 			r.Post("/actions/{type}", handler.actionDispatcher.ServeHTTP)
 			r.Get("/roles", handler.ListAdminRoles)
+			r.Get("/users", handler.ListAdminUsers)
+			r.Get("/guilds", handler.ListAdminGuilds)
+			r.Get("/servers", handler.ListAdminServers)
+			r.Get("/audit", handler.ListAdminAudit)
 		})
 	})
 
