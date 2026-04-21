@@ -242,6 +242,60 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS guild_steam_discord_links_guild_steam_idx
 		ON guild_steam_discord_links (guild_id, steam_id);
+
+		CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+		CREATE TABLE IF NOT EXISTS admin_permissions (
+		    key TEXT PRIMARY KEY,
+		    description TEXT NOT NULL,
+		    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS admin_roles (
+		    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		    key TEXT UNIQUE NOT NULL,
+		    name TEXT NOT NULL,
+		    description TEXT,
+		    is_system BOOLEAN NOT NULL DEFAULT FALSE,
+		    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS admin_role_permissions (
+		    role_id UUID NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE,
+		    permission_key TEXT NOT NULL REFERENCES admin_permissions(key) ON DELETE CASCADE,
+		    PRIMARY KEY (role_id, permission_key)
+		);
+
+		CREATE TABLE IF NOT EXISTS admin_user_roles (
+		    user_id UUID NOT NULL,
+		    role_id UUID NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE,
+		    granted_by_user_id UUID,
+		    granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		    PRIMARY KEY (user_id, role_id)
+		);
+
+		CREATE TABLE IF NOT EXISTS audit_events (
+		    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		    action_type TEXT NOT NULL,
+		    actor_user_id UUID,
+		    actor_role_snapshot TEXT[] NOT NULL DEFAULT '{}',
+		    resource_type TEXT,
+		    resource_id TEXT,
+		    target_user_id UUID,
+		    params JSONB NOT NULL DEFAULT '{}',
+		    reason TEXT,
+		    result TEXT NOT NULL,
+		    error_message TEXT,
+		    ip_address INET,
+		    user_agent TEXT,
+		    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS audit_events_actor_idx ON audit_events (actor_user_id, created_at DESC);
+		CREATE INDEX IF NOT EXISTS audit_events_resource_idx ON audit_events (resource_type, resource_id, created_at DESC);
+		CREATE INDEX IF NOT EXISTS audit_events_action_idx ON audit_events (action_type, created_at DESC);
+		CREATE INDEX IF NOT EXISTS audit_events_target_user_idx ON audit_events (target_user_id, created_at DESC);
 	`)
 	return err
 }
