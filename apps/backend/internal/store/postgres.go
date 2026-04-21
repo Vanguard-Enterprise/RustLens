@@ -44,6 +44,8 @@ func NewPostgresStore(ctx context.Context, connectionString string) (*PostgresSt
 	return &PostgresStore{pool: pool}, nil
 }
 
+func (p *PostgresStore) Pool() *pgxpool.Pool { return p.pool }
+
 func (p *PostgresStore) Close() {
 	p.pool.Close()
 }
