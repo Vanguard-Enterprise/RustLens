@@ -82,6 +82,15 @@ export type AdminServerItem = {
 	guildCount: number;
 };
 
+export type AdminRoleItem = {
+	id: string;
+	key: string;
+	name: string;
+	description: string | null;
+	isSystem: boolean;
+	permissions: string[];
+};
+
 export type AuditEventItem = {
 	id: number;
 	actorUserId: string;
@@ -243,6 +252,15 @@ export async function getAdminGuilds() {
 export async function getAdminServers() {
 	const payload = await backendFetch<{ items: AdminServerItem[] }>(
 		"/api/app/admin/servers",
+		undefined,
+		{ requireSession: true },
+	);
+	return payload.items;
+}
+
+export async function getAdminRoles() {
+	const payload = await backendFetch<{ items: AdminRoleItem[] }>(
+		"/api/app/admin/roles",
 		undefined,
 		{ requireSession: true },
 	);
