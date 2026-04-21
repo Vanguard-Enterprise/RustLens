@@ -21,6 +21,8 @@ type Config struct {
 	AllowedJWTAudience  string
 	ProxyEnabled        bool
 	ProxyEndpoints      []string
+	AppAPIInternalSecret string
+	AppSessionSecret     string
 }
 
 func Load() Config {
@@ -43,6 +45,8 @@ func Load() Config {
 		AllowedJWTAudience:  getEnv("BOT_JWT_AUDIENCE", "rustlens-backend"),
 		ProxyEnabled:        proxyEnabled,
 		ProxyEndpoints:      getEnvCSV("PROXY_ENDPOINTS"),
+		AppAPIInternalSecret: getEnv("APP_API_INTERNAL_SECRET", "dev-app-internal-secret"),
+		AppSessionSecret:     getEnv("APP_SESSION_SECRET", "dev-app-session-secret"),
 	}
 }
 

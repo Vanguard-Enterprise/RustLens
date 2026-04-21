@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
@@ -98,9 +99,27 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Delete("/guilds/{guildID}/discord/{discordID}/steam/{steamID}", handler.DeleteGuildSteamDiscordLink)
 	})
 
-	r.Route("/api/app/admin", func(r chi.Router) {
-		r.Post("/actions/{type}", handler.actionDispatcher.ServeHTTP)
-		r.Get("/roles", handler.ListAdminRoles)
+	appAuthRepo := appauth.NewRepo(postgres.Pool())
+	appAuthHandler := appauth.NewHandler(appAuthRepo)
+	requireAppSecret := appauth.RequireAppSecret(cfg.AppAPIInternalSecret)
+	requireSession := appauth.RequireSession(cfg.AppSessionSecret)
+
+	r.Route("/api/app", func(r chi.Router) {
+		r.Use(requireAppSecret)
+
+		r.Post("/auth/login", appAuthHandler.Login)
+		r.Post("/auth/logout", appAuthHandler.Logout)
+
+		r.Group(func(r chi.Router) {
+			r.Use(requireSession)
+			r.Get("/me", appAuthHandler.Me)
+		})
+
+		r.Route("/admin", func(r chi.Router) {
+			r.Use(requireSession)
+			r.Post("/actions/{type}", handler.actionDispatcher.ServeHTTP)
+			r.Get("/roles", handler.ListAdminRoles)
+		})
 	})
 
 	return r

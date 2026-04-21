@@ -1,0 +1,60 @@
+package appauth
+
+import (
+	"context"
+	"crypto/subtle"
+	"net/http"
+)
+
+type contextKey string
+
+const (
+	appSecretHeader  = "X-RustLens-App-Secret"
+	sessionHeader    = "X-RustLens-Session"
+	sessionCtxKey    = contextKey("appauth.session")
+)
+
+// RequireAppSecret rejects any request whose X-RustLens-App-Secret does not
+// match the configured shared secret. It's a perimeter guard around the
+// /api/app/* surface — only the frontend server should call these routes.
+func RequireAppSecret(secret string) func(http.Handler) http.Handler {
+	want := []byte(secret)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got := []byte(r.Header.Get(appSecretHeader))
+			if len(got) == 0 || subtle.ConstantTimeCompare(got, want) != 1 {
+				writeJSONError(w, http.StatusUnauthorized, "app_secret_required")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireSession parses and verifies the session token on X-RustLens-Session
+// and attaches it to the request context. Rejects missing / invalid tokens
+// with 401.
+func RequireSession(sessionSecret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := r.Header.Get(sessionHeader)
+			if token == "" {
+				writeJSONError(w, http.StatusUnauthorized, "session_required")
+				return
+			}
+			session, err := ParseSession(token, sessionSecret)
+			if err != nil {
+				writeJSONError(w, http.StatusUnauthorized, "invalid_session")
+				return
+			}
+			ctx := context.WithValue(r.Context(), sessionCtxKey, session)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// SessionFromContext returns the session attached by RequireSession, if any.
+func SessionFromContext(ctx context.Context) *SessionUser {
+	s, _ := ctx.Value(sessionCtxKey).(*SessionUser)
+	return s
+}
