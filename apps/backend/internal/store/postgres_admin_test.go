@@ -17,6 +17,9 @@ func newTestPostgres(t *testing.T) *PostgresStore {
 		t.Fatalf("connect: %v", err)
 	}
 	t.Cleanup(store.Close)
+	if err := store.EnsureSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureSchema: %v", err)
+	}
 	return store
 }
 

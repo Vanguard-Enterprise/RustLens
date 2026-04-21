@@ -54,6 +54,13 @@ func (p *PostgresStore) Ping(ctx context.Context) error {
 
 func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 	_, err := p.pool.Exec(ctx, `
+		CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+		CREATE TABLE IF NOT EXISTS users (
+		    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
 		CREATE TABLE IF NOT EXISTS bot_worker_events (
 			id BIGSERIAL PRIMARY KEY,
 			worker_id TEXT NOT NULL,
@@ -243,8 +250,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS guild_steam_discord_links_guild_steam_idx
 		ON guild_steam_discord_links (guild_id, steam_id);
 
-		CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 		CREATE TABLE IF NOT EXISTS admin_permissions (
 		    key TEXT PRIMARY KEY,
 		    description TEXT NOT NULL,
@@ -268,9 +273,9 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		);
 
 		CREATE TABLE IF NOT EXISTS admin_user_roles (
-		    user_id UUID NOT NULL,
+		    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		    role_id UUID NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE,
-		    granted_by_user_id UUID,
+		    granted_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
 		    granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		    PRIMARY KEY (user_id, role_id)
 		);
@@ -278,11 +283,11 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS audit_events (
 		    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 		    action_type TEXT NOT NULL,
-		    actor_user_id UUID,
+		    actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
 		    actor_role_snapshot TEXT[] NOT NULL DEFAULT '{}',
 		    resource_type TEXT,
 		    resource_id TEXT,
-		    target_user_id UUID,
+		    target_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
 		    params JSONB NOT NULL DEFAULT '{}',
 		    reason TEXT,
 		    result TEXT NOT NULL,
