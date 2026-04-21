@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -12,7 +13,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
+	"rustlens/backend/internal/admin/actions"
+	"rustlens/backend/internal/admin/audit"
+	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
@@ -26,23 +31,77 @@ var steamIDPattern = regexp.MustCompile(`^\d{17}$`)
 const maxRequestBodyBytes = 1 << 20 // 1 MB
 
 type Handler struct {
-	cfg          config.Config
-	postgres     *store.PostgresStore
-	redis        *store.RedisStore
-	shardService *shards.Service
-	jwtValidator *auth.Validator
-	steamClient  *steamapi.Client
+	cfg              config.Config
+	postgres         *store.PostgresStore
+	redis            *store.RedisStore
+	shardService     *shards.Service
+	jwtValidator     *auth.Validator
+	steamClient      *steamapi.Client
+	rbacStore        *rbac.Store
+	rbacResolver     *rbac.Resolver
+	auditStore       *audit.Store
+	actionRegistry   *actions.Registry
+	actionDispatcher *actions.Dispatcher
 }
 
 func NewHandler(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service, steamClient *steamapi.Client) *Handler {
-	return &Handler{
-		cfg:          cfg,
-		postgres:     postgres,
-		redis:        redis,
-		shardService: shardService,
-		jwtValidator: auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
-		steamClient:  steamClient,
+	rbacStore := rbac.NewStore(postgres.Pool())
+	if err := rbacStore.SeedPermissionsAndRoles(context.Background()); err != nil {
+		panic(fmt.Errorf("rbac seed: %w", err))
 	}
+	resolver := rbac.NewResolver(rbacStore)
+	auditStore := audit.NewStore(postgres.Pool())
+	registry := actions.NewRegistry(rbac.IsValidPermission)
+	dispatcher := actions.NewDispatcher(registry, resolver, auditSinkAdapter{auditStore}, appSessionActor)
+
+	return &Handler{
+		cfg:              cfg,
+		postgres:         postgres,
+		redis:            redis,
+		shardService:     shardService,
+		jwtValidator:     auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
+		steamClient:      steamClient,
+		rbacStore:        rbacStore,
+		rbacResolver:     resolver,
+		auditStore:       auditStore,
+		actionRegistry:   registry,
+		actionDispatcher: dispatcher,
+	}
+}
+
+// auditSinkAdapter bridges *audit.Store to the actions.AuditSink interface.
+type auditSinkAdapter struct{ s *audit.Store }
+
+func (a auditSinkAdapter) RecordEntry(ctx context.Context, e actions.AuditEntryInput) error {
+	return a.s.Record(ctx, audit.Entry{
+		ActionType:        e.ActionType,
+		ActorUserID:       &e.ActorUserID,
+		ActorRoleSnapshot: e.ActorRoleSnapshot,
+		ResourceType:      e.ResourceType,
+		ResourceID:        e.ResourceID,
+		TargetUserID:      e.TargetUserID,
+		Params:            e.Params,
+		Reason:            e.Reason,
+		Result:            e.Result,
+		ErrorMessage:      e.ErrorMessage,
+		IPAddress:         e.IPAddress,
+		UserAgent:         e.UserAgent,
+	})
+}
+
+// appSessionActor is a placeholder until the app-tier session middleware lands.
+// It reads an X-Admin-User-ID header for local development. Production deployments
+// MUST replace this with real session authentication before exposing /api/app/admin/*.
+func appSessionActor(r *http.Request) (uuid.UUID, []string, error) {
+	raw := r.Header.Get("X-Admin-User-ID")
+	if raw == "" {
+		return uuid.Nil, nil, fmt.Errorf("no app session")
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, nil, err
+	}
+	return id, nil, nil
 }
 
 func (h *Handler) Healthz(w http.ResponseWriter, r *http.Request) {

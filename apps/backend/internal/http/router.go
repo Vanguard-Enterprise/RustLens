@@ -98,6 +98,10 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Delete("/guilds/{guildID}/discord/{discordID}/steam/{steamID}", handler.DeleteGuildSteamDiscordLink)
 	})
 
+	r.Route("/api/app/admin", func(r chi.Router) {
+		r.Post("/actions/{type}", handler.actionDispatcher.ServeHTTP)
+	})
+
 	return r
 }
 
