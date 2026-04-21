@@ -10,6 +10,7 @@ export type SessionUser = {
 	displayName: string;
 	avatarUrl: string;
 	roles: string[];
+	permissions?: string[];
 	discordId?: string;
 	email?: string;
 	expiresAt: number;
@@ -110,11 +111,31 @@ export async function requireSession() {
 	return session;
 }
 
+/**
+ * @deprecated use requireAdminSession + requirePermission; this will be removed once all admin pages migrate
+ */
 export async function requireInternalAdminSession() {
 	const session = await requireSession();
 	if (!session.roles.includes("internal_admin")) {
 		redirect("/dashboard");
 	}
+	return session;
+}
+
+export async function requireAdminSession() {
+	const session = await getSession();
+	if (!session) redirect("/login");
+	const isAdmin =
+		(session.roles ?? []).length > 0 ||
+		(session.permissions ?? []).length > 0;
+	if (!isAdmin) redirect("/dashboard");
+	return session;
+}
+
+export async function requirePermission(key: string) {
+	const session = await requireAdminSession();
+	const perms = session.permissions ?? [];
+	if (!perms.includes(key)) redirect("/admin");
 	return session;
 }
 
