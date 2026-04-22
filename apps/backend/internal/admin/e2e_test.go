@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -134,6 +136,10 @@ func TestAdminUsers_BulkSuspendE2E(t *testing.T) {
 	if _, err := s.Pool().Exec(ctx, `INSERT INTO app_users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, actorID); err != nil {
 		t.Fatalf("seed actor: %v", err)
 	}
+	// Drop prior audit rows for this actor so repeated runs don't inflate counts.
+	if _, err := s.Pool().Exec(ctx, `DELETE FROM audit_events WHERE actor_user_id::text = $1`, actorID); err != nil {
+		t.Fatalf("cleanup audit: %v", err)
+	}
 	adminID, err := rb.RoleIDByKey(ctx, rbac.RoleUserAdmin)
 	if err != nil {
 		t.Fatalf("role id: %v", err)
@@ -188,8 +194,11 @@ func TestAdminUsers_BulkSuspendE2E(t *testing.T) {
 		}
 		return resp.Result.UserID
 	}
-	u1 := invite("bulk-e2e-1@example.com")
-	u2 := invite("bulk-e2e-2@example.com")
+	// Use a nanosecond-suffixed email so repeated test runs against a shared
+	// Postgres don't collide on user_emails.email uniqueness.
+	suffix := time.Now().UnixNano()
+	u1 := invite(fmt.Sprintf("bulk-e2e-1-%d@example.com", suffix))
+	u2 := invite(fmt.Sprintf("bulk-e2e-2-%d@example.com", suffix))
 
 	// Bulk-suspend both.
 	bulkBody, _ := json.Marshal(map[string]any{
