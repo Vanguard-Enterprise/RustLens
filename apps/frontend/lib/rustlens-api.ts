@@ -178,6 +178,19 @@ export type ForceResetOutput = {
 	tokenUrl: string;
 };
 
+/** Output of users.email.resendVerification — contains the one-time verification URL. */
+export type ResendVerificationOutput = {
+	userId: string;
+	email: string;
+	tokenUrl: string;
+};
+
+/** Output of users.invite — newly created user id and one-time sign-in URL. */
+export type InviteUserOutput = {
+	userId: string;
+	tokenUrl: string;
+};
+
 const API_BASE_URL =
 	process.env.RUSTLENS_API_URL?.replace(/\/+$/, "") ?? "http://127.0.0.1:8080";
 

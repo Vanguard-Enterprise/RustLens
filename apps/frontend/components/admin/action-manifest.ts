@@ -9,6 +9,12 @@ export type AdminActionKey =
   | "users.force_unlink_steam"
   | "users.roles.grant"
   | "users.roles.revoke"
+  | "users.email.setPrimary"
+  | "users.email.add"
+  | "users.email.remove"
+  | "users.email.resendVerification"
+  | "users.invite"
+  | "users.connections.unlink"
   | "proxies.edit"
   | "proxies.rotate_credentials"
   | "links.approve"
@@ -144,5 +150,53 @@ export const ADMIN_ACTIONS: Record<AdminActionKey, AdminActionMeta> = {
     requiresReason: true,
     dangerous: true,
     resourceType: "admin",
+  },
+  "users.email.setPrimary": {
+    key: "users.email.setPrimary",
+    label: "Set primary email",
+    permission: "users.email.manage",
+    requiresReason: false,
+    dangerous: false,
+    resourceType: "user",
+  },
+  "users.email.add": {
+    key: "users.email.add",
+    label: "Add email",
+    permission: "users.email.manage",
+    requiresReason: false,
+    dangerous: false,
+    resourceType: "user",
+  },
+  "users.email.remove": {
+    key: "users.email.remove",
+    label: "Remove email",
+    permission: "users.email.manage",
+    requiresReason: true,
+    dangerous: true,
+    resourceType: "user",
+  },
+  "users.email.resendVerification": {
+    key: "users.email.resendVerification",
+    label: "Send verification",
+    permission: "users.email.manage",
+    requiresReason: false,
+    dangerous: false,
+    resourceType: "user",
+  },
+  "users.invite": {
+    key: "users.invite",
+    label: "Invite user",
+    permission: "users.create",
+    requiresReason: true,
+    dangerous: true,
+    resourceType: "user",
+  },
+  "users.connections.unlink": {
+    key: "users.connections.unlink",
+    label: "Unlink connection",
+    permission: "users.connections.manage",
+    requiresReason: true,
+    dangerous: true,
+    resourceType: "user",
   },
 };

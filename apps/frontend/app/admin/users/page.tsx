@@ -13,7 +13,8 @@ import {
 	getAdminUsers,
 	type AdminUsersQuery,
 } from "@/lib/rustlens-api";
-import { requirePermission } from "@/lib/session";
+import { getCsrfToken } from "@/lib/csrf";
+import { requirePermission, requireAdminSession } from "@/lib/session";
 import { UsersFilterBar } from "./_components/users-filter-bar";
 import { UsersPagination } from "./_components/users-pagination";
 
@@ -62,15 +63,22 @@ export default async function AdminUsersPage({
 	await requirePermission("users.read");
 	const sp = await searchParams;
 	const query = parseQuery(sp);
-	const [page, roles] = await Promise.all([
+	const [page, roles, session, csrfToken] = await Promise.all([
 		getAdminUsers(query),
 		getAdminRoles(),
+		requireAdminSession(),
+		getCsrfToken(),
 	]);
 	const roleOptions = roles.map((r) => ({ value: r.key, label: r.name }));
+	const canInvite = (session.permissions ?? []).includes("users.create");
 
 	return (
 		<div>
-			<UsersFilterBar roleOptions={roleOptions} />
+			<UsersFilterBar
+				roleOptions={roleOptions}
+				csrfToken={csrfToken}
+				canInvite={canInvite}
+			/>
 			<Table>
 				<TableHeader>
 					<TableRow>

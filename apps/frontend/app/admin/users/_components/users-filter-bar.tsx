@@ -9,6 +9,7 @@ import {
 	DropdownMenuContent,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { InviteUserDialog } from "./invite-user-dialog";
 
 type Option = { value: string; label: string };
 
@@ -29,7 +30,15 @@ const VERIFIED: Option[] = [
 	{ value: "no", label: "Unverified" },
 ];
 
-export function UsersFilterBar({ roleOptions }: { roleOptions: Option[] }) {
+export function UsersFilterBar({
+	roleOptions,
+	csrfToken,
+	canInvite,
+}: {
+	roleOptions: Option[];
+	csrfToken?: string;
+	canInvite?: boolean;
+}) {
 	const router = useRouter();
 	const pathname = usePathname();
 	const sp = useSearchParams();
@@ -114,6 +123,11 @@ export function UsersFilterBar({ roleOptions }: { roleOptions: Option[] }) {
 			<Button variant="ghost" onClick={() => router.replace(pathname)}>
 				Clear
 			</Button>
+			{canInvite && csrfToken ? (
+				<div className="ml-auto">
+					<InviteUserDialog csrfToken={csrfToken} />
+				</div>
+			) : null}
 		</div>
 	);
 }
