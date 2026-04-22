@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -129,105 +128,10 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := (page - 1) * pageSize
 
-	status := q.Get("status")
-	if status == "" {
-		status = "active"
-	}
-
-	args := []any{}
-	where := []string{}
-
-	switch status {
-	case "active":
-		where = append(where, "u.suspended_at IS NULL AND u.deleted_at IS NULL")
-	case "suspended":
-		where = append(where, "u.suspended_at IS NOT NULL AND u.deleted_at IS NULL")
-	case "deleted":
-		where = append(where, "u.deleted_at IS NOT NULL")
-	case "any":
-		// no filter
-	default:
-		writeError(w, http.StatusBadRequest, "invalid status")
+	whereSQL, args, orderBy, err := buildUsersQuery(q)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
-	}
-
-	if s := strings.TrimSpace(q.Get("q")); s != "" {
-		args = append(args, "%"+s+"%")
-		p := fmt.Sprintf("$%d", len(args))
-		where = append(where, fmt.Sprintf(`(
-			u.display_name ILIKE %[1]s
-			OR u.id ILIKE %[1]s
-			OR EXISTS (SELECT 1 FROM user_emails e WHERE e.user_id = u.id AND e.email ILIKE %[1]s)
-			OR EXISTS (SELECT 1 FROM user_connected_accounts d WHERE d.user_id = u.id AND d.provider='discord' AND (d.username ILIKE %[1]s OR d.provider_account_id ILIKE %[1]s))
-		)`, p))
-	}
-
-	if roles, ok := q["role"]; ok && len(roles) > 0 {
-		args = append(args, roles)
-		p := fmt.Sprintf("$%d", len(args))
-		where = append(where, fmt.Sprintf(`EXISTS (
-			SELECT 1 FROM admin_user_roles aur JOIN admin_roles r ON r.id = aur.role_id
-			WHERE aur.user_id = u.id AND r.key = ANY(%s)
-		)`, p))
-	}
-
-	switch q.Get("discord") {
-	case "", "any":
-	case "linked":
-		where = append(where, `EXISTS (SELECT 1 FROM user_connected_accounts d WHERE d.user_id = u.id AND d.provider='discord')`)
-	case "unlinked":
-		where = append(where, `NOT EXISTS (SELECT 1 FROM user_connected_accounts d WHERE d.user_id = u.id AND d.provider='discord')`)
-	default:
-		writeError(w, http.StatusBadRequest, "invalid discord")
-		return
-	}
-
-	switch q.Get("steam") {
-	case "", "any":
-	case "linked":
-		where = append(where, `EXISTS (SELECT 1 FROM user_connected_accounts s WHERE s.user_id = u.id AND s.provider='steam')`)
-	case "unlinked":
-		where = append(where, `NOT EXISTS (SELECT 1 FROM user_connected_accounts s WHERE s.user_id = u.id AND s.provider='steam')`)
-	default:
-		writeError(w, http.StatusBadRequest, "invalid steam")
-		return
-	}
-
-	switch q.Get("emailVerified") {
-	case "", "any":
-	case "yes":
-		where = append(where, `EXISTS (SELECT 1 FROM user_emails e WHERE e.user_id = u.id AND e.is_primary=true AND e.is_verified=true)`)
-	case "no":
-		where = append(where, `EXISTS (SELECT 1 FROM user_emails e WHERE e.user_id = u.id AND e.is_primary=true AND e.is_verified=false)`)
-	default:
-		writeError(w, http.StatusBadRequest, "invalid emailVerified")
-		return
-	}
-
-	orderBy := ""
-	sort := q.Get("sort")
-	desc := strings.HasPrefix(sort, "-")
-	sortField := strings.TrimPrefix(sort, "-")
-	switch sortField {
-	case "", "createdAt":
-		orderBy = "u.created_at"
-	case "lastLoginAt":
-		orderBy = "u.last_login_at"
-	case "displayName":
-		orderBy = "u.display_name"
-	default:
-		writeError(w, http.StatusBadRequest, "invalid sort")
-		return
-	}
-	if desc || sortField == "" {
-		orderBy += " DESC"
-	} else {
-		orderBy += " ASC"
-	}
-
-	whereSQL := ""
-	if len(where) > 0 {
-		whereSQL = "WHERE " + strings.Join(where, " AND ")
 	}
 
 	var total int

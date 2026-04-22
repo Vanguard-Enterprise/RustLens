@@ -120,6 +120,7 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 			r.Post("/actions/{type}", handler.actionDispatcher.ServeHTTP)
 			r.Get("/roles", handler.ListAdminRoles)
 			r.Get("/users", handler.ListAdminUsers)
+			r.Get("/users/export.csv", handler.ExportAdminUsersCSV)
 			r.Get("/users/{id}", handler.GetAdminUser)
 			r.Get("/users/{id}/audit", handler.ListAdminUserAudit)
 			r.Get("/guilds", handler.ListAdminGuilds)

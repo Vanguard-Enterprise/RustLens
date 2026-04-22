@@ -66,3 +66,11 @@ func SessionFromContext(ctx context.Context) *SessionUser {
 	s, _ := ctx.Value(sessionCtxKey).(*SessionUser)
 	return s
 }
+
+// InjectSessionForTest is a test-only helper that attaches a synthetic
+// SessionUser to a context. Production code paths always populate the session
+// via RequireSession middleware; this helper lets internal handler tests
+// exercise session-dependent code without a full session-issuing flow.
+func InjectSessionForTest(ctx context.Context, s *SessionUser) context.Context {
+	return context.WithValue(ctx, sessionCtxKey, s)
+}
