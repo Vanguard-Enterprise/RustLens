@@ -1,6 +1,8 @@
 import { Badge } from "@/components/ui/badge";
+import { getCsrfToken } from "@/lib/csrf";
 import { getAdminUser } from "@/lib/rustlens-api";
-import { requirePermission } from "@/lib/session";
+import { requireAdminSession, requirePermission } from "@/lib/session";
+import { UnlinkConnectionButton } from "../_components/unlink-connection-button";
 
 export default async function UserConnectionsPage({
 	params,
@@ -9,7 +11,14 @@ export default async function UserConnectionsPage({
 }) {
 	await requirePermission("users.read");
 	const { userId } = await params;
-	const user = await getAdminUser(userId);
+	const [user, session, csrfToken] = await Promise.all([
+		getAdminUser(userId),
+		requireAdminSession(),
+		getCsrfToken(),
+	]);
+	const canManage = (session.permissions ?? []).includes(
+		"users.connections.manage",
+	);
 
 	const discord = user.connections.filter((c) => c.provider === "discord");
 	const steam = user.connections.filter((c) => c.provider === "steam");
@@ -25,13 +34,27 @@ export default async function UserConnectionsPage({
 						{discord.map((c) => (
 							<li
 								key={`${c.provider}:${c.providerAccountId}`}
-								className="rounded border p-3 text-sm"
+								className="flex items-start justify-between rounded border p-3 text-sm"
 							>
-								<div className="font-medium">{c.username || c.providerAccountId}</div>
-								<div className="text-muted-foreground">ID: {c.providerAccountId}</div>
-								<div className="text-muted-foreground">
-									Connected {c.connectedAt?.slice(0, 10)}
+								<div>
+									<div className="font-medium">
+										{c.username || c.providerAccountId}
+									</div>
+									<div className="text-muted-foreground">
+										ID: {c.providerAccountId}
+									</div>
+									<div className="text-muted-foreground">
+										Connected {c.connectedAt?.slice(0, 10)}
+									</div>
 								</div>
+								{canManage ? (
+									<UnlinkConnectionButton
+										userId={user.user.id}
+										provider="discord"
+										providerAccountId={c.providerAccountId}
+										csrfToken={csrfToken}
+									/>
+								) : null}
 							</li>
 						))}
 					</ul>
@@ -47,13 +70,27 @@ export default async function UserConnectionsPage({
 						{steam.map((c) => (
 							<li
 								key={`${c.provider}:${c.providerAccountId}`}
-								className="rounded border p-3 text-sm"
+								className="flex items-start justify-between rounded border p-3 text-sm"
 							>
-								<div className="font-medium">{c.username || c.providerAccountId}</div>
-								<div className="text-muted-foreground">Steam ID: {c.providerAccountId}</div>
-								<div className="text-muted-foreground">
-									Connected {c.connectedAt?.slice(0, 10)}
+								<div>
+									<div className="font-medium">
+										{c.username || c.providerAccountId}
+									</div>
+									<div className="text-muted-foreground">
+										Steam ID: {c.providerAccountId}
+									</div>
+									<div className="text-muted-foreground">
+										Connected {c.connectedAt?.slice(0, 10)}
+									</div>
 								</div>
+								{canManage ? (
+									<UnlinkConnectionButton
+										userId={user.user.id}
+										provider="steam"
+										providerAccountId={c.providerAccountId}
+										csrfToken={csrfToken}
+									/>
+								) : null}
 							</li>
 						))}
 					</ul>
@@ -63,7 +100,9 @@ export default async function UserConnectionsPage({
 			<section>
 				<h2 className="mb-2 text-lg font-semibold">Guilds</h2>
 				{user.guilds.length === 0 ? (
-					<p className="text-sm text-muted-foreground">Not in any tracked guild.</p>
+					<p className="text-sm text-muted-foreground">
+						Not in any tracked guild.
+					</p>
 				) : (
 					<ul className="flex flex-wrap gap-2">
 						{user.guilds.map((g) => (
