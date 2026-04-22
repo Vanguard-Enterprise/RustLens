@@ -11,11 +11,11 @@ import (
 
 type Entry struct {
 	ActionType        string
-	ActorUserID       *uuid.UUID
+	ActorUserID       *string
 	ActorRoleSnapshot []string
 	ResourceType      string
 	ResourceID        string
-	TargetUserID      *uuid.UUID
+	TargetUserID      *string
 	Params            json.RawMessage
 	Reason            *string
 	Result            string // "success" or "error"
@@ -27,11 +27,11 @@ type Entry struct {
 type Row struct {
 	ID                uuid.UUID
 	ActionType        string
-	ActorUserID       *uuid.UUID
+	ActorUserID       *string
 	ActorRoleSnapshot []string
 	ResourceType      string
 	ResourceID        string
-	TargetUserID      *uuid.UUID
+	TargetUserID      *string
 	Params            json.RawMessage
 	Reason            *string
 	Result            string
@@ -42,8 +42,8 @@ type Row struct {
 }
 
 type QueryFilters struct {
-	ActorUserID  *uuid.UUID
-	TargetUserID *uuid.UUID
+	ActorUserID  *string
+	TargetUserID *string
 	ActionType   *string
 	ResourceType *string
 	ResourceID   *string

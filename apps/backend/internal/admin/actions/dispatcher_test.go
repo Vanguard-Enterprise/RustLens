@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"rustlens/backend/internal/admin/actions"
 )
@@ -30,16 +29,16 @@ func (a *suspendAction) SensitiveParamKeys() []string { return nil }
 func (a *suspendAction) ResourceType() string         { return "user" }
 func (a *suspendAction) Validate(raw json.RawMessage) (actions.ValidatedParams, error) {
 	var p struct {
-		UserID uuid.UUID `json:"userId"`
+		UserID string `json:"userId"`
 	}
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return actions.ValidatedParams{}, err
 	}
-	if p.UserID == uuid.Nil {
+	if p.UserID == "" {
 		return actions.ValidatedParams{}, errors.New("userId required")
 	}
 	tuid := p.UserID
-	return actions.ValidatedParams{ResourceID: p.UserID.String(), TargetUserID: &tuid}, nil
+	return actions.ValidatedParams{ResourceID: p.UserID, TargetUserID: &tuid}, nil
 }
 func (a *suspendAction) Execute(ctx context.Context, in actions.ActionInput) (actions.ActionResult, error) {
 	a.executeCalled = true
@@ -62,10 +61,10 @@ func (f *fakeAudit) RecordEntry(ctx context.Context, e actions.AuditEntryInput) 
 
 type fakePermResolver struct{ allow map[string]bool }
 
-func (f *fakePermResolver) HasPermission(ctx context.Context, userID uuid.UUID, key string) (bool, error) {
+func (f *fakePermResolver) HasPermission(ctx context.Context, userID string, key string) (bool, error) {
 	return f.allow[key], nil
 }
-func (f *fakePermResolver) PermissionsForUser(ctx context.Context, _ uuid.UUID) ([]string, error) {
+func (f *fakePermResolver) PermissionsForUser(ctx context.Context, _ string) ([]string, error) {
 	out := []string{}
 	for k, v := range f.allow {
 		if v {
@@ -90,8 +89,8 @@ func newDispatcher(t *testing.T, a actions.AdminAction, resolver *fakePermResolv
 	return httptest.NewServer(r), au
 }
 
-func fixedActor(r *http.Request) (uuid.UUID, []string, error) {
-	return uuid.MustParse("00000000-0000-0000-0000-000000000001"), []string{"moderator"}, nil
+func fixedActor(r *http.Request) (string, []string, error) {
+	return "usr_test_actor", []string{"moderator"}, nil
 }
 
 // -- tests --

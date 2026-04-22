@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"rustlens/backend/internal/admin/actions"
 	"rustlens/backend/internal/admin/audit"
 	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
@@ -89,19 +89,15 @@ func (a auditSinkAdapter) RecordEntry(ctx context.Context, e actions.AuditEntryI
 	})
 }
 
-// appSessionActor is a placeholder until the app-tier session middleware lands.
-// It reads an X-Admin-User-ID header for local development. Production deployments
-// MUST replace this with real session authentication before exposing /api/app/admin/*.
-func appSessionActor(r *http.Request) (uuid.UUID, []string, error) {
-	raw := r.Header.Get("X-Admin-User-ID")
-	if raw == "" {
-		return uuid.Nil, nil, fmt.Errorf("no app session")
+// appSessionActor resolves the acting user for admin action dispatch.
+// It reads the validated session attached by the appauth.RequireSession
+// middleware. Returns an error if the middleware has not populated the
+// context, which the dispatcher translates to 401.
+func appSessionActor(r *http.Request) (string, []string, error) {
+	if session := appauth.SessionFromContext(r.Context()); session != nil && session.UserID != "" {
+		return session.UserID, session.Roles, nil
 	}
-	id, err := uuid.Parse(raw)
-	if err != nil {
-		return uuid.Nil, nil, err
-	}
-	return id, nil, nil
+	return "", nil, fmt.Errorf("no app session")
 }
 
 func (h *Handler) Healthz(w http.ResponseWriter, r *http.Request) {

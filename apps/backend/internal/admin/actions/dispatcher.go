@@ -5,25 +5,25 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 // PermissionChecker checks whether a user holds a given permission key.
 type PermissionChecker interface {
-	HasPermission(ctx context.Context, userID uuid.UUID, key string) (bool, error)
+	HasPermission(ctx context.Context, userID string, key string) (bool, error)
 }
 
 // AuditEntryInput is the data written to the audit sink on each action attempt.
 type AuditEntryInput struct {
 	ActionType        string
-	ActorUserID       uuid.UUID
+	ActorUserID       string
 	ActorRoleSnapshot []string
 	ResourceType      string
 	ResourceID        string
-	TargetUserID      *uuid.UUID
+	TargetUserID      *string
 	Params            json.RawMessage
 	Reason            *string
 	Result            string
@@ -38,8 +38,8 @@ type AuditSink interface {
 }
 
 // ActorResolver extracts the acting user's identity from the request.
-// Returns the user ID, their current role snapshot, and any error.
-type ActorResolver func(r *http.Request) (userID uuid.UUID, roles []string, err error)
+// Returns the user ID (TEXT app_users.id), their current role snapshot, and any error.
+type ActorResolver func(r *http.Request) (userID string, roles []string, err error)
 
 // Dispatcher is an http.Handler that routes POST /…/:type to the matching
 // AdminAction after enforcing RBAC, reason, dangerous-confirmation, validation,
@@ -219,5 +219,11 @@ func clientIP(r *http.Request) string {
 	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
 		return ip
 	}
-	return r.RemoteAddr
+	// http.Request.RemoteAddr is "host:port"; the `inet` column only accepts
+	// bare IPs, so strip the port if present.
+	addr := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
 }

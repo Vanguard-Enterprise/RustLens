@@ -273,11 +273,11 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS audit_events (
 		    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 		    action_type TEXT NOT NULL,
-		    actor_user_id UUID,
+		    actor_user_id TEXT,
 		    actor_role_snapshot TEXT[] NOT NULL DEFAULT '{}',
 		    resource_type TEXT,
 		    resource_id TEXT,
-		    target_user_id UUID,
+		    target_user_id TEXT,
 		    params JSONB NOT NULL DEFAULT '{}',
 		    reason TEXT,
 		    result TEXT NOT NULL,
@@ -352,6 +352,29 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		END $$;
 	`); err != nil {
 		return fmt.Errorf("drop legacy users(uuid): %w", err)
+	}
+
+	// Migrate audit_events actor/target columns from UUID to TEXT so they can
+	// reference app_users(id) which is TEXT. The unmerged admin foundation has
+	// no production audit data yet, so an in-place TYPE change is safe.
+	if _, err := p.pool.Exec(ctx, `
+		DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'audit_events' AND column_name = 'actor_user_id' AND data_type = 'uuid'
+			) THEN
+				ALTER TABLE audit_events ALTER COLUMN actor_user_id TYPE TEXT USING actor_user_id::text;
+			END IF;
+			IF EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'audit_events' AND column_name = 'target_user_id' AND data_type = 'uuid'
+			) THEN
+				ALTER TABLE audit_events ALTER COLUMN target_user_id TYPE TEXT USING target_user_id::text;
+			END IF;
+		END $$;
+	`); err != nil {
+		return fmt.Errorf("migrate audit_events actor/target to text: %w", err)
 	}
 
 	// admin_user_roles: rekeyed to app_users(id) TEXT. A one-time DROP removes

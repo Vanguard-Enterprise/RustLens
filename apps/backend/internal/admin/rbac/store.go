@@ -98,17 +98,23 @@ func (s *Store) RoleIDByKey(ctx context.Context, key string) (uuid.UUID, error) 
 
 var ErrRoleNotFound = errors.New("role not found")
 
-func (s *Store) AssignRole(ctx context.Context, userID, roleID uuid.UUID, grantedBy *uuid.UUID) error {
+// AssignRole attaches a role to the given app_users(id). grantedBy is the
+// optional acting user's TEXT id; pass an empty string to omit.
+func (s *Store) AssignRole(ctx context.Context, userID string, roleID uuid.UUID, grantedBy string) error {
+	var gb any
+	if grantedBy != "" {
+		gb = grantedBy
+	}
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO admin_user_roles (user_id, role_id, granted_by_user_id)
+		`INSERT INTO admin_user_roles (user_id, role_id, granted_by)
 		 VALUES ($1, $2, $3)
 		 ON CONFLICT (user_id, role_id) DO NOTHING`,
-		userID, roleID, grantedBy,
+		userID, roleID, gb,
 	)
 	return err
 }
 
-func (s *Store) RevokeRole(ctx context.Context, userID, roleID uuid.UUID) error {
+func (s *Store) RevokeRole(ctx context.Context, userID string, roleID uuid.UUID) error {
 	_, err := s.pool.Exec(ctx,
 		`DELETE FROM admin_user_roles WHERE user_id = $1 AND role_id = $2`,
 		userID, roleID,
@@ -116,7 +122,7 @@ func (s *Store) RevokeRole(ctx context.Context, userID, roleID uuid.UUID) error 
 	return err
 }
 
-func (s *Store) RolesForUser(ctx context.Context, userID uuid.UUID) ([]Role, error) {
+func (s *Store) RolesForUser(ctx context.Context, userID string) ([]Role, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id, r.key, r.name, COALESCE(r.description, ''), r.is_system
 		FROM admin_user_roles ur
@@ -159,7 +165,7 @@ func (s *Store) PermissionsForRole(ctx context.Context, roleID uuid.UUID) ([]str
 	return out, rows.Err()
 }
 
-func (s *Store) PermissionsForUser(ctx context.Context, userID uuid.UUID) ([]string, error) {
+func (s *Store) PermissionsForUser(ctx context.Context, userID string) ([]string, error) {
 	roles, err := s.RolesForUser(ctx, userID)
 	if err != nil {
 		return nil, err

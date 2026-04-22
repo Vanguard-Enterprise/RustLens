@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"rustlens/backend/internal/admin/actions"
 	"rustlens/backend/internal/admin/audit"
@@ -43,6 +42,10 @@ func TestAdminFoundation_E2E(t *testing.T) {
 	}
 	defer s.Close()
 
+	if err := s.EnsureSchema(ctx); err != nil {
+		t.Fatalf("ensure schema: %v", err)
+	}
+
 	rb := rbac.NewStore(s.Pool())
 	if err := rb.SeedPermissionsAndRoles(ctx); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -59,18 +62,17 @@ func TestAdminFoundation_E2E(t *testing.T) {
 		t.Fatalf("register: %v", err)
 	}
 
-	disp := actions.NewDispatcher(reg, resolver, auditBridge{au}, func(r *http.Request) (uuid.UUID, []string, error) {
-		id := uuid.MustParse(r.Header.Get("X-Admin-User-ID"))
-		return id, []string{"moderator"}, nil
+	disp := actions.NewDispatcher(reg, resolver, auditBridge{au}, func(r *http.Request) (string, []string, error) {
+		return r.Header.Get("X-Admin-User-ID"), []string{"moderator"}, nil
 	})
 
 	r := chi.NewRouter()
 	r.Post("/api/app/admin/actions/{type}", disp.ServeHTTP)
 
-	userID := uuid.New()
+	userID := "usr_e2e_actor"
 
-	// Seed users row — admin_user_roles.user_id FK references users(id).
-	if _, err := s.Pool().Exec(ctx, `INSERT INTO users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, userID); err != nil {
+	// Seed app_users row — admin_user_roles.user_id FK references app_users(id).
+	if _, err := s.Pool().Exec(ctx, `INSERT INTO app_users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, userID); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 
@@ -78,12 +80,12 @@ func TestAdminFoundation_E2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("role id: %v", err)
 	}
-	if err := rb.AssignRole(ctx, userID, modID, nil); err != nil {
+	if err := rb.AssignRole(ctx, userID, modID, ""); err != nil {
 		t.Fatalf("assign: %v", err)
 	}
 
 	req := httptest.NewRequest("POST", "/api/app/admin/actions/test.ping", bytes.NewReader([]byte(`{}`)))
-	req.Header.Set("X-Admin-User-ID", userID.String())
+	req.Header.Set("X-Admin-User-ID", userID)
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 	if rr.Code != 200 {

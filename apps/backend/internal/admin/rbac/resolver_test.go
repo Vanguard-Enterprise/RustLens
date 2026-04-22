@@ -3,23 +3,21 @@ package rbac
 import (
 	"context"
 	"testing"
-
-	"github.com/google/uuid"
 )
 
 type fakeLoader struct {
-	perms map[uuid.UUID][]string
+	perms map[string][]string
 	calls int
 }
 
-func (f *fakeLoader) PermissionsForUser(ctx context.Context, userID uuid.UUID) ([]string, error) {
+func (f *fakeLoader) PermissionsForUser(ctx context.Context, userID string) ([]string, error) {
 	f.calls++
 	return f.perms[userID], nil
 }
 
 func TestResolver_HasPermission(t *testing.T) {
-	user := uuid.New()
-	f := &fakeLoader{perms: map[uuid.UUID][]string{user: {"users.suspend"}}}
+	user := "usr_001"
+	f := &fakeLoader{perms: map[string][]string{user: {"users.suspend"}}}
 	r := NewResolver(f)
 	ctx := r.WithRequest(context.Background())
 
@@ -34,8 +32,8 @@ func TestResolver_HasPermission(t *testing.T) {
 }
 
 func TestResolver_CachesPerRequest(t *testing.T) {
-	user := uuid.New()
-	f := &fakeLoader{perms: map[uuid.UUID][]string{user: {"users.suspend"}}}
+	user := "usr_001"
+	f := &fakeLoader{perms: map[string][]string{user: {"users.suspend"}}}
 	r := NewResolver(f)
 	ctx := r.WithRequest(context.Background())
 

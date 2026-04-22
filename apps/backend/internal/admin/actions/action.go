@@ -3,18 +3,16 @@ package actions
 import (
 	"context"
 	"encoding/json"
-
-	"github.com/google/uuid"
 )
 
 type ValidatedParams struct {
 	ResourceID           string
-	TargetUserID         *uuid.UUID
+	TargetUserID         *string
 	ConfirmationExpected string // required match when action is Dangerous
 }
 
 type ActionInput struct {
-	ActorUserID       uuid.UUID
+	ActorUserID       string
 	ActorRoleSnapshot []string
 	Params            json.RawMessage
 	Validated         ValidatedParams
@@ -24,7 +22,7 @@ type ActionInput struct {
 
 type ActionResult struct {
 	ResourceID   string
-	TargetUserID *uuid.UUID
+	TargetUserID *string
 	Payload      any
 }
 

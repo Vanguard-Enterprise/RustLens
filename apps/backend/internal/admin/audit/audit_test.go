@@ -6,8 +6,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/google/uuid"
-
 	"rustlens/backend/internal/admin/audit"
 	"rustlens/backend/internal/store"
 )
@@ -23,6 +21,9 @@ func newStore(t *testing.T) *store.PostgresStore {
 		t.Fatalf("connect: %v", err)
 	}
 	t.Cleanup(s.Close)
+	if err := s.EnsureSchema(context.Background()); err != nil {
+		t.Fatalf("ensure schema: %v", err)
+	}
 	return s
 }
 
@@ -31,8 +32,8 @@ func TestAudit_WriteAndQuery(t *testing.T) {
 	a := audit.NewStore(s.Pool())
 	ctx := context.Background()
 
-	actor := uuid.New()
-	target := uuid.New()
+	actor := "usr_audit_actor"
+	target := "usr_audit_target"
 	params, _ := json.Marshal(map[string]string{"reason_tag": "abuse"})
 
 	err := a.Record(ctx, audit.Entry{
@@ -40,7 +41,7 @@ func TestAudit_WriteAndQuery(t *testing.T) {
 		ActorUserID:       &actor,
 		ActorRoleSnapshot: []string{"moderator"},
 		ResourceType:      "user",
-		ResourceID:        target.String(),
+		ResourceID:        target,
 		TargetUserID:      &target,
 		Params:            params,
 		Reason:            strPtr("spamming"),
