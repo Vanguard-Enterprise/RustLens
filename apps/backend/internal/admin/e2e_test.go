@@ -105,6 +105,150 @@ func TestAdminFoundation_E2E(t *testing.T) {
 	}
 }
 
+// TestAdminUsers_BulkSuspendE2E exercises the admin foundation end-to-end for
+// plan 5: invite two users, bulk-suspend them, and assert the audit trail.
+// CSV export is covered at the handler layer in httpapi (requires rbacResolver
+// wiring that this thin e2e harness intentionally omits).
+func TestAdminUsers_BulkSuspendE2E(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_URL")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_URL not set")
+	}
+	ctx := context.Background()
+	s, err := store.NewPostgresStore(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer s.Close()
+	if err := s.EnsureSchema(ctx); err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+	rb := rbac.NewStore(s.Pool())
+	if err := rb.SeedPermissionsAndRoles(ctx); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	resolver := rbac.NewResolver(rb)
+	au := audit.NewStore(s.Pool())
+
+	actorID := "usr_bulk_e2e_actor"
+	if _, err := s.Pool().Exec(ctx, `INSERT INTO app_users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, actorID); err != nil {
+		t.Fatalf("seed actor: %v", err)
+	}
+	adminID, err := rb.RoleIDByKey(ctx, rbac.RoleUserAdmin)
+	if err != nil {
+		t.Fatalf("role id: %v", err)
+	}
+	if err := rb.AssignRole(ctx, actorID, adminID, ""); err != nil {
+		t.Fatalf("assign user_admin: %v", err)
+	}
+
+	reg := actions.NewRegistry(rbac.IsValidPermission)
+	if err := reg.Register(actions.NewUsersInviteAction(s.Pool(), "https://example.com")); err != nil {
+		t.Fatalf("register invite: %v", err)
+	}
+	if err := reg.Register(actions.NewUsersSuspendAction(s.Pool())); err != nil {
+		t.Fatalf("register suspend: %v", err)
+	}
+	if err := reg.Register(actions.NewUsersUnsuspendAction(s.Pool())); err != nil {
+		t.Fatalf("register unsuspend: %v", err)
+	}
+	disp := actions.NewDispatcher(reg, resolver, auditBridge{au}, func(r *http.Request) (string, []string, error) {
+		return actorID, []string{"user_admin"}, nil
+	})
+	if err := reg.Register(actions.NewUsersBulkAction(disp)); err != nil {
+		t.Fatalf("register bulk: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Post("/api/app/admin/actions/{type}", disp.ServeHTTP)
+
+	invite := func(email string) string {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{
+			"params":            map[string]any{"email": email, "displayName": email},
+			"reason":            "invite",
+			"typedConfirmation": email,
+		})
+		req := httptest.NewRequest("POST", "/api/app/admin/actions/users.invite", bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+		if rr.Code != 200 {
+			t.Fatalf("invite %s: status=%d body=%s", email, rr.Code, rr.Body.String())
+		}
+		var resp struct {
+			Result struct {
+				UserID string `json:"userId"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode invite: %v", err)
+		}
+		if resp.Result.UserID == "" {
+			t.Fatalf("invite result missing userId: %s", rr.Body.String())
+		}
+		return resp.Result.UserID
+	}
+	u1 := invite("bulk-e2e-1@example.com")
+	u2 := invite("bulk-e2e-2@example.com")
+
+	// Bulk-suspend both.
+	bulkBody, _ := json.Marshal(map[string]any{
+		"params": map[string]any{
+			"action":  "suspend",
+			"userIds": []string{u1, u2},
+		},
+		"reason": "bulk e2e",
+	})
+	req := httptest.NewRequest("POST", "/api/app/admin/actions/users.bulk", bytes.NewReader(bulkBody))
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("bulk: status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var bulkResp struct {
+		Result struct {
+			Succeeded int `json:"succeeded"`
+			Failed    int `json:"failed"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &bulkResp); err != nil {
+		t.Fatalf("decode bulk: %v", err)
+	}
+	if bulkResp.Result.Succeeded != 2 || bulkResp.Result.Failed != 0 {
+		t.Errorf("expected 2/0, got %d/%d", bulkResp.Result.Succeeded, bulkResp.Result.Failed)
+	}
+
+	// Both users should be suspended now.
+	for _, id := range []string{u1, u2} {
+		var suspended *string
+		if err := s.Pool().QueryRow(ctx, `SELECT suspended_at::text FROM app_users WHERE id = $1`, id).Scan(&suspended); err != nil {
+			t.Fatalf("query %s: %v", id, err)
+		}
+		if suspended == nil {
+			t.Errorf("expected %s suspended", id)
+		}
+	}
+
+	// Audit trail: at least 2 users.suspend + 1 users.bulk + 2 users.invite for this actor.
+	rows, err := au.Query(ctx, audit.QueryFilters{ActorUserID: &actorID, Limit: 50})
+	if err != nil {
+		t.Fatalf("audit query: %v", err)
+	}
+	counts := map[string]int{}
+	for _, row := range rows {
+		counts[row.ActionType]++
+	}
+	if counts["users.suspend"] < 2 {
+		t.Errorf("expected >=2 users.suspend audit rows, got %d", counts["users.suspend"])
+	}
+	if counts["users.bulk"] < 1 {
+		t.Errorf("expected >=1 users.bulk audit row, got %d", counts["users.bulk"])
+	}
+	if counts["users.invite"] < 2 {
+		t.Errorf("expected >=2 users.invite audit rows, got %d", counts["users.invite"])
+	}
+}
+
 type auditBridge struct{ s *audit.Store }
 
 func (a auditBridge) RecordEntry(ctx context.Context, e actions.AuditEntryInput) error {
