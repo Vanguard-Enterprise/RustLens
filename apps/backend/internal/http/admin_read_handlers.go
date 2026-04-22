@@ -3,11 +3,14 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -56,12 +59,43 @@ type adminServerItem struct {
 }
 
 type auditEventItem struct {
-	ID           int64          `json:"id"`
+	ID           string         `json:"id"`
 	ActorUserID  string         `json:"actorUserId"`
 	TargetUserID string         `json:"targetUserId"`
 	EventType    string         `json:"eventType"`
 	Payload      map[string]any `json:"payload"`
 	CreatedAt    time.Time      `json:"createdAt"`
+}
+
+type adminUserEmail struct {
+	Email      string `json:"email"`
+	IsPrimary  bool   `json:"isPrimary"`
+	IsVerified bool   `json:"isVerified"`
+}
+
+type adminUserConnection struct {
+	Provider          string `json:"provider"`
+	ProviderAccountID string `json:"providerAccountId"`
+	Username          string `json:"username"`
+	ConnectedAt       string `json:"connectedAt"`
+}
+
+type adminUserGuild struct {
+	GuildID string `json:"guildId"`
+	Nick    string `json:"nick,omitempty"`
+}
+
+type adminUserDetail struct {
+	User          adminAppUser          `json:"user"`
+	PrimaryEmail  string                `json:"primaryEmail"`
+	Emails        []adminUserEmail      `json:"emails"`
+	Connections   []adminUserConnection `json:"connections"`
+	Guilds        []adminUserGuild      `json:"guilds"`
+	AdminRoles    []string              `json:"adminRoles"`
+	SuspendedAt   *string               `json:"suspendedAt,omitempty"`
+	SuspendReason string                `json:"suspendReason,omitempty"`
+	DeletedAt     *string               `json:"deletedAt,omitempty"`
+	RecentAudit   []auditEventItem      `json:"recentAudit"`
 }
 
 // ListAdminUsers: GET /api/app/admin/users
@@ -382,7 +416,7 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := pool.Query(ctx, `
-		SELECT id,
+		SELECT id::text,
 		       COALESCE(actor_user_id, ''),
 		       COALESCE(target_user_id, ''),
 		       event_type,
@@ -429,6 +463,226 @@ func parseLimit(s string, out *int) {
 		}
 	}
 	*out = n
+}
+
+// GetAdminUser: GET /api/app/admin/users/{id}
+func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing id")
+		return
+	}
+	pool := h.postgres.Pool()
+
+	var d adminUserDetail
+	var suspendedAt, deletedAt *time.Time
+	var rolesJSON string
+	err := pool.QueryRow(ctx, `
+		SELECT id, display_name, avatar_url, roles::text,
+		       created_at, updated_at, last_login_at,
+		       suspended_at, COALESCE(suspend_reason,''), deleted_at
+		FROM app_users WHERE id = $1
+	`, id).Scan(
+		&d.User.ID, &d.User.DisplayName, &d.User.AvatarURL, &rolesJSON,
+		&d.User.CreatedAt, &d.User.UpdatedAt, &d.User.LastLoginAt,
+		&suspendedAt, &d.SuspendReason, &deletedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if rolesJSON != "" {
+		_ = json.Unmarshal([]byte(rolesJSON), &d.User.Roles)
+	}
+	if d.User.Roles == nil {
+		d.User.Roles = []string{}
+	}
+	if suspendedAt != nil {
+		s := suspendedAt.Format(time.RFC3339)
+		d.SuspendedAt = &s
+	}
+	if deletedAt != nil {
+		s := deletedAt.Format(time.RFC3339)
+		d.DeletedAt = &s
+	}
+
+	// Emails
+	d.Emails = []adminUserEmail{}
+	erows, err := pool.Query(ctx, `
+		SELECT email, is_primary, is_verified FROM user_emails WHERE user_id = $1 ORDER BY is_primary DESC, email ASC
+	`, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for erows.Next() {
+		var e adminUserEmail
+		if err := erows.Scan(&e.Email, &e.IsPrimary, &e.IsVerified); err != nil {
+			erows.Close()
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if e.IsPrimary {
+			d.PrimaryEmail = e.Email
+		}
+		d.Emails = append(d.Emails, e)
+	}
+	erows.Close()
+
+	// Connections
+	d.Connections = []adminUserConnection{}
+	crows, err := pool.Query(ctx, `
+		SELECT provider, provider_account_id, COALESCE(username,''), created_at
+		FROM user_connected_accounts WHERE user_id = $1 ORDER BY provider, created_at DESC
+	`, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for crows.Next() {
+		var c adminUserConnection
+		var ca time.Time
+		if err := crows.Scan(&c.Provider, &c.ProviderAccountID, &c.Username, &ca); err != nil {
+			crows.Close()
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.ConnectedAt = ca.Format(time.RFC3339)
+		d.Connections = append(d.Connections, c)
+	}
+	crows.Close()
+
+	// Admin roles
+	d.AdminRoles = []string{}
+	rrows, err := pool.Query(ctx, `
+		SELECT r.key FROM admin_roles r
+		JOIN admin_user_roles aur ON aur.role_id = r.id
+		WHERE aur.user_id = $1 ORDER BY r.key
+	`, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for rrows.Next() {
+		var k string
+		if err := rrows.Scan(&k); err == nil {
+			d.AdminRoles = append(d.AdminRoles, k)
+		}
+	}
+	rrows.Close()
+
+	// Guilds via discord connection
+	d.Guilds = []adminUserGuild{}
+	var discordID string
+	for _, c := range d.Connections {
+		if c.Provider == "discord" {
+			discordID = c.ProviderAccountID
+			break
+		}
+	}
+	if discordID != "" {
+		grows, err := pool.Query(ctx, `SELECT guild_id, COALESCE(nickname,'') FROM user_guilds WHERE discord_id = $1 AND left_at IS NULL ORDER BY guild_id`, discordID)
+		if err == nil {
+			for grows.Next() {
+				var g adminUserGuild
+				if err := grows.Scan(&g.GuildID, &g.Nick); err == nil {
+					d.Guilds = append(d.Guilds, g)
+				}
+			}
+			grows.Close()
+		}
+	}
+
+	// Recent audit (5 rows)
+	d.RecentAudit = fetchUserAudit(ctx, pool, id, 5, "")
+	writeJSON(w, http.StatusOK, d)
+}
+
+// ListAdminUserAudit: GET /api/app/admin/users/{id}/audit?limit=&before=
+func (h *Handler) ListAdminUserAudit(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing id")
+		return
+	}
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		parseLimit(v, &limit)
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 50
+	}
+	before := r.URL.Query().Get("before")
+	items := fetchUserAudit(ctx, h.postgres.Pool(), id, limit, before)
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// fetchUserAudit merges audit_events ∪ app_audit_events for a given target user,
+// ordered by created_at desc, with an optional RFC3339 before cursor.
+func fetchUserAudit(ctx context.Context, pool *pgxpool.Pool, userID string, limit int, before string) []auditEventItem {
+	args := []any{userID}
+	cursorClause := ""
+	if before != "" {
+		if t, err := time.Parse(time.RFC3339, before); err == nil {
+			args = append(args, t)
+			cursorClause = fmt.Sprintf(" AND created_at < $%d", len(args))
+		}
+	}
+	args = append(args, limit)
+	limitIdx := len(args)
+
+	hasLegacy, _ := tableExists(ctx, pool, "app_audit_events")
+
+	newQ := fmt.Sprintf(`
+		SELECT id::text, COALESCE(actor_user_id::text,''), COALESCE(target_user_id::text,''),
+		       action_type, COALESCE(params,'{}'::jsonb), created_at
+		FROM audit_events
+		WHERE target_user_id::text = $1%s
+	`, cursorClause)
+
+	var q string
+	if hasLegacy {
+		q = fmt.Sprintf(`%s
+			UNION ALL
+			SELECT id::text, COALESCE(actor_user_id,''), COALESCE(target_user_id,''),
+			       event_type, COALESCE(payload,'{}'::jsonb), created_at
+			FROM app_audit_events
+			WHERE target_user_id = $1%s
+			ORDER BY created_at DESC
+			LIMIT $%d
+		`, newQ, cursorClause, limitIdx)
+	} else {
+		q = fmt.Sprintf(`%s
+			ORDER BY created_at DESC
+			LIMIT $%d
+		`, newQ, limitIdx)
+	}
+
+	rows, err := pool.Query(ctx, q, args...)
+	if err != nil {
+		return []auditEventItem{}
+	}
+	defer rows.Close()
+	out := []auditEventItem{}
+	for rows.Next() {
+		var it auditEventItem
+		var payload []byte
+		if err := rows.Scan(&it.ID, &it.ActorUserID, &it.TargetUserID, &it.EventType, &payload, &it.CreatedAt); err != nil {
+			continue
+		}
+		it.Payload = map[string]any{}
+		if len(payload) > 0 {
+			_ = json.Unmarshal(payload, &it.Payload)
+		}
+		out = append(out, it)
+	}
+	return out
 }
 
 func tableExists(ctx context.Context, pool *pgxpool.Pool, table string) (bool, error) {

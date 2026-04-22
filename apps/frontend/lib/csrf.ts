@@ -1,20 +1,28 @@
 import "server-only";
 
-import { randomBytes, timingSafeEqual } from "node:crypto";
-import { cookies } from "next/headers";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { getAppOrigin } from "@/lib/app-origin";
 
 export const CSRF_FIELD_NAME = "csrfToken";
 
-const CSRF_COOKIE = "rustlens_csrf";
 const CSRF_TTL_SECONDS = 60 * 60 * 8;
 
-function isSecureCookie() {
-	return process.env.NODE_ENV === "production";
+function createToken() {
+	const issuedAt = Math.floor(Date.now() / 1000).toString();
+	const nonce = randomBytes(32).toString("base64url");
+	const payload = `${issuedAt}.${nonce}`;
+	const signature = createHmac("sha256", getCsrfSecret())
+		.update(payload)
+		.digest("base64url");
+	return `${payload}.${signature}`;
 }
 
-function createToken() {
-	return randomBytes(32).toString("base64url");
+function getCsrfSecret() {
+	const secret = process.env.APP_SESSION_SECRET;
+	if (!secret) {
+		throw new Error("APP_SESSION_SECRET is required");
+	}
+	return secret;
 }
 
 function sameOrigin(value: string | null, expectedOrigin: string) {
@@ -30,21 +38,7 @@ function sameOrigin(value: string | null, expectedOrigin: string) {
 }
 
 export async function getCsrfToken() {
-	const cookieStore = await cookies();
-	const existingToken = cookieStore.get(CSRF_COOKIE)?.value;
-	if (existingToken) {
-		return existingToken;
-	}
-
-	const token = createToken();
-	cookieStore.set(CSRF_COOKIE, token, {
-		httpOnly: false,
-		sameSite: "lax",
-		secure: isSecureCookie(),
-		path: "/",
-		maxAge: CSRF_TTL_SECONDS,
-	});
-	return token;
+	return createToken();
 }
 
 export async function validateCsrfRequest(
@@ -63,16 +57,30 @@ export async function validateCsrfRequest(
 		return false;
 	}
 
-	const cookieStore = await cookies();
-	const cookieToken = cookieStore.get(CSRF_COOKIE)?.value;
-	if (!cookieToken) {
+	const [issuedAtRaw, nonce, signature] = token.split(".");
+	if (!issuedAtRaw || !nonce || !signature) {
 		return false;
 	}
 
-	const submittedBuffer = Buffer.from(token);
-	const cookieBuffer = Buffer.from(cookieToken);
+	const issuedAt = Number.parseInt(issuedAtRaw, 10);
+	if (!Number.isFinite(issuedAt)) {
+		return false;
+	}
+
+	const now = Math.floor(Date.now() / 1000);
+	if (issuedAt > now || now - issuedAt > CSRF_TTL_SECONDS) {
+		return false;
+	}
+
+	const payload = `${issuedAtRaw}.${nonce}`;
+	const expectedSignature = createHmac("sha256", getCsrfSecret())
+		.update(payload)
+		.digest("base64url");
+
+	const submittedBuffer = Buffer.from(signature);
+	const expectedBuffer = Buffer.from(expectedSignature);
 	return (
-		submittedBuffer.length === cookieBuffer.length &&
-		timingSafeEqual(submittedBuffer, cookieBuffer)
+		submittedBuffer.length === expectedBuffer.length &&
+		timingSafeEqual(submittedBuffer, expectedBuffer)
 	);
 }
