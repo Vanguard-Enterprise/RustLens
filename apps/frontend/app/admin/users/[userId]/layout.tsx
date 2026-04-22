@@ -27,6 +27,7 @@ export default async function UserDetailLayout({
 				<TabLink href={`${base}/emails`}>Emails</TabLink>
 				<TabLink href={`${base}/connections`}>Connections</TabLink>
 				<TabLink href={`${base}/audit`}>Audit</TabLink>
+				<TabLink href={`${base}/security`}>Security</TabLink>
 			</nav>
 			{children}
 		</div>

@@ -163,6 +163,21 @@ export type TokenResponse = {
 	debugToken?: string;
 };
 
+/**
+ * Envelope returned by /api/app/admin/actions/{type} on success. `result` is
+ * whatever the action's Execute() put in ActionResult.Payload.
+ */
+export type AdminActionResponse<T = unknown> = {
+	ok: true;
+	result: T;
+};
+
+/** Output of users.password.forceReset — contains the one-time reset URL. */
+export type ForceResetOutput = {
+	userId: string;
+	tokenUrl: string;
+};
+
 const API_BASE_URL =
 	process.env.RUSTLENS_API_URL?.replace(/\/+$/, "") ?? "http://127.0.0.1:8080";
 
