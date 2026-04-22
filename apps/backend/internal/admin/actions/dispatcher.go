@@ -1,12 +1,15 @@
 package actions
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -81,16 +84,98 @@ type ActorResolver func(r *http.Request) (userID string, roles []string, err err
 // AdminAction after enforcing RBAC, reason, dangerous-confirmation, validation,
 // and audit logging.
 type Dispatcher struct {
-	registry *Registry
-	perms    PermissionChecker
-	audit    AuditSink
-	actor    ActorResolver
+	registry    *Registry
+	perms       PermissionChecker
+	audit       AuditSink
+	actor       ActorResolver
+	rateLimiter *rateLimiter
+	idemCache   *idempotencyCache
 }
 
 // NewDispatcher constructs a Dispatcher. reg, perms, audit and actor must all
 // be non-nil.
 func NewDispatcher(reg *Registry, perms PermissionChecker, audit AuditSink, actor ActorResolver) *Dispatcher {
-	return &Dispatcher{registry: reg, perms: perms, audit: audit, actor: actor}
+	return &Dispatcher{
+		registry:    reg,
+		perms:       perms,
+		audit:       audit,
+		actor:       actor,
+		rateLimiter: newRateLimiter(),
+		idemCache:   newIdempotencyCache(),
+	}
+}
+
+// Dispatch executes an action inline (without going through ServeHTTP). It is
+// used by wrapper actions such as users.bulk that need to invoke sub-actions
+// while still honouring the dispatcher's permission check and audit pipeline.
+//
+// Rate-limiting and idempotency are intentionally NOT applied here; sub-action
+// invocations share the top-level caller's rate budget.
+func (d *Dispatcher) Dispatch(ctx context.Context, actorID string, roles []string, actionType string, params json.RawMessage, reason string) (any, error) {
+	action, ok := d.registry.Get(actionType)
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, actionType)
+	}
+	// Permission check (mirrors ServeHTTP).
+	if sa, ok := action.(interface{ SuperadminOnly() bool }); ok && sa.SuperadminOnly() {
+		perms, err := d.permsFor(ctx, actorID)
+		if err != nil {
+			return nil, err
+		}
+		if !perms["admins.grant"] && !containsRole(roles, "superadmin") {
+			return nil, fmt.Errorf("%w: superadmin required", ErrPermissionDenied)
+		}
+	} else {
+		allowed, err := d.perms.HasPermission(ctx, actorID, action.Permission())
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return nil, fmt.Errorf("%w: %s", ErrPermissionDenied, action.Permission())
+		}
+	}
+	if params == nil {
+		params = json.RawMessage("{}")
+	}
+	validated, err := action.Validate(params)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrValidation, err.Error())
+	}
+	input := ActionInput{
+		ActorUserID:       actorID,
+		ActorRoleSnapshot: roles,
+		Params:            params,
+		Validated:         validated,
+		Reason:            reason,
+	}
+	result, execErr := action.Execute(ctx, input)
+	redacted, _ := RedactParams(params, action.SensitiveParamKeys())
+	entry := AuditEntryInput{
+		ActionType:        action.Type(),
+		ActorUserID:       actorID,
+		ActorRoleSnapshot: roles,
+		ResourceType:      action.ResourceType(),
+		ResourceID:        validated.ResourceID,
+		TargetUserID:      validated.TargetUserID,
+		Params:            redacted,
+		Reason:            optionalString(reason),
+	}
+	if execErr != nil {
+		msg := execErr.Error()
+		entry.Result = "error"
+		entry.ErrorMessage = &msg
+		_ = d.audit.RecordEntry(context.Background(), entry)
+		return nil, execErr
+	}
+	entry.Result = "success"
+	if result.TargetUserID != nil {
+		entry.TargetUserID = result.TargetUserID
+	}
+	if result.ResourceID != "" {
+		entry.ResourceID = result.ResourceID
+	}
+	_ = d.audit.RecordEntry(ctx, entry)
+	return result.Payload, nil
 }
 
 // requestBody is the expected JSON envelope posted by the client.
@@ -127,6 +212,42 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 2a. Rate limit: per-actor, per-action token bucket.
+	capacity, refill := bucketParams(action)
+	if ok, retryAfter := d.rateLimiter.Allow(actorID, actionType, capacity, refill); !ok {
+		secs := int(retryAfter.Seconds())
+		if secs < 1 {
+			secs = 1
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
+		writeJSON(w, http.StatusTooManyRequests, errResponse{Error: "rate_limited"})
+		return
+	}
+
+	// 2b. Idempotency cache: if the client supplied Idempotency-Key header and
+	//     a prior response is still fresh, replay it verbatim without executing
+	//     the action again.
+	idemKey := r.Header.Get("Idempotency-Key")
+	var idemCacheKey string
+	if idemKey != "" {
+		idemCacheKey = d.idemCache.key(actorID, actionType, idemKey)
+		if cached, ok := d.idemCache.get(idemCacheKey); ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Idempotent-Replay", "true")
+			w.WriteHeader(cached.status)
+			_, _ = w.Write(cached.body)
+			return
+		}
+	}
+
+	// Buffer the response so we can cache the body for idempotency replay.
+	var rw http.ResponseWriter = w
+	var buf *recordingResponseWriter
+	if idemCacheKey != "" {
+		buf = &recordingResponseWriter{ResponseWriter: w}
+		rw = buf
+	}
+
 	// 3. Permission check. Superadmin-only actions bypass the permission-key
 	//    check and instead require the actor to hold the 'superadmin' role
 	//    (resolved through the real permissions resolver which treats
@@ -134,21 +255,21 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if sa, ok := action.(interface{ SuperadminOnly() bool }); ok && sa.SuperadminOnly() {
 		perms, err := d.permsFor(ctx, actorID)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, errResponse{Error: "permission_check_failed"})
+			writeJSON(rw, http.StatusInternalServerError, errResponse{Error: "permission_check_failed"})
 			return
 		}
 		if !perms["admins.grant"] && !containsRole(roles, "superadmin") {
-			writeJSON(w, http.StatusForbidden, errResponse{Error: "permission_denied", Required: "superadmin"})
+			writeJSON(rw, http.StatusForbidden, errResponse{Error: "permission_denied", Required: "superadmin"})
 			return
 		}
 	} else {
 		allowed, err := d.perms.HasPermission(ctx, actorID, action.Permission())
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, errResponse{Error: "permission_check_failed"})
+			writeJSON(rw, http.StatusInternalServerError, errResponse{Error: "permission_check_failed"})
 			return
 		}
 		if !allowed {
-			writeJSON(w, http.StatusForbidden, errResponse{Error: "permission_denied", Required: action.Permission()})
+			writeJSON(rw, http.StatusForbidden, errResponse{Error: "permission_denied", Required: action.Permission()})
 			return
 		}
 	}
@@ -159,7 +280,7 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if decErr := json.NewDecoder(r.Body).Decode(&body); decErr != nil {
 		// Ignore EOF (empty body); any other decode error is a bad request.
 		if !errors.Is(decErr, io.EOF) {
-			writeJSON(w, http.StatusBadRequest, errResponse{Error: "invalid_json", Message: decErr.Error()})
+			writeJSON(rw, http.StatusBadRequest, errResponse{Error: "invalid_json", Message: decErr.Error()})
 			return
 		}
 	}
@@ -169,27 +290,27 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 5. Reason enforcement.
 	if action.RequiresReason() && body.Reason == "" {
-		writeJSON(w, http.StatusBadRequest, errResponse{Error: "reason_required"})
+		writeJSON(rw, http.StatusBadRequest, errResponse{Error: "reason_required"})
 		return
 	}
 
 	// 6. Validate params.
 	validated, err := action.Validate(body.Params)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errResponse{Error: "validation_failed", Message: err.Error()})
+		writeJSON(rw, http.StatusBadRequest, errResponse{Error: "validation_failed", Message: err.Error()})
 		return
 	}
 
 	// 7. Dangerous confirmation check.
 	if action.Dangerous() && body.TypedConfirmation != validated.ConfirmationExpected {
-		writeJSON(w, http.StatusBadRequest, errResponse{Error: "confirmation_mismatch", Expected: validated.ConfirmationExpected})
+		writeJSON(rw, http.StatusBadRequest, errResponse{Error: "confirmation_mismatch", Expected: validated.ConfirmationExpected})
 		return
 	}
 
 	// 8. Redact sensitive params before audit storage.
 	redacted, err := RedactParams(body.Params, action.SensitiveParamKeys())
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errResponse{Error: "redaction_failed", Message: err.Error()})
+		writeJSON(rw, http.StatusBadRequest, errResponse{Error: "redaction_failed", Message: err.Error()})
 		return
 	}
 
@@ -230,7 +351,12 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		entry.ErrorMessage = &msg
 		_ = d.audit.RecordEntry(context.Background(), entry)
 		status, code := mapExecError(execErr)
-		writeJSON(w, status, errResponse{Error: code, Message: msg})
+		writeJSON(rw, status, errResponse{Error: code, Message: msg})
+		// On execution error we still cache the response so retries with the
+		// same idempotency key get the same failure instead of re-executing.
+		if buf != nil {
+			d.idemCache.put(idemCacheKey, buf.status, buf.body.Bytes())
+		}
 		return
 	}
 
@@ -245,7 +371,36 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = d.audit.RecordEntry(ctx, entry)
 
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "result": result.Payload})
+	writeJSON(rw, http.StatusOK, map[string]any{"ok": true, "result": result.Payload})
+	if buf != nil {
+		d.idemCache.put(idemCacheKey, buf.status, buf.body.Bytes())
+	}
+}
+
+// recordingResponseWriter proxies Write/WriteHeader while buffering the bytes
+// so an idempotency cache can replay the response later.
+type recordingResponseWriter struct {
+	http.ResponseWriter
+	status      int
+	body        bytes.Buffer
+	wroteHeader bool
+}
+
+func (r *recordingResponseWriter) WriteHeader(status int) {
+	if r.wroteHeader {
+		return
+	}
+	r.wroteHeader = true
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *recordingResponseWriter) Write(p []byte) (int, error) {
+	if !r.wroteHeader {
+		r.WriteHeader(http.StatusOK)
+	}
+	r.body.Write(p)
+	return r.ResponseWriter.Write(p)
 }
 
 // mapExecError maps action sentinel errors to HTTP status codes and error codes.
