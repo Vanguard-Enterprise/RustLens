@@ -115,12 +115,45 @@ export type AdminRoleItem = {
 };
 
 export type AuditEventItem = {
-	id: number;
+	id: string;
 	actorUserId: string;
 	targetUserId: string;
 	eventType: string;
 	payload: Record<string, unknown>;
 	createdAt: string;
+};
+
+export type AdminUserEmail = {
+	email: string;
+	isPrimary: boolean;
+	isVerified: boolean;
+};
+
+export type AdminUserConnection = {
+	provider: string;
+	providerAccountId: string;
+	username: string;
+	connectedAt: string;
+};
+
+export type AdminUserGuild = {
+	guildId: string;
+	nick?: string;
+};
+
+export type AdminUserAuditItem = AuditEventItem;
+
+export type AdminUserDetail = {
+	user: AppUser;
+	primaryEmail: string;
+	emails: AdminUserEmail[];
+	connections: AdminUserConnection[];
+	guilds: AdminUserGuild[];
+	adminRoles: string[];
+	suspendedAt?: string;
+	suspendReason?: string;
+	deletedAt?: string;
+	recentAudit: AdminUserAuditItem[];
 };
 
 export type TokenResponse = {
@@ -298,6 +331,29 @@ export async function getAdminRoles() {
 		{ requireSession: true },
 	);
 	return payload.items;
+}
+
+export async function getAdminUser(userId: string): Promise<AdminUserDetail> {
+	return backendFetch<AdminUserDetail>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getAdminUserAudit(
+	userId: string,
+	opts: { limit?: number; before?: string } = {},
+): Promise<{ items: AdminUserAuditItem[] }> {
+	const sp = new URLSearchParams();
+	if (opts.limit) sp.set("limit", String(opts.limit));
+	if (opts.before) sp.set("before", opts.before);
+	const qs = sp.toString();
+	return backendFetch<{ items: AdminUserAuditItem[] }>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}/audit${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
 }
 
 export async function getAuditEvents(limit = 30) {
