@@ -52,5 +52,8 @@ func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *r
 	if err := reg.Register(actions.NewUsersInviteAction(pool, appBaseURL)); err != nil {
 		return err
 	}
+	if err := reg.Register(actions.NewUsersConnectionsUnlinkAction(pool)); err != nil {
+		return err
+	}
 	return nil
 }
