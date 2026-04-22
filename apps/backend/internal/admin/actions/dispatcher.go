@@ -117,7 +117,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, actorID string, roles []strin
 		return nil, fmt.Errorf("%w: %s", ErrNotFound, actionType)
 	}
 	// Permission check (mirrors ServeHTTP).
-	if sa, ok := action.(interface{ SuperadminOnly() bool }); ok && sa.SuperadminOnly() {
+	if skip, ok := action.(interface{ PermissionSkipped() bool }); ok && skip.PermissionSkipped() {
+		// no-op; wrapper actions handle permissions internally
+	} else if sa, ok := action.(interface{ SuperadminOnly() bool }); ok && sa.SuperadminOnly() {
 		perms, err := d.permsFor(ctx, actorID)
 		if err != nil {
 			return nil, err
@@ -251,8 +253,12 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 3. Permission check. Superadmin-only actions bypass the permission-key
 	//    check and instead require the actor to hold the 'superadmin' role
 	//    (resolved through the real permissions resolver which treats
-	//    superadmin as implicit-all).
-	if sa, ok := action.(interface{ SuperadminOnly() bool }); ok && sa.SuperadminOnly() {
+	//    superadmin as implicit-all). Wrapper actions that mark themselves as
+	//    PermissionSkipped skip the pre-check entirely (they perform per-row
+	//    checks in Execute via the dispatcher's internal Dispatch helper).
+	if skip, ok := action.(interface{ PermissionSkipped() bool }); ok && skip.PermissionSkipped() {
+		// no-op
+	} else if sa, ok := action.(interface{ SuperadminOnly() bool }); ok && sa.SuperadminOnly() {
 		perms, err := d.permsFor(ctx, actorID)
 		if err != nil {
 			writeJSON(rw, http.StatusInternalServerError, errResponse{Error: "permission_check_failed"})

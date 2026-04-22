@@ -17,9 +17,13 @@ func (r *Registry) Register(a AdminAction) error {
 	if _, exists := r.actions[a.Type()]; exists {
 		return fmt.Errorf("action %q already registered", a.Type())
 	}
-	// Superadmin-only actions may leave Permission() empty — they bypass the
-	// key check at dispatch time.
-	if sa, ok := a.(interface{ SuperadminOnly() bool }); !(ok && sa.SuperadminOnly() && a.Permission() == "") {
+	// Superadmin-only and bulk-wrapper actions may leave Permission() empty —
+	// they bypass the key check at dispatch time (superadmin-only falls through
+	// to role check; bulk wrappers defer permission checks to sub-actions).
+	sa, saOK := a.(interface{ SuperadminOnly() bool })
+	skipped, skipOK := a.(interface{ PermissionSkipped() bool })
+	if !((saOK && sa.SuperadminOnly() && a.Permission() == "") ||
+		(skipOK && skipped.PermissionSkipped() && a.Permission() == "")) {
 		if !r.isValidPerm(a.Permission()) {
 			return fmt.Errorf("action %q requires unknown permission %q", a.Type(), a.Permission())
 		}
