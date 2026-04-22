@@ -178,7 +178,8 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		entry.Result = "error"
 		entry.ErrorMessage = &msg
 		_ = d.audit.RecordEntry(context.Background(), entry)
-		writeJSON(w, http.StatusInternalServerError, errResponse{Error: "execution_failed", Message: msg})
+		status, code := mapExecError(execErr)
+		writeJSON(w, status, errResponse{Error: code, Message: msg})
 		return
 	}
 
@@ -194,6 +195,22 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = d.audit.RecordEntry(ctx, entry)
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "result": result.Payload})
+}
+
+// mapExecError maps action sentinel errors to HTTP status codes and error codes.
+func mapExecError(err error) (int, string) {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return http.StatusNotFound, "not_found"
+	case errors.Is(err, ErrConflict):
+		return http.StatusConflict, "conflict"
+	case errors.Is(err, ErrPermissionDenied):
+		return http.StatusForbidden, "permission_denied"
+	case errors.Is(err, ErrValidation):
+		return http.StatusBadRequest, "validation_failed"
+	default:
+		return http.StatusInternalServerError, "execution_failed"
+	}
 }
 
 // writeJSON encodes v as JSON and writes it with the given status code.
