@@ -65,12 +65,19 @@ type UserGuildMembership struct {
 
 // CurrentUser is the payload returned by /api/app/auth/login and /api/app/me.
 type CurrentUser struct {
-	User            AppUser               `json:"user"`
-	DiscordAccount  *ConnectedAccount     `json:"discordAccount"`
-	PrimaryEmail    *UserEmail            `json:"primaryEmail"`
-	Emails          []UserEmail           `json:"emails"`
-	SteamAccounts   []LinkedSteamAccount  `json:"steamAccounts"`
-	Guilds          []UserGuildMembership `json:"guilds"`
+	User           AppUser               `json:"user"`
+	DiscordAccount *ConnectedAccount     `json:"discordAccount"`
+	PrimaryEmail   *UserEmail            `json:"primaryEmail"`
+	Emails         []UserEmail           `json:"emails"`
+	SteamAccounts  []LinkedSteamAccount  `json:"steamAccounts"`
+	Guilds         []UserGuildMembership `json:"guilds"`
+	// AdminRoles are the role keys granted via admin_user_roles (e.g.
+	// "superadmin", "moderator"). Separate from User.Roles which is the
+	// legacy app_users.roles JSONB column.
+	AdminRoles []string `json:"adminRoles"`
+	// Permissions is the flattened set of permission keys resolved from
+	// the user's admin roles. Superadmin implies all permissions.
+	Permissions []string `json:"permissions"`
 }
 
 var (
@@ -126,6 +133,14 @@ func (r *Repo) LoadCurrentUser(ctx context.Context, userID string) (*CurrentUser
 	if err != nil {
 		return nil, err
 	}
+	adminRoles, err := r.loadAdminRoleKeys(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	permissions, err := r.loadPermissions(ctx, userID, adminRoles)
+	if err != nil {
+		return nil, err
+	}
 	// Steam + guilds populated as empty slices; join tables exist but the
 	// shapes diverge from what this minimal implementation needs and the
 	// frontend is tolerant of empty arrays.
@@ -136,7 +151,82 @@ func (r *Repo) LoadCurrentUser(ctx context.Context, userID string) (*CurrentUser
 		Emails:         emails,
 		SteamAccounts:  []LinkedSteamAccount{},
 		Guilds:         []UserGuildMembership{},
+		AdminRoles:     adminRoles,
+		Permissions:    permissions,
 	}, nil
+}
+
+// loadAdminRoleKeys returns the admin role keys granted to a user via the
+// admin_user_roles join table. Returns an empty slice if the user has no
+// admin roles.
+func (r *Repo) loadAdminRoleKeys(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT ar.key
+		FROM admin_user_roles ur
+		JOIN admin_roles ar ON ar.id = ur.role_id
+		WHERE ur.user_id = $1
+		ORDER BY ar.key
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+// loadPermissions returns the flattened permission-key set for a user based
+// on their admin role grants. If the user holds the "superadmin" role, all
+// registered permissions are returned. Returns an empty slice otherwise.
+func (r *Repo) loadPermissions(ctx context.Context, userID string, adminRoles []string) ([]string, error) {
+	for _, key := range adminRoles {
+		if key == "superadmin" {
+			rows, err := r.pool.Query(ctx, `SELECT key FROM admin_permissions ORDER BY key`)
+			if err != nil {
+				return nil, err
+			}
+			defer rows.Close()
+			out := []string{}
+			for rows.Next() {
+				var k string
+				if err := rows.Scan(&k); err != nil {
+					return nil, err
+				}
+				out = append(out, k)
+			}
+			return out, rows.Err()
+		}
+	}
+	if len(adminRoles) == 0 {
+		return []string{}, nil
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT DISTINCT rp.permission_key
+		FROM admin_user_roles ur
+		JOIN admin_role_permissions rp ON rp.role_id = ur.role_id
+		WHERE ur.user_id = $1
+		ORDER BY rp.permission_key
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
 }
 
 func (r *Repo) loadAppUser(ctx context.Context, userID string) (*AppUser, error) {

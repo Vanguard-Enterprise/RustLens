@@ -1,6 +1,13 @@
 import "server-only";
 
-import { getSessionToken } from "@/lib/session";
+import { redirect } from "next/navigation";
+import { clearSession, getSessionToken } from "@/lib/session";
+
+const SESSION_INVALID_ERRORS = new Set([
+	"session_required",
+	"session_revoked",
+	"invalid_session",
+]);
 
 export type AppUser = {
 	id: string;
@@ -56,6 +63,17 @@ export type CurrentUser = {
 	emails: UserEmail[];
 	steamAccounts: LinkedSteamAccount[];
 	guilds: UserGuildMembership[];
+	/**
+	 * Admin role keys granted via admin_user_roles (e.g. "superadmin",
+	 * "moderator"). Distinct from `user.roles` which is the legacy
+	 * app_users.roles JSONB column.
+	 */
+	adminRoles: string[];
+	/**
+	 * Flattened permission keys resolved from the user's admin roles.
+	 * Superadmin implies every registered permission.
+	 */
+	permissions: string[];
 };
 
 export type AdminUserItem = {
@@ -226,13 +244,24 @@ async function backendFetch<T>(
 
 	if (!response.ok) {
 		let message = `RustLens API request failed: ${response.status}`;
+		let errorCode: string | undefined;
 		try {
 			const payload = (await response.json()) as { error?: string };
 			if (payload.error) {
+				errorCode = payload.error;
 				message = payload.error;
 			}
 		} catch {
 			// Ignore JSON parsing failures and fall back to the status message.
+		}
+		if (
+			response.status === 401 &&
+			options.requireSession &&
+			errorCode &&
+			SESSION_INVALID_ERRORS.has(errorCode)
+		) {
+			await clearSession();
+			redirect("/login?error=session");
 		}
 		throw new Error(message);
 	}

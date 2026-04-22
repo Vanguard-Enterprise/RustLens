@@ -10,10 +10,10 @@ import {
 	getAdminServers,
 	getAdminUsers,
 } from "@/lib/rustlens-api";
-import { requireInternalAdminSession } from "@/lib/session";
 
+// Auth is enforced by `app/admin/layout.tsx` via `requireAdminSession`; no
+// duplicate check here.
 export default async function AdminPage() {
-	await requireInternalAdminSession();
 	const [users, guilds, servers] = await Promise.all([
 		getAdminUsers(),
 		getAdminGuilds(),

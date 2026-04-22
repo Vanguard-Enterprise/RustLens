@@ -7,10 +7,10 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { getAdminServers } from "@/lib/rustlens-api";
-import { requireInternalAdminSession } from "@/lib/session";
+import { requireAdminSession } from "@/lib/session";
 
 export default async function AdminServersPage() {
-	await requireInternalAdminSession();
+	await requireAdminSession();
 	const servers = await getAdminServers();
 
 	return (

@@ -1,20 +1,21 @@
 import { AppShell } from "@/components/app-shell";
 import { getCsrfToken } from "@/lib/csrf";
 import { getCurrentUser } from "@/lib/rustlens-api";
-import { requireInternalAdminSession } from "@/lib/session";
-import { redirect } from "next/navigation";
+import { requireAdminSession } from "@/lib/session";
 
 export default async function AdminLayout({
 	children,
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
-	const session = await requireInternalAdminSession();
-	const currentUser = await getCurrentUser();
-	const csrfToken = await getCsrfToken();
-	if (!currentUser.user.roles.includes("internal_admin")) {
-		redirect("/dashboard");
-	}
+	// requireAdminSession guarantees the caller has at least one admin role or
+	// permission (or the legacy "internal_admin" string); redirects otherwise.
+	// No second authorization check is needed here.
+	const session = await requireAdminSession();
+	const [currentUser, csrfToken] = await Promise.all([
+		getCurrentUser(),
+		getCsrfToken(),
+	]);
 
 	return (
 		<AppShell
@@ -24,7 +25,7 @@ export default async function AdminLayout({
 				email: currentUser.primaryEmail?.email,
 				avatarUrl: currentUser.user.avatarUrl,
 				isInternalAdmin: true,
-				permissions: session.permissions ?? [],
+				permissions: session.permissions ?? currentUser.permissions ?? [],
 			}}
 			variant="admin"
 		>

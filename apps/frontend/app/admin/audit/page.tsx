@@ -7,10 +7,10 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { getAuditEvents } from "@/lib/rustlens-api";
-import { requireInternalAdminSession } from "@/lib/session";
+import { requirePermission } from "@/lib/session";
 
 export default async function AdminAuditPage() {
-	await requireInternalAdminSession();
+	await requirePermission("audit.read");
 	const events = await getAuditEvents();
 
 	return (

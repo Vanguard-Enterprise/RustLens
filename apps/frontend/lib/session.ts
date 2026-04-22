@@ -10,6 +10,11 @@ export type SessionUser = {
 	displayName: string;
 	avatarUrl: string;
 	roles: string[];
+	/**
+	 * Admin role keys from admin_user_roles. Non-admin users have an empty
+	 * array. Used by requireAdminSession to gate /admin access.
+	 */
+	adminRoles?: string[];
 	permissions?: string[];
 	discordId?: string;
 	email?: string;
@@ -84,6 +89,8 @@ export function toSessionUser(currentUser: CurrentUser): SessionUser {
 		displayName: currentUser.user.displayName,
 		avatarUrl: currentUser.user.avatarUrl,
 		roles: currentUser.user.roles,
+		adminRoles: currentUser.adminRoles ?? [],
+		permissions: currentUser.permissions ?? [],
 		discordId: currentUser.discordAccount?.providerAccountId,
 		email: currentUser.primaryEmail?.email,
 		epoch: currentUser.user.sessionEpoch ?? 0,
@@ -114,23 +121,30 @@ export async function requireSession() {
 }
 
 /**
- * @deprecated use requireAdminSession + requirePermission; this will be removed once all admin pages migrate
+ * @deprecated Kept as an alias during migration to RBAC. New code should use
+ * `requireAdminSession` (any admin role) plus route-level `requirePermission`.
+ * This now delegates to `requireAdminSession` so users granted admin roles via
+ * `admin_user_roles` are recognised — previously this only matched the legacy
+ * "internal_admin" string in `app_users.roles`, which the new RBAC system no
+ * longer populates.
  */
 export async function requireInternalAdminSession() {
-	const session = await requireSession();
-	if (!session.roles.includes("internal_admin")) {
-		redirect("/dashboard");
-	}
-	return session;
+	return requireAdminSession();
 }
 
 export async function requireAdminSession() {
 	const session = await getSession();
 	if (!session) redirect("/login");
-	const isAdmin =
-		(session.roles ?? []).length > 0 ||
-		(session.permissions ?? []).length > 0;
-	if (!isAdmin) redirect("/dashboard");
+	const adminRoles = session.adminRoles ?? [];
+	const permissions = session.permissions ?? [];
+	// Legacy fallback: honour the old "internal_admin" sentinel string from
+	// app_users.roles so pre-migration sessions still work until their cookie
+	// rotates. New sessions populate adminRoles/permissions from
+	// admin_user_roles.
+	const legacyInternalAdmin = (session.roles ?? []).includes("internal_admin");
+	if (adminRoles.length === 0 && permissions.length === 0 && !legacyInternalAdmin) {
+		redirect("/dashboard");
+	}
 	return session;
 }
 

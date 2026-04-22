@@ -30,3 +30,6 @@ Thumbs.db
 
 # Claude
 .claude/settings.json
+
+# Playwright MCP scratch output (snapshots, console logs, screenshots)
+.playwright-mcp/

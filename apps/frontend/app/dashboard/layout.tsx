@@ -18,6 +18,12 @@ export default async function DashboardLayout({
 		redirect("/login?error=session");
 	}
 
+	const isInternalAdmin =
+		(currentUser.adminRoles ?? []).length > 0 ||
+		(currentUser.permissions ?? []).length > 0 ||
+		// Legacy fallback for users still carrying the pre-RBAC sentinel.
+		currentUser.user.roles.includes("internal_admin");
+
 	return (
 		<AppShell
 			csrfToken={csrfToken}
@@ -25,7 +31,7 @@ export default async function DashboardLayout({
 				displayName: currentUser.user.displayName,
 				email: currentUser.primaryEmail?.email,
 				avatarUrl: currentUser.user.avatarUrl,
-				isInternalAdmin: currentUser.user.roles.includes("internal_admin"),
+				isInternalAdmin,
 			}}
 			variant="dashboard"
 		>
