@@ -295,14 +295,59 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return err
 	}
 
+	// app_users and the login/connected-account/email tables are created by the
+	// appauth subsystem in production, but we mirror them here as IF-NOT-EXISTS
+	// so a fresh test database can install the full admin + app-auth schema
+	// from a single EnsureSchema call.
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS app_users (
+			id            TEXT PRIMARY KEY,
+			display_name  TEXT NOT NULL DEFAULT '',
+			avatar_url    TEXT NOT NULL DEFAULT '',
+			roles         JSONB NOT NULL DEFAULT '["user"]'::jsonb,
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+		CREATE TABLE IF NOT EXISTS user_emails (
+			email       TEXT PRIMARY KEY,
+			user_id     TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			is_primary  BOOLEAN NOT NULL DEFAULT FALSE,
+			is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS user_emails_user_idx ON user_emails (user_id);
+		CREATE TABLE IF NOT EXISTS user_connected_accounts (
+			user_id             TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			provider            TEXT NOT NULL,
+			provider_account_id TEXT NOT NULL,
+			username            TEXT NOT NULL DEFAULT '',
+			display_name        TEXT NOT NULL DEFAULT '',
+			avatar_url          TEXT NOT NULL DEFAULT '',
+			profile_email       TEXT NOT NULL DEFAULT '',
+			created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (provider, provider_account_id),
+			UNIQUE (user_id, provider)
+		);
+		CREATE INDEX IF NOT EXISTS user_connected_accounts_user_idx ON user_connected_accounts (user_id);
+	`); err != nil {
+		return fmt.Errorf("create app_users and related tables: %w", err)
+	}
+
 	// Drop orphaned legacy users(UUID) table if empty — it's been supplanted by
 	// app_users (TEXT id). CASCADE removes stale FK constraints from audit_events.
 	if _, err := p.pool.Exec(ctx, `
 		DO $$
+		DECLARE
+			row_count INT;
 		BEGIN
-			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users')
-			   AND NOT EXISTS (SELECT 1 FROM users LIMIT 1) THEN
-				DROP TABLE users CASCADE;
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') THEN
+				EXECUTE 'SELECT COUNT(*) FROM users' INTO row_count;
+				IF row_count = 0 THEN
+					DROP TABLE users CASCADE;
+				END IF;
 			END IF;
 		END $$;
 	`); err != nil {
