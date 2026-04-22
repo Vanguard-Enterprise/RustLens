@@ -424,6 +424,92 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 	`); err != nil {
 		return fmt.Errorf("create app_users_active_idx: %w", err)
 	}
+
+	// Auth support tables — the full schemas live in the frontend's
+	// idempotent migration module. Here we only ensure enough structure for
+	// the admin backend tests: a user_password_credentials row (PK = user_id
+	// with FK→app_users CASCADE) and a password_reset_tokens table keyed by
+	// user_id with FK CASCADE so users.purge removes all child rows.
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS user_password_credentials (
+			user_id        TEXT PRIMARY KEY,
+			password_hash  TEXT NOT NULL,
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+			updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+		);
+		CREATE TABLE IF NOT EXISTS password_reset_tokens (
+			token_hash  TEXT PRIMARY KEY,
+			user_id     TEXT NOT NULL,
+			email       TEXT,
+			expires_at  TIMESTAMPTZ NOT NULL,
+			consumed_at TIMESTAMPTZ NULL,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+		);
+		CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx ON password_reset_tokens (user_id);
+	`); err != nil {
+		return fmt.Errorf("create auth token tables: %w", err)
+	}
+
+	// Ensure ON DELETE CASCADE on user_id → app_users(id) for the child
+	// tables that participate in users.purge. The existing tables may have
+	// been created without CASCADE; rebuild the FK in-place when needed.
+	if err := ensureCascadeFK(ctx, p.pool, "user_password_credentials", "user_id"); err != nil {
+		return err
+	}
+	if err := ensureCascadeFK(ctx, p.pool, "password_reset_tokens", "user_id"); err != nil {
+		return err
+	}
+	if err := ensureCascadeFK(ctx, p.pool, "email_verification_tokens", "user_id"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ensureCascadeFK makes sure the given (table, column) has a foreign key to
+// app_users(id) with ON DELETE CASCADE. Drops any existing non-CASCADE FK on
+// the same column first.
+func ensureCascadeFK(ctx context.Context, pool *pgxpool.Pool, table, column string) error {
+	// Does the table exist at all?
+	var exists bool
+	if err := pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name=$1)`, table).Scan(&exists); err != nil {
+		return fmt.Errorf("check %s: %w", table, err)
+	}
+	if !exists {
+		return nil
+	}
+	// Does the column exist?
+	var hasCol bool
+	if err := pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name=$1 AND column_name=$2)`,
+		table, column).Scan(&hasCol); err != nil {
+		return fmt.Errorf("check %s.%s: %w", table, column, err)
+	}
+	if !hasCol {
+		return nil
+	}
+	// Drop any existing FK on this column, then add it back with CASCADE.
+	if _, err := pool.Exec(ctx, fmt.Sprintf(`
+		DO $$
+		DECLARE c text;
+		BEGIN
+			FOR c IN
+				SELECT tc.constraint_name
+				FROM information_schema.table_constraints tc
+				JOIN information_schema.key_column_usage kcu
+					ON tc.constraint_name = kcu.constraint_name
+				WHERE tc.table_name = '%s' AND tc.constraint_type = 'FOREIGN KEY'
+					AND kcu.column_name = '%s'
+			LOOP
+				EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %%I', c);
+			END LOOP;
+		END $$;
+		ALTER TABLE %s
+			ADD CONSTRAINT %s_%s_fk
+			FOREIGN KEY (%s) REFERENCES app_users(id) ON DELETE CASCADE;
+	`, table, column, table, table, table, column, column)); err != nil {
+		return fmt.Errorf("rewrite FK on %s.%s: %w", table, column, err)
+	}
 	return nil
 }
 

@@ -17,8 +17,12 @@ func (r *Registry) Register(a AdminAction) error {
 	if _, exists := r.actions[a.Type()]; exists {
 		return fmt.Errorf("action %q already registered", a.Type())
 	}
-	if !r.isValidPerm(a.Permission()) {
-		return fmt.Errorf("action %q requires unknown permission %q", a.Type(), a.Permission())
+	// Superadmin-only actions may leave Permission() empty — they bypass the
+	// key check at dispatch time.
+	if sa, ok := a.(interface{ SuperadminOnly() bool }); !(ok && sa.SuperadminOnly() && a.Permission() == "") {
+		if !r.isValidPerm(a.Permission()) {
+			return fmt.Errorf("action %q requires unknown permission %q", a.Type(), a.Permission())
+		}
 	}
 	r.actions[a.Type()] = a
 	return nil

@@ -16,6 +16,42 @@ type PermissionChecker interface {
 	HasPermission(ctx context.Context, userID string, key string) (bool, error)
 }
 
+// permissionsForUserer is an optional extension used by superadmin-only
+// actions. The real rbac.Resolver satisfies it.
+type permissionsForUserer interface {
+	PermissionsForUser(ctx context.Context, userID string) ([]string, error)
+}
+
+// permsFor loads the actor's permission set as a map. Falls back to a single
+// "admins.grant" probe if the checker doesn't implement PermissionsForUser.
+func (d *Dispatcher) permsFor(ctx context.Context, userID string) (map[string]bool, error) {
+	if pu, ok := d.perms.(permissionsForUserer); ok {
+		keys, err := pu.PermissionsForUser(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[string]bool, len(keys))
+		for _, k := range keys {
+			out[k] = true
+		}
+		return out, nil
+	}
+	has, err := d.perms.HasPermission(ctx, userID, "admins.grant")
+	if err != nil {
+		return nil, err
+	}
+	return map[string]bool{"admins.grant": has}, nil
+}
+
+func containsRole(roles []string, want string) bool {
+	for _, r := range roles {
+		if r == want {
+			return true
+		}
+	}
+	return false
+}
+
 // AuditEntryInput is the data written to the audit sink on each action attempt.
 type AuditEntryInput struct {
 	ActionType        string
@@ -91,15 +127,30 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Permission check.
-	allowed, err := d.perms.HasPermission(ctx, actorID, action.Permission())
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errResponse{Error: "permission_check_failed"})
-		return
-	}
-	if !allowed {
-		writeJSON(w, http.StatusForbidden, errResponse{Error: "permission_denied", Required: action.Permission()})
-		return
+	// 3. Permission check. Superadmin-only actions bypass the permission-key
+	//    check and instead require the actor to hold the 'superadmin' role
+	//    (resolved through the real permissions resolver which treats
+	//    superadmin as implicit-all).
+	if sa, ok := action.(interface{ SuperadminOnly() bool }); ok && sa.SuperadminOnly() {
+		perms, err := d.permsFor(ctx, actorID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errResponse{Error: "permission_check_failed"})
+			return
+		}
+		if !perms["admins.grant"] && !containsRole(roles, "superadmin") {
+			writeJSON(w, http.StatusForbidden, errResponse{Error: "permission_denied", Required: "superadmin"})
+			return
+		}
+	} else {
+		allowed, err := d.perms.HasPermission(ctx, actorID, action.Permission())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errResponse{Error: "permission_check_failed"})
+			return
+		}
+		if !allowed {
+			writeJSON(w, http.StatusForbidden, errResponse{Error: "permission_denied", Required: action.Permission()})
+			return
+		}
 	}
 
 	// 4. Decode request body. A missing or empty body is treated as an empty

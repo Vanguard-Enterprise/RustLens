@@ -31,5 +31,8 @@ func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *r
 	if err := reg.Register(actions.NewUsersRestoreAction(pool)); err != nil {
 		return err
 	}
+	if err := reg.Register(actions.NewUsersPurgeAction(pool)); err != nil {
+		return err
+	}
 	return nil
 }
