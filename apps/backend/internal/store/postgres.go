@@ -446,6 +446,23 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 		);
 		CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx ON password_reset_tokens (user_id);
+		CREATE TABLE IF NOT EXISTS email_verification_tokens (
+			token_hash  TEXT PRIMARY KEY,
+			user_id     TEXT NOT NULL,
+			email       TEXT NOT NULL,
+			expires_at  TIMESTAMPTZ NOT NULL,
+			consumed_at TIMESTAMPTZ NULL,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+		);
+		CREATE INDEX IF NOT EXISTS email_verification_tokens_user_idx ON email_verification_tokens (user_id);
+		CREATE TABLE IF NOT EXISTS email_sign_in_tokens (
+			token_hash  TEXT PRIMARY KEY,
+			email       TEXT NOT NULL,
+			expires_at  TIMESTAMPTZ NOT NULL,
+			consumed_at TIMESTAMPTZ NULL,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+		);
+		CREATE INDEX IF NOT EXISTS email_sign_in_tokens_email_idx ON email_sign_in_tokens (email);
 	`); err != nil {
 		return fmt.Errorf("create auth token tables: %w", err)
 	}
