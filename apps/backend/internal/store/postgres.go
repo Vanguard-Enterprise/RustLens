@@ -275,14 +275,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		    PRIMARY KEY (role_id, permission_key)
 		);
 
-		CREATE TABLE IF NOT EXISTS admin_user_roles (
-		    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		    role_id UUID NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE,
-		    granted_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-		    granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		    PRIMARY KEY (user_id, role_id)
-		);
-
 		CREATE TABLE IF NOT EXISTS audit_events (
 		    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 		    action_type TEXT NOT NULL,
@@ -306,6 +298,33 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS audit_events_target_user_idx ON audit_events (target_user_id, created_at DESC);
 	`); err != nil {
 		return err
+	}
+
+	// admin_user_roles: rekeyed to app_users(id) TEXT. A one-time DROP removes
+	// the old UUID-shaped table if present (no production data).
+	if _, err := p.pool.Exec(ctx, `
+		DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'admin_user_roles' AND column_name = 'user_id' AND data_type = 'uuid'
+			) THEN
+				DROP TABLE admin_user_roles;
+			END IF;
+		END $$;
+	`); err != nil {
+		return fmt.Errorf("drop legacy admin_user_roles (uuid): %w", err)
+	}
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS admin_user_roles (
+			user_id    TEXT        NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			role_id    UUID        NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE,
+			granted_by TEXT        NULL     REFERENCES app_users(id),
+			granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			PRIMARY KEY (user_id, role_id)
+		)
+	`); err != nil {
+		return fmt.Errorf("create admin_user_roles: %w", err)
 	}
 
 	// app_users lifecycle columns — suspension and soft-delete tracking
