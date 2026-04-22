@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -55,7 +56,7 @@ func (p *PostgresStore) Ping(ctx context.Context) error {
 }
 
 func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
-	_, err := p.pool.Exec(ctx, `
+	if _, err := p.pool.Exec(ctx, `
 		CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 		CREATE TABLE IF NOT EXISTS users (
@@ -303,8 +304,31 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS audit_events_resource_idx ON audit_events (resource_type, resource_id, created_at DESC);
 		CREATE INDEX IF NOT EXISTS audit_events_action_idx ON audit_events (action_type, created_at DESC);
 		CREATE INDEX IF NOT EXISTS audit_events_target_user_idx ON audit_events (target_user_id, created_at DESC);
-	`)
-	return err
+	`); err != nil {
+		return err
+	}
+
+	// app_users lifecycle columns — suspension and soft-delete tracking
+	// plus a session epoch counter used to invalidate active sessions.
+	if _, err := p.pool.Exec(ctx, `
+		ALTER TABLE app_users
+			ADD COLUMN IF NOT EXISTS suspended_at   TIMESTAMPTZ NULL,
+			ADD COLUMN IF NOT EXISTS suspended_by   TEXT        NULL REFERENCES app_users(id),
+			ADD COLUMN IF NOT EXISTS suspend_reason TEXT        NULL,
+			ADD COLUMN IF NOT EXISTS deleted_at     TIMESTAMPTZ NULL,
+			ADD COLUMN IF NOT EXISTS deleted_by     TEXT        NULL REFERENCES app_users(id),
+			ADD COLUMN IF NOT EXISTS session_epoch  INT         NOT NULL DEFAULT 0
+	`); err != nil {
+		return fmt.Errorf("alter app_users lifecycle columns: %w", err)
+	}
+	if _, err := p.pool.Exec(ctx, `
+		CREATE INDEX IF NOT EXISTS app_users_active_idx
+			ON app_users (created_at DESC)
+			WHERE deleted_at IS NULL
+	`); err != nil {
+		return fmt.Errorf("create app_users_active_idx: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresStore) InsertWorkerEvent(ctx context.Context, workerID string, eventType string, payload any) error {
