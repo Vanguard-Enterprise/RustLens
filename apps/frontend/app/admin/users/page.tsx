@@ -1,13 +1,3 @@
-import Link from "next/link";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import {
 	getAdminRoles,
 	getAdminUsers,
@@ -17,6 +7,7 @@ import { getCsrfToken } from "@/lib/csrf";
 import { requirePermission, requireAdminSession } from "@/lib/session";
 import { UsersFilterBar } from "./_components/users-filter-bar";
 import { UsersPagination } from "./_components/users-pagination";
+import { UsersTableView } from "./_components/users-table-view";
 
 type SP = Record<string, string | string[] | undefined>;
 
@@ -55,6 +46,18 @@ function parseQuery(sp: SP): AdminUsersQuery {
 	};
 }
 
+function queryToString(query: AdminUsersQuery): string {
+	const sp = new URLSearchParams();
+	if (query.q) sp.set("q", query.q);
+	for (const r of query.role ?? []) sp.append("role", r);
+	if (query.status) sp.set("status", query.status);
+	if (query.discord) sp.set("discord", query.discord);
+	if (query.steam) sp.set("steam", query.steam);
+	if (query.emailVerified) sp.set("emailVerified", query.emailVerified);
+	if (query.sort) sp.set("sort", query.sort);
+	return sp.toString();
+}
+
 export default async function AdminUsersPage({
 	searchParams,
 }: {
@@ -79,78 +82,12 @@ export default async function AdminUsersPage({
 				csrfToken={csrfToken}
 				canInvite={canInvite}
 			/>
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>User</TableHead>
-						<TableHead>Email</TableHead>
-						<TableHead>Roles</TableHead>
-						<TableHead>Status</TableHead>
-						<TableHead>Discord</TableHead>
-						<TableHead>Steam</TableHead>
-						<TableHead>Guilds</TableHead>
-						<TableHead>Last login</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{page.items.map((u) => (
-						<TableRow key={u.user.id}>
-							<TableCell>
-								<Link
-									href={`/admin/users/${u.user.id}`}
-									className="underline-offset-2 hover:underline"
-								>
-									{u.user.displayName || u.user.id}
-								</Link>
-							</TableCell>
-							<TableCell>
-								{u.primaryEmail || (
-									<span className="text-muted-foreground">—</span>
-								)}
-								{u.primaryEmail && !u.emailVerified && (
-									<Badge variant="secondary" className="ml-2">
-										unverified
-									</Badge>
-								)}
-							</TableCell>
-							<TableCell className="flex flex-wrap gap-1">
-								{u.adminRoles.length === 0 ? (
-									<span className="text-muted-foreground">—</span>
-								) : (
-									u.adminRoles.map((r) => <Badge key={r}>{r}</Badge>)
-								)}
-							</TableCell>
-							<TableCell>
-								{u.deletedAt ? (
-									<Badge variant="destructive">deleted</Badge>
-								) : u.suspendedAt ? (
-									<Badge variant="destructive">suspended</Badge>
-								) : (
-									<Badge variant="secondary">active</Badge>
-								)}
-							</TableCell>
-							<TableCell>
-								{u.discordUsername || u.discordId || "—"}
-							</TableCell>
-							<TableCell>{u.steamConnectionCount}</TableCell>
-							<TableCell>{u.guildCount}</TableCell>
-							<TableCell>
-								{u.user.lastLoginAt?.slice(0, 10) || "—"}
-							</TableCell>
-						</TableRow>
-					))}
-					{page.items.length === 0 && (
-						<TableRow>
-							<TableCell
-								colSpan={8}
-								className="text-center text-muted-foreground py-8"
-							>
-								No users match the current filters.
-							</TableCell>
-						</TableRow>
-					)}
-				</TableBody>
-			</Table>
+			<UsersTableView
+				items={page.items}
+				roleOptions={roleOptions}
+				csrfToken={csrfToken}
+				currentQuery={queryToString(query)}
+			/>
 			<UsersPagination
 				total={page.total}
 				page={page.page}
