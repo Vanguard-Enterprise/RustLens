@@ -23,6 +23,7 @@ type Config struct {
 	ProxyEndpoints      []string
 	AppAPIInternalSecret string
 	AppSessionSecret     string
+	AppBaseURL           string
 }
 
 func Load() Config {
@@ -47,6 +48,7 @@ func Load() Config {
 		ProxyEndpoints:      getEnvCSV("PROXY_ENDPOINTS"),
 		AppAPIInternalSecret: getEnv("APP_API_INTERNAL_SECRET", "dev-app-internal-secret"),
 		AppSessionSecret:     getEnv("APP_SESSION_SECRET", "dev-app-session-secret"),
+		AppBaseURL:           getEnv("APP_BASE_URL", "http://localhost:3000"),
 	}
 }
 

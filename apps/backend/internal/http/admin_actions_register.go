@@ -9,7 +9,7 @@ import (
 
 // registerAdminActions wires the concrete AdminAction implementations into
 // the action registry at handler boot. Keep this list alphabetised.
-func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *rbac.Resolver) error {
+func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *rbac.Resolver, appBaseURL string) error {
 	if err := reg.Register(actions.NewUsersEditAction(pool)); err != nil {
 		return err
 	}
@@ -32,6 +32,9 @@ func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *r
 		return err
 	}
 	if err := reg.Register(actions.NewUsersPurgeAction(pool)); err != nil {
+		return err
+	}
+	if err := reg.Register(actions.NewUsersPasswordForceResetAction(pool, appBaseURL)); err != nil {
 		return err
 	}
 	return nil

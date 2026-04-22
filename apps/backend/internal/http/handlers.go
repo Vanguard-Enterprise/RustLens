@@ -52,7 +52,7 @@ func NewHandler(cfg config.Config, postgres *store.PostgresStore, redis *store.R
 	resolver := rbac.NewResolver(rbacStore)
 	auditStore := audit.NewStore(postgres.Pool())
 	registry := actions.NewRegistry(rbac.IsValidPermission)
-	if err := registerAdminActions(registry, postgres.Pool(), resolver); err != nil {
+	if err := registerAdminActions(registry, postgres.Pool(), resolver, cfg.AppBaseURL); err != nil {
 		panic(fmt.Errorf("register admin actions: %w", err))
 	}
 	dispatcher := actions.NewDispatcher(registry, resolver, auditSinkAdapter{auditStore}, appSessionActor)
