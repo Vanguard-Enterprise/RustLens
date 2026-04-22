@@ -1,6 +1,9 @@
 export type AdminActionKey =
+  | "users.edit"
   | "users.suspend"
   | "users.force_unlink_steam"
+  | "users.roles.grant"
+  | "users.roles.revoke"
   | "proxies.edit"
   | "proxies.rotate_credentials"
   | "links.approve"
@@ -17,6 +20,30 @@ export interface AdminActionMeta {
 }
 
 export const ADMIN_ACTIONS: Record<AdminActionKey, AdminActionMeta> = {
+  "users.edit": {
+    key: "users.edit",
+    label: "Edit user",
+    permission: "users.edit",
+    requiresReason: false,
+    dangerous: false,
+    resourceType: "user",
+  },
+  "users.roles.grant": {
+    key: "users.roles.grant",
+    label: "Grant role",
+    permission: "users.roles.assign",
+    requiresReason: true,
+    dangerous: false,
+    resourceType: "user",
+  },
+  "users.roles.revoke": {
+    key: "users.roles.revoke",
+    label: "Revoke role",
+    permission: "users.roles.assign",
+    requiresReason: true,
+    dangerous: false,
+    resourceType: "user",
+  },
   "users.suspend": {
     key: "users.suspend",
     label: "Suspend user",
