@@ -59,11 +59,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 	if _, err := p.pool.Exec(ctx, `
 		CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-		CREATE TABLE IF NOT EXISTS users (
-		    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-
 		CREATE TABLE IF NOT EXISTS bot_worker_events (
 			id BIGSERIAL PRIMARY KEY,
 			worker_id TEXT NOT NULL,
@@ -278,11 +273,11 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS audit_events (
 		    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 		    action_type TEXT NOT NULL,
-		    actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+		    actor_user_id UUID,
 		    actor_role_snapshot TEXT[] NOT NULL DEFAULT '{}',
 		    resource_type TEXT,
 		    resource_id TEXT,
-		    target_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+		    target_user_id UUID,
 		    params JSONB NOT NULL DEFAULT '{}',
 		    reason TEXT,
 		    result TEXT NOT NULL,
@@ -298,6 +293,20 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS audit_events_target_user_idx ON audit_events (target_user_id, created_at DESC);
 	`); err != nil {
 		return err
+	}
+
+	// Drop orphaned legacy users(UUID) table if empty — it's been supplanted by
+	// app_users (TEXT id). CASCADE removes stale FK constraints from audit_events.
+	if _, err := p.pool.Exec(ctx, `
+		DO $$
+		BEGIN
+			IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users')
+			   AND NOT EXISTS (SELECT 1 FROM users LIMIT 1) THEN
+				DROP TABLE users CASCADE;
+			END IF;
+		END $$;
+	`); err != nil {
+		return fmt.Errorf("drop legacy users(uuid): %w", err)
 	}
 
 	// admin_user_roles: rekeyed to app_users(id) TEXT. A one-time DROP removes
