@@ -102,7 +102,7 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 	appAuthRepo := appauth.NewRepo(postgres.Pool())
 	appAuthHandler := appauth.NewHandler(appAuthRepo)
 	requireAppSecret := appauth.RequireAppSecret(cfg.AppAPIInternalSecret)
-	requireSession := appauth.RequireSession(cfg.AppSessionSecret)
+	requireSession := appauth.RequireSession(cfg.AppSessionSecret, postgres.Pool())
 
 	r.Route("/api/app", func(r chi.Router) {
 		r.Use(requireAppSecret)

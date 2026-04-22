@@ -3,7 +3,10 @@ package appauth
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"net/http"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type contextKey string
@@ -33,8 +36,9 @@ func RequireAppSecret(secret string) func(http.Handler) http.Handler {
 
 // RequireSession parses and verifies the session token on X-RustLens-Session
 // and attaches it to the request context. Rejects missing / invalid tokens
-// with 401.
-func RequireSession(sessionSecret string) func(http.Handler) http.Handler {
+// with 401. When pool is non-nil, also validates the embedded session epoch
+// against app_users.session_epoch and rejects revoked sessions.
+func RequireSession(sessionSecret string, pool *pgxpool.Pool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := r.Header.Get(sessionHeader)
@@ -42,8 +46,12 @@ func RequireSession(sessionSecret string) func(http.Handler) http.Handler {
 				writeJSONError(w, http.StatusUnauthorized, "session_required")
 				return
 			}
-			session, err := ParseSession(token, sessionSecret)
+			session, err := ValidateSession(r.Context(), token, sessionSecret, pool)
 			if err != nil {
+				if errors.Is(err, ErrSessionRevoked) {
+					writeJSONError(w, http.StatusUnauthorized, "session_revoked")
+					return
+				}
 				writeJSONError(w, http.StatusUnauthorized, "invalid_session")
 				return
 			}

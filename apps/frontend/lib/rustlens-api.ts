@@ -10,6 +10,7 @@ export type AppUser = {
 	createdAt: string;
 	updatedAt: string;
 	lastLoginAt: string;
+	sessionEpoch?: number;
 };
 
 export type ConnectedAccount = {

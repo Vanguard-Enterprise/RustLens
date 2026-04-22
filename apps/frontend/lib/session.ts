@@ -13,6 +13,7 @@ export type SessionUser = {
 	permissions?: string[];
 	discordId?: string;
 	email?: string;
+	epoch: number;
 	expiresAt: number;
 };
 
@@ -85,6 +86,7 @@ export function toSessionUser(currentUser: CurrentUser): SessionUser {
 		roles: currentUser.user.roles,
 		discordId: currentUser.discordAccount?.providerAccountId,
 		email: currentUser.primaryEmail?.email,
+		epoch: currentUser.user.sessionEpoch ?? 0,
 		expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
 	};
 }

@@ -13,13 +13,14 @@ import (
 
 // AppUser mirrors the frontend AppUser type.
 type AppUser struct {
-	ID          string    `json:"id"`
-	DisplayName string    `json:"displayName"`
-	AvatarURL   string    `json:"avatarUrl"`
-	Roles       []string  `json:"roles"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
-	LastLoginAt time.Time `json:"lastLoginAt"`
+	ID           string    `json:"id"`
+	DisplayName  string    `json:"displayName"`
+	AvatarURL    string    `json:"avatarUrl"`
+	Roles        []string  `json:"roles"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+	LastLoginAt  time.Time `json:"lastLoginAt"`
+	SessionEpoch int       `json:"sessionEpoch"`
 }
 
 // UserEmail mirrors the frontend UserEmail type.
@@ -142,9 +143,9 @@ func (r *Repo) loadAppUser(ctx context.Context, userID string) (*AppUser, error)
 	var u AppUser
 	var rolesJSON []byte
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, display_name, avatar_url, roles, created_at, updated_at, last_login_at
+		SELECT id, display_name, avatar_url, roles, created_at, updated_at, last_login_at, session_epoch
 		FROM app_users WHERE id = $1
-	`, userID).Scan(&u.ID, &u.DisplayName, &u.AvatarURL, &rolesJSON, &u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt)
+	`, userID).Scan(&u.ID, &u.DisplayName, &u.AvatarURL, &rolesJSON, &u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt, &u.SessionEpoch)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrUserNotFound
 	}
