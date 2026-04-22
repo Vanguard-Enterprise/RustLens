@@ -23,7 +23,7 @@ export default async function AdminPage() {
 	return (
 		<div className="grid gap-4 md:grid-cols-3">
 			{[
-				{ label: "Users", value: users.length },
+				{ label: "Users", value: users.total },
 				{ label: "Guilds", value: guilds.length },
 				{ label: "Tracked servers", value: servers.length },
 			].map((item) => (

@@ -62,8 +62,31 @@ export type AdminUserItem = {
 	discordId: string;
 	discordUsername: string;
 	primaryEmail: string;
+	emailVerified: boolean;
 	guildCount: number;
 	steamConnectionCount: number;
+	adminRoles: string[];
+	suspendedAt?: string;
+	deletedAt?: string;
+};
+
+export type AdminUsersQuery = {
+	q?: string;
+	role?: string[];
+	status?: "active" | "suspended" | "deleted" | "any";
+	discord?: "any" | "linked" | "unlinked";
+	steam?: "any" | "linked" | "unlinked";
+	emailVerified?: "any" | "yes" | "no";
+	sort?: string;
+	page?: number;
+	pageSize?: number;
+};
+
+export type AdminUsersPage = {
+	items: AdminUserItem[];
+	total: number;
+	page: number;
+	pageSize: number;
 };
 
 export type AdminGuildItem = {
@@ -231,13 +254,23 @@ export async function getCurrentUserSafe() {
 	}
 }
 
-export async function getAdminUsers() {
-	const payload = await backendFetch<{ items: AdminUserItem[] }>(
-		"/api/app/admin/users",
+export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	for (const r of params.role ?? []) sp.append("role", r);
+	if (params.status) sp.set("status", params.status);
+	if (params.discord) sp.set("discord", params.discord);
+	if (params.steam) sp.set("steam", params.steam);
+	if (params.emailVerified) sp.set("emailVerified", params.emailVerified);
+	if (params.sort) sp.set("sort", params.sort);
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminUsersPage>(
+		`/api/app/admin/users${qs ? `?${qs}` : ""}`,
 		undefined,
 		{ requireSession: true },
 	);
-	return payload.items;
 }
 
 export async function getAdminGuilds() {
