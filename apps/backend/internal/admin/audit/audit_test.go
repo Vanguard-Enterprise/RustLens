@@ -36,6 +36,11 @@ func TestAudit_WriteAndQuery(t *testing.T) {
 	target := "usr_audit_target"
 	params, _ := json.Marshal(map[string]string{"reason_tag": "abuse"})
 
+	// Clean residuals from prior runs (shared DB — audit_events is not truncated elsewhere).
+	if _, err := s.Pool().Exec(ctx, `DELETE FROM audit_events WHERE actor_user_id::text = $1`, actor); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+
 	err := a.Record(ctx, audit.Entry{
 		ActionType:        "users.suspend",
 		ActorUserID:       &actor,

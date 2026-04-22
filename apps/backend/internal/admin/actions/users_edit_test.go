@@ -32,9 +32,10 @@ func newUsersEditHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, 
 	if err := s.EnsureSchema(ctx); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
-	if _, err := s.Pool().Exec(ctx, `TRUNCATE admin_user_roles, audit_events, app_users RESTART IDENTITY CASCADE`); err != nil {
-		t.Fatalf("truncate: %v", err)
-	}
+	// Do not TRUNCATE here; tests in this package share the same Postgres with
+	// other packages under `go test ./...`. Each test uses unique ids so rows
+	// stay isolated.
+	_ = ctx
 	rb := rbac.NewStore(s.Pool())
 	if err := rb.SeedPermissionsAndRoles(ctx); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -95,6 +96,11 @@ func TestUsersEdit_HappyPath(t *testing.T) {
 	// Actor also needs an app_users row for the audit_events FK.
 	seedAppUser(t, s, "usr_test_actor", "Actor", false)
 	seedAppUser(t, s, "usr_target_1", "Old Name", false)
+	// Drop any residual audit rows targeting this user from prior runs.
+	if _, err := s.Pool().Exec(context.Background(),
+		`DELETE FROM audit_events WHERE target_user_id::text = $1`, "usr_target_1"); err != nil {
+		t.Fatalf("cleanup audit: %v", err)
+	}
 
 	newName := "New Name"
 	body := mustJSON(t, map[string]any{
@@ -114,10 +120,11 @@ func TestUsersEdit_HappyPath(t *testing.T) {
 		t.Errorf("display_name = %q; want %q", row.DisplayName, newName)
 	}
 
-	// One success audit_events row with action_type=users.edit.
+	// One success audit_events row targeting this user.
 	var count int
 	if err := s.Pool().QueryRow(context.Background(),
-		`SELECT COUNT(*) FROM audit_events WHERE action_type='users.edit' AND result='success'`).Scan(&count); err != nil {
+		`SELECT COUNT(*) FROM audit_events WHERE action_type='users.edit' AND result='success' AND target_user_id::text=$1`,
+		"usr_target_1").Scan(&count); err != nil {
 		t.Fatalf("count: %v", err)
 	}
 	if count != 1 {

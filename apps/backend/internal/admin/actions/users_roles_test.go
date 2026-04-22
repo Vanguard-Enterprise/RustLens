@@ -33,9 +33,8 @@ func newRolesHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, *rba
 	if err := s.EnsureSchema(ctx); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
-	if _, err := s.Pool().Exec(ctx, `TRUNCATE admin_user_roles, audit_events, app_users RESTART IDENTITY CASCADE`); err != nil {
-		t.Fatalf("truncate: %v", err)
-	}
+	// Do not TRUNCATE: shared DB across packages. Tests use unique ids.
+	_ = ctx
 	rb := rbac.NewStore(s.Pool())
 	if err := rb.SeedPermissionsAndRoles(ctx); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -189,6 +188,12 @@ func TestUsersRolesRevoke_HappyPath(t *testing.T) {
 func TestUsersRolesRevoke_LastSuperadminBlocked(t *testing.T) {
 	srv, s, rb, setPerms := newRolesHarness(t)
 	setPerms(map[string]bool{rbac.PermUsersRolesAssign: true})
+	// Purge all existing superadmin assignments so "only one" actually holds.
+	if _, err := s.Pool().Exec(context.Background(),
+		`DELETE FROM admin_user_roles WHERE role_id IN (SELECT id FROM admin_roles WHERE key=$1)`,
+		rbac.RoleSuperadmin); err != nil {
+		t.Fatalf("purge sa: %v", err)
+	}
 	seedAppUser(t, s, "usr_test_actor", "Actor", false)
 	seedAppUser(t, s, "usr_the_only_sa", "Solo", false)
 	assignRole(t, rb, "usr_the_only_sa", rbac.RoleSuperadmin)

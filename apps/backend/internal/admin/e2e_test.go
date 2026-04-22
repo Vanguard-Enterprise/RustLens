@@ -75,6 +75,10 @@ func TestAdminFoundation_E2E(t *testing.T) {
 	if _, err := s.Pool().Exec(ctx, `INSERT INTO app_users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, userID); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
+	// Drop any residual audit rows for this actor from prior runs (shared DB).
+	if _, err := s.Pool().Exec(ctx, `DELETE FROM audit_events WHERE actor_user_id::text = $1`, userID); err != nil {
+		t.Fatalf("cleanup audit: %v", err)
+	}
 
 	modID, err := rb.RoleIDByKey(ctx, rbac.RoleModerator)
 	if err != nil {
