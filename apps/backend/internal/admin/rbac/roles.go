@@ -1,10 +1,13 @@
 package rbac
 
 const (
-	RoleSuperadmin = "superadmin"
-	RoleModerator  = "moderator"
-	RoleInfraAdmin = "infra_admin"
-	RoleGuildOps   = "guild_ops"
+	RoleSuperadmin  = "superadmin"
+	RoleModerator   = "moderator"
+	RoleInfraAdmin  = "infra_admin"
+	RoleGuildOps    = "guild_ops"
+	RoleUserSupport = "user_support"
+	RoleUserAdmin   = "user_admin"
+	RoleUserAuditor = "user_auditor"
 )
 
 type RoleSeed struct {
@@ -54,6 +57,37 @@ func SystemRoles() []RoleSeed {
 				"guilds.untrack_server",
 				"audit.read",
 			},
+		},
+		{
+			Key:         RoleUserSupport,
+			Name:        "User Support",
+			Description: "Read users + audit + trigger password resets and verification resends",
+			IsSystem:    true,
+			Permissions: []string{
+				PermUsersRead, PermUsersAuditRead,
+				PermUsersSecurityReset, PermUsersEmailManage,
+				PermUsersEdit,
+			},
+		},
+		{
+			Key:         RoleUserAdmin,
+			Name:        "User Admin",
+			Description: "Full user lifecycle management (non-destructive)",
+			IsSystem:    true,
+			Permissions: []string{
+				PermUsersRead, PermUsersAuditRead, PermUsersEdit,
+				PermUsersRolesAssign, PermUsersSuspend,
+				PermUsersSecurityReset, PermUsersEmailManage,
+				PermUsersCreate, PermUsersConnectionsManage,
+				PermUsersDelete, PermUsersExport,
+			},
+		},
+		{
+			Key:         RoleUserAuditor,
+			Name:        "User Auditor",
+			Description: "Read-only users view with export",
+			IsSystem:    true,
+			Permissions: []string{PermUsersRead, PermUsersAuditRead, PermUsersExport},
 		},
 	}
 }
