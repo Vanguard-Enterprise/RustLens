@@ -140,6 +140,12 @@ export type AuditEventItem = {
 	eventType: string;
 	payload: Record<string, unknown>;
 	createdAt: string;
+	actorDisplayName?: string | null;
+	actorAvatarUrl?: string | null;
+	targetDisplayName?: string | null;
+	targetAvatarUrl?: string | null;
+	result?: "success" | "error" | null;
+	reason?: string | null;
 };
 
 export type AdminUserEmail = {

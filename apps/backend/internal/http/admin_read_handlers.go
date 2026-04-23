@@ -58,12 +58,18 @@ type adminServerItem struct {
 }
 
 type auditEventItem struct {
-	ID           string         `json:"id"`
-	ActorUserID  string         `json:"actorUserId"`
-	TargetUserID string         `json:"targetUserId"`
-	EventType    string         `json:"eventType"`
-	Payload      map[string]any `json:"payload"`
-	CreatedAt    time.Time      `json:"createdAt"`
+	ID                string         `json:"id"`
+	ActorUserID       string         `json:"actorUserId"`
+	TargetUserID      string         `json:"targetUserId"`
+	EventType         string         `json:"eventType"`
+	Payload           map[string]any `json:"payload"`
+	CreatedAt         time.Time      `json:"createdAt"`
+	ActorDisplayName  *string        `json:"actorDisplayName,omitempty"`
+	ActorAvatarURL    *string        `json:"actorAvatarUrl,omitempty"`
+	TargetDisplayName *string        `json:"targetDisplayName,omitempty"`
+	TargetAvatarURL   *string        `json:"targetAvatarUrl,omitempty"`
+	Result            *string        `json:"result,omitempty"`
+	Reason            *string        `json:"reason,omitempty"`
 }
 
 type adminUserEmail struct {
@@ -299,9 +305,11 @@ func (h *Handler) ListAdminServers(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListAdminAudit: GET /api/app/admin/audit?limit=N
-// Reads from the legacy app_audit_events table used by the vendored frontend.
-// The new RBAC audit_events table is populated by the action dispatcher and
-// has a different shape; it's exposed separately.
+// Returns a unified view over the new RBAC audit_events table (written by the
+// action dispatcher) and the legacy app_audit_events table (used by the
+// vendored frontend). Each row is augmented with the actor's and target's
+// display name and avatar URL in a single extra lookup against app_users so the
+// frontend can render human-readable entries without an N+1 fan-out.
 func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	limit := 50
@@ -314,22 +322,53 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	pool := h.postgres.Pool()
 
-	if exists, _ := tableExists(ctx, pool, "app_audit_events"); !exists {
-		writeJSON(w, http.StatusOK, map[string]any{"items": []auditEventItem{}})
-		return
-	}
+	hasLegacy, _ := tableExists(ctx, pool, "app_audit_events")
 
-	rows, err := pool.Query(ctx, `
+	// New RBAC audit_events table: action_type is the event key, params is the
+	// JSON payload, result and reason are first-class columns.
+	newQ := `
 		SELECT id::text,
-		       COALESCE(actor_user_id, ''),
-		       COALESCE(target_user_id, ''),
+		       COALESCE(actor_user_id::text, '') AS actor_user_id,
+		       COALESCE(target_user_id::text, '') AS target_user_id,
+		       action_type AS event_type,
+		       COALESCE(params, '{}'::jsonb) AS payload,
+		       NULLIF(result, '') AS result,
+		       reason,
+		       created_at
+		FROM audit_events
+	`
+
+	// Legacy app_audit_events table: no result/reason columns, so pad with NULL.
+	legacyQ := `
+		SELECT id::text,
+		       COALESCE(actor_user_id, '') AS actor_user_id,
+		       COALESCE(target_user_id, '') AS target_user_id,
 		       event_type,
-		       COALESCE(payload, '{}'::jsonb),
+		       COALESCE(payload, '{}'::jsonb) AS payload,
+		       NULL::text AS result,
+		       NULL::text AS reason,
 		       created_at
 		FROM app_audit_events
-		ORDER BY created_at DESC
-		LIMIT $1
-	`, limit)
+	`
+
+	var q string
+	if hasLegacy {
+		q = fmt.Sprintf(`
+			%s
+			UNION ALL
+			%s
+			ORDER BY created_at DESC
+			LIMIT $1
+		`, newQ, legacyQ)
+	} else {
+		q = fmt.Sprintf(`
+			%s
+			ORDER BY created_at DESC
+			LIMIT $1
+		`, newQ)
+	}
+
+	rows, err := pool.Query(ctx, q, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -337,12 +376,15 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	items := []auditEventItem{}
+	idSet := map[string]struct{}{}
 	for rows.Next() {
 		var (
 			item        auditEventItem
 			payloadJSON []byte
+			result      *string
+			reason      *string
 		)
-		if err := rows.Scan(&item.ID, &item.ActorUserID, &item.TargetUserID, &item.EventType, &payloadJSON, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.ActorUserID, &item.TargetUserID, &item.EventType, &payloadJSON, &result, &reason, &item.CreatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -350,8 +392,65 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 		if len(payloadJSON) > 0 {
 			_ = json.Unmarshal(payloadJSON, &item.Payload)
 		}
+		item.Result = result
+		item.Reason = reason
+		if item.ActorUserID != "" {
+			idSet[item.ActorUserID] = struct{}{}
+		}
+		if item.TargetUserID != "" {
+			idSet[item.TargetUserID] = struct{}{}
+		}
 		items = append(items, item)
 	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Single lookup for actor + target display names.
+	type userLite struct {
+		name   string
+		avatar string
+	}
+	lookup := map[string]userLite{}
+	if len(idSet) > 0 {
+		ids := make([]string, 0, len(idSet))
+		for id := range idSet {
+			ids = append(ids, id)
+		}
+		urows, err := pool.Query(ctx, `
+			SELECT id::text, COALESCE(display_name, ''), COALESCE(avatar_url, '')
+			FROM app_users WHERE id::text = ANY($1)
+		`, ids)
+		if err == nil {
+			for urows.Next() {
+				var id, name, avatar string
+				if err := urows.Scan(&id, &name, &avatar); err == nil {
+					lookup[id] = userLite{name: name, avatar: avatar}
+				}
+			}
+			urows.Close()
+		}
+	}
+
+	strPtr := func(s string) *string {
+		if s == "" {
+			return nil
+		}
+		v := s
+		return &v
+	}
+	for i := range items {
+		if u, ok := lookup[items[i].ActorUserID]; ok {
+			items[i].ActorDisplayName = strPtr(u.name)
+			items[i].ActorAvatarURL = strPtr(u.avatar)
+		}
+		if u, ok := lookup[items[i].TargetUserID]; ok {
+			items[i].TargetDisplayName = strPtr(u.name)
+			items[i].TargetAvatarURL = strPtr(u.avatar)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
