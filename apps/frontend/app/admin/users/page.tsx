@@ -22,7 +22,7 @@ function parseQuery(sp: SP): AdminUsersQuery {
 		200,
 	);
 	const status =
-		(first(sp.status) as AdminUsersQuery["status"]) ?? "active";
+		(first(sp.status) as AdminUsersQuery["status"]) ?? undefined;
 	const discord =
 		(first(sp.discord) as AdminUsersQuery["discord"]) ?? undefined;
 	const steam = (first(sp.steam) as AdminUsersQuery["steam"]) ?? undefined;
