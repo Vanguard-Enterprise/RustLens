@@ -1,9 +1,9 @@
 import type { ButtonInteraction, ChatInputCommandInteraction, Client } from "discord.js";
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
-import { BackendClient, type SteamAnalytics } from "./backend-client.js";
+import { BackendClient, type SteamAccount, type SteamAnalytics } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
-import { buildProfileButtons, buildUserEmbed, resolvePlayerProfileForGuild, fetchSteamProfileForView } from "./view-command.js";
+import { buildProfileButtons, buildUserEmbed, fetchSteamProfileForView } from "./view-command.js";
 
 export const PLAYER_COMMAND_NAME = "player";
 
@@ -12,10 +12,12 @@ const PLAYER_EMOJIS = {
   battlemetrics: "<:battlemetrics:1444011821529956472>",
 } as const;
 
+const steamIDPattern = /^\d{17}$/;
+const bmIDPattern = /^\d{1,16}$/;
+
 const playerCommand = new SlashCommandBuilder()
   .setName(PLAYER_COMMAND_NAME)
-  .setDescription("Show a linked player's profile in this guild")
-  .setDMPermission(false)
+  .setDescription("Look up any player by Steam ID or BattleMetrics ID")
   .addStringOption((opt) =>
     opt
       .setName("identifier")
@@ -58,26 +60,45 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     return false;
   }
 
-  if (!interaction.inGuild() || !interaction.guild) {
-    await interaction.reply({
-      content: "This command can only be used in a server.",
-      flags: MessageFlags.Ephemeral,
+  const identifier = interaction.options.getString("identifier", true).trim();
+  await interaction.deferReply();
+
+  const account = await lookupAccountByIdentifier(identifier);
+  if (!account) {
+    await interaction.editReply({
+      content: "No record found for that Steam ID or BattleMetrics ID.",
     });
     return true;
   }
 
-  const identifier = interaction.options.getString("identifier", true);
-  await interaction.deferReply();
+  const profile = await fetchSteamProfileForView(account.steamId);
+  await interaction.editReply({
+    embeds: [buildUserEmbed(account.steamId, profile)],
+    components: buildProfileButtons(account.steamId),
+  });
+  return true;
+}
 
-  const result = await resolvePlayerProfileForGuild(interaction.guildId!, identifier, { allowDiscordLookup: false });
-  if (!result.ok) {
-    await interaction.editReply({ content: result.error });
-    return true;
+async function lookupAccountByIdentifier(identifier: string): Promise<SteamAccount | null> {
+  const { backend, workerId } = getBackend();
+
+  if (steamIDPattern.test(identifier)) {
+    try {
+      return await backend.getSteamAccount(workerId, identifier);
+    } catch {
+      return null;
+    }
   }
 
-  const profile = await fetchSteamProfileForView(result.steamId);
-  await interaction.editReply({ embeds: [buildUserEmbed(result.steamId, profile)], components: buildProfileButtons(result.steamId) });
-  return true;
+  if (bmIDPattern.test(identifier)) {
+    try {
+      return await backend.getSteamAccountByBmID(workerId, identifier);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 export async function handlePlayerButtonInteraction(interaction: ButtonInteraction) {
