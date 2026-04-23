@@ -1,23 +1,41 @@
 "use client";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
-import { Input } from "@/components/ui/input";
+import { FilterIcon, SearchIcon } from "lucide-react";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "@/components/ui/input-group";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+	ToggleGroup,
+	ToggleGroupItem,
+} from "@/components/ui/toggle-group";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { InviteUserDialog } from "./invite-user-dialog";
 
 type Option = { value: string; label: string };
 
 const STATUS_OPTIONS: Option[] = [
+	{ value: "any", label: "Any" },
 	{ value: "active", label: "Active" },
 	{ value: "suspended", label: "Suspended" },
 	{ value: "deleted", label: "Deleted" },
-	{ value: "any", label: "Any" },
 ];
 const TRISTATE: Option[] = [
 	{ value: "any", label: "Any" },
@@ -58,71 +76,132 @@ export function UsersFilterBar({
 	);
 
 	const currentRoles = sp.getAll("role");
-	const currentStatus = sp.get("status") ?? "active";
+	const currentStatus = sp.get("status") ?? "any";
 	const currentDiscord = sp.get("discord") ?? "any";
 	const currentSteam = sp.get("steam") ?? "any";
 	const currentVerified = sp.get("emailVerified") ?? "any";
 
+	// Badge counts only filters housed inside the popover — not the search term.
+	const activeFilterCount =
+		(sp.get("status") ? 1 : 0) +
+		(sp.get("discord") ? 1 : 0) +
+		(sp.get("steam") ? 1 : 0) +
+		(sp.get("emailVerified") ? 1 : 0) +
+		currentRoles.length;
+
+	// Clear is enabled when anything — filters OR search — is active.
+	const hasAnything = activeFilterCount > 0 || q.length > 0;
+
 	return (
-		<div className="flex flex-wrap gap-2 items-center mb-4">
-			<Input
-				aria-label="Search users"
-				placeholder="Search name, email, id, discord..."
-				className="max-w-xs"
-				value={q}
-				onChange={(e) => setQ(e.target.value)}
-				onKeyDown={(e) => {
-					if (e.key === "Enter") updateParam("q", q || null);
-				}}
-			/>
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<Button variant="outline">Role</Button>
-				</DropdownMenuTrigger>
-				<DropdownMenuContent>
-					{roleOptions.map((o) => (
-						<DropdownMenuCheckboxItem
-							key={o.value}
-							checked={currentRoles.includes(o.value)}
-							onCheckedChange={(v) => {
-								const next = v
-									? [...currentRoles, o.value]
-									: currentRoles.filter((x) => x !== o.value);
-								updateParam("role", next.length ? next : null);
+		<div className="flex flex-wrap items-center gap-2">
+			<InputGroup className="h-9 max-w-xs flex-1 min-w-[14rem]">
+				<InputGroupAddon>
+					<SearchIcon aria-hidden="true" />
+				</InputGroupAddon>
+				<InputGroupInput
+					aria-label="Search users"
+					placeholder="Search name, email, id, Discord…"
+					value={q}
+					onChange={(e) => setQ(e.target.value)}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") updateParam("q", q || null);
+					}}
+				/>
+			</InputGroup>
+
+			<Popover>
+				<PopoverTrigger asChild>
+					<Button
+						variant="outline"
+						size="sm"
+						aria-label="Filter users"
+					>
+						<FilterIcon aria-hidden="true" />
+						Filter
+						{activeFilterCount > 0 ? (
+							<Badge variant="secondary" className="ml-1">
+								{activeFilterCount}
+							</Badge>
+						) : null}
+					</Button>
+				</PopoverTrigger>
+				<PopoverContent align="start" className="w-[360px] p-0">
+					<div className="flex flex-col gap-3 p-3">
+						<FilterRow label="Role">
+							<RoleDropdown
+								options={roleOptions}
+								selected={currentRoles}
+								onChange={(next) =>
+									updateParam("role", next.length ? next : null)
+								}
+							/>
+						</FilterRow>
+
+						<Separator />
+
+						<FilterRow label="Status">
+							<FilterToggleGroup
+								ariaLabel="Status"
+								value={currentStatus}
+								options={STATUS_OPTIONS}
+								onChange={(v) =>
+									updateParam("status", v === "any" ? null : v)
+								}
+							/>
+						</FilterRow>
+
+						<FilterRow label="Discord">
+							<FilterToggleGroup
+								ariaLabel="Discord"
+								value={currentDiscord}
+								options={TRISTATE}
+								onChange={(v) =>
+									updateParam("discord", v === "any" ? null : v)
+								}
+							/>
+						</FilterRow>
+
+						<FilterRow label="Steam">
+							<FilterToggleGroup
+								ariaLabel="Steam"
+								value={currentSteam}
+								options={TRISTATE}
+								onChange={(v) =>
+									updateParam("steam", v === "any" ? null : v)
+								}
+							/>
+						</FilterRow>
+
+						<FilterRow label="Verified">
+							<FilterToggleGroup
+								ariaLabel="Verified"
+								value={currentVerified}
+								options={VERIFIED}
+								onChange={(v) =>
+									updateParam("emailVerified", v === "any" ? null : v)
+								}
+							/>
+						</FilterRow>
+					</div>
+
+					<Separator />
+
+					<div className="flex justify-end p-2">
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={!hasAnything}
+							onClick={() => {
+								setQ("");
+								router.replace(pathname);
 							}}
 						>
-							{o.label}
-						</DropdownMenuCheckboxItem>
-					))}
-				</DropdownMenuContent>
-			</DropdownMenu>
-			<SingleSelect
-				label="Status"
-				value={currentStatus}
-				options={STATUS_OPTIONS}
-				onChange={(v) => updateParam("status", v === "active" ? null : v)}
-			/>
-			<SingleSelect
-				label="Discord"
-				value={currentDiscord}
-				options={TRISTATE}
-				onChange={(v) => updateParam("discord", v === "any" ? null : v)}
-			/>
-			<SingleSelect
-				label="Steam"
-				value={currentSteam}
-				options={TRISTATE}
-				onChange={(v) => updateParam("steam", v === "any" ? null : v)}
-			/>
-			<SingleSelect
-				label="Verified"
-				value={currentVerified}
-				options={VERIFIED}
-				onChange={(v) => updateParam("emailVerified", v === "any" ? null : v)}
-			/>
-			<Button variant="ghost" onClick={() => router.replace(pathname)}>
-				Clear
-			</Button>
+							Clear
+						</Button>
+					</div>
+				</PopoverContent>
+			</Popover>
+
 			{canInvite && csrfToken ? (
 				<div className="ml-auto">
 					<InviteUserDialog csrfToken={csrfToken} />
@@ -132,30 +211,88 @@ export function UsersFilterBar({
 	);
 }
 
-function SingleSelect({
+function FilterRow({
 	label,
+	children,
+}: {
+	label: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<div className="flex flex-col gap-1.5">
+			<span className="text-xs font-medium text-muted-foreground">
+				{label}
+			</span>
+			{children}
+		</div>
+	);
+}
+
+function FilterToggleGroup({
+	ariaLabel,
 	value,
 	options,
 	onChange,
 }: {
-	label: string;
+	ariaLabel: string;
 	value: string;
 	options: Option[];
 	onChange: (v: string) => void;
 }) {
 	return (
+		<ToggleGroup
+			type="single"
+			value={value}
+			onValueChange={(v) => {
+				// Treat empty string (user clicked the already-selected item) as "any".
+				onChange(v || "any");
+			}}
+			aria-label={ariaLabel}
+			className="justify-start"
+		>
+			{options.map((o) => (
+				<ToggleGroupItem key={o.value} value={o.value} aria-label={o.label}>
+					{o.label}
+				</ToggleGroupItem>
+			))}
+		</ToggleGroup>
+	);
+}
+
+function RoleDropdown({
+	options,
+	selected,
+	onChange,
+}: {
+	options: Option[];
+	selected: string[];
+	onChange: (next: string[]) => void;
+}) {
+	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="outline">
-					{label}: {options.find((o) => o.value === value)?.label ?? value}
+				<Button variant="outline" size="sm" className="justify-start">
+					Select roles
+					{selected.length > 0 ? (
+						<Badge variant="secondary" className="ml-1">
+							{selected.length}
+						</Badge>
+					) : null}
 				</Button>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent>
+			<DropdownMenuContent align="start">
+				<DropdownMenuLabel>Filter by role</DropdownMenuLabel>
+				<DropdownMenuSeparator />
 				{options.map((o) => (
 					<DropdownMenuCheckboxItem
 						key={o.value}
-						checked={value === o.value}
-						onCheckedChange={() => onChange(o.value)}
+						checked={selected.includes(o.value)}
+						onCheckedChange={(v) => {
+							const next = v
+								? [...selected, o.value]
+								: selected.filter((x) => x !== o.value);
+							onChange(next);
+						}}
 					>
 						{o.label}
 					</DropdownMenuCheckboxItem>

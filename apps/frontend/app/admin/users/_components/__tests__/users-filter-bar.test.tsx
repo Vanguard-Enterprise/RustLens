@@ -70,7 +70,9 @@ describe("UsersFilterBar", () => {
 	it("toggling a role inside the nested Role dropdown writes role=<key>", () => {
 		render(<UsersFilterBar roleOptions={roleOptions} />);
 		openFilterPopover();
-		fireEvent.click(screen.getByRole("button", { name: /Select roles/i }));
+		// Radix DropdownMenu opens on pointerdown, not click — fire both.
+		const rolesBtn = screen.getByRole("button", { name: /Select roles/i });
+		fireEvent.pointerDown(rolesBtn, { button: 0, ctrlKey: false });
 		fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Moderator/i }));
 		expect(replace).toHaveBeenCalled();
 		const arg = (replace.mock.calls.at(-1) ?? [""])[0] as string;
