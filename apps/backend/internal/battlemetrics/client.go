@@ -31,9 +31,8 @@ type PlayerServer struct {
 }
 
 type PlayerNameIdentifier struct {
-	Name      string
-	FirstSeen *time.Time
-	LastSeen  *time.Time
+	Name     string
+	LastSeen *time.Time
 }
 
 type PlayerProfile struct {
@@ -216,14 +215,13 @@ func (c *Client) FetchPlayerProfile(ctx context.Context, playerID string) (Playe
 			if item.Attributes.Type != "name" {
 				continue
 			}
-			lastSeen := item.Meta.LastSeen
+			lastSeen := item.Attributes.LastSeen
 			if lastSeen == nil {
-				lastSeen = item.Attributes.LastSeen
+				lastSeen = item.Meta.LastSeen
 			}
 			profile.NameIdentifiers = append(profile.NameIdentifiers, PlayerNameIdentifier{
-				Name:      item.Attributes.Identifier,
-				FirstSeen: item.Meta.FirstSeen,
-				LastSeen:  lastSeen,
+				Name:     item.Attributes.Identifier,
+				LastSeen: lastSeen,
 			})
 		}
 	}

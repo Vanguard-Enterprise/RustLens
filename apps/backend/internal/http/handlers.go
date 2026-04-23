@@ -1824,27 +1824,24 @@ func computeNameGaps(identifiers []battlemetrics.PlayerNameIdentifier) []steamAn
 	gaps := []steamAnalyticsGap{}
 	filtered := make([]battlemetrics.PlayerNameIdentifier, 0, len(identifiers))
 	for _, id := range identifiers {
-		if id.FirstSeen == nil || id.LastSeen == nil {
+		if id.LastSeen == nil {
 			continue
 		}
 		filtered = append(filtered, id)
 	}
 	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].FirstSeen.Before(*filtered[j].FirstSeen)
+		return filtered[i].LastSeen.Before(*filtered[j].LastSeen)
 	})
 
 	for i := 0; i+1 < len(filtered); i++ {
 		current := filtered[i]
 		next := filtered[i+1]
-		if next.FirstSeen.Before(*current.LastSeen) || next.FirstSeen.Equal(*current.LastSeen) {
-			continue
-		}
-		if next.FirstSeen.Sub(*current.LastSeen) < analyticsGapThreshold {
+		if next.LastSeen.Sub(*current.LastSeen) < analyticsGapThreshold {
 			continue
 		}
 		gaps = append(gaps, steamAnalyticsGap{
 			FromUnix: current.LastSeen.Unix(),
-			ToUnix:   next.FirstSeen.Unix(),
+			ToUnix:   next.LastSeen.Unix(),
 		})
 	}
 	return gaps
