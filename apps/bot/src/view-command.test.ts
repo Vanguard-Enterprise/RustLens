@@ -22,6 +22,7 @@ describe("view-command", () => {
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
       firstSeenUnix: 1766616480,
+      serversPlayed: 12,
       hours: {
         vitality: 10,
         atlas: 20,
@@ -39,7 +40,7 @@ describe("view-command", () => {
     expect(embed.fields?.[0]?.value).toContain("https://steamcommunity.com/profiles/76561198000000000");
     expect(embed.fields?.[0]?.value).toContain("https://www.battlemetrics.com/players/918543318");
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
-    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_10:1487595719790432447>");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_6:1487595718431739954>");
     expect(embed.fields).toHaveLength(11);
   });
 
@@ -50,6 +51,7 @@ describe("view-command", () => {
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
       firstSeenUnix: 1766616480,
+      serversPlayed: 40,
       hours: {
         vitality: 0,
         atlas: 0,
@@ -62,8 +64,10 @@ describe("view-command", () => {
       },
     });
 
-    expect(field.name).toBe("Risk Factor <:risk_4:1487595713553502359>");
-    expect(field.value).toBe("<:risk_4:1487595713553502359> Steam → BM hour difference: **1100** hours.");
+    expect(field.name).toBe("Risk Factor <:risk_1:1487595708881178734>");
+    expect(field.value).toContain("<:risk_4:1487595713553502359> Steam → BM hour difference: **1100** hours.");
+    expect(field.value).toContain("<:risk_0:1487595959809609758> Servers played: **40**.");
+    expect(field.value).toContain("<:risk_0:1487595959809609758> BM hours: **2200**.");
   });
 
   it("uses zero risk when steam hours are close to battlemetrics hours", () => {
@@ -73,6 +77,7 @@ describe("view-command", () => {
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
       firstSeenUnix: 1766616480,
+      serversPlayed: 20,
       hours: {
         vitality: 0,
         atlas: 0,
@@ -93,6 +98,7 @@ describe("view-command", () => {
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
       firstSeenUnix: 1766616480,
+      serversPlayed: 20,
       hours: {
         vitality: 0,
         atlas: 0,
@@ -106,6 +112,23 @@ describe("view-command", () => {
     })).toEqual({ level: 1, difference: 267 });
   });
 
+  it("scores servers-played risk by 3-server steps under 30", () => {
+    expect(__testables.calculateServersPlayedRisk({ serversPlayed: 31 } as never)).toEqual({ level: 0, servers: 31 });
+    expect(__testables.calculateServersPlayedRisk({ serversPlayed: 30 } as never)).toEqual({ level: 0, servers: 30 });
+    expect(__testables.calculateServersPlayedRisk({ serversPlayed: 27 } as never)).toEqual({ level: 1, servers: 27 });
+    expect(__testables.calculateServersPlayedRisk({ serversPlayed: 12 } as never)).toEqual({ level: 6, servers: 12 });
+    expect(__testables.calculateServersPlayedRisk({ serversPlayed: 0 } as never)).toEqual({ level: 10, servers: 0 });
+  });
+
+  it("scores BM hours risk with 25-hour buckets", () => {
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 0 } } as never)).toEqual({ level: 10, hours: 0 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 24 } } as never)).toEqual({ level: 10, hours: 24 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 25 } } as never)).toEqual({ level: 10, hours: 25 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 50 } } as never)).toEqual({ level: 9, hours: 50 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 75 } } as never)).toEqual({ level: 8, hours: 75 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 275 } } as never)).toEqual({ level: 0, hours: 275 });
+  });
+
   it("includes the linked discord user when provided", () => {
     const embed = buildUserEmbed("76561198000000000", {
       steamId: "76561198000000000",
@@ -113,6 +136,7 @@ describe("view-command", () => {
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
       firstSeenUnix: 1766616480,
+      serversPlayed: 5,
       hours: {
         vitality: 10,
         atlas: 20,
@@ -132,7 +156,7 @@ describe("view-command", () => {
     const embed = buildUserEmbed("76561198000000000", null).toJSON();
 
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**private**");
-    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.value).toBe("<:risk_0:1487595959809609758> Steam → BM hour difference: **private**.");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.value).toContain("<:risk_0:1487595959809609758> Steam → BM hour difference: **private**.");
   });
 
   it("can omit the risk factor field", () => {

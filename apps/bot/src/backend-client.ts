@@ -108,6 +108,36 @@ export type SteamProfile = {
   avatarImage: string;
   firstSeenUnix: number | null;
   hours: SteamProfileHours;
+  serversPlayed: number;
+};
+
+export type SteamAnalyticsGame = {
+  appId: number;
+  name: string;
+  hours: number;
+};
+
+export type SteamAnalyticsServer = {
+  bmId: string;
+  name: string;
+  hours: number;
+};
+
+export type SteamAnalyticsGap = {
+  fromUnix: number;
+  toUnix: number;
+};
+
+export type SteamAnalytics = {
+  steamId: string;
+  bmId: string;
+  bmName: string;
+  avatarImage: string;
+  totalGames: number | null;
+  topGames: SteamAnalyticsGame[];
+  totalServers: number;
+  topServers: SteamAnalyticsServer[];
+  gaps: SteamAnalyticsGap[];
 };
 
 export type SteamDiscordLink = {
@@ -526,6 +556,14 @@ export class BackendClient {
     return this.call<SteamProfile>(
       workerId,
       `/api/internal/bot/setup/steam/${steamId}/profile`,
+      "GET",
+    );
+  }
+
+  getSteamAnalytics(workerId: string, steamId: string) {
+    return this.call<SteamAnalytics>(
+      workerId,
+      `/api/internal/bot/setup/steam/${steamId}/analytics`,
       "GET",
     );
   }

@@ -23,20 +23,21 @@ type SteamAccount struct {
 }
 
 type SteamAccountCache struct {
-	SteamID       string
-	BmID          string
-	BmName        string
-	AvatarImage   string
-	FirstSeenAt   *time.Time
-	VitalityHours int64
-	AtlasHours    int64
-	VitalHours    int64
-	ModdedHours   int64
-	OfficialHours int64
-	BuildHours    int64
-	BmHours       int64
-	RustHours     *int64
-	UpdatedAt     time.Time
+	SteamID         string
+	BmID            string
+	BmName          string
+	AvatarImage     string
+	FirstSeenAt     *time.Time
+	VitalityHours   int64
+	AtlasHours      int64
+	VitalHours      int64
+	ModdedHours     int64
+	OfficialHours   int64
+	BuildHours      int64
+	BmHours         int64
+	BmServersPlayed int
+	RustHours       *int64
+	UpdatedAt       time.Time
 }
 
 type SteamDiscordLink struct {
@@ -71,6 +72,7 @@ func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
 		&record.OfficialHours,
 		&record.BuildHours,
 		&record.BmHours,
+		&record.BmServersPlayed,
 		&record.RustHours,
 		&record.UpdatedAt,
 	)
@@ -147,7 +149,7 @@ func (p *PostgresStore) GetSteamAccountByBmID(ctx context.Context, bmID string) 
 func (p *PostgresStore) GetSteamAccountCache(ctx context.Context, steamID string) (SteamAccountCache, error) {
 	record, err := scanSteamAccountCache(p.pool.QueryRow(ctx, `
 		SELECT steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
-			modded_hours, official_hours, build_hours, bm_hours, rust_hours, updated_at
+			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, rust_hours, updated_at
 		FROM steam_account_cache
 		WHERE steam_id = $1
 	`, steamID))
@@ -164,9 +166,9 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 	return scanSteamAccountCache(p.pool.QueryRow(ctx, `
 		INSERT INTO steam_account_cache (
 			steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
-			modded_hours, official_hours, build_hours, bm_hours, rust_hours, updated_at
+			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, rust_hours, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
 		ON CONFLICT (steam_id) DO UPDATE
 		SET bm_id = EXCLUDED.bm_id,
 			bm_name = EXCLUDED.bm_name,
@@ -179,10 +181,11 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 			official_hours = EXCLUDED.official_hours,
 			build_hours = EXCLUDED.build_hours,
 			bm_hours = EXCLUDED.bm_hours,
+			bm_servers_played = EXCLUDED.bm_servers_played,
 			rust_hours = EXCLUDED.rust_hours,
 			updated_at = NOW()
 		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
-			modded_hours, official_hours, build_hours, bm_hours, rust_hours, updated_at
+			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, rust_hours, updated_at
 	`,
 		cache.SteamID,
 		cache.BmID,
@@ -196,6 +199,7 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 		cache.OfficialHours,
 		cache.BuildHours,
 		cache.BmHours,
+		cache.BmServersPlayed,
 		cache.RustHours,
 	))
 }

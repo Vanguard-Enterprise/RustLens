@@ -89,6 +89,7 @@ func NewRouter(
 		// Steam & Discord linking endpoints
 		r.Get("/steam/by-bm/{bmID}", handler.GetSteamAccountByBmID)
 		r.Get("/steam/{steamID}/profile", handler.GetSteamProfile)
+		r.Get("/steam/{steamID}/analytics", handler.GetSteamAnalytics)
 		r.Post("/steam/resolve", handler.ResolveSteamID)
 		r.Post("/steam/links", handler.CreateSoftLink)
 		r.Post("/steam/bulk-hard-links", handler.BulkUpsertHardLinks)

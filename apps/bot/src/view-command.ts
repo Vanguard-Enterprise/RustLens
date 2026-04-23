@@ -161,20 +161,59 @@ function calculateSteamBmHourRisk(profile: SteamProfile | null) {
   return { level: Math.min(10, Math.round(percentMissingFromSteam / RISK_PERCENT_STEP)), difference };
 }
 
+function calculateServersPlayedRisk(profile: SteamProfile | null) {
+  const servers = profile?.serversPlayed;
+  if (servers === null || servers === undefined) {
+    return null;
+  }
+
+  if (servers > 30) {
+    return { level: 0, servers };
+  }
+
+  const level = Math.max(0, Math.min(10, Math.floor((30 - servers) / 3)));
+  return { level, servers };
+}
+
+function calculateBmHoursRisk(profile: SteamProfile | null) {
+  const bmHours = profile?.hours.bm;
+  if (bmHours === null || bmHours === undefined) {
+    return null;
+  }
+
+  if (bmHours < 25) {
+    return { level: 10, hours: bmHours };
+  }
+
+  const level = Math.max(0, Math.min(10, 11 - Math.floor(bmHours / 25)));
+  return { level, hours: bmHours };
+}
+
 function buildRiskFactorField(profile: SteamProfile | null) {
-  const factors = [calculateSteamBmHourRisk(profile)].filter((factor) => factor !== null);
+  const steamBmRisk = calculateSteamBmHourRisk(profile);
+  const serversRisk = calculateServersPlayedRisk(profile);
+  const bmHoursRisk = calculateBmHoursRisk(profile);
+
+  const factors = [steamBmRisk, serversRisk, bmHoursRisk].filter((factor) => factor !== null);
   const averageRisk = factors.length > 0
     ? factors.reduce((total, factor) => total + factor.level, 0) / factors.length
     : 0;
 
-  const steamBmRisk = factors[0];
-  const steamBmValue = steamBmRisk
+  const steamBmLine = steamBmRisk
     ? `${riskEmoji(steamBmRisk.level)} Steam → BM hour difference: **${steamBmRisk.difference}** hours.`
     : `${riskEmoji(0)} Steam → BM hour difference: **private**.`;
 
+  const serversLine = serversRisk
+    ? `${riskEmoji(serversRisk.level)} Servers played: **${serversRisk.servers}**.`
+    : `${riskEmoji(0)} Servers played: **unknown**.`;
+
+  const bmHoursLine = bmHoursRisk
+    ? `${riskEmoji(bmHoursRisk.level)} BM hours: **${bmHoursRisk.hours}**.`
+    : `${riskEmoji(0)} BM hours: **unknown**.`;
+
   return {
     name: `Risk Factor ${riskEmoji(averageRisk)}`,
-    value: steamBmValue,
+    value: [steamBmLine, serversLine, bmHoursLine].join("\n"),
   };
 }
 
@@ -182,7 +221,7 @@ export function buildProfileButtons(steamId: string) {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId(`player:stats:${steamId}`)
+        .setCustomId(`player:analytics:${steamId}`)
         .setEmoji("📈")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
@@ -531,5 +570,7 @@ export const __testables = {
   buildProfileButtons,
   buildRiskFactorField,
   calculateSteamBmHourRisk,
+  calculateServersPlayedRisk,
+  calculateBmHoursRisk,
   normalizeDiscordIdentifier,
 };

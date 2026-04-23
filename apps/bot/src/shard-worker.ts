@@ -24,6 +24,7 @@ import {
 } from "./online-command.js";
 import {
   ensurePlayerCommand,
+  handlePlayerButtonInteraction,
   handlePlayerChatInput,
 } from "./player-command.js";
 import {
@@ -211,6 +212,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isButton()) {
       if (await handleBindButtonInteraction(interaction)) {
+        return;
+      }
+
+      if (await handlePlayerButtonInteraction(interaction)) {
         return;
       }
 

@@ -30,11 +30,18 @@ type PlayerServer struct {
 	LastSeenAt  *time.Time
 }
 
+type PlayerNameIdentifier struct {
+	Name      string
+	FirstSeen *time.Time
+	LastSeen  *time.Time
+}
+
 type PlayerProfile struct {
-	BmID      string
-	BmName    string
-	CreatedAt *time.Time
-	Servers   []PlayerServer
+	BmID            string
+	BmName          string
+	CreatedAt       *time.Time
+	Servers         []PlayerServer
+	NameIdentifiers []PlayerNameIdentifier
 }
 
 type Client struct {
@@ -173,7 +180,10 @@ func (c *Client) FetchPlayerProfile(ctx context.Context, playerID string) (Playe
 			Type       string `json:"type"`
 			ID         string `json:"id"`
 			Attributes struct {
-				Name string `json:"name"`
+				Name       string     `json:"name"`
+				Type       string     `json:"type"`
+				Identifier string     `json:"identifier"`
+				LastSeen   *time.Time `json:"lastSeen"`
 			} `json:"attributes"`
 			Meta struct {
 				TimePlayed int64      `json:"timePlayed"`
@@ -193,17 +203,29 @@ func (c *Client) FetchPlayerProfile(ctx context.Context, playerID string) (Playe
 	}
 
 	for _, item := range payload.Included {
-		if item.Type != "server" {
-			continue
+		switch item.Type {
+		case "server":
+			profile.Servers = append(profile.Servers, PlayerServer{
+				ServerID:    item.ID,
+				ServerName:  item.Attributes.Name,
+				TimePlayed:  item.Meta.TimePlayed,
+				FirstSeenAt: item.Meta.FirstSeen,
+				LastSeenAt:  item.Meta.LastSeen,
+			})
+		case "identifier":
+			if item.Attributes.Type != "name" {
+				continue
+			}
+			lastSeen := item.Meta.LastSeen
+			if lastSeen == nil {
+				lastSeen = item.Attributes.LastSeen
+			}
+			profile.NameIdentifiers = append(profile.NameIdentifiers, PlayerNameIdentifier{
+				Name:      item.Attributes.Identifier,
+				FirstSeen: item.Meta.FirstSeen,
+				LastSeen:  lastSeen,
+			})
 		}
-
-		profile.Servers = append(profile.Servers, PlayerServer{
-			ServerID:    item.ID,
-			ServerName:  item.Attributes.Name,
-			TimePlayed:  item.Meta.TimePlayed,
-			FirstSeenAt: item.Meta.FirstSeen,
-			LastSeenAt:  item.Meta.LastSeen,
-		})
 	}
 
 	return profile, nil
