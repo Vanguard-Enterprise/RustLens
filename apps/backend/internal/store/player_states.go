@@ -161,9 +161,14 @@ func (p *PostgresStore) SyncPlayerStates(ctx context.Context, serverBmID string,
 
 		if player.BmName != "" {
 			if _, err := tx.Exec(ctx, `
-				UPDATE steam_accounts
-				SET bm_name = $2
-				WHERE bm_id = $1 AND bm_name IS DISTINCT FROM $2
+				INSERT INTO steam_account_cache (steam_id, bm_id, bm_name, updated_at)
+				SELECT steam_id, $1, $2, 'epoch'::timestamptz
+				FROM steam_accounts
+				WHERE bm_id = $1
+				ON CONFLICT (steam_id) DO UPDATE
+				SET bm_id = EXCLUDED.bm_id,
+					bm_name = EXCLUDED.bm_name
+				WHERE steam_account_cache.bm_name IS DISTINCT FROM EXCLUDED.bm_name
 			`, player.PlayerBmID, player.BmName); err != nil {
 				return err
 			}

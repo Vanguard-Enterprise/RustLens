@@ -1156,7 +1156,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/internal/bot/setup/guilds/{guildID}/nickname-targets": map[string]any{
 				"get": map[string]any{
 					"summary":     "List guild nickname targets",
-					"description": "Returns one guild-scoped steam-discord link per Discord user joined with steam_accounts bm_id and bm_name for nickname updates.",
+					"description": "Returns one guild-scoped steam-discord link per Discord user joined with steam_accounts bm_id and steam_account_cache bm_name for nickname updates.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{

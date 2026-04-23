@@ -96,11 +96,30 @@ Known Steam player accounts with optional BattleMetrics ID.
 |---|---|---|
 | `steam_id` | `TEXT` | PK (17-digit Steam ID) |
 | `bm_id` | `TEXT UNIQUE` | Nullable, BattleMetrics player ID |
-| `bm_name` | `TEXT NOT NULL DEFAULT ''` | Latest known BattleMetrics display name |
-| `avatar_image` | `TEXT NOT NULL DEFAULT ''` | Steam avatar URL |
 | `first_seen_at` | `TIMESTAMPTZ` | Nullable, BattleMetrics player creation / first-seen time |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
-| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last avatar refresh time |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last account row update time |
+
+### `steam_account_cache`
+
+Volatile Steam/BattleMetrics profile data cached for lazy `/player` and `/view user` profile rendering. The profile route treats rows with `updated_at` newer than 12 hours as fresh and skips Steam/BattleMetrics API calls; if refresh fails for a stale row, the stale row is returned without changing `updated_at`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `steam_id` | `TEXT` | PK, FK to `steam_accounts.steam_id` |
+| `bm_id` | `TEXT NOT NULL DEFAULT ''` | BattleMetrics player ID used when the cache was built |
+| `bm_name` | `TEXT NOT NULL DEFAULT ''` | Latest cached BattleMetrics display name |
+| `avatar_image` | `TEXT NOT NULL DEFAULT ''` | Latest cached Steam avatar URL |
+| `first_seen_at` | `TIMESTAMPTZ` | Cached BattleMetrics player creation / first-seen time |
+| `vitality_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Vitality servers |
+| `atlas_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Atlas servers |
+| `vital_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Vital servers |
+| `modded_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Modded servers |
+| `official_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Official servers |
+| `build_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Build servers |
+| `bm_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours across all BattleMetrics-returned servers |
+| `rust_hours` | `BIGINT` | Cached Steam Rust playtime, nullable when unavailable/private |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Cache refresh timestamp |
 
 ### `tracked_servers`
 
@@ -155,7 +174,7 @@ BattleMetrics presence state per tracked server and player.
 
 ### Guild Online Summary
 
-`online_summary.go` joins `guild_steam_discord_links`, `guild_tracked_servers`, `steam_accounts`, `player_states`, and `tracked_servers` to produce the guild online summary used by the bot's `/online` command. The query only returns rows where the linked Steam account has a non-null `bm_id`, the matching player state is currently online, and the server is selected for that guild.
+`online_summary.go` joins `guild_steam_discord_links`, `guild_tracked_servers`, `steam_accounts`, `steam_account_cache`, `player_states`, and `tracked_servers` to produce the guild online summary used by the bot's `/online` command. The query only returns rows where the linked Steam account has a non-null `bm_id`, the matching player state is currently online, and the server is selected for that guild.
 
 ### `steam_discord_links`
 
@@ -209,7 +228,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, and updates `player_states` inside a single store transaction per server.
 - Steam profile resolution lives in `internal/steamapi/`. The bot uses `POST /api/internal/bot/setup/steam/resolve` to turn a raw 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` / `steamcommunity.com/id/...` URL into a canonical Steam ID. Vanity URLs are resolved live through `STEAM_API_KEY` and are not cached separately.
 - Outbound Steam API and BattleMetrics HTTP requests can be proxied by setting `PROXY_ENABLED=true` and `PROXY_ENDPOINTS` to a comma-separated list of proxy URLs such as `http://user:pass@proxy-1:8080,http://proxy-2:8080`. Proxy selection is round-robin per request, startup validates URL syntax but does not test reachability, and request logs include the proxy endpoint used with credentials redacted.
-- The bot-internal steam profile route refreshes `steam_accounts.bm_name` on every lookup from BattleMetrics player data, refreshes `avatar_image` from `ISteamUser/GetPlayerSummaries` only when `updated_at` is older than 4 days, and fetches Rust playtime from `IPlayerService/GetOwnedGames` on every lookup. Steam summary and owned-games requests are sent directly, not through the proxy provider.
+- The bot-internal steam profile route lazily refreshes `steam_account_cache` after a 12-hour TTL. Fresh cache rows skip Steam/BattleMetrics API calls; stale rows are returned without changing `updated_at` if refresh fails. Steam summary and owned-games requests are sent directly, not through the proxy provider.
 
 ## Commands
 

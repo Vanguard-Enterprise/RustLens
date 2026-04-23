@@ -22,6 +22,23 @@ type SteamAccount struct {
 	UpdatedAt   time.Time
 }
 
+type SteamAccountCache struct {
+	SteamID       string
+	BmID          string
+	BmName        string
+	AvatarImage   string
+	FirstSeenAt   *time.Time
+	VitalityHours int64
+	AtlasHours    int64
+	VitalHours    int64
+	ModdedHours   int64
+	OfficialHours int64
+	BuildHours    int64
+	BmHours       int64
+	RustHours     *int64
+	UpdatedAt     time.Time
+}
+
 type SteamDiscordLink struct {
 	SteamID   string
 	DiscordID string
@@ -35,6 +52,30 @@ func scanSteamAccount(scanner rowScanner) (SteamAccount, error) {
 	err := scanner.Scan(&record.SteamID, &record.BmID, &record.BmName, &record.AvatarImage, &record.FirstSeenAt, &record.CreatedAt, &record.UpdatedAt)
 	if err != nil {
 		return SteamAccount{}, err
+	}
+	return record, nil
+}
+
+func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
+	var record SteamAccountCache
+	err := scanner.Scan(
+		&record.SteamID,
+		&record.BmID,
+		&record.BmName,
+		&record.AvatarImage,
+		&record.FirstSeenAt,
+		&record.VitalityHours,
+		&record.AtlasHours,
+		&record.VitalHours,
+		&record.ModdedHours,
+		&record.OfficialHours,
+		&record.BuildHours,
+		&record.BmHours,
+		&record.RustHours,
+		&record.UpdatedAt,
+	)
+	if err != nil {
+		return SteamAccountCache{}, err
 	}
 	return record, nil
 }
@@ -55,8 +96,8 @@ func (p *PostgresStore) UpsertSteamAccount(ctx context.Context, steamID string, 
 		VALUES ($1, $2)
 		ON CONFLICT (steam_id) DO UPDATE
 		SET bm_id = COALESCE(EXCLUDED.bm_id, steam_accounts.bm_id)
-		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, created_at, updated_at
-	`, steamID, bmID).Scan(&record.SteamID, &record.BmID, &record.BmName, &record.AvatarImage, &record.FirstSeenAt, &record.CreatedAt, &record.UpdatedAt)
+		RETURNING steam_id, bm_id, first_seen_at, created_at, updated_at
+	`, steamID, bmID).Scan(&record.SteamID, &record.BmID, &record.FirstSeenAt, &record.CreatedAt, &record.UpdatedAt)
 	if err != nil {
 		return SteamAccount{}, err
 	}
@@ -65,9 +106,17 @@ func (p *PostgresStore) UpsertSteamAccount(ctx context.Context, steamID string, 
 
 func (p *PostgresStore) GetSteamAccountBySteamID(ctx context.Context, steamID string) (SteamAccount, error) {
 	record, err := scanSteamAccount(p.pool.QueryRow(ctx, `
-		SELECT steam_id, bm_id, bm_name, avatar_image, first_seen_at, created_at, updated_at
-		FROM steam_accounts
-		WHERE steam_id = $1
+		SELECT
+			sa.steam_id,
+			sa.bm_id,
+			COALESCE(sac.bm_name, '') AS bm_name,
+			COALESCE(sac.avatar_image, '') AS avatar_image,
+			COALESCE(sac.first_seen_at, sa.first_seen_at) AS first_seen_at,
+			sa.created_at,
+			sa.updated_at
+		FROM steam_accounts sa
+		LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
+		WHERE sa.steam_id = $1
 	`, steamID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SteamAccount{}, ErrSteamAccountNotFound
@@ -77,9 +126,17 @@ func (p *PostgresStore) GetSteamAccountBySteamID(ctx context.Context, steamID st
 
 func (p *PostgresStore) GetSteamAccountByBmID(ctx context.Context, bmID string) (SteamAccount, error) {
 	record, err := scanSteamAccount(p.pool.QueryRow(ctx, `
-		SELECT steam_id, bm_id, bm_name, avatar_image, first_seen_at, created_at, updated_at
-		FROM steam_accounts
-		WHERE bm_id = $1
+		SELECT
+			sa.steam_id,
+			sa.bm_id,
+			COALESCE(sac.bm_name, '') AS bm_name,
+			COALESCE(sac.avatar_image, '') AS avatar_image,
+			COALESCE(sac.first_seen_at, sa.first_seen_at) AS first_seen_at,
+			sa.created_at,
+			sa.updated_at
+		FROM steam_accounts sa
+		LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
+		WHERE sa.bm_id = $1
 	`, bmID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SteamAccount{}, ErrSteamAccountNotFound
@@ -87,38 +144,60 @@ func (p *PostgresStore) GetSteamAccountByBmID(ctx context.Context, bmID string) 
 	return record, err
 }
 
-func (p *PostgresStore) UpdateSteamAccountProfile(ctx context.Context, steamID string, bmName string, avatarImage *string, refreshAvatar bool, firstSeenAt *time.Time) (SteamAccount, error) {
-	var record SteamAccount
-	err := p.pool.QueryRow(ctx, `
-		UPDATE steam_accounts
-		SET bm_name = $2,
-			avatar_image = CASE
-				WHEN $3::boolean THEN COALESCE($4, avatar_image)
-				ELSE avatar_image
-			END,
-			first_seen_at = COALESCE($5::timestamptz, first_seen_at),
-			updated_at = CASE
-				WHEN $3::boolean THEN NOW()
-				ELSE updated_at
-			END
+func (p *PostgresStore) GetSteamAccountCache(ctx context.Context, steamID string) (SteamAccountCache, error) {
+	record, err := scanSteamAccountCache(p.pool.QueryRow(ctx, `
+		SELECT steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
+			modded_hours, official_hours, build_hours, bm_hours, rust_hours, updated_at
+		FROM steam_account_cache
 		WHERE steam_id = $1
-		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, created_at, updated_at
-	`, steamID, bmName, refreshAvatar, avatarImage, firstSeenAt).Scan(
-		&record.SteamID,
-		&record.BmID,
-		&record.BmName,
-		&record.AvatarImage,
-		&record.FirstSeenAt,
-		&record.CreatedAt,
-		&record.UpdatedAt,
-	)
+	`, steamID))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return SteamAccount{}, ErrSteamAccountNotFound
+		return SteamAccountCache{}, ErrSteamAccountNotFound
 	}
 	if err != nil {
-		return SteamAccount{}, err
+		return SteamAccountCache{}, err
 	}
 	return record, nil
+}
+
+func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache SteamAccountCache) (SteamAccountCache, error) {
+	return scanSteamAccountCache(p.pool.QueryRow(ctx, `
+		INSERT INTO steam_account_cache (
+			steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
+			modded_hours, official_hours, build_hours, bm_hours, rust_hours, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+		ON CONFLICT (steam_id) DO UPDATE
+		SET bm_id = EXCLUDED.bm_id,
+			bm_name = EXCLUDED.bm_name,
+			avatar_image = EXCLUDED.avatar_image,
+			first_seen_at = EXCLUDED.first_seen_at,
+			vitality_hours = EXCLUDED.vitality_hours,
+			atlas_hours = EXCLUDED.atlas_hours,
+			vital_hours = EXCLUDED.vital_hours,
+			modded_hours = EXCLUDED.modded_hours,
+			official_hours = EXCLUDED.official_hours,
+			build_hours = EXCLUDED.build_hours,
+			bm_hours = EXCLUDED.bm_hours,
+			rust_hours = EXCLUDED.rust_hours,
+			updated_at = NOW()
+		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
+			modded_hours, official_hours, build_hours, bm_hours, rust_hours, updated_at
+	`,
+		cache.SteamID,
+		cache.BmID,
+		cache.BmName,
+		cache.AvatarImage,
+		cache.FirstSeenAt,
+		cache.VitalityHours,
+		cache.AtlasHours,
+		cache.VitalHours,
+		cache.ModdedHours,
+		cache.OfficialHours,
+		cache.BuildHours,
+		cache.BmHours,
+		cache.RustHours,
+	))
 }
 
 func (p *PostgresStore) CreateSteamDiscordLink(ctx context.Context, link SteamDiscordLink) (SteamDiscordLink, error) {
@@ -406,15 +485,15 @@ func (p *PostgresStore) ListGuildNicknameTargets(ctx context.Context, guildID st
 				gsl.discord_id,
 				gsl.steam_id,
 				sa.bm_id,
-				NULLIF(sa.bm_name, '') AS bm_name,
+				NULLIF(sac.bm_name, '') AS bm_name,
 				ROW_NUMBER() OVER (
 					PARTITION BY gsl.discord_id
 					ORDER BY
 						CASE
 							WHEN sa.bm_id IS NOT NULL
 								AND sa.bm_id <> ''
-								AND sa.bm_name IS NOT NULL
-								AND sa.bm_name <> ''
+								AND sac.bm_name IS NOT NULL
+								AND sac.bm_name <> ''
 							THEN 0
 							ELSE 1
 						END ASC,
@@ -423,6 +502,7 @@ func (p *PostgresStore) ListGuildNicknameTargets(ctx context.Context, guildID st
 				) AS nickname_rank
 			FROM guild_steam_discord_links gsl
 			LEFT JOIN steam_accounts sa ON sa.steam_id = gsl.steam_id
+			LEFT JOIN steam_account_cache sac ON sac.steam_id = gsl.steam_id
 			WHERE gsl.guild_id = $1
 		) nickname_targets
 		WHERE nickname_rank = 1

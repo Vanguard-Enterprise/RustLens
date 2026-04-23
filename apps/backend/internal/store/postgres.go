@@ -142,16 +142,77 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS steam_accounts (
 			steam_id TEXT PRIMARY KEY,
 			bm_id TEXT UNIQUE,
-			bm_name TEXT NOT NULL DEFAULT '',
-			avatar_image TEXT NOT NULL DEFAULT '',
 			first_seen_at TIMESTAMPTZ,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
-		ALTER TABLE steam_accounts ADD COLUMN IF NOT EXISTS bm_name TEXT NOT NULL DEFAULT '';
 		ALTER TABLE steam_accounts ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMPTZ;
 		ALTER TABLE steam_accounts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+		CREATE TABLE IF NOT EXISTS steam_account_cache (
+			steam_id TEXT PRIMARY KEY REFERENCES steam_accounts(steam_id) ON DELETE CASCADE,
+			bm_id TEXT NOT NULL DEFAULT '',
+			bm_name TEXT NOT NULL DEFAULT '',
+			avatar_image TEXT NOT NULL DEFAULT '',
+			first_seen_at TIMESTAMPTZ,
+			vitality_hours BIGINT NOT NULL DEFAULT 0,
+			atlas_hours BIGINT NOT NULL DEFAULT 0,
+			vital_hours BIGINT NOT NULL DEFAULT 0,
+			modded_hours BIGINT NOT NULL DEFAULT 0,
+			official_hours BIGINT NOT NULL DEFAULT 0,
+			build_hours BIGINT NOT NULL DEFAULT 0,
+			bm_hours BIGINT NOT NULL DEFAULT 0,
+			rust_hours BIGINT,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_id TEXT NOT NULL DEFAULT '';
+
+		CREATE INDEX IF NOT EXISTS steam_account_cache_updated_idx
+		ON steam_account_cache (updated_at);
+
+		DO $$
+		DECLARE
+			has_bm_name BOOLEAN;
+			has_avatar_image BOOLEAN;
+		BEGIN
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'steam_accounts' AND column_name = 'bm_name'
+			) INTO has_bm_name;
+
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'steam_accounts' AND column_name = 'avatar_image'
+			) INTO has_avatar_image;
+
+			IF has_bm_name AND has_avatar_image THEN
+				EXECUTE '
+					INSERT INTO steam_account_cache (steam_id, bm_id, bm_name, avatar_image, first_seen_at, updated_at)
+					SELECT steam_id, COALESCE(bm_id, ''''), COALESCE(bm_name, ''''), COALESCE(avatar_image, ''''), first_seen_at, updated_at
+					FROM steam_accounts
+					WHERE COALESCE(bm_name, '''') <> '''' OR COALESCE(avatar_image, '''') <> ''''
+					ON CONFLICT (steam_id) DO NOTHING
+				';
+			ELSIF has_bm_name THEN
+				EXECUTE '
+					INSERT INTO steam_account_cache (steam_id, bm_id, bm_name, first_seen_at, updated_at)
+					SELECT steam_id, COALESCE(bm_id, ''''), COALESCE(bm_name, ''''), first_seen_at, updated_at
+					FROM steam_accounts
+					WHERE COALESCE(bm_name, '''') <> ''''
+					ON CONFLICT (steam_id) DO NOTHING
+				';
+			END IF;
+
+			IF has_bm_name THEN
+				ALTER TABLE steam_accounts DROP COLUMN bm_name;
+			END IF;
+
+			IF has_avatar_image THEN
+				ALTER TABLE steam_accounts DROP COLUMN avatar_image;
+			END IF;
+		END $$;
 
 		CREATE TABLE IF NOT EXISTS tracked_servers (
 			bm_id TEXT PRIMARY KEY,
