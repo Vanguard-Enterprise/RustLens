@@ -36,7 +36,9 @@ import {
 } from "./setsteam-command.js";
 import {
   ensureServerCommand,
+  handleServerAutocomplete,
   handleServerChatInput,
+  handleServerModalSubmit,
 } from "./server-command.js";
 import {
   ensureSettingsCommand,
@@ -126,6 +128,10 @@ client.on("interactionCreate", async (interaction) => {
       if (await handleWipeReactAutocomplete(interaction)) {
         return;
       }
+
+      if (await handleServerAutocomplete(interaction)) {
+        return;
+      }
     }
 
     if (interaction.isChatInputCommand()) {
@@ -192,6 +198,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleWipeReactModalSubmit(interaction)) {
+        return;
+      }
+
+      if (await handleServerModalSubmit(interaction)) {
         return;
       }
 

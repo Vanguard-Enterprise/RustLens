@@ -108,6 +108,12 @@ Global BattleMetrics servers the bot should track.
 |---|---|---|
 | `bm_id` | `TEXT` | PK |
 | `name` | `TEXT NOT NULL` | Display name |
+| `is_vitality` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
+| `is_atlas` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
+| `is_vital` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
+| `is_modded` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
+| `is_official` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
+| `is_build` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
 | `last_polled_at` | `TIMESTAMPTZ` | Nullable, last successful or failed poll attempt time |
 | `last_poll_error` | `TEXT NOT NULL DEFAULT ''` | Most recent poll error, empty on success |
 

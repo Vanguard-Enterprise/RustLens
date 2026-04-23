@@ -295,8 +295,14 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 
 func trackedServerToMap(item store.TrackedServer) map[string]any {
 	result := map[string]any{
-		"bmId": item.BmID,
-		"name": item.Name,
+		"bmId":       item.BmID,
+		"name":       item.Name,
+		"isVitality": item.IsVitality,
+		"isAtlas":    item.IsAtlas,
+		"isVital":    item.IsVital,
+		"isModded":   item.IsModded,
+		"isOfficial": item.IsOfficial,
+		"isBuild":    item.IsBuild,
 	}
 	if item.LastPolledAt != nil {
 		result["lastPolledAt"] = *item.LastPolledAt
@@ -1105,8 +1111,14 @@ func (h *Handler) MarkWipeReactSchedulePosted(w http.ResponseWriter, r *http.Req
 }
 
 type createTrackedServerRequest struct {
-	BmID string `json:"bmId"`
-	Name string `json:"name"`
+	BmID       string `json:"bmId"`
+	Name       string `json:"name"`
+	IsVitality bool   `json:"isVitality"`
+	IsAtlas    bool   `json:"isAtlas"`
+	IsVital    bool   `json:"isVital"`
+	IsModded   bool   `json:"isModded"`
+	IsOfficial bool   `json:"isOfficial"`
+	IsBuild    bool   `json:"isBuild"`
 }
 
 func (h *Handler) ListTrackedServers(w http.ResponseWriter, r *http.Request) {
@@ -1140,7 +1152,17 @@ func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := h.postgres.CreateTrackedServer(r.Context(), request.BmID, request.Name)
+	item, err := h.postgres.CreateTrackedServer(
+		r.Context(),
+		request.BmID,
+		request.Name,
+		request.IsVitality,
+		request.IsAtlas,
+		request.IsVital,
+		request.IsModded,
+		request.IsOfficial,
+		request.IsBuild,
+	)
 	if errors.Is(err, store.ErrTrackedServerAlreadyExists) {
 		writeError(w, http.StatusConflict, "tracked server already exists")
 		return
@@ -1152,6 +1174,72 @@ func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, trackedServerToMap(item))
+}
+
+type updateTrackedServerRequest struct {
+	BmID       string `json:"bmId"`
+	Name       string `json:"name"`
+	IsVitality bool   `json:"isVitality"`
+	IsAtlas    bool   `json:"isAtlas"`
+	IsVital    bool   `json:"isVital"`
+	IsModded   bool   `json:"isModded"`
+	IsOfficial bool   `json:"isOfficial"`
+	IsBuild    bool   `json:"isBuild"`
+}
+
+func (h *Handler) UpdateTrackedServer(w http.ResponseWriter, r *http.Request) {
+	currentBmID := strings.TrimSpace(chi.URLParam(r, "bmID"))
+	if currentBmID == "" {
+		writeError(w, http.StatusBadRequest, "bmID is required")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request updateTrackedServerRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	request.BmID = strings.TrimSpace(request.BmID)
+	request.Name = strings.Join(strings.Fields(request.Name), " ")
+
+	if request.BmID == "" {
+		writeError(w, http.StatusBadRequest, "bmId is required")
+		return
+	}
+	if request.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	item, err := h.postgres.UpdateTrackedServer(
+		r.Context(),
+		currentBmID,
+		request.BmID,
+		request.Name,
+		request.IsVitality,
+		request.IsAtlas,
+		request.IsVital,
+		request.IsModded,
+		request.IsOfficial,
+		request.IsBuild,
+	)
+	if errors.Is(err, store.ErrTrackedServerNotFound) {
+		writeError(w, http.StatusNotFound, "tracked server not found")
+		return
+	}
+	if errors.Is(err, store.ErrTrackedServerAlreadyExists) {
+		writeError(w, http.StatusConflict, "tracked server already exists")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] UpdateTrackedServer error for %s -> %s: %v", currentBmID, request.BmID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update tracked server")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, trackedServerToMap(item))
 }
 
 func (h *Handler) DeleteTrackedServer(w http.ResponseWriter, r *http.Request) {

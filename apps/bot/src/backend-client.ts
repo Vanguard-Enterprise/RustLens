@@ -158,6 +158,12 @@ export type GuildOnlineSummaryListResponse = {
 export type TrackedServer = {
   bmId: string;
   name: string;
+  isVitality: boolean;
+  isAtlas: boolean;
+  isVital: boolean;
+  isModded: boolean;
+  isOfficial: boolean;
+  isBuild: boolean;
   lastPolledAt: string | null;
   lastPollError: string;
 };
@@ -404,12 +410,28 @@ export class BackendClient {
     );
   }
 
-  createTrackedServer(workerId: string, bmId: string, name: string) {
+  createTrackedServer(
+    workerId: string,
+    payload: Omit<TrackedServer, "lastPolledAt" | "lastPollError">,
+  ) {
     return this.call<TrackedServer>(
       workerId,
       `/api/internal/bot/setup/tracked-servers`,
       "POST",
-      { bmId, name },
+      payload,
+    );
+  }
+
+  updateTrackedServer(
+    workerId: string,
+    currentBmId: string,
+    payload: Omit<TrackedServer, "lastPolledAt" | "lastPollError">,
+  ) {
+    return this.call<TrackedServer>(
+      workerId,
+      `/api/internal/bot/setup/tracked-servers/${currentBmId}`,
+      "PUT",
+      payload,
     );
   }
 

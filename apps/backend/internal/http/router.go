@@ -71,6 +71,7 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Post("/guilds/{guildID}/wipe-react-schedules/{scheduleID}/mark-posted", handler.MarkWipeReactSchedulePosted)
 		r.Get("/tracked-servers", handler.ListTrackedServers)
 		r.Post("/tracked-servers", handler.CreateTrackedServer)
+		r.Put("/tracked-servers/{bmID}", handler.UpdateTrackedServer)
 		r.Delete("/tracked-servers/{bmID}", handler.DeleteTrackedServer)
 		r.Get("/player-states/servers/{serverID}", handler.ListOnlinePlayerStatesByServer)
 		r.Get("/player-states/servers/{serverID}/players/{playerID}", handler.GetPlayerState)
