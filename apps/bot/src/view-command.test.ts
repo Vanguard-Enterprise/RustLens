@@ -62,8 +62,8 @@ describe("view-command", () => {
       },
     });
 
-    expect(field.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
-    expect(field.value).toBe("<:risk_5:1487595720956448949> Steam → BM hour difference: **1100** hours.");
+    expect(field.name).toBe("Risk Factor <:risk_4:1487595713553502359>");
+    expect(field.value).toBe("<:risk_4:1487595713553502359> Steam → BM hour difference: **1100** hours.");
   });
 
   it("uses zero risk when steam hours are close to battlemetrics hours", () => {
@@ -81,9 +81,29 @@ describe("view-command", () => {
         official: 0,
         build: 0,
         bm: 1000,
-        rust: 1090,
+        rust: 1040,
       },
-    })).toEqual({ level: 0, difference: 90 });
+    })).toEqual({ level: 0, difference: 40 });
+  });
+
+  it("rounds to the nearest risk level", () => {
+    expect(__testables.calculateSteamBmHourRisk({
+      steamId: "76561198000000000",
+      bmId: "918543318",
+      bmName: "turn it up",
+      avatarImage: "https://cdn.example/avatar.png",
+      firstSeenUnix: 1766616480,
+      hours: {
+        vitality: 0,
+        atlas: 0,
+        vital: 0,
+        modded: 0,
+        official: 0,
+        build: 0,
+        bm: 1933,
+        rust: 2200,
+      },
+    })).toEqual({ level: 1, difference: 267 });
   });
 
   it("includes the linked discord user when provided", () => {

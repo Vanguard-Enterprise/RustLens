@@ -153,16 +153,12 @@ function calculateSteamBmHourRisk(profile: SteamProfile | null) {
   }
 
   const difference = Math.max(0, steamHours - bmHours);
-  if (difference === 0) {
+  if (difference === 0 || steamHours <= 0) {
     return { level: 0, difference };
   }
 
-  if (bmHours <= 0) {
-    return { level: 10, difference };
-  }
-
-  const percentOverBm = (difference / bmHours) * 100;
-  return { level: Math.min(10, Math.floor(percentOverBm / RISK_PERCENT_STEP)), difference };
+  const percentMissingFromSteam = (difference / steamHours) * 100;
+  return { level: Math.min(10, Math.round(percentMissingFromSteam / RISK_PERCENT_STEP)), difference };
 }
 
 function buildRiskFactorField(profile: SteamProfile | null) {
