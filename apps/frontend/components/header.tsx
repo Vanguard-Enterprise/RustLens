@@ -30,7 +30,7 @@ export function Header() {
 							height={32}
 							priority
 							src="/RustLens.png"
-							width={144}
+							width={32}
 						/>
 						<span className="text-sm font-semibold tracking-tight">RustLens</span>
 					</a>

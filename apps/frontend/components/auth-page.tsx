@@ -172,7 +172,7 @@ export function AuthPage({
 							height={48}
 							priority
 							src="/RustLens.png"
-							width={216}
+							width={48}
 						/>
 						<span className="text-lg font-semibold tracking-tight md:text-xl">
 							RustLens
