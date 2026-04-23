@@ -13,6 +13,7 @@ const VIEW_ALL_SUBCOMMAND = "all";
 const VIEW_NOSTEAM_SUBCOMMAND = "nosteam";
 
 const steamIDPattern = /^\d{17}$/;
+const discordMentionPattern = /^<@!?(\d{16,20})>$/;
 const VIEW_EMOJIS = {
   steam: "<:steam:1444016467648581642>",
   battlemetrics: "<:battlemetrics:1444011821529956472>",
@@ -81,7 +82,17 @@ async function fetchSteamAccountByBm(bmId: string): Promise<SteamAccount | null>
   }
 }
 
-function buildUserEmbed(steamId: string, account: SteamAccount | null): EmbedBuilder {
+function normalizeDiscordIdentifier(identifier: string) {
+  const trimmed = identifier.trim();
+  const mentionMatch = discordMentionPattern.exec(trimmed);
+  if (mentionMatch) {
+    return mentionMatch[1];
+  }
+
+  return null;
+}
+
+export function buildUserEmbed(steamId: string, account: SteamAccount | null): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setTitle("Player Profile")
     .setColor(RUSTLENS_EMBED_COLOR)
@@ -115,6 +126,88 @@ function buildUserEmbed(steamId: string, account: SteamAccount | null): EmbedBui
   }
 
   return embed;
+}
+
+export type ResolvedPlayerProfile =
+  | {
+    ok: true;
+    steamId: string;
+    account: SteamAccount | null;
+  }
+  | {
+    ok: false;
+    error: string;
+  };
+
+export async function resolvePlayerProfileForGuild(
+  guildId: string,
+  identifier: string,
+  options?: { allowDiscordLookup?: boolean },
+): Promise<ResolvedPlayerProfile> {
+  const backend = getBackend();
+  const workerId = getWorkerID();
+  const normalizedIdentifier = identifier.trim();
+  const discordId = normalizeDiscordIdentifier(normalizedIdentifier);
+  const allowDiscordLookup = options?.allowDiscordLookup ?? true;
+
+  if (allowDiscordLookup && discordId) {
+    const { items } = await backend.listGuildLinksByDiscord(workerId, guildId, discordId);
+    if (items.length === 0) {
+      return { ok: false, error: `No linked accounts found for <@${discordId}>.` };
+    }
+
+    const steamId = items[0].steamId;
+    const account = await fetchSteamAccount(steamId);
+    return { ok: true, steamId, account };
+  }
+
+  let steamId: string | null = null;
+  let account: SteamAccount | null = null;
+
+  if (steamIDPattern.test(normalizedIdentifier)) {
+    steamId = normalizedIdentifier;
+    account = await fetchSteamAccount(normalizedIdentifier);
+    const { items } = await backend.listGuildLinksBySteam(workerId, guildId, steamId);
+    if (items.length > 0) {
+      return { ok: true, steamId, account };
+    }
+
+    if (allowDiscordLookup) {
+      const { items: discordItems } = await backend.listGuildLinksByDiscord(workerId, guildId, normalizedIdentifier);
+      if (discordItems.length > 0) {
+        const linkedSteamId = discordItems[0].steamId;
+        const linkedAccount = await fetchSteamAccount(linkedSteamId);
+        return { ok: true, steamId: linkedSteamId, account: linkedAccount };
+      }
+    }
+
+    return { ok: false, error: "That identifier is not linked to anyone in this guild." };
+  } else if (allowDiscordLookup && /^\d{16,20}$/.test(normalizedIdentifier)) {
+    const { items } = await backend.listGuildLinksByDiscord(workerId, guildId, normalizedIdentifier);
+    if (items.length === 0) {
+      return { ok: false, error: `No linked accounts found for <@${normalizedIdentifier}>.` };
+    }
+
+    const linkedSteamId = items[0].steamId;
+    const linkedAccount = await fetchSteamAccount(linkedSteamId);
+    return { ok: true, steamId: linkedSteamId, account: linkedAccount };
+  } else {
+    account = await fetchSteamAccountByBm(normalizedIdentifier);
+    if (account) {
+      steamId = account.steamId;
+    }
+  }
+
+  if (!steamId) {
+    return { ok: false, error: "No steam account found for that identifier." };
+  }
+
+  const { items } = await backend.listGuildLinksBySteam(workerId, guildId, steamId);
+  if (items.length === 0) {
+    return { ok: false, error: "That identifier is not linked to anyone in this guild." };
+  }
+
+  return { ok: true, steamId, account };
 }
 
 function buildNoSteamEmbed(userIds: readonly string[]) {
@@ -216,50 +309,26 @@ async function handleViewUser(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const guildId = interaction.guildId!;
-  const backend = getBackend();
-  const workerId = getWorkerID();
 
   if (discordUser) {
-    const { items } = await backend.listGuildLinksByDiscord(workerId, guildId, discordUser.id);
-    if (items.length === 0) {
-      await interaction.editReply({ content: `No linked accounts found for <@${discordUser.id}>.` });
+    const result = await resolvePlayerProfileForGuild(guildId, discordUser.id);
+    if (!result.ok) {
+      await interaction.editReply({ content: result.error });
       return;
     }
 
-    const steamId = items[0].steamId;
-    const account = await fetchSteamAccount(steamId);
-    const embed = buildUserEmbed(steamId, account);
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [buildUserEmbed(result.steamId, result.account)] });
     return;
   }
 
   if (identifier) {
-    let steamId: string | null = null;
-    let account: SteamAccount | null = null;
-
-    if (steamIDPattern.test(identifier)) {
-      steamId = identifier;
-      account = await fetchSteamAccount(identifier);
-    } else {
-      account = await fetchSteamAccountByBm(identifier);
-      if (account) {
-        steamId = account.steamId;
-      }
-    }
-
-    if (!steamId) {
-      await interaction.editReply({ content: "No steam account found for that identifier." });
+    const result = await resolvePlayerProfileForGuild(guildId, identifier);
+    if (!result.ok) {
+      await interaction.editReply({ content: result.error });
       return;
     }
 
-    const { items } = await backend.listGuildLinksBySteam(workerId, guildId, steamId);
-    if (items.length === 0) {
-      await interaction.editReply({ content: "That identifier is not linked to anyone in this guild." });
-      return;
-    }
-
-    const embed = buildUserEmbed(steamId, account);
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [buildUserEmbed(result.steamId, result.account)] });
   }
 }
 
@@ -336,3 +405,8 @@ async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
     embeds: [buildNoSteamEmbed(missingUserIds)],
   });
 }
+
+export const __testables = {
+  buildUserEmbed,
+  normalizeDiscordIdentifier,
+};
