@@ -1,13 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import {
+	ChevronDownIcon,
+	DownloadIcon,
+	PauseIcon,
+	PlayIcon,
+	ShieldMinusIcon,
+	ShieldPlusIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
 type BulkAction = "suspend" | "unsuspend" | "roles.grant" | "roles.revoke";
 
@@ -96,16 +108,27 @@ export function UsersBulkToolbar({
 	};
 
 	return (
-		<div className="sticky top-0 z-10 mb-2 flex flex-wrap items-center gap-2 rounded-md border bg-background/90 p-2 backdrop-blur">
-			<span className="text-sm font-medium">{selected.length} selected</span>
+		<div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-lg border bg-background/90 p-2 shadow-sm backdrop-blur">
+			<div className="flex items-center gap-2">
+				<Badge variant="default">{selected.length}</Badge>
+				<span className="text-sm font-medium">
+					user{selected.length === 1 ? "" : "s"} selected
+				</span>
+			</div>
+
+			<Separator orientation="vertical" className="mx-1 h-6" />
 
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<Button variant="outline" size="sm" disabled={busy}>
+						<ShieldPlusIcon aria-hidden="true" />
 						Grant role
+						<ChevronDownIcon aria-hidden="true" />
 					</Button>
 				</DropdownMenuTrigger>
-				<DropdownMenuContent>
+				<DropdownMenuContent align="start">
+					<DropdownMenuLabel>Grant role to selection</DropdownMenuLabel>
+					<DropdownMenuSeparator />
 					{roleOptions.map((r) => (
 						<DropdownMenuItem
 							key={r.value}
@@ -122,10 +145,14 @@ export function UsersBulkToolbar({
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<Button variant="outline" size="sm" disabled={busy}>
+						<ShieldMinusIcon aria-hidden="true" />
 						Revoke role
+						<ChevronDownIcon aria-hidden="true" />
 					</Button>
 				</DropdownMenuTrigger>
-				<DropdownMenuContent>
+				<DropdownMenuContent align="start">
+					<DropdownMenuLabel>Revoke role from selection</DropdownMenuLabel>
+					<DropdownMenuSeparator />
 					{roleOptions.map((r) => (
 						<DropdownMenuItem
 							key={r.value}
@@ -145,6 +172,7 @@ export function UsersBulkToolbar({
 				disabled={busy}
 				onClick={() => confirmAndRun("suspend")}
 			>
+				<PauseIcon aria-hidden="true" />
 				Suspend
 			</Button>
 			<Button
@@ -153,19 +181,26 @@ export function UsersBulkToolbar({
 				disabled={busy}
 				onClick={() => confirmAndRun("unsuspend")}
 			>
+				<PlayIcon aria-hidden="true" />
 				Unsuspend
 			</Button>
+
+			<Separator orientation="vertical" className="mx-1 h-6" />
+
 			<Button asChild variant="outline" size="sm">
-				<a href={exportUrl()}>Export CSV</a>
+				<a href={exportUrl()}>
+					<DownloadIcon aria-hidden="true" />
+					Export CSV
+				</a>
 			</Button>
 			<Button variant="ghost" size="sm" onClick={onClear}>
 				Clear
 			</Button>
-			{lastSummary && (
+			{lastSummary ? (
 				<span className="ml-auto text-sm text-muted-foreground">
 					{lastSummary}
 				</span>
-			)}
+			) : null}
 		</div>
 	);
 }

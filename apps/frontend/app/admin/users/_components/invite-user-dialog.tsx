@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
+import { UserPlusIcon } from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
+	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
@@ -11,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { OneTimeTokenModal } from "@/components/admin/one-time-token-modal";
 import type { AdminActionResponse, InviteUserOutput } from "@/lib/rustlens-api";
@@ -28,6 +31,10 @@ export function InviteUserDialog({ csrfToken }: InviteUserDialogProps) {
 	const [error, setError] = useState<string | null>(null);
 	const [tokenUrl, setTokenUrl] = useState<string | null>(null);
 	const [invitedEmail, setInvitedEmail] = useState<string>("");
+
+	const emailId = useId();
+	const nameId = useId();
+	const reasonId = useId();
 
 	const reset = () => {
 		setEmail("");
@@ -92,16 +99,24 @@ export function InviteUserDialog({ csrfToken }: InviteUserDialogProps) {
 				}}
 			>
 				<DialogTrigger asChild>
-					<Button>Invite user</Button>
+					<Button size="sm">
+						<UserPlusIcon aria-hidden="true" />
+						Invite user
+					</Button>
 				</DialogTrigger>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Invite user</DialogTitle>
+						<DialogDescription>
+							Send an invite link. The user will be created on first
+							acceptance.
+						</DialogDescription>
 					</DialogHeader>
-					<div className="grid gap-3">
-						<label className="grid gap-1 text-sm">
-							<span className="font-medium">Email</span>
+					<div className="grid gap-4">
+						<div className="grid gap-1.5">
+							<Label htmlFor={emailId}>Email</Label>
 							<Input
+								id={emailId}
 								type="email"
 								value={email}
 								required
@@ -109,25 +124,35 @@ export function InviteUserDialog({ csrfToken }: InviteUserDialogProps) {
 								placeholder="person@example.com"
 								aria-label="Email"
 							/>
-						</label>
-						<label className="grid gap-1 text-sm">
-							<span className="font-medium">Display name (optional)</span>
+						</div>
+						<div className="grid gap-1.5">
+							<Label htmlFor={nameId}>
+								Display name{" "}
+								<span className="font-normal text-muted-foreground">
+									(optional)
+								</span>
+							</Label>
 							<Input
+								id={nameId}
 								value={displayName}
 								onChange={(e) => setDisplayName(e.target.value)}
 								aria-label="Display name"
 							/>
-						</label>
-						<label className="grid gap-1 text-sm">
-							<span className="font-medium">Reason</span>
+						</div>
+						<div className="grid gap-1.5">
+							<Label htmlFor={reasonId}>Reason</Label>
 							<Textarea
+								id={reasonId}
 								value={reason}
 								onChange={(e) => setReason(e.target.value)}
 								maxLength={500}
+								placeholder="Why is this user being invited?"
 								aria-label="Reason"
 							/>
-						</label>
-						{error ? <p className="text-sm text-destructive">{error}</p> : null}
+						</div>
+						{error ? (
+							<p className="text-sm text-destructive">{error}</p>
+						) : null}
 					</div>
 					<DialogFooter>
 						<Button
@@ -139,10 +164,7 @@ export function InviteUserDialog({ csrfToken }: InviteUserDialogProps) {
 						>
 							Cancel
 						</Button>
-						<Button
-							disabled={!canSubmit}
-							onClick={() => void submit()}
-						>
+						<Button disabled={!canSubmit} onClick={() => void submit()}>
 							{busy ? "Sending…" : "Send invite"}
 						</Button>
 					</DialogFooter>
