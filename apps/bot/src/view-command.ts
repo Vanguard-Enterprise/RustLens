@@ -200,16 +200,16 @@ function buildRiskFactorField(profile: SteamProfile | null) {
     : 0;
 
   const steamBmLine = steamBmRisk
-    ? `${riskEmoji(steamBmRisk.level)} Steam → BM hour difference: **${steamBmRisk.difference}** hours.`
-    : `${riskEmoji(0)} Steam → BM hour difference: **private**.`;
+    ? `${riskEmoji(steamBmRisk.level)} Steam → BM hour difference: **${steamBmRisk.difference}** hours`
+    : `${riskEmoji(0)} Steam → BM hour difference: **private**`;
 
   const serversLine = serversRisk
-    ? `${riskEmoji(serversRisk.level)} Servers played: **${serversRisk.servers}**.`
-    : `${riskEmoji(0)} Servers played: **unknown**.`;
+    ? `${riskEmoji(serversRisk.level)} Servers played: **${serversRisk.servers}**`
+    : `${riskEmoji(0)} Servers played: **unknown**`;
 
   const bmHoursLine = bmHoursRisk
-    ? `${riskEmoji(bmHoursRisk.level)} BM hours: **${bmHoursRisk.hours}**.`
-    : `${riskEmoji(0)} BM hours: **unknown**.`;
+    ? `${riskEmoji(bmHoursRisk.level)} BM hours: **${bmHoursRisk.hours}**`
+    : `${riskEmoji(0)} BM hours: **unknown**`;
 
   return {
     name: `Risk Factor ${riskEmoji(averageRisk)}`,

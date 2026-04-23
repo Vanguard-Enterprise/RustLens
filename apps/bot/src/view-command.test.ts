@@ -65,9 +65,9 @@ describe("view-command", () => {
     });
 
     expect(field.name).toBe("Risk Factor <:risk_1:1487595708881178734>");
-    expect(field.value).toContain("<:risk_4:1487595713553502359> Steam → BM hour difference: **1100** hours.");
-    expect(field.value).toContain("<:risk_0:1487595959809609758> Servers played: **40**.");
-    expect(field.value).toContain("<:risk_0:1487595959809609758> BM hours: **2200**.");
+    expect(field.value).toContain("<:risk_4:1487595713553502359> Steam → BM hour difference: **1100** hours");
+    expect(field.value).toContain("<:risk_0:1487595959809609758> Servers played: **40**");
+    expect(field.value).toContain("<:risk_0:1487595959809609758> BM hours: **2200**");
   });
 
   it("uses zero risk when steam hours are close to battlemetrics hours", () => {
@@ -156,7 +156,7 @@ describe("view-command", () => {
     const embed = buildUserEmbed("76561198000000000", null).toJSON();
 
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**private**");
-    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.value).toContain("<:risk_0:1487595959809609758> Steam → BM hour difference: **private**.");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.value).toContain("<:risk_0:1487595959809609758> Steam → BM hour difference: **private**");
   });
 
   it("can omit the risk factor field", () => {
