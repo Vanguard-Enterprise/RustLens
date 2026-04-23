@@ -1568,12 +1568,13 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 	var bmSeconds int64
 
 	for _, server := range profile.Servers {
+		bmSeconds += server.TimePlayed
+
 		tracked, ok := trackedByID[server.ServerID]
 		if !ok {
 			continue
 		}
 
-		bmSeconds += server.TimePlayed
 		if tracked.IsVitality {
 			vitalitySeconds += server.TimePlayed
 		}

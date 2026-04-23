@@ -39,7 +39,51 @@ describe("view-command", () => {
     expect(embed.fields?.[0]?.value).toContain("https://steamcommunity.com/profiles/76561198000000000");
     expect(embed.fields?.[0]?.value).toContain("https://www.battlemetrics.com/players/918543318");
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_10:1487595719790432447>");
     expect(embed.fields).toHaveLength(11);
+  });
+
+  it("calculates steam to battlemetrics hour risk", () => {
+    const field = __testables.buildRiskFactorField({
+      steamId: "76561198000000000",
+      bmId: "918543318",
+      bmName: "turn it up",
+      avatarImage: "https://cdn.example/avatar.png",
+      firstSeenUnix: 1766616480,
+      hours: {
+        vitality: 0,
+        atlas: 0,
+        vital: 0,
+        modded: 0,
+        official: 0,
+        build: 0,
+        bm: 2200,
+        rust: 3300,
+      },
+    });
+
+    expect(field.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
+    expect(field.value).toBe("<:risk_5:1487595720956448949> Steam → BM hour difference: **1100** hours.");
+  });
+
+  it("uses zero risk when steam hours are close to battlemetrics hours", () => {
+    expect(__testables.calculateSteamBmHourRisk({
+      steamId: "76561198000000000",
+      bmId: "918543318",
+      bmName: "turn it up",
+      avatarImage: "https://cdn.example/avatar.png",
+      firstSeenUnix: 1766616480,
+      hours: {
+        vitality: 0,
+        atlas: 0,
+        vital: 0,
+        modded: 0,
+        official: 0,
+        build: 0,
+        bm: 1000,
+        rust: 1090,
+      },
+    })).toEqual({ level: 0, difference: 90 });
   });
 
   it("includes the linked discord user when provided", () => {
@@ -68,6 +112,7 @@ describe("view-command", () => {
     const embed = buildUserEmbed("76561198000000000", null).toJSON();
 
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**private**");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.value).toBe("<:risk_0:1487595959809609758> Steam → BM hour difference: **private**.");
   });
 
   it("can omit the risk factor field", () => {

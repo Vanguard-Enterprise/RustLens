@@ -36,6 +36,22 @@ const VIEW_EMOJIS = {
   rust: "<:rust:1444010153803382957>",
 } as const;
 
+const RISK_EMOJIS = {
+  0: "<:risk_0:1487595959809609758>",
+  1: "<:risk_1:1487595708881178734>",
+  2: "<:risk_2:1487595710030417970>",
+  3: "<:risk_3:1487595707627081758>",
+  4: "<:risk_4:1487595713553502359>",
+  5: "<:risk_5:1487595720956448949>",
+  6: "<:risk_6:1487595718431739954>",
+  7: "<:risk_7:1487595715952902254>",
+  8: "<:risk_8:1487595711213076530>",
+  9: "<:risk_9:1487595711972245549>",
+  10: "<:risk_10:1487595719790432447>",
+} as const;
+
+const RISK_PERCENT_STEP = 9.0909090909;
+
 const viewCommand = new SlashCommandBuilder()
   .setName(VIEW_COMMAND_NAME)
   .setDescription("View linked steam/discord accounts in this guild")
@@ -122,6 +138,50 @@ function formatRustHours(hours: number | null | undefined) {
   return hours === null || hours === undefined ? "**private**" : `**${hours}** hours`;
 }
 
+type RiskLevel = keyof typeof RISK_EMOJIS;
+
+function riskEmoji(level: number) {
+  const normalized = Math.max(0, Math.min(10, Math.round(level))) as RiskLevel;
+  return RISK_EMOJIS[normalized];
+}
+
+function calculateSteamBmHourRisk(profile: SteamProfile | null) {
+  const steamHours = profile?.hours.rust;
+  const bmHours = profile?.hours.bm;
+  if (steamHours === null || steamHours === undefined || bmHours === undefined) {
+    return null;
+  }
+
+  const difference = Math.max(0, steamHours - bmHours);
+  if (difference === 0) {
+    return { level: 0, difference };
+  }
+
+  if (bmHours <= 0) {
+    return { level: 10, difference };
+  }
+
+  const percentOverBm = (difference / bmHours) * 100;
+  return { level: Math.min(10, Math.floor(percentOverBm / RISK_PERCENT_STEP)), difference };
+}
+
+function buildRiskFactorField(profile: SteamProfile | null) {
+  const factors = [calculateSteamBmHourRisk(profile)].filter((factor) => factor !== null);
+  const averageRisk = factors.length > 0
+    ? factors.reduce((total, factor) => total + factor.level, 0) / factors.length
+    : 0;
+
+  const steamBmRisk = factors[0];
+  const steamBmValue = steamBmRisk
+    ? `${riskEmoji(steamBmRisk.level)} Steam → BM hour difference: **${steamBmRisk.difference}** hours.`
+    : `${riskEmoji(0)} Steam → BM hour difference: **private**.`;
+
+  return {
+    name: `Risk Factor ${riskEmoji(averageRisk)}`,
+    value: steamBmValue,
+  };
+}
+
 export function buildProfileButtons(steamId: string) {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -183,7 +243,7 @@ export function buildUserEmbed(
   }
 
   if (includeRiskFactor) {
-    embed.addFields({ name: "Risk Factor <:risk_8:1487595711213076530>", value: "\u200b" });
+    embed.addFields(buildRiskFactorField(profile));
   }
 
   return embed;
@@ -473,5 +533,7 @@ async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
 export const __testables = {
   buildUserEmbed,
   buildProfileButtons,
+  buildRiskFactorField,
+  calculateSteamBmHourRisk,
   normalizeDiscordIdentifier,
 };
