@@ -1,6 +1,6 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { MessageFlags, SlashCommandBuilder } from "discord.js";
-import { buildUserEmbed, resolvePlayerProfileForGuild } from "./view-command.js";
+import { buildProfileButtons, buildUserEmbed, resolvePlayerProfileForGuild, fetchSteamProfileForView } from "./view-command.js";
 
 export const PLAYER_COMMAND_NAME = "player";
 
@@ -55,6 +55,7 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     return true;
   }
 
-  await interaction.editReply({ embeds: [buildUserEmbed(result.steamId, result.account)] });
+  const profile = await fetchSteamProfileForView(result.steamId);
+  await interaction.editReply({ embeds: [buildUserEmbed(result.steamId, profile)], components: buildProfileButtons(result.steamId) });
   return true;
 }

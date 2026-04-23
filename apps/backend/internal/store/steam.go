@@ -17,7 +17,9 @@ type SteamAccount struct {
 	BmID        *string
 	BmName      string
 	AvatarImage string
+	FirstSeenAt *time.Time
 	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type SteamDiscordLink struct {
@@ -30,7 +32,7 @@ type SteamDiscordLink struct {
 
 func scanSteamAccount(scanner rowScanner) (SteamAccount, error) {
 	var record SteamAccount
-	err := scanner.Scan(&record.SteamID, &record.BmID, &record.BmName, &record.AvatarImage, &record.CreatedAt)
+	err := scanner.Scan(&record.SteamID, &record.BmID, &record.BmName, &record.AvatarImage, &record.FirstSeenAt, &record.CreatedAt, &record.UpdatedAt)
 	if err != nil {
 		return SteamAccount{}, err
 	}
@@ -53,8 +55,8 @@ func (p *PostgresStore) UpsertSteamAccount(ctx context.Context, steamID string, 
 		VALUES ($1, $2)
 		ON CONFLICT (steam_id) DO UPDATE
 		SET bm_id = COALESCE(EXCLUDED.bm_id, steam_accounts.bm_id)
-		RETURNING steam_id, bm_id, bm_name, avatar_image, created_at
-	`, steamID, bmID).Scan(&record.SteamID, &record.BmID, &record.BmName, &record.AvatarImage, &record.CreatedAt)
+		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, created_at, updated_at
+	`, steamID, bmID).Scan(&record.SteamID, &record.BmID, &record.BmName, &record.AvatarImage, &record.FirstSeenAt, &record.CreatedAt, &record.UpdatedAt)
 	if err != nil {
 		return SteamAccount{}, err
 	}
@@ -63,7 +65,7 @@ func (p *PostgresStore) UpsertSteamAccount(ctx context.Context, steamID string, 
 
 func (p *PostgresStore) GetSteamAccountBySteamID(ctx context.Context, steamID string) (SteamAccount, error) {
 	record, err := scanSteamAccount(p.pool.QueryRow(ctx, `
-		SELECT steam_id, bm_id, bm_name, avatar_image, created_at
+		SELECT steam_id, bm_id, bm_name, avatar_image, first_seen_at, created_at, updated_at
 		FROM steam_accounts
 		WHERE steam_id = $1
 	`, steamID))
@@ -75,7 +77,7 @@ func (p *PostgresStore) GetSteamAccountBySteamID(ctx context.Context, steamID st
 
 func (p *PostgresStore) GetSteamAccountByBmID(ctx context.Context, bmID string) (SteamAccount, error) {
 	record, err := scanSteamAccount(p.pool.QueryRow(ctx, `
-		SELECT steam_id, bm_id, bm_name, avatar_image, created_at
+		SELECT steam_id, bm_id, bm_name, avatar_image, first_seen_at, created_at, updated_at
 		FROM steam_accounts
 		WHERE bm_id = $1
 	`, bmID))
@@ -83,6 +85,40 @@ func (p *PostgresStore) GetSteamAccountByBmID(ctx context.Context, bmID string) 
 		return SteamAccount{}, ErrSteamAccountNotFound
 	}
 	return record, err
+}
+
+func (p *PostgresStore) UpdateSteamAccountProfile(ctx context.Context, steamID string, bmName string, avatarImage *string, refreshAvatar bool, firstSeenAt *time.Time) (SteamAccount, error) {
+	var record SteamAccount
+	err := p.pool.QueryRow(ctx, `
+		UPDATE steam_accounts
+		SET bm_name = $2,
+			avatar_image = CASE
+				WHEN $3::boolean THEN COALESCE($4, avatar_image)
+				ELSE avatar_image
+			END,
+			first_seen_at = COALESCE($5::timestamptz, first_seen_at),
+			updated_at = CASE
+				WHEN $3::boolean THEN NOW()
+				ELSE updated_at
+			END
+		WHERE steam_id = $1
+		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, created_at, updated_at
+	`, steamID, bmName, refreshAvatar, avatarImage, firstSeenAt).Scan(
+		&record.SteamID,
+		&record.BmID,
+		&record.BmName,
+		&record.AvatarImage,
+		&record.FirstSeenAt,
+		&record.CreatedAt,
+		&record.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return SteamAccount{}, ErrSteamAccountNotFound
+	}
+	if err != nil {
+		return SteamAccount{}, err
+	}
+	return record, nil
 }
 
 func (p *PostgresStore) CreateSteamDiscordLink(ctx context.Context, link SteamDiscordLink) (SteamDiscordLink, error) {

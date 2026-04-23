@@ -98,7 +98,9 @@ Known Steam player accounts with optional BattleMetrics ID.
 | `bm_id` | `TEXT UNIQUE` | Nullable, BattleMetrics player ID |
 | `bm_name` | `TEXT NOT NULL DEFAULT ''` | Latest known BattleMetrics display name |
 | `avatar_image` | `TEXT NOT NULL DEFAULT ''` | Steam avatar URL |
+| `first_seen_at` | `TIMESTAMPTZ` | Nullable, BattleMetrics player creation / first-seen time |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last avatar refresh time |
 
 ### `tracked_servers`
 
@@ -207,6 +209,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, and updates `player_states` inside a single store transaction per server.
 - Steam profile resolution lives in `internal/steamapi/`. The bot uses `POST /api/internal/bot/setup/steam/resolve` to turn a raw 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` / `steamcommunity.com/id/...` URL into a canonical Steam ID. Vanity URLs are resolved live through `STEAM_API_KEY` and are not cached separately.
 - Outbound Steam API and BattleMetrics HTTP requests can be proxied by setting `PROXY_ENABLED=true` and `PROXY_ENDPOINTS` to a comma-separated list of proxy URLs such as `http://user:pass@proxy-1:8080,http://proxy-2:8080`. Proxy selection is round-robin per request, startup validates URL syntax but does not test reachability, and request logs include the proxy endpoint used with credentials redacted.
+- The bot-internal steam profile route refreshes `steam_accounts.bm_name` on every lookup from BattleMetrics player data, refreshes `avatar_image` from `ISteamUser/GetPlayerSummaries` only when `updated_at` is older than 4 days, and fetches Rust playtime from `IPlayerService/GetOwnedGames` on every lookup. Steam summary and owned-games requests are sent directly, not through the proxy provider.
 
 ## Commands
 

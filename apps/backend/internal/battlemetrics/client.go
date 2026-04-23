@@ -22,6 +22,21 @@ type Player struct {
 	Name string
 }
 
+type PlayerServer struct {
+	ServerID    string
+	ServerName  string
+	TimePlayed  int64
+	FirstSeenAt *time.Time
+	LastSeenAt  *time.Time
+}
+
+type PlayerProfile struct {
+	BmID      string
+	BmName    string
+	CreatedAt *time.Time
+	Servers   []PlayerServer
+}
+
 type Client struct {
 	baseURL  string
 	apiKey   string
@@ -112,4 +127,84 @@ func (c *Client) FetchServerPlayers(ctx context.Context, serverID string) ([]Pla
 	}
 
 	return players, nil
+}
+
+func (c *Client) FetchPlayerProfile(ctx context.Context, playerID string) (PlayerProfile, error) {
+	if !numericPattern.MatchString(playerID) {
+		return PlayerProfile{}, fmt.Errorf("invalid player ID: %q", playerID)
+	}
+
+	endpoint, err := url.Parse(fmt.Sprintf("%s/players/%s?include=server,identifier", c.baseURL, playerID))
+	if err != nil {
+		return PlayerProfile{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return PlayerProfile{}, err
+	}
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
+	log.Printf("[battlemetrics] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return PlayerProfile{}, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return PlayerProfile{}, fmt.Errorf("battlemetrics returned status %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Data struct {
+			ID         string `json:"id"`
+			Attributes struct {
+				Name      string     `json:"name"`
+				CreatedAt *time.Time `json:"createdAt"`
+			} `json:"attributes"`
+		} `json:"data"`
+		Included []struct {
+			Type       string `json:"type"`
+			ID         string `json:"id"`
+			Attributes struct {
+				Name string `json:"name"`
+			} `json:"attributes"`
+			Meta struct {
+				TimePlayed int64      `json:"timePlayed"`
+				FirstSeen  *time.Time `json:"firstSeen"`
+				LastSeen   *time.Time `json:"lastSeen"`
+			} `json:"meta"`
+		} `json:"included"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return PlayerProfile{}, err
+	}
+
+	profile := PlayerProfile{
+		BmID:      payload.Data.ID,
+		BmName:    payload.Data.Attributes.Name,
+		CreatedAt: payload.Data.Attributes.CreatedAt,
+	}
+
+	for _, item := range payload.Included {
+		if item.Type != "server" {
+			continue
+		}
+
+		profile.Servers = append(profile.Servers, PlayerServer{
+			ServerID:    item.ID,
+			ServerName:  item.Attributes.Name,
+			TimePlayed:  item.Meta.TimePlayed,
+			FirstSeenAt: item.Meta.FirstSeen,
+			LastSeenAt:  item.Meta.LastSeen,
+		})
+	}
+
+	return profile, nil
 }

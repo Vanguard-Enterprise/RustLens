@@ -19,6 +19,7 @@ import (
 	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/auth"
+	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
@@ -31,20 +32,30 @@ var steamIDPattern = regexp.MustCompile(`^\d{17}$`)
 const maxRequestBodyBytes = 1 << 20 // 1 MB
 
 type Handler struct {
-	cfg              config.Config
-	postgres         *store.PostgresStore
-	redis            *store.RedisStore
-	shardService     *shards.Service
-	jwtValidator     *auth.Validator
-	steamClient      *steamapi.Client
-	rbacStore        *rbac.Store
-	rbacResolver     *rbac.Resolver
-	auditStore       *audit.Store
-	actionRegistry   *actions.Registry
-	actionDispatcher *actions.Dispatcher
+	cfg                 config.Config
+	postgres            *store.PostgresStore
+	redis               *store.RedisStore
+	shardService        *shards.Service
+	jwtValidator        *auth.Validator
+	steamClient         *steamapi.Client
+	steamSummaryClient  *steamapi.Client
+	battleMetricsClient *battlemetrics.Client
+	rbacStore           *rbac.Store
+	rbacResolver        *rbac.Resolver
+	auditStore          *audit.Store
+	actionRegistry      *actions.Registry
+	actionDispatcher    *actions.Dispatcher
 }
 
-func NewHandler(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service, steamClient *steamapi.Client) *Handler {
+func NewHandler(
+	cfg config.Config,
+	postgres *store.PostgresStore,
+	redis *store.RedisStore,
+	shardService *shards.Service,
+	steamClient *steamapi.Client,
+	steamSummaryClient *steamapi.Client,
+	battleMetricsClient *battlemetrics.Client,
+) *Handler {
 	rbacStore := rbac.NewStore(postgres.Pool())
 	if err := rbacStore.SeedPermissionsAndRoles(context.Background()); err != nil {
 		panic(fmt.Errorf("rbac seed: %w", err))
@@ -63,17 +74,19 @@ func NewHandler(cfg config.Config, postgres *store.PostgresStore, redis *store.R
 	}
 
 	return &Handler{
-		cfg:              cfg,
-		postgres:         postgres,
-		redis:            redis,
-		shardService:     shardService,
-		jwtValidator:     auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
-		steamClient:      steamClient,
-		rbacStore:        rbacStore,
-		rbacResolver:     resolver,
-		auditStore:       auditStore,
-		actionRegistry:   registry,
-		actionDispatcher: dispatcher,
+		cfg:                 cfg,
+		postgres:            postgres,
+		redis:               redis,
+		shardService:        shardService,
+		jwtValidator:        auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
+		steamClient:         steamClient,
+		steamSummaryClient:  steamSummaryClient,
+		battleMetricsClient: battleMetricsClient,
+		rbacStore:           rbacStore,
+		rbacResolver:        resolver,
+		auditStore:          auditStore,
+		actionRegistry:      registry,
+		actionDispatcher:    dispatcher,
 	}
 }
 
@@ -1417,7 +1430,9 @@ func steamAccountToMap(record store.SteamAccount) map[string]any {
 		"steamId":     record.SteamID,
 		"bmName":      record.BmName,
 		"avatarImage": record.AvatarImage,
+		"firstSeenAt": record.FirstSeenAt,
 		"createdAt":   record.CreatedAt,
+		"updatedAt":   record.UpdatedAt,
 	}
 	if record.BmID != nil {
 		result["bmId"] = *record.BmID
@@ -1425,6 +1440,168 @@ func steamAccountToMap(record store.SteamAccount) map[string]any {
 		result["bmId"] = nil
 	}
 	return result
+}
+
+type steamProfileHours struct {
+	Vitality int64  `json:"vitality"`
+	Atlas    int64  `json:"atlas"`
+	Vital    int64  `json:"vital"`
+	Modded   int64  `json:"modded"`
+	Official int64  `json:"official"`
+	Build    int64  `json:"build"`
+	BM       int64  `json:"bm"`
+	Rust     *int64 `json:"rust"`
+}
+
+type steamProfileResponse struct {
+	SteamID       string            `json:"steamId"`
+	BmID          string            `json:"bmId"`
+	BmName        string            `json:"bmName"`
+	AvatarImage   string            `json:"avatarImage"`
+	FirstSeenUnix *int64            `json:"firstSeenUnix"`
+	Hours         steamProfileHours `json:"hours"`
+}
+
+func toWholeHours(seconds int64) int64 {
+	if seconds <= 0 {
+		return 0
+	}
+	return seconds / 3600
+}
+
+func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	account, err := h.postgres.GetSteamAccountBySteamID(r.Context(), steamID)
+	if errors.Is(err, store.ErrSteamAccountNotFound) {
+		writeError(w, http.StatusNotFound, "steam account not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetSteamProfile account error for %s: %v", steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+		return
+	}
+	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
+		writeError(w, http.StatusNotFound, "steam account has no linked battlemetrics id")
+		return
+	}
+
+	avatarImage := account.AvatarImage
+	refreshAvatar := false
+	if avatarImage == "" || time.Since(account.UpdatedAt) > 96*time.Hour {
+		summary, summaryErr := h.steamSummaryClient.GetPlayerSummary(r.Context(), steamID)
+		if summaryErr != nil {
+			log.Printf("[backend] GetSteamProfile steam summary error for %s: %v", steamID, summaryErr)
+		} else if summary.AvatarFull != "" {
+			avatarImage = summary.AvatarFull
+			refreshAvatar = true
+		}
+	}
+
+	profile, err := h.battleMetricsClient.FetchPlayerProfile(r.Context(), *account.BmID)
+	if err != nil {
+		log.Printf("[backend] GetSteamProfile battlemetrics error for %s/%s: %v", steamID, *account.BmID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch battlemetrics profile")
+		return
+	}
+
+	if profile.BmName == "" {
+		profile.BmName = account.BmName
+	}
+
+	updatedAccount, err := h.postgres.UpdateSteamAccountProfile(r.Context(), steamID, profile.BmName, &avatarImage, refreshAvatar, profile.CreatedAt)
+	if err != nil {
+		log.Printf("[backend] GetSteamProfile metadata update error for %s: %v", steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update steam account profile")
+		return
+	}
+
+	trackedServers, err := h.postgres.ListTrackedServers(r.Context())
+	if err != nil {
+		log.Printf("[backend] GetSteamProfile tracked server list error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load tracked servers")
+		return
+	}
+
+	trackedByID := make(map[string]store.TrackedServer, len(trackedServers))
+	for _, server := range trackedServers {
+		trackedByID[server.BmID] = server
+	}
+
+	response := steamProfileResponse{
+		SteamID:     updatedAccount.SteamID,
+		BmID:        *updatedAccount.BmID,
+		BmName:      profile.BmName,
+		AvatarImage: updatedAccount.AvatarImage,
+	}
+	if updatedAccount.FirstSeenAt != nil {
+		firstSeenUnix := updatedAccount.FirstSeenAt.Unix()
+		response.FirstSeenUnix = &firstSeenUnix
+	}
+
+	ownedGames, ownedGamesErr := h.steamSummaryClient.GetOwnedGames(r.Context(), steamID)
+	if ownedGamesErr != nil {
+		log.Printf("[backend] GetSteamProfile owned games error for %s: %v", steamID, ownedGamesErr)
+	} else {
+		for _, game := range ownedGames {
+			if game.AppID != 252490 {
+				continue
+			}
+
+			rustHours := game.PlaytimeForever / 60
+			response.Hours.Rust = &rustHours
+			break
+		}
+	}
+
+	var vitalitySeconds int64
+	var atlasSeconds int64
+	var vitalSeconds int64
+	var moddedSeconds int64
+	var officialSeconds int64
+	var buildSeconds int64
+	var bmSeconds int64
+
+	for _, server := range profile.Servers {
+		tracked, ok := trackedByID[server.ServerID]
+		if !ok {
+			continue
+		}
+
+		bmSeconds += server.TimePlayed
+		if tracked.IsVitality {
+			vitalitySeconds += server.TimePlayed
+		}
+		if tracked.IsAtlas {
+			atlasSeconds += server.TimePlayed
+		}
+		if tracked.IsVital {
+			vitalSeconds += server.TimePlayed
+		}
+		if tracked.IsModded {
+			moddedSeconds += server.TimePlayed
+		}
+		if tracked.IsOfficial {
+			officialSeconds += server.TimePlayed
+		}
+		if tracked.IsBuild {
+			buildSeconds += server.TimePlayed
+		}
+	}
+
+	response.Hours.Vitality = toWholeHours(vitalitySeconds)
+	response.Hours.Atlas = toWholeHours(atlasSeconds)
+	response.Hours.Vital = toWholeHours(vitalSeconds)
+	response.Hours.Modded = toWholeHours(moddedSeconds)
+	response.Hours.Official = toWholeHours(officialSeconds)
+	response.Hours.Build = toWholeHours(buildSeconds)
+	response.Hours.BM = toWholeHours(bmSeconds)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func steamDiscordLinkToMap(link store.SteamDiscordLink) map[string]any {

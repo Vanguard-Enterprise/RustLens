@@ -1598,6 +1598,7 @@ func buildOpenAPIDocument() map[string]any {
 						"bmId":        map[string]any{"type": "string", "nullable": true},
 						"bmName":      map[string]any{"type": "string"},
 						"avatarImage": map[string]any{"type": "string"},
+						"firstSeenAt": map[string]any{"type": "string", "format": "date-time", "nullable": true},
 						"createdAt":   map[string]any{"type": "string", "format": "date-time"},
 					},
 					"required": []string{"steamId", "bmId", "bmName", "avatarImage", "createdAt"},

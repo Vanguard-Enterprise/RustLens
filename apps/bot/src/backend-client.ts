@@ -85,7 +85,29 @@ export type SteamAccount = {
   bmId: string | null;
   bmName: string;
   avatarImage: string;
+  firstSeenAt: string | null;
   createdAt: string;
+  updatedAt: string;
+};
+
+export type SteamProfileHours = {
+  vitality: number;
+  atlas: number;
+  vital: number;
+  modded: number;
+  official: number;
+  build: number;
+  bm: number;
+  rust: number | null;
+};
+
+export type SteamProfile = {
+  steamId: string;
+  bmId: string;
+  bmName: string;
+  avatarImage: string;
+  firstSeenUnix: number | null;
+  hours: SteamProfileHours;
 };
 
 export type SteamDiscordLink = {
@@ -496,6 +518,14 @@ export class BackendClient {
     return this.call<SteamAccount>(
       workerId,
       `/api/internal/bot/setup/steam/by-bm/${bmId}`,
+      "GET",
+    );
+  }
+
+  getSteamProfile(workerId: string, steamId: string) {
+    return this.call<SteamProfile>(
+      workerId,
+      `/api/internal/bot/setup/steam/${steamId}/profile`,
       "GET",
     );
   }

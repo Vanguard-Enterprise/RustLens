@@ -45,9 +45,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("outbound proxy init failed: %v", err)
 	}
+	directProvider, err := outboundhttp.NewProvider(false, nil, 10*time.Second)
+	if err != nil {
+		log.Fatalf("direct outbound init failed: %v", err)
+	}
 
 	shardService := shards.NewService(redisStore, postgresStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
-	router := httpapi.NewRouter(cfg, postgresStore, redisStore, shardService, steamapi.NewClient(cfg.SteamAPIKey, outboundProvider))
+	router := httpapi.NewRouter(
+		cfg,
+		postgresStore,
+		redisStore,
+		shardService,
+		steamapi.NewClient(cfg.SteamAPIKey, outboundProvider),
+		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
+		battlemetrics.NewClient("", outboundProvider),
+	)
 	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(cfg.BattleMetricsAPIKey, outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
 

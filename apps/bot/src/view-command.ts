@@ -1,6 +1,15 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, type GuildMember } from "discord.js";
-import { BackendClient, type SteamAccount } from "./backend-client.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  MessageFlags,
+  PermissionFlagsBits,
+  SlashCommandBuilder,
+  type GuildMember,
+} from "discord.js";
+import { BackendClient, type SteamAccount, type SteamProfile } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
@@ -17,6 +26,7 @@ const discordMentionPattern = /^<@!?(\d{16,20})>$/;
 const VIEW_EMOJIS = {
   steam: "<:steam:1444016467648581642>",
   battlemetrics: "<:battlemetrics:1444011821529956472>",
+  discord: "<:discord:1496989877831729284>",
   vitality: "<:vitality:1444010131728629761>",
   atlas: "<:atlas:1444010442778480700>",
   vital: "<:vital:1444011141587271682>",
@@ -82,6 +92,18 @@ async function fetchSteamAccountByBm(bmId: string): Promise<SteamAccount | null>
   }
 }
 
+async function fetchSteamProfile(steamId: string): Promise<SteamProfile | null> {
+  try {
+    return await getBackend().getSteamProfile(getWorkerID(), steamId);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchSteamProfileForView(steamId: string) {
+  return fetchSteamProfile(steamId);
+}
+
 function normalizeDiscordIdentifier(identifier: string) {
   const trimmed = identifier.trim();
   const mentionMatch = discordMentionPattern.exec(trimmed);
@@ -92,37 +114,76 @@ function normalizeDiscordIdentifier(identifier: string) {
   return null;
 }
 
-export function buildUserEmbed(steamId: string, account: SteamAccount | null): EmbedBuilder {
+function formatHours(hours: number | null | undefined) {
+  return hours === null || hours === undefined ? "**—** hours" : `**${hours}** hours`;
+}
+
+function formatRustHours(hours: number | null | undefined) {
+  return hours === null || hours === undefined ? "**private**" : `**${hours}** hours`;
+}
+
+export function buildProfileButtons(steamId: string) {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`player:stats:${steamId}`)
+        .setEmoji("📈")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`player:links:${steamId}`)
+        .setEmoji("🔗")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+export function buildUserEmbed(
+  steamId: string,
+  profile: SteamProfile | null,
+  discordId?: string,
+  includeRiskFactor = true,
+): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setTitle("Player Profile")
+    .setTitle(profile?.bmName || "Player Profile")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
 
-  if (account?.avatarImage) {
-    embed.setThumbnail(account.avatarImage);
+  if (profile?.avatarImage) {
+    embed.setThumbnail(profile.avatarImage);
   }
 
   let info = `${VIEW_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`;
-  if (account?.bmId) {
-    info += `\n${VIEW_EMOJIS.battlemetrics} [${account.bmId}](https://www.battlemetrics.com/players/${account.bmId})`;
+  if (profile?.bmId) {
+    info += `\n${VIEW_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/players/${profile.bmId})`;
+  }
+  if (discordId) {
+    info += `\n${VIEW_EMOJIS.discord} <@${discordId}>`;
   }
   embed.addFields({ name: "Information", value: info });
 
   const hourFields = [
-    { name: `${VIEW_EMOJIS.vitality} Vitality`, value: "**—** hours" },
-    { name: `${VIEW_EMOJIS.atlas} Atlas`, value: "**—** hours" },
-    { name: `${VIEW_EMOJIS.vital} Vital`, value: "**—** hours" },
-    { name: `${VIEW_EMOJIS.modded} Modded`, value: "**—** hours" },
-    { name: `${VIEW_EMOJIS.official} Official`, value: "**—** hours" },
-    { name: `${VIEW_EMOJIS.build} Build`, value: "**—** hours" },
-    { name: "\u{1F50D} First seen", value: "—" },
-    { name: `${VIEW_EMOJIS.battlemetrics} BM`, value: "**—** hours" },
-    { name: `${VIEW_EMOJIS.rust} Rust`, value: "**—** hours" },
+    { name: `${VIEW_EMOJIS.vitality} Vitality`, value: formatHours(profile?.hours.vitality), inline: true },
+    { name: `${VIEW_EMOJIS.atlas} Atlas`, value: formatHours(profile?.hours.atlas), inline: true },
+    { name: `${VIEW_EMOJIS.vital} Vital`, value: formatHours(profile?.hours.vital), inline: true },
+    { name: `${VIEW_EMOJIS.modded} Modded`, value: formatHours(profile?.hours.modded), inline: true },
+    { name: `${VIEW_EMOJIS.official} Official`, value: formatHours(profile?.hours.official), inline: true },
+    { name: `${VIEW_EMOJIS.build} Build`, value: formatHours(profile?.hours.build), inline: true },
+    {
+      name: "\u{1F50D} First seen",
+      value: profile?.firstSeenUnix ? `<t:${profile.firstSeenUnix}:R>` : "—",
+      inline: true,
+    },
+    { name: `${VIEW_EMOJIS.battlemetrics} BM`, value: formatHours(profile?.hours.bm), inline: true },
+    { name: `${VIEW_EMOJIS.rust} Rust`, value: formatRustHours(profile?.hours.rust), inline: true },
   ];
 
   for (const field of hourFields) {
-    embed.addFields({ name: field.name, value: field.value, inline: true });
+    embed.addFields(field);
+  }
+
+  if (includeRiskFactor) {
+    embed.addFields({ name: "Risk Factor <:risk_8:1487595711213076530>", value: "\u200b" });
   }
 
   return embed;
@@ -133,6 +194,7 @@ export type ResolvedPlayerProfile =
     ok: true;
     steamId: string;
     account: SteamAccount | null;
+    discordId: string;
   }
   | {
     ok: false;
@@ -158,7 +220,7 @@ export async function resolvePlayerProfileForGuild(
 
     const steamId = items[0].steamId;
     const account = await fetchSteamAccount(steamId);
-    return { ok: true, steamId, account };
+    return { ok: true, steamId, account, discordId };
   }
 
   let steamId: string | null = null;
@@ -169,7 +231,7 @@ export async function resolvePlayerProfileForGuild(
     account = await fetchSteamAccount(normalizedIdentifier);
     const { items } = await backend.listGuildLinksBySteam(workerId, guildId, steamId);
     if (items.length > 0) {
-      return { ok: true, steamId, account };
+      return { ok: true, steamId, account, discordId: items[0].discordId };
     }
 
     if (allowDiscordLookup) {
@@ -177,7 +239,7 @@ export async function resolvePlayerProfileForGuild(
       if (discordItems.length > 0) {
         const linkedSteamId = discordItems[0].steamId;
         const linkedAccount = await fetchSteamAccount(linkedSteamId);
-        return { ok: true, steamId: linkedSteamId, account: linkedAccount };
+        return { ok: true, steamId: linkedSteamId, account: linkedAccount, discordId: normalizedIdentifier };
       }
     }
 
@@ -190,7 +252,7 @@ export async function resolvePlayerProfileForGuild(
 
     const linkedSteamId = items[0].steamId;
     const linkedAccount = await fetchSteamAccount(linkedSteamId);
-    return { ok: true, steamId: linkedSteamId, account: linkedAccount };
+    return { ok: true, steamId: linkedSteamId, account: linkedAccount, discordId: normalizedIdentifier };
   } else {
     account = await fetchSteamAccountByBm(normalizedIdentifier);
     if (account) {
@@ -207,7 +269,7 @@ export async function resolvePlayerProfileForGuild(
     return { ok: false, error: "That identifier is not linked to anyone in this guild." };
   }
 
-  return { ok: true, steamId, account };
+  return { ok: true, steamId, account, discordId: items[0].discordId };
 }
 
 function buildNoSteamEmbed(userIds: readonly string[]) {
@@ -317,7 +379,8 @@ async function handleViewUser(interaction: ChatInputCommandInteraction) {
       return;
     }
 
-    await interaction.editReply({ embeds: [buildUserEmbed(result.steamId, result.account)] });
+    const profile = await fetchSteamProfile(result.steamId);
+    await interaction.editReply({ embeds: [buildUserEmbed(result.steamId, profile, result.discordId, false)] });
     return;
   }
 
@@ -328,7 +391,8 @@ async function handleViewUser(interaction: ChatInputCommandInteraction) {
       return;
     }
 
-    await interaction.editReply({ embeds: [buildUserEmbed(result.steamId, result.account)] });
+    const profile = await fetchSteamProfile(result.steamId);
+    await interaction.editReply({ embeds: [buildUserEmbed(result.steamId, profile, result.discordId, false)] });
   }
 }
 
@@ -408,5 +472,6 @@ async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
 
 export const __testables = {
   buildUserEmbed,
+  buildProfileButtons,
   normalizeDiscordIdentifier,
 };

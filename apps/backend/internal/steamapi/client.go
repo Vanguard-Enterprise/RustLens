@@ -30,6 +30,17 @@ type Client struct {
 	provider requestPreparer
 }
 
+type PlayerSummary struct {
+	SteamID    string
+	AvatarFull string
+}
+
+type OwnedGame struct {
+	AppID           int
+	Name            string
+	PlaytimeForever int64
+}
+
 type requestPreparer interface {
 	Prepare() (*http.Client, string, bool)
 }
@@ -143,4 +154,128 @@ func (c *Client) resolveVanityURL(ctx context.Context, vanity string) (string, e
 	}
 
 	return "", ErrVanityNotFound
+}
+
+func (c *Client) GetPlayerSummary(ctx context.Context, steamID string) (PlayerSummary, error) {
+	if !steamIDPattern.MatchString(strings.TrimSpace(steamID)) {
+		return PlayerSummary{}, ErrUnsupportedProfileInput
+	}
+	if c.apiKey == "" {
+		return PlayerSummary{}, ErrSteamAPIKeyRequired
+	}
+
+	endpoint, err := url.Parse(c.baseURL + "/ISteamUser/GetPlayerSummaries/v2/")
+	if err != nil {
+		return PlayerSummary{}, err
+	}
+
+	query := endpoint.Query()
+	query.Set("key", c.apiKey)
+	query.Set("steamids", steamID)
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return PlayerSummary{}, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
+	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return PlayerSummary{}, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return PlayerSummary{}, fmt.Errorf("steam returned status %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Response struct {
+			Players []struct {
+				SteamID    string `json:"steamid"`
+				AvatarFull string `json:"avatarfull"`
+			} `json:"players"`
+		} `json:"response"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return PlayerSummary{}, err
+	}
+
+	if len(payload.Response.Players) == 0 {
+		return PlayerSummary{}, ErrVanityNotFound
+	}
+
+	return PlayerSummary{
+		SteamID:    payload.Response.Players[0].SteamID,
+		AvatarFull: payload.Response.Players[0].AvatarFull,
+	}, nil
+}
+
+func (c *Client) GetOwnedGames(ctx context.Context, steamID string) ([]OwnedGame, error) {
+	if !steamIDPattern.MatchString(strings.TrimSpace(steamID)) {
+		return nil, ErrUnsupportedProfileInput
+	}
+	if c.apiKey == "" {
+		return nil, ErrSteamAPIKeyRequired
+	}
+
+	endpoint, err := url.Parse(c.baseURL + "/IPlayerService/GetOwnedGames/v1/")
+	if err != nil {
+		return nil, err
+	}
+
+	query := endpoint.Query()
+	query.Set("key", c.apiKey)
+	query.Set("steamid", steamID)
+	query.Set("include_appinfo", "true")
+	query.Set("include_played_free_games", "true")
+	query.Set("format", "json")
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
+	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("steam returned status %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Response struct {
+			Games []struct {
+				AppID           int    `json:"appid"`
+				Name            string `json:"name"`
+				PlaytimeForever int64  `json:"playtime_forever"`
+			} `json:"games"`
+		} `json:"response"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	games := make([]OwnedGame, 0, len(payload.Response.Games))
+	for _, game := range payload.Response.Games {
+		games = append(games, OwnedGame{
+			AppID:           game.AppID,
+			Name:            game.Name,
+			PlaytimeForever: game.PlaytimeForever,
+		})
+	}
+
+	return games, nil
 }

@@ -163,6 +163,39 @@ describe("BackendClient", () => {
     }));
   });
 
+  it("loads steam profile details", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({
+        steamId: "76561198000000000",
+        bmId: "918543318",
+        bmName: "turn it up",
+        avatarImage: "https://cdn.example/avatar.png",
+        firstSeenUnix: 1766616480,
+        hours: {
+          vitality: 10,
+          atlas: 20,
+          vital: 30,
+          modded: 40,
+          official: 50,
+          build: 60,
+          bm: 210,
+          rust: 7347,
+        },
+      }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.getSteamProfile("worker-a", "76561198000000000");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/steam/76561198000000000/profile");
+    expect(init?.method).toBe("GET");
+  });
+
   it("loads tracked servers", async () => {
     const mockResponse = {
       ok: true,
