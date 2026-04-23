@@ -1,6 +1,6 @@
 "use client";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useId, useState, useTransition } from "react";
 import { FilterIcon, SearchIcon } from "lucide-react";
 import {
 	InputGroup,
@@ -140,47 +140,55 @@ export function UsersFilterBar({
 						<Separator />
 
 						<FilterRow label="Status">
-							<FilterToggleGroup
-								ariaLabel="Status"
-								value={currentStatus}
-								options={STATUS_OPTIONS}
-								onChange={(v) =>
-									updateParam("status", v === "any" ? null : v)
-								}
-							/>
+							{(labelId) => (
+								<FilterToggleGroup
+									labelledBy={labelId}
+									value={currentStatus}
+									options={STATUS_OPTIONS}
+									onChange={(v) =>
+										updateParam("status", v === "any" ? null : v)
+									}
+								/>
+							)}
 						</FilterRow>
 
 						<FilterRow label="Discord">
-							<FilterToggleGroup
-								ariaLabel="Discord"
-								value={currentDiscord}
-								options={TRISTATE}
-								onChange={(v) =>
-									updateParam("discord", v === "any" ? null : v)
-								}
-							/>
+							{(labelId) => (
+								<FilterToggleGroup
+									labelledBy={labelId}
+									value={currentDiscord}
+									options={TRISTATE}
+									onChange={(v) =>
+										updateParam("discord", v === "any" ? null : v)
+									}
+								/>
+							)}
 						</FilterRow>
 
 						<FilterRow label="Steam">
-							<FilterToggleGroup
-								ariaLabel="Steam"
-								value={currentSteam}
-								options={TRISTATE}
-								onChange={(v) =>
-									updateParam("steam", v === "any" ? null : v)
-								}
-							/>
+							{(labelId) => (
+								<FilterToggleGroup
+									labelledBy={labelId}
+									value={currentSteam}
+									options={TRISTATE}
+									onChange={(v) =>
+										updateParam("steam", v === "any" ? null : v)
+									}
+								/>
+							)}
 						</FilterRow>
 
 						<FilterRow label="Verified">
-							<FilterToggleGroup
-								ariaLabel="Verified"
-								value={currentVerified}
-								options={VERIFIED}
-								onChange={(v) =>
-									updateParam("emailVerified", v === "any" ? null : v)
-								}
-							/>
+							{(labelId) => (
+								<FilterToggleGroup
+									labelledBy={labelId}
+									value={currentVerified}
+									options={VERIFIED}
+									onChange={(v) =>
+										updateParam("emailVerified", v === "any" ? null : v)
+									}
+								/>
+							)}
 						</FilterRow>
 					</div>
 
@@ -216,25 +224,26 @@ function FilterRow({
 	children,
 }: {
 	label: string;
-	children: React.ReactNode;
+	children: React.ReactNode | ((labelId: string) => React.ReactNode);
 }) {
+	const labelId = useId();
 	return (
 		<div className="flex flex-col gap-1.5">
-			<span className="text-xs font-medium text-muted-foreground">
+			<span id={labelId} className="text-xs font-medium text-muted-foreground">
 				{label}
 			</span>
-			{children}
+			{typeof children === "function" ? children(labelId) : children}
 		</div>
 	);
 }
 
 function FilterToggleGroup({
-	ariaLabel,
+	labelledBy,
 	value,
 	options,
 	onChange,
 }: {
-	ariaLabel: string;
+	labelledBy: string;
 	value: string;
 	options: Option[];
 	onChange: (v: string) => void;
@@ -247,7 +256,7 @@ function FilterToggleGroup({
 				// Treat empty string (user clicked the already-selected item) as "any".
 				onChange(v || "any");
 			}}
-			aria-label={ariaLabel}
+			aria-labelledby={labelledBy}
 			className="justify-start"
 		>
 			{options.map((o) => (
