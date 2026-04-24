@@ -24,6 +24,8 @@ const SERVER_MODAL_EDIT_PREFIX = `${SERVER_MODAL_PREFIX}edit:`;
 const SERVER_NAME_FIELD_CUSTOM_ID = "server_name";
 const SERVER_BM_ID_FIELD_CUSTOM_ID = "server_bm_id";
 const SERVER_CATEGORIES_FIELD_CUSTOM_ID = "server_categories";
+const SERVER_INCLUDE_IN_GUILD_SETTINGS_FIELD_CUSTOM_ID = "server_include_in_guild_settings";
+const SERVER_INCLUDE_IN_GUILD_SETTINGS_VALUE = "yes";
 
 const TRACKED_SERVER_CATEGORY_DEFINITIONS = [
   { key: "isVitality", value: "vitality", label: "Vitality" },
@@ -177,6 +179,19 @@ function buildTrackedServerModal(server?: TrackedServer) {
         .setValue(server?.bmId ?? ""),
     )
     .addComponent(
+      "Include in guild settings?",
+      new CheckboxGroupBuilder()
+        .setCustomId(SERVER_INCLUDE_IN_GUILD_SETTINGS_FIELD_CUSTOM_ID)
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(1)
+        .addOption({
+          label: "Yes",
+          value: SERVER_INCLUDE_IN_GUILD_SETTINGS_VALUE,
+          default: server?.includeInGuildSettings ?? false,
+        }),
+    )
+    .addComponent(
       "Server Categories",
       new CheckboxGroupBuilder()
         .setCustomId(SERVER_CATEGORIES_FIELD_CUSTOM_ID)
@@ -236,6 +251,7 @@ function buildTrackedServerDraft(name: string, bmId: string, selectedCategories:
   return {
     name: normalizeName(name),
     bmId: bmId.trim(),
+    includeInGuildSettings: false,
     isVitality: categories.has("vitality"),
     isAtlas: categories.has("atlas"),
     isVital: categories.has("vital"),
@@ -305,7 +321,12 @@ function parseModalDraft(interaction: ModalSubmitInteraction) {
   const name = getFieldValues(interaction, SERVER_NAME_FIELD_CUSTOM_ID)[0] ?? "";
   const bmId = getFieldValues(interaction, SERVER_BM_ID_FIELD_CUSTOM_ID)[0] ?? "";
   const categories = getFieldValues(interaction, SERVER_CATEGORIES_FIELD_CUSTOM_ID);
-  return buildTrackedServerDraft(name, bmId, categories);
+  const includeInGuildSettings = getFieldValues(interaction, SERVER_INCLUDE_IN_GUILD_SETTINGS_FIELD_CUSTOM_ID)
+    .includes(SERVER_INCLUDE_IN_GUILD_SETTINGS_VALUE);
+  return {
+    ...buildTrackedServerDraft(name, bmId, categories),
+    includeInGuildSettings,
+  };
 }
 
 function parseEditModalTarget(customId: string) {
@@ -520,11 +541,11 @@ export async function handleServerModalSubmit(interaction: ModalSubmitInteractio
 
     await replyPublicEmbed(
       interaction,
-      buildServerEmbed(
-        currentBmId ? "Tracked Server Updated" : "Tracked Server Added",
-        `**${saved.name}**\nBattleMetrics ID: \`${saved.bmId}\`\nCategories: ${formatTrackedServerCategories(saved)}`,
-      ),
-    );
+        buildServerEmbed(
+          currentBmId ? "Tracked Server Updated" : "Tracked Server Added",
+          `**${saved.name}**\nBattleMetrics ID: \`${saved.bmId}\`\nIncluded in guild settings: ${saved.includeInGuildSettings ? "Yes" : "No"}\nCategories: ${formatTrackedServerCategories(saved)}`,
+        ),
+      );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const description = message.includes("409")

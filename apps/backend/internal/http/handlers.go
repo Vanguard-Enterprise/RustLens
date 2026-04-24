@@ -316,14 +316,15 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 
 func trackedServerToMap(item store.TrackedServer) map[string]any {
 	result := map[string]any{
-		"bmId":       item.BmID,
-		"name":       item.Name,
-		"isVitality": item.IsVitality,
-		"isAtlas":    item.IsAtlas,
-		"isVital":    item.IsVital,
-		"isModded":   item.IsModded,
-		"isOfficial": item.IsOfficial,
-		"isBuild":    item.IsBuild,
+		"bmId":                   item.BmID,
+		"name":                   item.Name,
+		"includeInGuildSettings": item.IncludeInGuildSettings,
+		"isVitality":             item.IsVitality,
+		"isAtlas":                item.IsAtlas,
+		"isVital":                item.IsVital,
+		"isModded":               item.IsModded,
+		"isOfficial":             item.IsOfficial,
+		"isBuild":                item.IsBuild,
 	}
 	if item.LastPolledAt != nil {
 		result["lastPolledAt"] = *item.LastPolledAt
@@ -1264,14 +1265,15 @@ func (h *Handler) ReleaseWipeReactSchedulePost(w http.ResponseWriter, r *http.Re
 }
 
 type createTrackedServerRequest struct {
-	BmID       string `json:"bmId"`
-	Name       string `json:"name"`
-	IsVitality bool   `json:"isVitality"`
-	IsAtlas    bool   `json:"isAtlas"`
-	IsVital    bool   `json:"isVital"`
-	IsModded   bool   `json:"isModded"`
-	IsOfficial bool   `json:"isOfficial"`
-	IsBuild    bool   `json:"isBuild"`
+	BmID                   string `json:"bmId"`
+	Name                   string `json:"name"`
+	IncludeInGuildSettings bool   `json:"includeInGuildSettings"`
+	IsVitality             bool   `json:"isVitality"`
+	IsAtlas                bool   `json:"isAtlas"`
+	IsVital                bool   `json:"isVital"`
+	IsModded               bool   `json:"isModded"`
+	IsOfficial             bool   `json:"isOfficial"`
+	IsBuild                bool   `json:"isBuild"`
 }
 
 func (h *Handler) ListTrackedServers(w http.ResponseWriter, r *http.Request) {
@@ -1309,6 +1311,7 @@ func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		request.BmID,
 		request.Name,
+		request.IncludeInGuildSettings,
 		request.IsVitality,
 		request.IsAtlas,
 		request.IsVital,
@@ -1330,14 +1333,15 @@ func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateTrackedServerRequest struct {
-	BmID       string `json:"bmId"`
-	Name       string `json:"name"`
-	IsVitality bool   `json:"isVitality"`
-	IsAtlas    bool   `json:"isAtlas"`
-	IsVital    bool   `json:"isVital"`
-	IsModded   bool   `json:"isModded"`
-	IsOfficial bool   `json:"isOfficial"`
-	IsBuild    bool   `json:"isBuild"`
+	BmID                   string `json:"bmId"`
+	Name                   string `json:"name"`
+	IncludeInGuildSettings bool   `json:"includeInGuildSettings"`
+	IsVitality             bool   `json:"isVitality"`
+	IsAtlas                bool   `json:"isAtlas"`
+	IsVital                bool   `json:"isVital"`
+	IsModded               bool   `json:"isModded"`
+	IsOfficial             bool   `json:"isOfficial"`
+	IsBuild                bool   `json:"isBuild"`
 }
 
 func (h *Handler) UpdateTrackedServer(w http.ResponseWriter, r *http.Request) {
@@ -1371,6 +1375,7 @@ func (h *Handler) UpdateTrackedServer(w http.ResponseWriter, r *http.Request) {
 		currentBmID,
 		request.BmID,
 		request.Name,
+		request.IncludeInGuildSettings,
 		request.IsVitality,
 		request.IsAtlas,
 		request.IsVital,
@@ -1477,6 +1482,9 @@ func (h *Handler) ReplaceGuildTrackedServers(w http.ResponseWriter, r *http.Requ
 
 		available := make(map[string]struct{}, len(trackedServers))
 		for _, item := range trackedServers {
+			if !item.IncludeInGuildSettings {
+				continue
+			}
 			available[item.BmID] = struct{}{}
 		}
 

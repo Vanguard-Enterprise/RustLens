@@ -1602,12 +1602,13 @@ func buildOpenAPIDocument() map[string]any {
 				"TrackedServer": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"bmId":          map[string]any{"type": "string"},
-						"name":          map[string]any{"type": "string"},
-						"lastPolledAt":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
-						"lastPollError": map[string]any{"type": "string"},
+						"bmId":                   map[string]any{"type": "string"},
+						"name":                   map[string]any{"type": "string"},
+						"includeInGuildSettings": map[string]any{"type": "boolean"},
+						"lastPolledAt":           map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"lastPollError":          map[string]any{"type": "string"},
 					},
-					"required": []string{"bmId", "name", "lastPolledAt", "lastPollError"},
+					"required": []string{"bmId", "name", "includeInGuildSettings", "lastPolledAt", "lastPollError"},
 				},
 				"TrackedServerListResponse": map[string]any{
 					"type": "object",
@@ -1622,8 +1623,9 @@ func buildOpenAPIDocument() map[string]any {
 				"CreateTrackedServerRequest": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"bmId": map[string]any{"type": "string"},
-						"name": map[string]any{"type": "string"},
+						"bmId":                   map[string]any{"type": "string"},
+						"name":                   map[string]any{"type": "string"},
+						"includeInGuildSettings": map[string]any{"type": "boolean"},
 					},
 					"required": []string{"bmId", "name"},
 				},

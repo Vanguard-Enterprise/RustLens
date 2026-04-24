@@ -281,6 +281,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS tracked_servers (
 			bm_id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
+			include_in_guild_settings BOOLEAN NOT NULL DEFAULT FALSE,
 			is_vitality BOOLEAN NOT NULL DEFAULT FALSE,
 			is_atlas BOOLEAN NOT NULL DEFAULT FALSE,
 			is_vital BOOLEAN NOT NULL DEFAULT FALSE,
@@ -291,6 +292,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			last_poll_error TEXT NOT NULL DEFAULT ''
 		);
 
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS include_in_guild_settings BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_vitality BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_atlas BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_vital BOOLEAN NOT NULL DEFAULT FALSE;

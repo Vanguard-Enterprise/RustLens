@@ -254,6 +254,7 @@ export type TrackedServerLogEventsResponse = {
 export type TrackedServer = {
   bmId: string;
   name: string;
+  includeInGuildSettings: boolean;
   isVitality: boolean;
   isAtlas: boolean;
   isVital: boolean;
