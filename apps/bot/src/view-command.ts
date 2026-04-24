@@ -233,13 +233,27 @@ function calculateBmHoursRisk(profile: SteamProfile | null) {
   return { level, hours: bmHours };
 }
 
-function buildRiskFactorField(profile: SteamProfile | null) {
+function calculateAccountCreatedRisk(profile: SteamProfile | null, now: Date = new Date()) {
+  const firstSeenUnix = profile?.firstSeenUnix;
+  if (firstSeenUnix === null || firstSeenUnix === undefined) {
+    return null;
+  }
+
+  const nowUnix = Math.floor(now.getTime() / 1000);
+  const ageDays = Math.max(0, (nowUnix - firstSeenUnix) / SECONDS_PER_DAY);
+  const level = Math.max(0, Math.min(10, 11 - Math.ceil(ageDays / 10)));
+  return { level, firstSeenUnix };
+}
+
+function buildRiskFactorField(profile: SteamProfile | null, now: Date = new Date()) {
   const steamBmRisk = calculateSteamBmHourRisk(profile);
-  const recentBreaksRisk = calculateRecentBreaksRisk(profile);
+  const recentBreaksRisk = calculateRecentBreaksRisk(profile, now);
   const serversRisk = calculateServersPlayedRisk(profile);
   const bmHoursRisk = calculateBmHoursRisk(profile);
+  const accountCreatedRisk = calculateAccountCreatedRisk(profile, now);
 
-  const factors = [steamBmRisk, recentBreaksRisk, serversRisk, bmHoursRisk].filter((factor) => factor !== null);
+  const factors = [steamBmRisk, recentBreaksRisk, serversRisk, bmHoursRisk, accountCreatedRisk]
+    .filter((factor) => factor !== null);
   const averageRisk = factors.length > 0
     ? factors.reduce((total, factor) => total + factor.level, 0) / factors.length
     : 0;
@@ -260,9 +274,13 @@ function buildRiskFactorField(profile: SteamProfile | null) {
     ? `${riskEmoji(bmHoursRisk.level)} BM hours: **${bmHoursRisk.hours}**`
     : `${riskEmoji(0)} BM hours: **unknown**`;
 
+  const accountCreatedLine = accountCreatedRisk
+    ? `${riskEmoji(accountCreatedRisk.level)} Account created: <t:${accountCreatedRisk.firstSeenUnix}:R>`
+    : `${riskEmoji(0)} Account created: **unknown**`;
+
   return {
     name: `Risk Factor ${riskEmoji(averageRisk)}`,
-    value: [steamBmLine, recentBreaksLine, serversLine, bmHoursLine].join("\n"),
+    value: [steamBmLine, recentBreaksLine, accountCreatedLine, serversLine, bmHoursLine].join("\n"),
   };
 }
 
@@ -637,6 +655,7 @@ export const __testables = {
   calculateSteamBmHourRisk,
   calculateServersPlayedRisk,
   calculateBmHoursRisk,
+  calculateAccountCreatedRisk,
   calculateRecentBreaksRisk,
   normalizeDiscordIdentifier,
 };

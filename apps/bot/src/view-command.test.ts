@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { __testables, buildUserEmbed } from "./view-command.js";
 
+const OLD_FIRST_SEEN_UNIX = 1577836800;
+
 describe("view-command", () => {
   it("normalizes raw discord ids", () => {
     expect(__testables.normalizeDiscordIdentifier("123456789012345678")).toBeNull();
@@ -21,7 +23,7 @@ describe("view-command", () => {
       bmId: "918543318",
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
-      firstSeenUnix: 1766616480,
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
       serversPlayed: 12,
       nameGaps: [],
       hours: {
@@ -41,7 +43,7 @@ describe("view-command", () => {
     expect(embed.fields?.[0]?.value).toContain("https://steamcommunity.com/profiles/76561198000000000");
     expect(embed.fields?.[0]?.value).toContain("https://www.battlemetrics.com/players/918543318");
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
-    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_4:1487595713553502359>");
     expect(embed.fields).toHaveLength(11);
   });
 
@@ -51,7 +53,7 @@ describe("view-command", () => {
       bmId: "918543318",
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
-      firstSeenUnix: 1766616480,
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
       serversPlayed: 40,
       nameGaps: [],
       hours: {
@@ -78,7 +80,7 @@ describe("view-command", () => {
       bmId: "918543318",
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
-      firstSeenUnix: 1766616480,
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
       serversPlayed: 20,
       nameGaps: [],
       hours: {
@@ -100,7 +102,7 @@ describe("view-command", () => {
       bmId: "918543318",
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
-      firstSeenUnix: 1766616480,
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
       serversPlayed: 20,
       nameGaps: [],
       hours: {
@@ -170,13 +172,37 @@ describe("view-command", () => {
     expect(__testables.calculateBmHoursRisk({ hours: { bm: 275 } } as never)).toEqual({ level: 0, hours: 275 });
   });
 
+  it("scores account-created risk in 10-day buckets", () => {
+    const now = new Date("2026-04-01T00:00:00Z");
+
+    expect(__testables.calculateAccountCreatedRisk({ firstSeenUnix: Math.floor(new Date("2026-03-27T00:00:00Z").getTime() / 1000) } as never, now))
+      .toEqual({ level: 10, firstSeenUnix: Math.floor(new Date("2026-03-27T00:00:00Z").getTime() / 1000) });
+    expect(__testables.calculateAccountCreatedRisk({ firstSeenUnix: Math.floor(new Date("2026-03-12T00:00:00Z").getTime() / 1000) } as never, now))
+      .toEqual({ level: 9, firstSeenUnix: Math.floor(new Date("2026-03-12T00:00:00Z").getTime() / 1000) });
+    expect(__testables.calculateAccountCreatedRisk({ firstSeenUnix: Math.floor(new Date("2026-03-02T00:00:00Z").getTime() / 1000) } as never, now))
+      .toEqual({ level: 8, firstSeenUnix: Math.floor(new Date("2026-03-02T00:00:00Z").getTime() / 1000) });
+  });
+
+  it("includes the account-created line in the risk factor field", () => {
+    const firstSeenUnix = Math.floor(new Date("2026-03-27T00:00:00Z").getTime() / 1000);
+    const field = __testables.buildRiskFactorField({
+      firstSeenUnix,
+      hours: {
+        bm: null,
+        rust: null,
+      },
+    } as never, new Date("2026-04-01T00:00:00Z"));
+
+    expect(field.value).toContain(`<:risk_10:1487595719790432447> Account created: <t:${firstSeenUnix}:R>`);
+  });
+
   it("includes the linked discord user when provided", () => {
     const embed = buildUserEmbed("76561198000000000", {
       steamId: "76561198000000000",
       bmId: "918543318",
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
-      firstSeenUnix: 1766616480,
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
       serversPlayed: 5,
       nameGaps: [],
       hours: {
