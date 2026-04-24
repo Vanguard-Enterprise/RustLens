@@ -1587,16 +1587,16 @@ func steamAnalyticsResponseFromCache(account store.SteamAccount, cache store.Ste
 		BmID:         bmID,
 		BmName:       bmName,
 		AvatarImage:  avatarImage,
-		TotalGames:   cache.AnalyticsTotalGames,
-		TopGames:     make([]steamAnalyticsGame, 0, len(cache.AnalyticsTopGames)),
+		TotalGames:   cache.TotalGames,
+		TopGames:     make([]steamAnalyticsGame, 0, len(cache.TopGames)),
 		TotalServers: cache.BmServersPlayed,
-		TopServers:   make([]steamAnalyticsServer, 0, len(cache.AnalyticsTopServers)),
+		TopServers:   make([]steamAnalyticsServer, 0, len(cache.TopServers)),
 		Gaps:         make([]steamAnalyticsGap, 0, len(cache.NameGaps)),
 	}
-	for _, game := range cache.AnalyticsTopGames {
+	for _, game := range cache.TopGames {
 		response.TopGames = append(response.TopGames, steamAnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.Hours})
 	}
-	for _, server := range cache.AnalyticsTopServers {
+	for _, server := range cache.TopServers {
 		response.TopServers = append(response.TopServers, steamAnalyticsServer{BmID: server.BmID, Name: server.Name, Hours: server.Hours})
 	}
 	for _, gap := range cache.NameGaps {
@@ -1650,11 +1650,11 @@ func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamA
 			return ownedGames[i].PlaytimeForever > ownedGames[j].PlaytimeForever
 		})
 		totalGames := len(ownedGames)
-		cache.AnalyticsTotalGames = &totalGames
-		cache.AnalyticsTopGames = make([]store.AnalyticsGame, 0, min(5, totalGames))
+		cache.TotalGames = &totalGames
+		cache.TopGames = make([]store.AnalyticsGame, 0, min(5, totalGames))
 		for i := range min(5, totalGames) {
 			game := ownedGames[i]
-			cache.AnalyticsTopGames = append(cache.AnalyticsTopGames, store.AnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.PlaytimeForever / 60})
+			cache.TopGames = append(cache.TopGames, store.AnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.PlaytimeForever / 60})
 		}
 		for _, game := range ownedGames {
 			if game.AppID != 252490 {
@@ -1720,11 +1720,10 @@ func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamA
 	sort.Slice(servers, func(i, j int) bool {
 		return servers[i].TimePlayed > servers[j].TimePlayed
 	})
-	cache.AnalyticsTotalServers = len(profile.Servers)
-	cache.AnalyticsTopServers = make([]store.AnalyticsServer, 0, min(5, len(servers)))
+	cache.TopServers = make([]store.AnalyticsServer, 0, min(5, len(servers)))
 	for i := range min(5, len(servers)) {
 		server := servers[i]
-		cache.AnalyticsTopServers = append(cache.AnalyticsTopServers, store.AnalyticsServer{BmID: server.ServerID, Name: server.ServerName, Hours: toWholeHours(server.TimePlayed)})
+		cache.TopServers = append(cache.TopServers, store.AnalyticsServer{BmID: server.ServerID, Name: server.ServerName, Hours: toWholeHours(server.TimePlayed)})
 	}
 	return cache, nil
 }
@@ -2496,7 +2495,6 @@ func (h *Handler) refreshSteamGameBanCache(
 }
 
 type trackedServerLogEventResponse struct {
-	ID           int64  `json:"id"`
 	ServerBmID   string `json:"serverBmId"`
 	ServerName   string `json:"serverName"`
 	PlayerBmID   string `json:"playerBmId"`
@@ -2504,13 +2502,12 @@ type trackedServerLogEventResponse struct {
 	DiscordID    string `json:"discordId"`
 	BmName       string `json:"bmName"`
 	AvatarImage  string `json:"avatarImage"`
-	EventType    string `json:"eventType"`
+	IsOnline     bool   `json:"isOnline"`
 	OccurredUnix int64  `json:"occurredUnix"`
 }
 
 type trackedServerLogEventsResponse struct {
-	Items       []trackedServerLogEventResponse `json:"items"`
-	LastEventID int64                           `json:"lastEventId"`
+	Items []trackedServerLogEventResponse `json:"items"`
 }
 
 func (h *Handler) ListGuildTrackedServerLogEvents(w http.ResponseWriter, r *http.Request) {
@@ -2519,75 +2516,31 @@ func (h *Handler) ListGuildTrackedServerLogEvents(w http.ResponseWriter, r *http
 		return
 	}
 
-	cursor, err := h.postgres.GetGuildTrackedLogCursor(r.Context(), guildID)
+	states, err := h.postgres.ListGuildTrackedServerLogStates(r.Context(), guildID)
 	if err != nil {
-		log.Printf("[backend] GetGuildTrackedLogCursor error for %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to load log cursor")
+		log.Printf("[backend] ListGuildTrackedServerLogStates error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch tracked server log states")
 		return
-	}
-
-	events, err := h.postgres.ListGuildTrackedServerLogEvents(r.Context(), guildID, cursor.LastEventID, 100)
-	if err != nil {
-		log.Printf("[backend] ListGuildTrackedServerLogEvents error for %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to fetch events")
-		return
-	}
-
-	latest, err := h.postgres.LatestPlayerStateEventID(r.Context())
-	if err != nil {
-		log.Printf("[backend] LatestPlayerStateEventID error: %v", err)
-		latest = cursor.LastEventID
 	}
 
 	response := trackedServerLogEventsResponse{
-		Items:       make([]trackedServerLogEventResponse, 0, len(events)),
-		LastEventID: latest,
+		Items: make([]trackedServerLogEventResponse, 0, len(states)),
 	}
-	for _, event := range events {
+	for _, state := range states {
 		response.Items = append(response.Items, trackedServerLogEventResponse{
-			ID:           event.ID,
-			ServerBmID:   event.ServerBmID,
-			ServerName:   event.ServerName,
-			PlayerBmID:   event.PlayerBmID,
-			SteamID:      event.SteamID,
-			DiscordID:    event.DiscordID,
-			BmName:       event.BmName,
-			AvatarImage:  event.AvatarImage,
-			EventType:    event.EventType,
-			OccurredUnix: event.OccurredAt.Unix(),
+			ServerBmID:   state.ServerBmID,
+			ServerName:   state.ServerName,
+			PlayerBmID:   state.PlayerBmID,
+			SteamID:      state.SteamID,
+			DiscordID:    state.DiscordID,
+			BmName:       state.BmName,
+			AvatarImage:  state.AvatarImage,
+			IsOnline:     state.IsOnline,
+			OccurredUnix: state.StateChangedAt.Unix(),
 		})
 	}
 
 	writeJSON(w, http.StatusOK, response)
-}
-
-type ackTrackedServerLogEventsRequest struct {
-	LastEventID int64 `json:"lastEventId"`
-}
-
-func (h *Handler) AckGuildTrackedServerLogEvents(w http.ResponseWriter, r *http.Request) {
-	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
-	if !ok {
-		return
-	}
-
-	var req ackTrackedServerLogEventsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if req.LastEventID < 0 {
-		writeError(w, http.StatusBadRequest, "lastEventId must be non-negative")
-		return
-	}
-
-	if err := h.postgres.SetGuildTrackedLogCursor(r.Context(), guildID, req.LastEventID); err != nil {
-		log.Printf("[backend] SetGuildTrackedLogCursor error for %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to ack events")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
 func (h *Handler) ListGuildLinksByDiscord(w http.ResponseWriter, r *http.Request) {

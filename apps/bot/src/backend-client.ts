@@ -221,7 +221,6 @@ export type GuildRecentGameBanListResponse = {
 };
 
 export type TrackedServerLogEvent = {
-  id: number;
   serverBmId: string;
   serverName: string;
   playerBmId: string;
@@ -229,13 +228,12 @@ export type TrackedServerLogEvent = {
   discordId: string;
   bmName: string;
   avatarImage: string;
-  eventType: "online" | "offline";
+  isOnline: boolean;
   occurredUnix: number;
 };
 
 export type TrackedServerLogEventsResponse = {
   items: TrackedServerLogEvent[];
-  lastEventId: number;
 };
 
 export type TrackedServer = {
@@ -730,15 +728,6 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/tracked-server-log-events`,
       "GET",
-    );
-  }
-
-  ackGuildTrackedServerLogEvents(workerId: string, guildId: string, lastEventId: number) {
-    return this.call<{ status: string }>(
-      workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/tracked-server-log-events/ack`,
-      "POST",
-      { lastEventId },
     );
   }
 

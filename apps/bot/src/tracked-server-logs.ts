@@ -17,6 +17,7 @@ const EMOJIS = {
 
 let _backend: BackendClient | undefined;
 let _workerId: string | undefined;
+const previousSnapshots = new Map<string, Map<string, TrackedServerLogEvent>>();
 
 function getBackend() {
   if (!_backend) {
@@ -72,30 +73,34 @@ async function processGuild(guild: Guild) {
 
   const { backend, workerId } = getBackend();
   const response = await backend.listGuildTrackedServerLogEvents(workerId, guild.id);
+  const currentSnapshot = new Map<string, TrackedServerLogEvent>();
+  for (const item of response.items) {
+    currentSnapshot.set(snapshotKey(item), item);
+  }
 
-  let lastPostedID = 0;
-  for (const event of response.items) {
+  const previousSnapshot = previousSnapshots.get(guild.id);
+  if (!previousSnapshot) {
+    previousSnapshots.set(guild.id, currentSnapshot);
+    return;
+  }
+
+  const changes = diffSnapshot(previousSnapshot, currentSnapshot);
+  for (const event of changes) {
     const embed = buildLogEmbed(event);
     try {
       await (channel as { send: (payload: { embeds: EmbedBuilder[] }) => Promise<unknown> }).send({ embeds: [embed] });
-      lastPostedID = event.id;
     } catch (error) {
       console.error(`[bot] failed to post tracked-server-log embed for guild ${guild.id}`, error);
       break;
     }
   }
 
-  const ackTarget = lastPostedID > 0 ? lastPostedID : response.lastEventId;
-  if (ackTarget > 0) {
-    await backend.ackGuildTrackedServerLogEvents(workerId, guild.id, ackTarget).catch((error) => {
-      console.error(`[bot] failed to ack tracked-server-log cursor for guild ${guild.id}`, error);
-    });
-  }
+  previousSnapshots.set(guild.id, currentSnapshot);
 }
 
 export function buildLogEmbed(event: TrackedServerLogEvent) {
-  const action = event.eventType === "online" ? "joined" : "left";
-  const color = event.eventType === "online" ? JOIN_COLOR : LEAVE_COLOR;
+  const action = event.isOnline ? "joined" : "left";
+  const color = event.isOnline ? JOIN_COLOR : LEAVE_COLOR;
   const title = `${event.bmName || event.playerBmId} has ${action} ${event.serverName}`;
 
   const lines = [
@@ -118,6 +123,29 @@ export function buildLogEmbed(event: TrackedServerLogEvent) {
   return embed;
 }
 
+function snapshotKey(event: TrackedServerLogEvent) {
+  return `${event.serverBmId}:${event.playerBmId}:${event.steamId}:${event.discordId}`;
+}
+
+function diffSnapshot(
+  previousSnapshot: Map<string, TrackedServerLogEvent>,
+  currentSnapshot: Map<string, TrackedServerLogEvent>,
+) {
+  const changes: TrackedServerLogEvent[] = [];
+
+  for (const [key, current] of currentSnapshot) {
+    const previous = previousSnapshot.get(key);
+    if (!previous || previous.isOnline === current.isOnline) {
+      continue;
+    }
+    changes.push(current);
+  }
+
+  changes.sort((a, b) => a.occurredUnix - b.occurredUnix || a.serverName.localeCompare(b.serverName) || a.discordId.localeCompare(b.discordId));
+  return changes;
+}
+
 export const __testables = {
   buildLogEmbed,
+  diffSnapshot,
 };

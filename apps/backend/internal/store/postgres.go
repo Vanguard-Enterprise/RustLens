@@ -161,10 +161,9 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			bm_servers_played INTEGER NOT NULL DEFAULT 0,
 			name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb,
 			rust_hours BIGINT,
-			analytics_total_games INTEGER,
-			analytics_top_games JSONB NOT NULL DEFAULT '[]'::jsonb,
-			analytics_total_servers INTEGER NOT NULL DEFAULT 0,
-			analytics_top_servers JSONB NOT NULL DEFAULT '[]'::jsonb,
+			total_games INTEGER,
+			top_games JSONB NOT NULL DEFAULT '[]'::jsonb,
+			top_servers JSONB NOT NULL DEFAULT '[]'::jsonb,
 			game_banned BOOLEAN NOT NULL DEFAULT FALSE,
 			game_banned_at TIMESTAMPTZ,
 			game_ban_checked_at TIMESTAMPTZ,
@@ -174,10 +173,13 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_servers_played INTEGER NOT NULL DEFAULT 0;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb;
-		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS analytics_total_games INTEGER;
-		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS analytics_top_games JSONB NOT NULL DEFAULT '[]'::jsonb;
-		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS analytics_total_servers INTEGER NOT NULL DEFAULT 0;
-		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS analytics_top_servers JSONB NOT NULL DEFAULT '[]'::jsonb;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS total_games INTEGER;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS top_games JSONB NOT NULL DEFAULT '[]'::jsonb;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS top_servers JSONB NOT NULL DEFAULT '[]'::jsonb;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_total_games;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_top_games;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_total_servers;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_top_servers;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_banned BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_banned_at TIMESTAMPTZ;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_ban_checked_at TIMESTAMPTZ;
@@ -295,26 +297,8 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS player_states_server_online_idx
 		ON player_states (server_bm_id, is_online, online_since DESC, updated_at DESC);
 
-		CREATE TABLE IF NOT EXISTS player_state_events (
-			id BIGSERIAL PRIMARY KEY,
-			server_bm_id TEXT NOT NULL,
-			player_bm_id TEXT NOT NULL,
-			bm_name TEXT NOT NULL DEFAULT '',
-			event_type TEXT NOT NULL,
-			occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-
-		CREATE INDEX IF NOT EXISTS player_state_events_id_idx
-		ON player_state_events (id);
-
-		CREATE INDEX IF NOT EXISTS player_state_events_server_id_idx
-		ON player_state_events (server_bm_id, id);
-
-		CREATE TABLE IF NOT EXISTS guild_tracked_log_cursors (
-			guild_id TEXT PRIMARY KEY,
-			last_event_id BIGINT NOT NULL DEFAULT 0,
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
+		DROP TABLE IF EXISTS guild_tracked_log_cursors;
+		DROP TABLE IF EXISTS player_state_events;
 
 		CREATE TABLE IF NOT EXISTS guild_tracked_servers (
 			guild_id TEXT NOT NULL,
