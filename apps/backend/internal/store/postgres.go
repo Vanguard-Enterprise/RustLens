@@ -164,12 +164,14 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			build_hours BIGINT NOT NULL DEFAULT 0,
 			bm_hours BIGINT NOT NULL DEFAULT 0,
 			bm_servers_played INTEGER NOT NULL DEFAULT 0,
+			name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb,
 			rust_hours BIGINT,
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_servers_played INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 		CREATE INDEX IF NOT EXISTS steam_account_cache_updated_idx
 		ON steam_account_cache (updated_at);

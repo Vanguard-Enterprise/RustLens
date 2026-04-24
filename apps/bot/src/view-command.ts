@@ -164,6 +164,44 @@ function calculateSteamBmHourRisk(profile: SteamProfile | null) {
   return { level: Math.min(10, Math.round(percentMissingFromSteam / RISK_PERCENT_STEP)), difference };
 }
 
+const SECONDS_PER_DAY = 86400;
+const DAYS_PER_MONTH = 30;
+const RECENT_BREAK_DAYS = 10;
+const BREAK_WINDOW_DAYS = 365;
+
+function calculateRecentBreaksRisk(profile: SteamProfile | null, now: Date = new Date()) {
+  const gaps = profile?.nameGaps;
+  if (!gaps) {
+    return null;
+  }
+
+  const nowUnix = Math.floor(now.getTime() / 1000);
+  const windowStart = nowUnix - BREAK_WINDOW_DAYS * SECONDS_PER_DAY;
+  const recentCutoff = nowUnix - RECENT_BREAK_DAYS * SECONDS_PER_DAY;
+
+  let totalRisk = 0;
+  let breakCount = 0;
+
+  for (const gap of gaps) {
+    if (gap.toUnix < windowStart) {
+      continue;
+    }
+    const durationDays = (gap.toUnix - gap.fromUnix) / SECONDS_PER_DAY;
+    const months = Math.floor(durationDays / DAYS_PER_MONTH);
+    if (months < 2) {
+      continue;
+    }
+    breakCount += 1;
+    const isRecent = gap.toUnix >= recentCutoff;
+    totalRisk += isRecent ? months * 2 : months - 1;
+  }
+
+  return {
+    level: Math.max(0, Math.min(10, totalRisk)),
+    breaks: breakCount,
+  };
+}
+
 function calculateServersPlayedRisk(profile: SteamProfile | null) {
   const servers = profile?.serversPlayed;
   if (servers === null || servers === undefined) {
@@ -194,10 +232,11 @@ function calculateBmHoursRisk(profile: SteamProfile | null) {
 
 function buildRiskFactorField(profile: SteamProfile | null) {
   const steamBmRisk = calculateSteamBmHourRisk(profile);
+  const recentBreaksRisk = calculateRecentBreaksRisk(profile);
   const serversRisk = calculateServersPlayedRisk(profile);
   const bmHoursRisk = calculateBmHoursRisk(profile);
 
-  const factors = [steamBmRisk, serversRisk, bmHoursRisk].filter((factor) => factor !== null);
+  const factors = [steamBmRisk, recentBreaksRisk, serversRisk, bmHoursRisk].filter((factor) => factor !== null);
   const averageRisk = factors.length > 0
     ? factors.reduce((total, factor) => total + factor.level, 0) / factors.length
     : 0;
@@ -205,6 +244,10 @@ function buildRiskFactorField(profile: SteamProfile | null) {
   const steamBmLine = steamBmRisk
     ? `${riskEmoji(steamBmRisk.level)} Steam → BM hour difference: **${steamBmRisk.difference}** hours`
     : `${riskEmoji(0)} Steam → BM hour difference: **private**`;
+
+  const recentBreaksLine = recentBreaksRisk
+    ? `${riskEmoji(recentBreaksRisk.level)} Recent breaks > 2 months: **${recentBreaksRisk.breaks}**`
+    : `${riskEmoji(0)} Recent breaks > 2 months: **unknown**`;
 
   const serversLine = serversRisk
     ? `${riskEmoji(serversRisk.level)} Servers played: **${serversRisk.servers}**`
@@ -216,7 +259,7 @@ function buildRiskFactorField(profile: SteamProfile | null) {
 
   return {
     name: `Risk Factor ${riskEmoji(averageRisk)}`,
-    value: [steamBmLine, serversLine, bmHoursLine].join("\n"),
+    value: [steamBmLine, recentBreaksLine, serversLine, bmHoursLine].join("\n"),
   };
 }
 
@@ -575,5 +618,6 @@ export const __testables = {
   calculateSteamBmHourRisk,
   calculateServersPlayedRisk,
   calculateBmHoursRisk,
+  calculateRecentBreaksRisk,
   normalizeDiscordIdentifier,
 };

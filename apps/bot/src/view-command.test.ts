@@ -23,6 +23,7 @@ describe("view-command", () => {
       avatarImage: "https://cdn.example/avatar.png",
       firstSeenUnix: 1766616480,
       serversPlayed: 12,
+      nameGaps: [],
       hours: {
         vitality: 10,
         atlas: 20,
@@ -40,7 +41,7 @@ describe("view-command", () => {
     expect(embed.fields?.[0]?.value).toContain("https://steamcommunity.com/profiles/76561198000000000");
     expect(embed.fields?.[0]?.value).toContain("https://www.battlemetrics.com/players/918543318");
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
-    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_6:1487595718431739954>");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
     expect(embed.fields).toHaveLength(11);
   });
 
@@ -52,6 +53,7 @@ describe("view-command", () => {
       avatarImage: "https://cdn.example/avatar.png",
       firstSeenUnix: 1766616480,
       serversPlayed: 40,
+      nameGaps: [],
       hours: {
         vitality: 0,
         atlas: 0,
@@ -78,6 +80,7 @@ describe("view-command", () => {
       avatarImage: "https://cdn.example/avatar.png",
       firstSeenUnix: 1766616480,
       serversPlayed: 20,
+      nameGaps: [],
       hours: {
         vitality: 0,
         atlas: 0,
@@ -99,6 +102,7 @@ describe("view-command", () => {
       avatarImage: "https://cdn.example/avatar.png",
       firstSeenUnix: 1766616480,
       serversPlayed: 20,
+      nameGaps: [],
       hours: {
         vitality: 0,
         atlas: 0,
@@ -110,6 +114,43 @@ describe("view-command", () => {
         rust: 2200,
       },
     })).toEqual({ level: 1, difference: 267 });
+  });
+
+  it("scores recent breaks risk by summing months per break", () => {
+    const now = new Date("2026-04-01T00:00:00Z");
+    const nowUnix = Math.floor(now.getTime() / 1000);
+    const profile = {
+      nameGaps: [
+        { fromUnix: nowUnix - 335 * 86400, toUnix: nowUnix - 215 * 86400 },
+        { fromUnix: nowUnix - 150 * 86400, toUnix: nowUnix - 60 * 86400 },
+      ],
+    } as never;
+
+    expect(__testables.calculateRecentBreaksRisk(profile, now)).toEqual({ level: 5, breaks: 2 });
+  });
+
+  it("doubles the risk per month when a break ended within 10 days", () => {
+    const now = new Date("2026-04-01T00:00:00Z");
+    const nowUnix = Math.floor(now.getTime() / 1000);
+    const profile = {
+      nameGaps: [
+        { fromUnix: nowUnix - 95 * 86400, toUnix: nowUnix - 5 * 86400 },
+      ],
+    } as never;
+
+    expect(__testables.calculateRecentBreaksRisk(profile, now)).toEqual({ level: 6, breaks: 1 });
+  });
+
+  it("ignores breaks that ended more than a year ago", () => {
+    const now = new Date("2026-04-01T00:00:00Z");
+    const nowUnix = Math.floor(now.getTime() / 1000);
+    const profile = {
+      nameGaps: [
+        { fromUnix: nowUnix - 500 * 86400, toUnix: nowUnix - 400 * 86400 },
+      ],
+    } as never;
+
+    expect(__testables.calculateRecentBreaksRisk(profile, now)).toEqual({ level: 0, breaks: 0 });
   });
 
   it("scores servers-played risk by 3-server steps under 30", () => {
@@ -137,6 +178,7 @@ describe("view-command", () => {
       avatarImage: "https://cdn.example/avatar.png",
       firstSeenUnix: 1766616480,
       serversPlayed: 5,
+      nameGaps: [],
       hours: {
         vitality: 10,
         atlas: 20,

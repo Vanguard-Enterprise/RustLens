@@ -109,6 +109,7 @@ export type SteamProfile = {
   firstSeenUnix: number | null;
   hours: SteamProfileHours;
   serversPlayed: number;
+  nameGaps: SteamAnalyticsGap[];
 };
 
 export type SteamAnalyticsGame = {

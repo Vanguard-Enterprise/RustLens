@@ -1456,13 +1456,14 @@ type steamProfileHours struct {
 }
 
 type steamProfileResponse struct {
-	SteamID         string            `json:"steamId"`
-	BmID            string            `json:"bmId"`
-	BmName          string            `json:"bmName"`
-	AvatarImage     string            `json:"avatarImage"`
-	FirstSeenUnix   *int64            `json:"firstSeenUnix"`
-	Hours           steamProfileHours `json:"hours"`
-	ServersPlayed   int               `json:"serversPlayed"`
+	SteamID       string              `json:"steamId"`
+	BmID          string              `json:"bmId"`
+	BmName        string              `json:"bmName"`
+	AvatarImage   string              `json:"avatarImage"`
+	FirstSeenUnix *int64              `json:"firstSeenUnix"`
+	Hours         steamProfileHours   `json:"hours"`
+	ServersPlayed int                 `json:"serversPlayed"`
+	NameGaps      []steamAnalyticsGap `json:"nameGaps"`
 }
 
 func toWholeHours(seconds int64) int64 {
@@ -1473,11 +1474,16 @@ func toWholeHours(seconds int64) int64 {
 }
 
 func steamProfileResponseFromCache(account store.SteamAccount, cache store.SteamAccountCache) steamProfileResponse {
+	gaps := make([]steamAnalyticsGap, 0, len(cache.NameGaps))
+	for _, gap := range cache.NameGaps {
+		gaps = append(gaps, steamAnalyticsGap{FromUnix: gap.FromUnix, ToUnix: gap.ToUnix})
+	}
 	response := steamProfileResponse{
 		SteamID:       account.SteamID,
 		BmName:        cache.BmName,
 		AvatarImage:   cache.AvatarImage,
 		ServersPlayed: cache.BmServersPlayed,
+		NameGaps:      gaps,
 		Hours: steamProfileHours{
 			Vitality: cache.VitalityHours,
 			Atlas:    cache.AtlasHours,
@@ -1509,6 +1515,10 @@ func steamProfileCacheFromResponse(response steamProfileResponse) store.SteamAcc
 		firstSeenAt = &converted
 	}
 
+	gaps := make([]store.NameGap, 0, len(response.NameGaps))
+	for _, gap := range response.NameGaps {
+		gaps = append(gaps, store.NameGap{FromUnix: gap.FromUnix, ToUnix: gap.ToUnix})
+	}
 	return store.SteamAccountCache{
 		SteamID:         response.SteamID,
 		BmID:            response.BmID,
@@ -1523,6 +1533,7 @@ func steamProfileCacheFromResponse(response steamProfileResponse) store.SteamAcc
 		BuildHours:      response.Hours.Build,
 		BmHours:         response.Hours.BM,
 		BmServersPlayed: response.ServersPlayed,
+		NameGaps:        gaps,
 		RustHours:       response.Hours.Rust,
 	}
 }
@@ -1693,6 +1704,7 @@ func (h *Handler) fetchFreshSteamProfile(ctx context.Context, account store.Stea
 	response.Hours.Build = toWholeHours(buildSeconds)
 	response.Hours.BM = toWholeHours(bmSeconds)
 	response.ServersPlayed = len(profile.Servers)
+	response.NameGaps = computeNameGaps(profile.NameIdentifiers)
 	return response, nil
 }
 
