@@ -300,6 +300,11 @@ export type BulkHardLinkEntry = {
   source: string;
 };
 
+export type UserBan = {
+  discordId: string;
+  categories: string[];
+};
+
 export class BackendClient {
   constructor(
     private readonly backendUrl: string,
@@ -793,6 +798,23 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/steam/${steamId}/links`,
       "GET",
+    );
+  }
+
+  getUserBan(workerId: string, discordId: string) {
+    return this.call<UserBan>(
+      workerId,
+      `/api/internal/bot/setup/bans/${discordId}`,
+      "GET",
+    );
+  }
+
+  setUserBan(workerId: string, discordId: string, categories: string[], updatedBy: string) {
+    return this.call<UserBan>(
+      workerId,
+      `/api/internal/bot/setup/bans/${discordId}`,
+      "PUT",
+      { categories, updatedBy },
     );
   }
 }

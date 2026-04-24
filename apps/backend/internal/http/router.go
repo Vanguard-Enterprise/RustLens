@@ -105,6 +105,10 @@ func NewRouter(
 		r.Get("/discord/{discordID}/links", handler.ListLinksByDiscordID)
 		r.Get("/discord/{discordID}/guilds", handler.ListUserGuildLinksByDiscord)
 
+		// User ban registry (owner-only /ban command)
+		r.Get("/bans/{discordID}", handler.GetUserBan)
+		r.Put("/bans/{discordID}", handler.UpdateUserBan)
+
 		// Guild-scoped steam-discord links
 		r.Get("/guilds/{guildID}/online-summary", handler.ListGuildOnlineSummary)
 		r.Get("/guilds/{guildID}/game-bans", handler.CheckGuildGameBans)

@@ -2938,6 +2938,92 @@ func (h *Handler) ListAdminRoles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+var banCategoryAllowlist = map[string]struct{}{
+	"setup":        {},
+	"linking":      {},
+	"lookup":       {},
+	"activity":     {},
+	"coordination": {},
+	"other":        {},
+}
+
+func validateDiscordIDPathParam(w http.ResponseWriter, r *http.Request) (string, bool) {
+	return validateSnowflakePathParam(w, r, "discordID")
+}
+
+func writeUserBan(w http.ResponseWriter, ban store.UserBan) {
+	categories := ban.Categories
+	if categories == nil {
+		categories = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"discordId":  ban.DiscordID,
+		"categories": categories,
+	})
+}
+
+func (h *Handler) GetUserBan(w http.ResponseWriter, r *http.Request) {
+	discordID, ok := validateDiscordIDPathParam(w, r)
+	if !ok {
+		return
+	}
+
+	ban, err := h.postgres.GetUserBan(r.Context(), discordID)
+	if err != nil {
+		log.Printf("[backend] GetUserBan error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch user ban")
+		return
+	}
+
+	writeUserBan(w, ban)
+}
+
+type updateUserBanRequest struct {
+	Categories []string `json:"categories"`
+	UpdatedBy  string   `json:"updatedBy"`
+}
+
+func (h *Handler) UpdateUserBan(w http.ResponseWriter, r *http.Request) {
+	discordID, ok := validateDiscordIDPathParam(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request updateUserBanRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	seen := map[string]struct{}{}
+	categories := make([]string, 0, len(request.Categories))
+	for _, raw := range request.Categories {
+		category := strings.ToLower(strings.TrimSpace(raw))
+		if category == "" {
+			continue
+		}
+		if _, ok := banCategoryAllowlist[category]; !ok {
+			writeError(w, http.StatusBadRequest, "invalid ban category: "+category)
+			return
+		}
+		if _, dup := seen[category]; dup {
+			continue
+		}
+		seen[category] = struct{}{}
+		categories = append(categories, category)
+	}
+
+	ban, err := h.postgres.UpsertUserBan(r.Context(), discordID, categories, request.UpdatedBy)
+	if err != nil {
+		log.Printf("[backend] UpdateUserBan error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update user ban")
+		return
+	}
+
+	writeUserBan(w, ban)
+}
+
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
