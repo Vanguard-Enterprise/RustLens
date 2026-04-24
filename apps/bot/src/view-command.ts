@@ -1,9 +1,11 @@
 import type { ButtonInteraction, ChatInputCommandInteraction, Client } from "discord.js";
 import {
   ActionRowBuilder,
+  ApplicationIntegrationType,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -62,6 +64,8 @@ const viewCommand = new SlashCommandBuilder()
   .setDescription("View linked steam/discord accounts in this guild")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addSubcommand((sub) =>
     sub
       .setName(VIEW_USER_SUBCOMMAND)

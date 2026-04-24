@@ -6,9 +6,11 @@ import type {
 } from "discord.js";
 import {
   ActionRowBuilder,
+  ApplicationIntegrationType,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  InteractionContextType,
   MessageFlags,
   ModalBuilder,
   PermissionFlagsBits,
@@ -32,7 +34,9 @@ const transferCommand = new SlashCommandBuilder()
   .setName(TRANSFER_COMMAND_NAME)
   .setDescription("Transfer guild data from another bot into RustLens")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-  .setDMPermission(false);
+  .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
 
 let _backend: BackendClient | undefined;
 let _workerID: string | undefined;

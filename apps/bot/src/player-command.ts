@@ -1,5 +1,5 @@
 import type { ButtonInteraction, ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient, type SteamAccount, type SteamAnalytics } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
@@ -22,6 +22,8 @@ const bmIDPattern = /^\d{1,16}$/;
 const playerCommand = new SlashCommandBuilder()
   .setName(PLAYER_COMMAND_NAME)
   .setDescription("Look up any player by Steam ID or BattleMetrics ID")
+  .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
   .addStringOption((opt) =>
     opt
       .setName("identifier")

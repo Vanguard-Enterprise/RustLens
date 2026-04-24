@@ -5,7 +5,7 @@ import type {
   Client,
   GuildMember,
 } from "discord.js";
-import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import {
   BackendClient,
   type SteamAccount,
@@ -28,6 +28,8 @@ const compareCommand = new SlashCommandBuilder()
   .setDescription("Compare your current voice channel against a wipe react or tracked server")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addStringOption((option) =>
     option
       .setName(COMPARE_SERVER_OPTION_NAME)

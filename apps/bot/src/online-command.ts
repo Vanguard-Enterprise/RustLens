@@ -1,5 +1,5 @@
 import type { APIEmbedField, ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient, type GuildOnlineSummaryItem } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
@@ -17,7 +17,9 @@ const FOOTER_TEXT = "RustLens.com";
 const onlineCommand = new SlashCommandBuilder()
   .setName(ONLINE_COMMAND_NAME)
   .setDescription("List guild-linked users currently online on tracked servers")
-  .setDMPermission(false);
+  .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
 
 let _backend: BackendClient | undefined;
 let _workerID: string | undefined;

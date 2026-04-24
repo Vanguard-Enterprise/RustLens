@@ -1,5 +1,5 @@
 import type { ChatInputCommandInteraction, Client, GuildMember } from "discord.js";
-import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { getGuildMembers } from "./guild-member-cache.js";
@@ -25,7 +25,9 @@ const NICKNAME_FAILURE_REASON_INTERNAL = "Internal error, this issue has been re
 const nicknameCommand = new SlashCommandBuilder()
   .setName(NICKNAME_COMMAND_NAME)
   .setDescription("Set guild nicknames to Discord nickname - BattleMetrics name")
-  .setDMPermission(false);
+  .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
 
 let _backend: BackendClient | undefined;
 let _workerID: string | undefined;

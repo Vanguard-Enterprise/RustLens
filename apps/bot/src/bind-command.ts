@@ -7,9 +7,11 @@ import type {
 } from "discord.js";
 import {
   ActionRowBuilder,
+  ApplicationIntegrationType,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -186,6 +188,8 @@ const bindCommand = new SlashCommandBuilder()
   .setName(BIND_COMMAND_NAME)
   .setDescription("RustLens bind commands")
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
   .addSubcommand((subcommand) =>
     subcommand
       .setName(BIND_FULLKIT_SUBCOMMAND_NAME)

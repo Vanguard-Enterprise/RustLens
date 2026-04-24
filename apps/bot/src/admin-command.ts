@@ -1,5 +1,5 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
@@ -19,6 +19,8 @@ const adminCommand = new SlashCommandBuilder()
   .setName(ADMIN_COMMAND_NAME)
   .setDescription("Guild administrator commands")
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addSubcommand((subcommand) =>
     subcommand
       .setName(ADMIN_SET_STEAM_SUBCOMMAND_NAME)

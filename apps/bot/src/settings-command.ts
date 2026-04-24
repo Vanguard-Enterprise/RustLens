@@ -9,8 +9,10 @@ import type {
 } from "discord.js";
 import {
   ActionRowBuilder,
+  ApplicationIntegrationType,
   ChannelType,
   EmbedBuilder,
+  InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -43,7 +45,9 @@ const guildSettingsCommand = new SlashCommandBuilder()
   .setName(SETTINGS_COMMAND_NAME)
   .setDescription("Manage guild settings")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-  .setDMPermission(false);
+  .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
 
 const shardID = process.env.SHARD_ID ?? "0";
 
