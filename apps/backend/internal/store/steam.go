@@ -60,8 +60,6 @@ type SteamAccountCache struct {
 	AnalyticsTopGames     []AnalyticsGame
 	AnalyticsTotalServers int
 	AnalyticsTopServers   []AnalyticsServer
-	AnalyticsGaps         []NameGap
-	AnalyticsUpdatedAt    *time.Time
 	GameBanned            bool
 	GameBannedAt          *time.Time
 	GameBanCheckedAt      *time.Time
@@ -104,7 +102,6 @@ func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
 	var nameGapsJSON []byte
 	var analyticsTopGamesJSON []byte
 	var analyticsTopServersJSON []byte
-	var analyticsGapsJSON []byte
 	err := scanner.Scan(
 		&record.SteamID,
 		&record.BmID,
@@ -125,8 +122,6 @@ func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
 		&analyticsTopGamesJSON,
 		&record.AnalyticsTotalServers,
 		&analyticsTopServersJSON,
-		&analyticsGapsJSON,
-		&record.AnalyticsUpdatedAt,
 		&record.GameBanned,
 		&record.GameBannedAt,
 		&record.GameBanCheckedAt,
@@ -158,14 +153,6 @@ func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
 	}
 	if record.AnalyticsTopServers == nil {
 		record.AnalyticsTopServers = []AnalyticsServer{}
-	}
-	if len(analyticsGapsJSON) > 0 {
-		if err := json.Unmarshal(analyticsGapsJSON, &record.AnalyticsGaps); err != nil {
-			return SteamAccountCache{}, err
-		}
-	}
-	if record.AnalyticsGaps == nil {
-		record.AnalyticsGaps = []NameGap{}
 	}
 	return record, nil
 }
@@ -240,7 +227,6 @@ func (p *PostgresStore) GetSteamAccountCache(ctx context.Context, steamID string
 		SELECT steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
 			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours,
 			analytics_total_games, analytics_top_games, analytics_total_servers, analytics_top_servers,
-			analytics_gaps, analytics_updated_at,
 			game_banned, game_banned_at, game_ban_checked_at, updated_at
 		FROM steam_account_cache
 		WHERE steam_id = $1
@@ -263,13 +249,30 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 	if err != nil {
 		return SteamAccountCache{}, err
 	}
+	topGames := cache.AnalyticsTopGames
+	if topGames == nil {
+		topGames = []AnalyticsGame{}
+	}
+	topGamesJSON, err := json.Marshal(topGames)
+	if err != nil {
+		return SteamAccountCache{}, err
+	}
+	topServers := cache.AnalyticsTopServers
+	if topServers == nil {
+		topServers = []AnalyticsServer{}
+	}
+	topServersJSON, err := json.Marshal(topServers)
+	if err != nil {
+		return SteamAccountCache{}, err
+	}
 
 	return scanSteamAccountCache(p.pool.QueryRow(ctx, `
 		INSERT INTO steam_account_cache (
 			steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
-			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours, updated_at
+			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours,
+			analytics_total_games, analytics_top_games, analytics_total_servers, analytics_top_servers, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
 		ON CONFLICT (steam_id) DO UPDATE
 		SET bm_id = EXCLUDED.bm_id,
 			bm_name = EXCLUDED.bm_name,
@@ -285,11 +288,14 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 			bm_servers_played = EXCLUDED.bm_servers_played,
 			name_gaps = EXCLUDED.name_gaps,
 			rust_hours = EXCLUDED.rust_hours,
+			analytics_total_games = EXCLUDED.analytics_total_games,
+			analytics_top_games = EXCLUDED.analytics_top_games,
+			analytics_total_servers = EXCLUDED.analytics_total_servers,
+			analytics_top_servers = EXCLUDED.analytics_top_servers,
 			updated_at = NOW()
 		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
 			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours,
 			analytics_total_games, analytics_top_games, analytics_total_servers, analytics_top_servers,
-			analytics_gaps, analytics_updated_at,
 			game_banned, game_banned_at, game_ban_checked_at, updated_at
 	`,
 		cache.SteamID,
@@ -307,68 +313,10 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 		cache.BmServersPlayed,
 		nameGapsJSON,
 		cache.RustHours,
-	))
-}
-
-func (p *PostgresStore) UpsertSteamAccountAnalyticsCache(ctx context.Context, cache SteamAccountCache) (SteamAccountCache, error) {
-	topGames := cache.AnalyticsTopGames
-	if topGames == nil {
-		topGames = []AnalyticsGame{}
-	}
-	topGamesJSON, err := json.Marshal(topGames)
-	if err != nil {
-		return SteamAccountCache{}, err
-	}
-
-	topServers := cache.AnalyticsTopServers
-	if topServers == nil {
-		topServers = []AnalyticsServer{}
-	}
-	topServersJSON, err := json.Marshal(topServers)
-	if err != nil {
-		return SteamAccountCache{}, err
-	}
-
-	gaps := cache.AnalyticsGaps
-	if gaps == nil {
-		gaps = []NameGap{}
-	}
-	analyticsGapsJSON, err := json.Marshal(gaps)
-	if err != nil {
-		return SteamAccountCache{}, err
-	}
-
-	return scanSteamAccountCache(p.pool.QueryRow(ctx, `
-		INSERT INTO steam_account_cache (
-			steam_id, bm_id, bm_name, avatar_image, analytics_total_games, analytics_top_games,
-			analytics_total_servers, analytics_top_servers, analytics_gaps, analytics_updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-		ON CONFLICT (steam_id) DO UPDATE
-		SET bm_id = EXCLUDED.bm_id,
-			bm_name = EXCLUDED.bm_name,
-			avatar_image = EXCLUDED.avatar_image,
-			analytics_total_games = EXCLUDED.analytics_total_games,
-			analytics_top_games = EXCLUDED.analytics_top_games,
-			analytics_total_servers = EXCLUDED.analytics_total_servers,
-			analytics_top_servers = EXCLUDED.analytics_top_servers,
-			analytics_gaps = EXCLUDED.analytics_gaps,
-			analytics_updated_at = NOW()
-		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
-			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours,
-			analytics_total_games, analytics_top_games, analytics_total_servers, analytics_top_servers,
-			analytics_gaps, analytics_updated_at,
-			game_banned, game_banned_at, game_ban_checked_at, updated_at
-	`,
-		cache.SteamID,
-		cache.BmID,
-		cache.BmName,
-		cache.AvatarImage,
 		cache.AnalyticsTotalGames,
 		topGamesJSON,
 		cache.AnalyticsTotalServers,
 		topServersJSON,
-		analyticsGapsJSON,
 	))
 }
 

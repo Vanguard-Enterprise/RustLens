@@ -231,7 +231,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - Steam game-ban scans use `GET /api/internal/bot/setup/guilds/{guildID}/game-bans`, which batches guild-linked Steam IDs through `ISteamUser/GetPlayerBans`, refreshes stale cache rows after 6 hours, ignores VAC-only bans, and returns only game bans newer than 90 days.
 - Outbound BattleMetrics HTTP requests can be proxied by setting `PROXY_ENABLED=true` and `PROXY_ENDPOINTS` to a comma-separated list of proxy URLs such as `http://user:pass@proxy-1:8080,http://proxy-2:8080`. Proxy selection is round-robin per request, startup validates URL syntax but does not test reachability, and request logs include the proxy endpoint used with credentials redacted. Steam API requests are always sent directly.
 - The bot-internal steam profile route lazily refreshes `steam_account_cache` after a 24-hour TTL. Fresh cache rows skip Steam/BattleMetrics API calls; stale rows are returned without changing `updated_at` if refresh fails. Steam requests are sent directly.
-- The bot-internal steam analytics route also caches its response in `steam_account_cache`, using dedicated analytics columns plus `analytics_updated_at` with the same 24-hour TTL. Fresh analytics cache rows skip Steam/BattleMetrics API calls; stale analytics cache rows are returned if refresh fails.
+- The bot-internal steam analytics route shares the same `steam_account_cache.updated_at` TTL and refresh path as the bot-internal steam profile route. Fresh cache rows skip Steam/BattleMetrics API calls for both routes; stale cache rows are returned if refresh fails. Name-gap data is shared between the profile risk calculation and analytics gap display.
 
 ## Commands
 

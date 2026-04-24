@@ -165,8 +165,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			analytics_top_games JSONB NOT NULL DEFAULT '[]'::jsonb,
 			analytics_total_servers INTEGER NOT NULL DEFAULT 0,
 			analytics_top_servers JSONB NOT NULL DEFAULT '[]'::jsonb,
-			analytics_gaps JSONB NOT NULL DEFAULT '[]'::jsonb,
-			analytics_updated_at TIMESTAMPTZ,
 			game_banned BOOLEAN NOT NULL DEFAULT FALSE,
 			game_banned_at TIMESTAMPTZ,
 			game_ban_checked_at TIMESTAMPTZ,
@@ -180,11 +178,11 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS analytics_top_games JSONB NOT NULL DEFAULT '[]'::jsonb;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS analytics_total_servers INTEGER NOT NULL DEFAULT 0;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS analytics_top_servers JSONB NOT NULL DEFAULT '[]'::jsonb;
-		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS analytics_gaps JSONB NOT NULL DEFAULT '[]'::jsonb;
-		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS analytics_updated_at TIMESTAMPTZ;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_banned BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_banned_at TIMESTAMPTZ;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_ban_checked_at TIMESTAMPTZ;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_gaps;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_updated_at;
 
 		CREATE INDEX IF NOT EXISTS steam_account_cache_updated_idx
 		ON steam_account_cache (updated_at);
