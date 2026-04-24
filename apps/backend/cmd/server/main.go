@@ -16,6 +16,7 @@ import (
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
+	"rustlens/backend/internal/wipereactscheduler"
 
 	_ "github.com/joho/godotenv/autoload"
 )
@@ -63,6 +64,8 @@ func main() {
 	)
 	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient("", outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
+	wipeReactSchedulePoller := wipereactscheduler.NewPoller(postgresStore)
+	wipeReactSchedulePoller.Start(ctx)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

@@ -88,6 +88,29 @@ Recurring wipe-react schedule configs (max 3 per guild).
 
 **Limit**: 3 schedules per guild, enforced in `CreateWipeReactSchedule` via `SELECT COUNT(*)` before insert.
 
+### `wipe_react_schedule_posts`
+
+Backend-owned queue of due wipe-react schedule posts waiting for a bot shard to claim and send in Discord.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `BIGSERIAL` | PK |
+| `schedule_id` | `BIGINT NOT NULL` | FK to `wipe_react_schedules.id` |
+| `guild_id` | `TEXT NOT NULL` | Discord guild snowflake |
+| `channel_id` | `TEXT NOT NULL` | Target Discord channel |
+| `wipe_unix` | `BIGINT NOT NULL` | Scheduled wipe-react time |
+| `post_unix` | `BIGINT NOT NULL` | When the post becomes due |
+| `claimed_by` | `TEXT NOT NULL DEFAULT ''` | Bot worker ID that claimed the job |
+| `claimed_at` | `TIMESTAMPTZ` | Claim timestamp, nullable |
+| `message_id` | `TEXT NOT NULL DEFAULT ''` | Discord message ID after successful send |
+| `posted_channel_id` | `TEXT NOT NULL DEFAULT ''` | Discord channel ID after successful send |
+| `completed_at` | `TIMESTAMPTZ` | Completion timestamp, nullable |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**Indexes**:
+- `wipe_react_schedule_posts_claim_idx ON (guild_id, completed_at, post_unix, claimed_at)`
+- `UNIQUE (schedule_id, wipe_unix)` to prevent duplicate queue entries for the same occurrence.
+
 ### `steam_accounts`
 
 Known Steam player accounts with optional BattleMetrics ID.

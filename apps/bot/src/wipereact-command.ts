@@ -2720,28 +2720,30 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
 
 export function startWipeReactScheduler(client: Client) {
   const SCHEDULER_INTERVAL_MS = 60_000;
+  const workerID = getWipeReactWorkerID();
 
   async function tick() {
     const guilds = [...client.guilds.cache.values()];
 
     for (const guild of guilds) {
       try {
-        const response = await getBackend().listWipeReactSchedules(
-          getWipeReactWorkerID(),
-          guild.id,
-        );
+        while (true) {
+          const response = await getBackend().claimNextWipeReactSchedulePost(workerID, guild.id);
+          if (!response.item) {
+            break;
+          }
 
-        for (const schedule of response.items) {
-          await processSchedule(guild, schedule).catch((error) => {
+          await processSchedulePost(guild, response.item).catch((error) => {
             console.error("[bot] schedule tick failed", {
               guildId: guild.id,
-              scheduleId: schedule.id,
+              postId: response.item?.id,
+              scheduleId: response.item?.scheduleId,
               error,
             });
           });
         }
       } catch (error) {
-        console.error("[bot] failed to list schedules for guild", {
+        console.error("[bot] failed to poll scheduled wipe reacts for guild", {
           guildId: guild.id,
           error,
         });
@@ -2749,28 +2751,22 @@ export function startWipeReactScheduler(client: Client) {
     }
   }
 
-  async function processSchedule(guild: Guild, schedule: WipeReactSchedule) {
-    if (!schedule.channelId) return;
-
-    const next = computeNextPostTime(schedule);
-    if (!next) return;
-
-    const nowUnix = Math.floor(Date.now() / 1000);
-    if (nowUnix < next.postUnix) return;
-    if (schedule.lastPostedForUnix >= next.wipeUnix) return;
-
-    const channel = guild.channels.cache.get(schedule.channelId) ??
-      await guild.channels.fetch(schedule.channelId).catch(() => null);
-    if (!channel?.isTextBased() || !("send" in channel)) return;
+  async function processSchedulePost(guild: Guild, post: import("./backend-client.js").WipeReactSchedulePost) {
+    const channel = guild.channels.cache.get(post.channelId) ??
+      await guild.channels.fetch(post.channelId).catch(() => null);
+    if (!channel?.isTextBased() || !("send" in channel)) {
+      await getBackend().releaseWipeReactSchedulePost(workerID, guild.id, post.id).catch(() => undefined);
+      return;
+    }
 
     const state: WipeReactMessageState = {
-      name: schedule.name,
-      description: schedule.description,
-      timeZone: schedule.timeZone,
-      scheduledUnix: next.wipeUnix,
-      creatorId: schedule.createdBy,
-      askLateReason: schedule.askLateReason,
-      askDeclinedReason: schedule.askDeclinedReason,
+      name: post.name,
+      description: post.description,
+      timeZone: post.timeZone,
+      scheduledUnix: post.wipeUnix,
+      creatorId: post.createdBy,
+      askLateReason: post.askLateReason,
+      askDeclinedReason: post.askDeclinedReason,
       acceptedUserIds: [],
       declinedUserIds: [],
       lateUserIds: [],
@@ -2784,39 +2780,44 @@ export function startWipeReactScheduler(client: Client) {
 
     try {
       await getBackend().createWipeReact(
-        getWipeReactWorkerID(),
+        workerID,
         guild.id,
         buildPersistedWipeReact(guild.id, message.channelId, message.id, state),
       );
     } catch (error) {
       console.error("[bot] failed to persist scheduled wipe react", {
         guildId: guild.id,
-        scheduleId: schedule.id,
+        scheduleId: post.scheduleId,
+        postId: post.id,
         error,
       });
       await message.delete().catch(() => undefined);
+      await getBackend().releaseWipeReactSchedulePost(workerID, guild.id, post.id).catch(() => undefined);
       return;
     }
 
-    scheduleWipeReactExpiry(message, next.wipeUnix);
+    scheduleWipeReactExpiry(message, post.wipeUnix);
 
-    await getBackend().markWipeReactSchedulePosted(
-      getWipeReactWorkerID(),
+    await getBackend().completeWipeReactSchedulePost(
+      workerID,
       guild.id,
-      schedule.id,
-      next.wipeUnix,
+      post.id,
+      message.id,
+      message.channelId,
     ).catch((error) => {
-      console.error("[bot] failed to mark schedule as posted", {
+      console.error("[bot] failed to complete scheduled wipe react post", {
         guildId: guild.id,
-        scheduleId: schedule.id,
+        scheduleId: post.scheduleId,
+        postId: post.id,
         error,
       });
     });
 
     console.log("[bot] auto-posted scheduled wipe react", {
       guildId: guild.id,
-      scheduleId: schedule.id,
-      wipeUnix: next.wipeUnix,
+      scheduleId: post.scheduleId,
+      postId: post.id,
+      wipeUnix: post.wipeUnix,
       messageId: message.id,
     });
   }

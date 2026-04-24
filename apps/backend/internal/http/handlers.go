@@ -966,6 +966,33 @@ func wipeReactScheduleFromPayload(guildID string, payload wipeReactSchedulePaylo
 	}
 }
 
+func wipeReactSchedulePostToMap(record store.WipeReactSchedulePost) map[string]any {
+	return map[string]any{
+		"id":                record.ID,
+		"scheduleId":        record.ScheduleID,
+		"guildId":           record.GuildID,
+		"channelId":         record.ChannelID,
+		"wipeUnix":          record.WipeUnix,
+		"postUnix":          record.PostUnix,
+		"timeZone":          record.TimeZone,
+		"name":              record.Name,
+		"description":       record.Description,
+		"askLateReason":     record.AskLateReason,
+		"askDeclinedReason": record.AskDeclinedReason,
+		"createdBy":         record.CreatedBy,
+	}
+}
+
+type wipeReactSchedulePostWorkerRequest struct {
+	WorkerID string `json:"workerId"`
+}
+
+type completeWipeReactSchedulePostRequest struct {
+	WorkerID  string `json:"workerId"`
+	MessageID string `json:"messageId"`
+	ChannelID string `json:"channelId"`
+}
+
 func (h *Handler) ListWipeReactSchedules(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateGuildID(w, r)
 	if !ok {
@@ -1125,6 +1152,111 @@ func (h *Handler) MarkWipeReactSchedulePosted(w http.ResponseWriter, r *http.Req
 	} else if err != nil {
 		log.Printf("[backend] MarkWipeReactSchedulePosted error for guild %s schedule %d: %v", guildID, scheduleID, err)
 		writeError(w, http.StatusInternalServerError, "failed to mark schedule as posted")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) ClaimNextWipeReactSchedulePost(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var payload wipeReactSchedulePostWorkerRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(payload.WorkerID) == "" {
+		writeError(w, http.StatusBadRequest, "workerId is required")
+		return
+	}
+
+	record, err := h.postgres.ClaimNextWipeReactSchedulePost(r.Context(), guildID, payload.WorkerID, time.Now().Unix(), time.Now().Add(-5*time.Minute))
+	if errors.Is(err, store.ErrWipeReactSchedulePostNotFound) {
+		writeJSON(w, http.StatusOK, map[string]any{"item": nil})
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] ClaimNextWipeReactSchedulePost error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to claim wipe react schedule post")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"item": wipeReactSchedulePostToMap(record)})
+}
+
+func (h *Handler) CompleteWipeReactSchedulePost(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	postID, ok := validateScheduleIDParam(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var payload completeWipeReactSchedulePostRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(payload.WorkerID) == "" {
+		writeError(w, http.StatusBadRequest, "workerId is required")
+		return
+	}
+	if strings.TrimSpace(payload.MessageID) == "" {
+		writeError(w, http.StatusBadRequest, "messageId is required")
+		return
+	}
+	if strings.TrimSpace(payload.ChannelID) == "" {
+		writeError(w, http.StatusBadRequest, "channelId is required")
+		return
+	}
+
+	if err := h.postgres.CompleteWipeReactSchedulePost(r.Context(), guildID, postID, payload.WorkerID, payload.MessageID, payload.ChannelID); errors.Is(err, store.ErrWipeReactSchedulePostNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react schedule post not found")
+		return
+	} else if err != nil {
+		log.Printf("[backend] CompleteWipeReactSchedulePost error for guild %s post %d: %v", guildID, postID, err)
+		writeError(w, http.StatusInternalServerError, "failed to complete wipe react schedule post")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) ReleaseWipeReactSchedulePost(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	postID, ok := validateScheduleIDParam(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var payload wipeReactSchedulePostWorkerRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(payload.WorkerID) == "" {
+		writeError(w, http.StatusBadRequest, "workerId is required")
+		return
+	}
+
+	if err := h.postgres.ReleaseWipeReactSchedulePost(r.Context(), guildID, postID, payload.WorkerID); errors.Is(err, store.ErrWipeReactSchedulePostNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react schedule post not found")
+		return
+	} else if err != nil {
+		log.Printf("[backend] ReleaseWipeReactSchedulePost error for guild %s post %d: %v", guildID, postID, err)
+		writeError(w, http.StatusInternalServerError, "failed to release wipe react schedule post")
 		return
 	}
 

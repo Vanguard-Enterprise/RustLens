@@ -76,6 +76,21 @@ export type WipeReactSchedule = {
   createdBy: string;
 };
 
+export type WipeReactSchedulePost = {
+	id: number;
+	scheduleId: number;
+	guildId: string;
+	channelId: string;
+	wipeUnix: number;
+	postUnix: number;
+	timeZone: string;
+	name: string;
+	description: string;
+	askLateReason: boolean;
+	askDeclinedReason: boolean;
+	createdBy: string;
+};
+
 export type WipeReactScheduleListResponse = {
   items: WipeReactSchedule[];
 };
@@ -481,6 +496,39 @@ export class BackendClient {
       "POST",
       { lastPostedForUnix },
     );
+  }
+
+  claimNextWipeReactSchedulePost(workerId: string, guildId: string) {
+	return this.call<{ item: WipeReactSchedulePost | null }>(
+	  workerId,
+	  `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedule-posts/claim`,
+	  "POST",
+	  { workerId },
+	);
+  }
+
+  completeWipeReactSchedulePost(
+	workerId: string,
+	guildId: string,
+	postId: number,
+	messageId: string,
+	channelId: string,
+  ) {
+	return this.call<{ status: string }>(
+	  workerId,
+	  `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedule-posts/${postId}/complete`,
+	  "POST",
+	  { workerId, messageId, channelId },
+	);
+  }
+
+  releaseWipeReactSchedulePost(workerId: string, guildId: string, postId: number) {
+	return this.call<{ status: string }>(
+	  workerId,
+	  `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedule-posts/${postId}/release`,
+	  "POST",
+	  { workerId },
+	);
   }
 
   listTrackedServers(workerId: string) {

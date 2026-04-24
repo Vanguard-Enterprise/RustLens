@@ -132,6 +132,25 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS wipe_react_schedules_guild_idx
 		ON wipe_react_schedules (guild_id);
 
+		CREATE TABLE IF NOT EXISTS wipe_react_schedule_posts (
+			id BIGSERIAL PRIMARY KEY,
+			schedule_id BIGINT NOT NULL REFERENCES wipe_react_schedules(id) ON DELETE CASCADE,
+			guild_id TEXT NOT NULL,
+			channel_id TEXT NOT NULL,
+			wipe_unix BIGINT NOT NULL,
+			post_unix BIGINT NOT NULL,
+			claimed_by TEXT NOT NULL DEFAULT '',
+			claimed_at TIMESTAMPTZ,
+			message_id TEXT NOT NULL DEFAULT '',
+			posted_channel_id TEXT NOT NULL DEFAULT '',
+			completed_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (schedule_id, wipe_unix)
+		);
+
+		CREATE INDEX IF NOT EXISTS wipe_react_schedule_posts_claim_idx
+		ON wipe_react_schedule_posts (guild_id, completed_at, post_unix, claimed_at);
+
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS ask_late_reason BOOLEAN NOT NULL DEFAULT FALSE;

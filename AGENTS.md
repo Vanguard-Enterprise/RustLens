@@ -122,6 +122,7 @@ Key patterns:
 - Bot guild nickname target route (`/api/internal/bot/setup/guilds/{guildID}/nickname-targets`) is JWT-protected and returns one guild-linked Steam mapping per Discord user joined with `steam_accounts.bm_id` and `steam_account_cache.bm_name` for nickname sync.
 - Bot wipe-react routes (`/api/internal/bot/setup/guilds/*/wipe-reacts*`) are JWT-protected and persist wipe react metadata plus accepted/declined/late user lists in Postgres.
 - Bot wipe-react schedule routes (`/api/internal/bot/setup/guilds/*/wipe-react-schedules*`) are JWT-protected and persist recurring wipe-react schedule configs (max 3 per guild) with CRUD operations.
+- The backend now owns wipe-react schedule timing. It enqueues due schedule posts centrally, and the bot shard that owns a guild claims queued posts from backend and sends the Discord message.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
 - The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, updates `tracked_servers.last_polled_at` / `last_poll_error`, and syncs per-server player presence into `player_states`.
 

@@ -502,6 +502,130 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/claim": map[string]any{
+				"post": map[string]any{
+					"summary":     "Claim next scheduled wipe react post",
+					"description": "Claims the next due scheduled wipe react post for a guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/WipeReactSchedulePostWorkerRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Claim result returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/WipeReactSchedulePostClaimResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/complete": map[string]any{
+				"post": map[string]any{
+					"summary":     "Complete scheduled wipe react post",
+					"description": "Marks a claimed scheduled wipe react post as completed.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "scheduleID",
+							"in":          "path",
+							"required":    true,
+							"description": "Scheduled post ID.",
+							"schema":      map[string]any{"type": "integer"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CompleteWipeReactSchedulePostRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Scheduled post completed",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/release": map[string]any{
+				"post": map[string]any{
+					"summary":     "Release scheduled wipe react post",
+					"description": "Releases a claimed scheduled wipe react post back to the queue.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "scheduleID",
+							"in":          "path",
+							"required":    true,
+							"description": "Scheduled post ID.",
+							"schema":      map[string]any{"type": "integer"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/WipeReactSchedulePostWorkerRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Scheduled post released",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/steam/{steamID}": map[string]any{
 				"get": map[string]any{
 					"summary":     "Get steam account",
@@ -1639,6 +1763,47 @@ func buildOpenAPIDocument() map[string]any {
 						"wipeReact":   map[string]any{"$ref": "#/components/schemas/WipeReact"},
 					},
 					"required": []string{"changed", "wipeReact"},
+				},
+				"WipeReactSchedulePost": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":                map[string]any{"type": "integer"},
+						"scheduleId":        map[string]any{"type": "integer"},
+						"guildId":           map[string]any{"type": "string"},
+						"channelId":         map[string]any{"type": "string"},
+						"wipeUnix":          map[string]any{"type": "integer"},
+						"postUnix":          map[string]any{"type": "integer"},
+						"timeZone":          map[string]any{"type": "string"},
+						"name":              map[string]any{"type": "string"},
+						"description":       map[string]any{"type": "string"},
+						"askLateReason":     map[string]any{"type": "boolean"},
+						"askDeclinedReason": map[string]any{"type": "boolean"},
+						"createdBy":         map[string]any{"type": "string"},
+					},
+					"required": []string{"id", "scheduleId", "guildId", "channelId", "wipeUnix", "postUnix", "timeZone", "name", "description", "askLateReason", "askDeclinedReason", "createdBy"},
+				},
+				"WipeReactSchedulePostClaimResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"item": map[string]any{"$ref": "#/components/schemas/WipeReactSchedulePost", "nullable": true},
+					},
+					"required": []string{"item"},
+				},
+				"WipeReactSchedulePostWorkerRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"workerId": map[string]any{"type": "string"},
+					},
+					"required": []string{"workerId"},
+				},
+				"CompleteWipeReactSchedulePostRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"workerId":  map[string]any{"type": "string"},
+						"messageId": map[string]any{"type": "string"},
+						"channelId": map[string]any{"type": "string"},
+					},
+					"required": []string{"workerId", "messageId", "channelId"},
 				},
 				"SteamAccount": map[string]any{
 					"type": "object",
