@@ -3,6 +3,10 @@ import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient, type SteamAccount, type SteamAnalytics } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import {
+  resolveSteamInputErrorMessage,
+  resolveSteamProfileInput,
+} from "./steam-input.js";
 import { buildProfileButtons, buildUserEmbed, fetchSteamProfileForView } from "./view-command.js";
 
 export const PLAYER_COMMAND_NAME = "player";
@@ -21,7 +25,7 @@ const playerCommand = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName("identifier")
-      .setDescription("Steam ID or BattleMetrics ID")
+      .setDescription("Steam ID, BattleMetrics ID, or steamcommunity.com profile URL")
       .setRequired(true),
   );
 
@@ -63,10 +67,16 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
   const identifier = interaction.options.getString("identifier", true).trim();
   await interaction.deferReply();
 
-  const account = await lookupAccountByIdentifier(identifier);
+  const lookupIdentifier = await resolveLookupIdentifier(identifier);
+  if (!lookupIdentifier.ok) {
+    await interaction.editReply({ content: lookupIdentifier.error });
+    return true;
+  }
+
+  const account = await lookupAccountByIdentifier(lookupIdentifier.identifier);
   if (!account) {
     await interaction.editReply({
-      content: "No record found for that Steam ID or BattleMetrics ID.",
+      content: "No record found for that Steam ID, BattleMetrics ID, or Steam profile URL.",
     });
     return true;
   }
@@ -77,6 +87,20 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     components: buildProfileButtons(account.steamId),
   });
   return true;
+}
+
+async function resolveLookupIdentifier(identifier: string) {
+  const { backend, workerId } = getBackend();
+
+  try {
+    const steamId = await resolveSteamProfileInput(
+      identifier,
+      (input) => backend.resolveSteamID(workerId, input),
+    );
+    return { ok: true as const, identifier: steamId ?? identifier.trim() };
+  } catch (error) {
+    return { ok: false as const, error: resolveSteamInputErrorMessage(error) };
+  }
 }
 
 async function lookupAccountByIdentifier(identifier: string): Promise<SteamAccount | null> {

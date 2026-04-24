@@ -14,6 +14,10 @@ import { loadConfig } from "./config.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import {
+  resolveSteamInputErrorMessage,
+  resolveSteamProfileInput,
+} from "./steam-input.js";
 
 export const VIEW_COMMAND_NAME = "view";
 
@@ -21,7 +25,6 @@ const VIEW_USER_SUBCOMMAND = "user";
 const VIEW_ALL_SUBCOMMAND = "all";
 const VIEW_NOSTEAM_SUBCOMMAND = "nosteam";
 
-const steamIDPattern = /^\d{17}$/;
 const discordMentionPattern = /^<@!?(\d{16,20})>$/;
 const VIEW_EMOJIS = {
   steam: "<:steam:1444016467648581642>",
@@ -65,7 +68,7 @@ const viewCommand = new SlashCommandBuilder()
         opt.setName("discord_user").setDescription("Discord user to look up").setRequired(false),
       )
       .addStringOption((opt) =>
-        opt.setName("identifier").setDescription("Steam ID or BattleMetrics ID").setRequired(false),
+        opt.setName("identifier").setDescription("Steam ID, BattleMetrics ID, or steamcommunity.com profile URL").setRequired(false),
       ),
   )
   .addSubcommand((sub) =>
@@ -353,6 +356,16 @@ export async function resolvePlayerProfileForGuild(
   const discordId = normalizeDiscordIdentifier(normalizedIdentifier);
   const allowDiscordLookup = options?.allowDiscordLookup ?? true;
 
+  let steamProfileIdentifier: string | null = null;
+  try {
+    steamProfileIdentifier = await resolveSteamProfileInput(
+      normalizedIdentifier,
+      (input) => backend.resolveSteamID(workerId, input),
+    );
+  } catch (error) {
+    return { ok: false, error: resolveSteamInputErrorMessage(error) };
+  }
+
   if (allowDiscordLookup && discordId) {
     const { items } = await backend.listGuildLinksByDiscord(workerId, guildId, discordId);
     if (items.length === 0) {
@@ -367,15 +380,15 @@ export async function resolvePlayerProfileForGuild(
   let steamId: string | null = null;
   let account: SteamAccount | null = null;
 
-  if (steamIDPattern.test(normalizedIdentifier)) {
-    steamId = normalizedIdentifier;
-    account = await fetchSteamAccount(normalizedIdentifier);
+  if (steamProfileIdentifier) {
+    steamId = steamProfileIdentifier;
+    account = await fetchSteamAccount(steamProfileIdentifier);
     const { items } = await backend.listGuildLinksBySteam(workerId, guildId, steamId);
     if (items.length > 0) {
       return { ok: true, steamId, account, discordId: items[0].discordId };
     }
 
-    if (allowDiscordLookup) {
+    if (allowDiscordLookup && /^\d{16,20}$/.test(normalizedIdentifier)) {
       const { items: discordItems } = await backend.listGuildLinksByDiscord(workerId, guildId, normalizedIdentifier);
       if (discordItems.length > 0) {
         const linkedSteamId = discordItems[0].steamId;
