@@ -153,6 +153,12 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
   return true;
 }
 
+function formatGapDurationDays(fromUnix: number, toUnix: number) {
+  const durationSeconds = Math.max(0, toUnix - fromUnix);
+  const durationDays = Math.max(1, Math.round(durationSeconds / 86400));
+  return `${durationDays} day${durationDays === 1 ? "" : "s"}`;
+}
+
 export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
   const title = analytics.bmName ? `Analytics - ${analytics.bmName}` : "Analytics";
   const embed = new EmbedBuilder()
@@ -174,7 +180,9 @@ export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
 
   if (analytics.gaps.length > 0) {
     const sortedGaps = [...analytics.gaps].sort((a, b) => b.toUnix - a.toUnix);
-    const gapLines = sortedGaps.map((gap) => `<t:${gap.fromUnix}:R> - <t:${gap.toUnix}:R>`);
+    const gapLines = sortedGaps.map((gap) =>
+      `<t:${gap.fromUnix}:R> - <t:${gap.toUnix}:R> (${formatGapDurationDays(gap.fromUnix, gap.toUnix)})`
+    );
     embed.addFields({ name: "**Did not play:**", value: gapLines.join("\n") });
   }
 
