@@ -242,6 +242,21 @@ async function fetchComparisonMembers(interaction: ChatInputCommandInteraction) 
   return [...members.values()].filter((guildMember) => !guildMember.user.bot);
 }
 
+async function fetchInvokerVoiceMembers(interaction: ChatInputCommandInteraction) {
+  const guild = interaction.guild;
+  if (!guild) {
+    return null;
+  }
+
+  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  const voiceChannel = member?.voice.channel;
+  if (!voiceChannel) {
+    return [] as GuildMember[];
+  }
+
+  return [...voiceChannel.members.values()].filter((voiceMember) => !voiceMember.user.bot);
+}
+
 type GuildMappings = {
   discordToBmIds: Map<string, Set<string>>;
   bmToDiscordIds: Map<string, Set<string>>;
@@ -462,19 +477,26 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const comparisonMembers = await fetchComparisonMembers(interaction);
-  if (!comparisonMembers) {
+  if (wipeReactMessageId || !serverId) {
+    const comparisonMembers = await fetchComparisonMembers(interaction);
+    if (!comparisonMembers) {
+      await interaction.editReply({
+        content: "RustLens could not load members for this server.",
+      });
+      return true;
+    }
+    return handleWipeReactComparison(interaction, comparisonMembers, wipeReactMessageId);
+  }
+
+  const voiceMembers = await fetchInvokerVoiceMembers(interaction);
+  if (!voiceMembers) {
     await interaction.editReply({
       content: "RustLens could not load members for this server.",
     });
     return true;
   }
 
-  if (wipeReactMessageId || !serverId) {
-    return handleWipeReactComparison(interaction, comparisonMembers, wipeReactMessageId);
-  }
-
-  return handleServerComparison(interaction, comparisonMembers, serverId);
+  return handleServerComparison(interaction, voiceMembers, serverId);
 }
 
 export const __testables = {
