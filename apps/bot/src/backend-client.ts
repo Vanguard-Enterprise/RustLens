@@ -12,6 +12,10 @@ type AssignmentsResponse = {
   shardIds: number[];
 };
 
+type CountResponse = {
+  count: number;
+};
+
 export type GuildSettings = {
   guildId: string;
   wipeReactLogChannelId: string;
@@ -365,6 +369,10 @@ export class BackendClient {
   assignments(workerId: string) {
     const query = new URLSearchParams({ workerId }).toString();
     return this.call<AssignmentsResponse>(workerId, `/api/internal/bot/shards/assignments?${query}`, "GET");
+  }
+
+  steamAccountCount(workerId: string) {
+    return this.call<CountResponse>(workerId, "/api/internal/bot/setup/steam-accounts/count", "GET");
   }
 
   guildSettings(workerId: string, guildId: string) {

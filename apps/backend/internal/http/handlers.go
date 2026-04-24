@@ -2082,6 +2082,17 @@ func writeSteamDiscordLinkList(w http.ResponseWriter, links []store.SteamDiscord
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func (h *Handler) GetSteamAccountCount(w http.ResponseWriter, r *http.Request) {
+	count, err := h.postgres.CountSteamAccounts(r.Context())
+	if err != nil {
+		log.Printf("[backend] GetSteamAccountCount error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to count steam accounts")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"count": count})
+}
+
 func (h *Handler) GetSteamAccount(w http.ResponseWriter, r *http.Request) {
 	steamID := chi.URLParam(r, "steamID")
 	if steamID == "" || !steamIDPattern.MatchString(steamID) {

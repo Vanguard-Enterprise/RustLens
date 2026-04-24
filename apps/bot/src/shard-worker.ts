@@ -1,4 +1,6 @@
 import { Client, GatewayIntentBits, MessageFlags } from "discord.js";
+import { BackendClient } from "./backend-client.js";
+import { loadConfig } from "./config.js";
 import {
   ensureAdminCommand,
   handleAdminChatInput,
@@ -88,6 +90,10 @@ import { registerUserGuildSync } from "./user-guilds.js";
 const shardID = Number(process.env.SHARD_ID ?? "0");
 const shardCount = Number(process.env.SHARD_COUNT ?? "1");
 const token = process.env.DISCORD_TOKEN;
+const config = loadConfig();
+const backend = new BackendClient(config.backendUrl, config.jwtSecret, config.jwtIssuer, config.jwtAudience);
+const statusWorkerID = `${config.workerId}-status-${shardID}`;
+const statusRefreshIntervalMs = 60_000;
 
 if (!token) {
   throw new Error("DISCORD_TOKEN is required for shard worker process");
@@ -101,8 +107,22 @@ const client = new Client({
 
 registerUserGuildSync(client);
 
+async function updateSteamAccountPresence() {
+  const response = await backend.steamAccountCount(statusWorkerID);
+  await client.user?.setActivity(`tracking ${response.count} users`);
+}
+
 client.once("clientReady", () => {
   console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);
+
+  updateSteamAccountPresence().catch((error) => {
+    console.error("[bot] failed to update steam account presence", error);
+  });
+  setInterval(() => {
+    updateSteamAccountPresence().catch((error) => {
+      console.error("[bot] failed to refresh steam account presence", error);
+    });
+  }, statusRefreshIntervalMs);
 
   Promise.allSettled([
     ensureAdminCommand(client, shardID),

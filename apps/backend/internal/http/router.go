@@ -97,6 +97,7 @@ func NewRouter(
 		r.Post("/steam/resolve", handler.ResolveSteamID)
 		r.Post("/steam/links", handler.CreateSoftLink)
 		r.Post("/steam/bulk-hard-links", handler.BulkUpsertHardLinks)
+		r.Get("/steam-accounts/count", handler.GetSteamAccountCount)
 		r.Post("/user-guilds", handler.CreateUserGuildLink)
 		r.Post("/user-guilds/leave", handler.MarkUserGuildLeft)
 		r.Get("/steam/{steamID}", handler.GetSteamAccount)

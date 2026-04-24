@@ -712,6 +712,24 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/steam-accounts/count": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get steam account count",
+					"description": "Returns the number of rows currently stored in steam_accounts.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Steam account count returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/CountResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/guilds/{guildID}/tracked-servers": map[string]any{
 				"get": map[string]any{
 					"summary":     "List guild tracked servers",
@@ -1528,6 +1546,13 @@ func buildOpenAPIDocument() map[string]any {
 						"status": map[string]any{"type": "string"},
 					},
 					"required": []string{"status"},
+				},
+				"CountResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"count": map[string]any{"type": "integer"},
+					},
+					"required": []string{"count"},
 				},
 				"AssignmentsResponse": map[string]any{
 					"type": "object",
