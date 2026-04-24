@@ -475,7 +475,7 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
   const serverId = interaction.options.getString(COMPARE_SERVER_OPTION_NAME);
   const wipeReactMessageId = interaction.options.getString(COMPARE_WIPEREACT_OPTION_NAME);
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
   if (wipeReactMessageId || !serverId) {
     const comparisonMembers = await fetchComparisonMembers(interaction);
