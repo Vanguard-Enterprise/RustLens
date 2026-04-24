@@ -27,6 +27,7 @@ export const SEARCH_COMMAND_NAME = "search";
 
 const SEARCH_STRING_OPTION_NAME = "string";
 const SEARCH_SERVER_OPTION_NAME = "server";
+const SEARCH_INCLUDE_OFFLINE_OPTION_NAME = "include_offline";
 const SEARCH_RESULT_LIMIT = 20;
 
 const shardID = process.env.SHARD_ID ?? "0";
@@ -49,6 +50,12 @@ const searchCommand = new SlashCommandBuilder()
       .setDescription("Tracked server to search on")
       .setRequired(true)
       .setAutocomplete(true),
+  )
+  .addBooleanOption((option) =>
+    option
+      .setName(SEARCH_INCLUDE_OFFLINE_OPTION_NAME)
+      .setDescription("Include players offline for less than 24 hours")
+      .setRequired(false),
   );
 
 let _backend: BackendClient | undefined;
@@ -161,6 +168,8 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
 
   const query = interaction.options.getString(SEARCH_STRING_OPTION_NAME, true).trim();
   const serverId = interaction.options.getString(SEARCH_SERVER_OPTION_NAME, true).trim();
+  const includeOffline =
+    interaction.options.getBoolean(SEARCH_INCLUDE_OFFLINE_OPTION_NAME) ?? false;
 
   if (query.length === 0) {
     await interaction.reply({
@@ -179,6 +188,7 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
       serverId,
       query,
       SEARCH_RESULT_LIMIT + 1,
+      includeOffline,
     );
     results = response.items;
   } catch (error) {
@@ -194,7 +204,9 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
       embeds: [
         buildSearchEmbed(
           "No matches",
-          `No online players found with **${query}** in their name on this server.`,
+          includeOffline
+            ? `No online or recently offline players found with **${query}** in their name on this server.`
+            : `No online players found with **${query}** in their name on this server.`,
         ),
       ],
     });
@@ -218,7 +230,9 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
     embeds: [
       buildSearchEmbed(
         "Search",
-        `Found **${results.length}** player${results.length === 1 ? "" : "s"} matching **${query}** on **${serverName}**.`,
+        includeOffline
+          ? `Found **${results.length}** player${results.length === 1 ? "" : "s"} matching **${query}** on **${serverName}** including players offline for less than 24 hours.`
+          : `Found **${results.length}** player${results.length === 1 ? "" : "s"} matching **${query}** on **${serverName}**.`,
       ),
     ],
   });

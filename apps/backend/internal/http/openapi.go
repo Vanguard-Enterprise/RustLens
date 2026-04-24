@@ -900,6 +900,75 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/player-states/servers/{serverID}/search": map[string]any{
+				"get": map[string]any{
+					"summary":     "Search player states by name on a server",
+					"description": "Returns matching player states for one tracked BattleMetrics server. By default only online players are returned; setting includeOffline=true also includes players whose offlineSince is within the last 24 hours.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "serverID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics server ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "q",
+							"in":          "query",
+							"required":    true,
+							"description": "Case-insensitive substring to match against steam_account_cache.bm_name.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "limit",
+							"in":          "query",
+							"required":    false,
+							"description": "Maximum number of results to return. Defaults to 20 and is capped at 20.",
+							"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": 20, "default": 20},
+						},
+						{
+							"name":        "includeOffline",
+							"in":          "query",
+							"required":    false,
+							"description": "When true, also includes players whose offlineSince is within the last 24 hours. Defaults to false.",
+							"schema":      map[string]any{"type": "boolean", "default": false},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Matching player states returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type":     "object",
+										"required": []string{"items"},
+										"properties": map[string]any{
+											"items": map[string]any{
+												"type": "array",
+												"items": map[string]any{
+													"type":     "object",
+													"required": []string{"serverBmId", "serverName", "playerBmId", "steamId", "bmName", "isOnline"},
+													"properties": map[string]any{
+														"serverBmId": map[string]any{"type": "string"},
+														"serverName": map[string]any{"type": "string"},
+														"playerBmId": map[string]any{"type": "string"},
+														"steamId":    map[string]any{"type": "string"},
+														"bmName":     map[string]any{"type": "string"},
+														"isOnline":   map[string]any{"type": "boolean"},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/player-states/servers/{serverID}/players/{playerID}": map[string]any{
 				"get": map[string]any{
 					"summary":     "Get player state by server and player",

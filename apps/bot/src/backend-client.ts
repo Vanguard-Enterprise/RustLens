@@ -624,8 +624,17 @@ export class BackendClient {
     );
   }
 
-  searchPlayerStatesByName(workerId: string, serverId: string, query: string, limit: number) {
+  searchPlayerStatesByName(
+    workerId: string,
+    serverId: string,
+    query: string,
+    limit: number,
+    includeOffline = false,
+  ) {
     const params = new URLSearchParams({ q: query, limit: String(limit) });
+    if (includeOffline) {
+      params.set("includeOffline", "true");
+    }
     return this.call<PlayerSearchListResponse>(
       workerId,
       `/api/internal/bot/setup/player-states/servers/${serverId}/search?${params.toString()}`,

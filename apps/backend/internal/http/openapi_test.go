@@ -37,6 +37,7 @@ func TestOpenAPISpecContainsCoreRoutes(t *testing.T) {
 		"/api/internal/bot/setup/tracked-servers",
 		"/api/internal/bot/setup/tracked-servers/{bmID}",
 		"/api/internal/bot/setup/player-states/servers/{serverID}",
+		"/api/internal/bot/setup/player-states/servers/{serverID}/search",
 		"/api/internal/bot/setup/player-states/servers/{serverID}/players/{playerID}",
 		"/api/internal/bot/setup/player-states/players/{playerID}",
 		"/api/internal/bot/setup/user-guilds",

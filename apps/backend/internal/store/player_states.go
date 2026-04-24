@@ -123,10 +123,12 @@ func (p *PostgresStore) GetPlayerState(ctx context.Context, serverBmID string, p
 	return state, err
 }
 
-func (p *PostgresStore) SearchPlayerStatesByName(ctx context.Context, serverBmID string, query string, limit int) ([]PlayerSearchResult, error) {
+func (p *PostgresStore) SearchPlayerStatesByName(ctx context.Context, serverBmID string, query string, limit int, includeOffline bool) ([]PlayerSearchResult, error) {
 	if limit <= 0 {
 		limit = 20
 	}
+
+	offlineCutoff := time.Now().UTC().Add(-24 * time.Hour)
 
 	rows, err := p.pool.Query(ctx, `
 		SELECT
@@ -141,11 +143,14 @@ func (p *PostgresStore) SearchPlayerStatesByName(ctx context.Context, serverBmID
 		JOIN steam_accounts sa ON sa.bm_id = ps.player_bm_id
 		LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
 		WHERE ps.server_bm_id = $1
-			AND ps.is_online = TRUE
+			AND (
+				ps.is_online = TRUE
+				OR ($4 = TRUE AND ps.offline_since IS NOT NULL AND ps.offline_since >= $5)
+			)
 			AND COALESCE(sac.bm_name, '') ILIKE '%' || $2 || '%'
-		ORDER BY COALESCE(sac.bm_name, '') ASC, sa.steam_id ASC
+		ORDER BY ps.is_online DESC, COALESCE(sac.bm_name, '') ASC, sa.steam_id ASC
 		LIMIT $3
-	`, serverBmID, query, limit)
+	`, serverBmID, query, limit, includeOffline, offlineCutoff)
 	if err != nil {
 		return nil, err
 	}

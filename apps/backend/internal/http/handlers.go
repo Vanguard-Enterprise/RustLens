@@ -1572,7 +1572,17 @@ func (h *Handler) SearchPlayerStatesOnServer(w http.ResponseWriter, r *http.Requ
 		limit = parsed
 	}
 
-	items, err := h.postgres.SearchPlayerStatesByName(r.Context(), serverID, query, limit)
+	includeOffline := false
+	if raw := strings.TrimSpace(r.URL.Query().Get("includeOffline")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "includeOffline must be a boolean")
+			return
+		}
+		includeOffline = parsed
+	}
+
+	items, err := h.postgres.SearchPlayerStatesByName(r.Context(), serverID, query, limit, includeOffline)
 	if err != nil {
 		log.Printf("[backend] SearchPlayerStatesByName error for %s/%q: %v", serverID, query, err)
 		writeError(w, http.StatusInternalServerError, "failed to search player states")
