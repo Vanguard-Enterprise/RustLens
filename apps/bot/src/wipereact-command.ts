@@ -2029,6 +2029,8 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
       return true;
     }
 
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const messageText = interaction.options.getString(WIPEREACT_MESSAGE_OPTION_NAME)?.trim() ?? "";
     const selectedMessageId = interaction.options.getString(WIPEREACT_TARGET_OPTION_NAME);
     const record = selectedMessageId
@@ -2093,10 +2095,9 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
       messageStatus = { sent, failed };
     }
 
-    await interaction.reply({
+    await interaction.editReply({
       embeds: [buildMissingReactantsEmbed(toWipeReactState(record), missingUserIds, messageStatus)],
       components: [],
-      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
