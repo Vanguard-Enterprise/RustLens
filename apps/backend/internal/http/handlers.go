@@ -1906,11 +1906,26 @@ func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID stri
 	if err != nil {
 		return store.SteamAccount{}, err
 	}
-	if profile.SteamID == "" {
-		profile.SteamID = steamID
+	bmID := strings.TrimSpace(profile.BmID)
+	if bmID == "" {
+		return store.SteamAccount{}, store.ErrSteamAccountNotFound
 	}
 
-	return h.upsertResolvedSteamAccount(ctx, profile.SteamID, profile)
+	fullProfile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, bmID)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	if fullProfile.SteamID == "" {
+		fullProfile.SteamID = profile.SteamID
+	}
+	if fullProfile.SteamID == "" {
+		fullProfile.SteamID = steamID
+	}
+	if fullProfile.BmName == "" {
+		fullProfile.BmName = profile.BmName
+	}
+
+	return h.upsertResolvedSteamAccount(ctx, fullProfile.SteamID, fullProfile)
 }
 
 func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (store.SteamAccount, error) {

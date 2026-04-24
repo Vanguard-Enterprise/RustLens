@@ -212,7 +212,7 @@ func (c *Client) QuickMatchPlayerProfileBySteamID(ctx context.Context, steamID s
 		return PlayerProfile{}, ErrAPIKeyRequired
 	}
 
-	endpoint, err := url.Parse(c.baseURL + "/players/quick-match?include=player,server,identifier")
+	endpoint, err := url.Parse(c.baseURL + "/players/quick-match?include=identifier")
 	if err != nil {
 		return PlayerProfile{}, err
 	}
