@@ -56,7 +56,7 @@ func main() {
 		postgresStore,
 		redisStore,
 		shardService,
-		steamapi.NewClient(cfg.SteamAPIKey, outboundProvider),
+		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
 		battlemetrics.NewClient("", outboundProvider),
 	)
