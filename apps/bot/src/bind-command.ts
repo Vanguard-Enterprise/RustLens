@@ -768,22 +768,22 @@ function buildBindEmbed(title: string, command: string) {
 
 
 async function handleMassInvite(interaction: ChatInputCommandInteraction) {
-  if (!(await hasGuildAdminAccess(interaction))) {
-    await replyEphemeral(interaction, "Only the configured admin role or administrators can use this command.");
-    return;
-  }
-
   const guild = interaction.guild;
   if (!guild) {
     await replyEphemeral(interaction, "Could not resolve guild.");
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await replyEphemeral(interaction, "Only the configured admin role or administrators can use this command.");
+    return;
+  }
+
   const key = interaction.options.getString("key", true).trim();
   const role = interaction.options.getRole("scope", true);
   const vcChannel = interaction.options.getChannel("vc", false);
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   let targetMembers = guild.members.cache.filter((member) => member.roles.cache.has(role.id));
 

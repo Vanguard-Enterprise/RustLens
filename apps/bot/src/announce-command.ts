@@ -23,6 +23,29 @@ const announceCommand = new SlashCommandBuilder()
       .setRequired(true),
   );
 
+function buildOutboundDmEmbed(title: string, description: string) {
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+function buildAnnouncementStatusEmbed(sent: number, failed: number) {
+  return new EmbedBuilder()
+    .setTitle("Announcement status")
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
+    .addFields({
+      name: "Message status",
+      value:
+        `> * Successfully sent to **${sent}** member${sent === 1 ? "" : "s"}\n` +
+        `> * Failed to send to **${failed}** member${failed === 1 ? "" : "s"}`,
+    });
+}
+
 export async function ensureAnnounceCommand(client: Client, shardID: number) {
   if (shardID !== 0 || !client.application) {
     return;
@@ -63,10 +86,11 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   if (!(await hasGuildAdminAccess(interaction))) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "Only the configured admin role or administrators can use /announce.",
-      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
@@ -75,17 +99,18 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
   const message = interaction.options.getString("message", true);
 
   if (message.length > 4096) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "The announcement message must be 4096 characters or fewer.",
-      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
   const members = await getGuildMembers(guild);
-  const targets = members.filter((m) => !m.user.bot && m.roles.cache.has(role.id));
+  const targets = members.filter((m) =>
+    !m.user.bot &&
+    m.id !== interaction.user.id &&
+    m.roles.cache.has(role.id)
+  );
 
   if (targets.size === 0) {
     await interaction.editReply({
@@ -94,12 +119,7 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle("Announcement")
-    .setDescription(message)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+  const embed = buildOutboundDmEmbed("Announcement", message);
 
   let sent = 0;
   let failed = 0;
@@ -115,11 +135,6 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
     }),
   );
 
-  const parts = [`Sent announcement to **${sent}** member${sent !== 1 ? "s" : ""}.`];
-  if (failed > 0) {
-    parts.push(`Failed to DM **${failed}** member${failed !== 1 ? "s" : ""} (DMs likely disabled).`);
-  }
-
-  await interaction.editReply({ content: parts.join(" ") });
+  await interaction.editReply({ embeds: [buildAnnouncementStatusEmbed(sent, failed)] });
   return true;
 }

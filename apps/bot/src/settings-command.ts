@@ -423,6 +423,8 @@ export async function handleSettingsChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   await replyWithSettings(interaction, interaction.guild);
   return true;
 }

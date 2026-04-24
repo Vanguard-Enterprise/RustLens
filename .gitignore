@@ -33,3 +33,5 @@ Thumbs.db
 
 # Playwright MCP scratch output (snapshots, console logs, screenshots)
 .playwright-mcp/
+
+opencode.json

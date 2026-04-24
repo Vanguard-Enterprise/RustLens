@@ -76,6 +76,21 @@ export type WipeReactSchedule = {
   createdBy: string;
 };
 
+export type WipeReactSchedulePost = {
+	id: number;
+	scheduleId: number;
+	guildId: string;
+	channelId: string;
+	wipeUnix: number;
+	postUnix: number;
+	timeZone: string;
+	name: string;
+	description: string;
+	askLateReason: boolean;
+	askDeclinedReason: boolean;
+	createdBy: string;
+};
+
 export type WipeReactScheduleListResponse = {
   items: WipeReactSchedule[];
 };
@@ -85,7 +100,60 @@ export type SteamAccount = {
   bmId: string | null;
   bmName: string;
   avatarImage: string;
+  firstSeenAt: string | null;
   createdAt: string;
+  updatedAt: string;
+};
+
+export type SteamProfileHours = {
+  vitality: number;
+  atlas: number;
+  vital: number;
+  modded: number;
+  official: number;
+  build: number;
+  bm: number;
+  rust: number | null;
+};
+
+export type SteamProfile = {
+  steamId: string;
+  bmId: string;
+  bmName: string;
+  avatarImage: string;
+  firstSeenUnix: number | null;
+  hours: SteamProfileHours;
+  serversPlayed: number;
+  nameGaps: SteamAnalyticsGap[];
+};
+
+export type SteamAnalyticsGame = {
+  appId: number;
+  name: string;
+  hours: number;
+};
+
+export type SteamAnalyticsServer = {
+  bmId: string;
+  name: string;
+  hours: number;
+};
+
+export type SteamAnalyticsGap = {
+  fromUnix: number;
+  toUnix: number;
+};
+
+export type SteamAnalytics = {
+  steamId: string;
+  bmId: string;
+  bmName: string;
+  avatarImage: string;
+  totalGames: number | null;
+  topGames: SteamAnalyticsGame[];
+  totalServers: number;
+  topServers: SteamAnalyticsServer[];
+  gaps: SteamAnalyticsGap[];
 };
 
 export type SteamDiscordLink = {
@@ -155,9 +223,43 @@ export type GuildOnlineSummaryListResponse = {
   items: GuildOnlineSummaryItem[];
 };
 
+export type GuildRecentGameBan = {
+  guildId: string;
+  discordId: string;
+  steamId: string;
+  gameBannedAt: string;
+  gameBannedUnix: number;
+};
+
+export type GuildRecentGameBanListResponse = {
+  items: GuildRecentGameBan[];
+};
+
+export type TrackedServerLogEvent = {
+  serverBmId: string;
+  serverName: string;
+  playerBmId: string;
+  steamId: string;
+  discordId: string;
+  bmName: string;
+  avatarImage: string;
+  isOnline: boolean;
+  occurredUnix: number;
+};
+
+export type TrackedServerLogEventsResponse = {
+  items: TrackedServerLogEvent[];
+};
+
 export type TrackedServer = {
   bmId: string;
   name: string;
+  isVitality: boolean;
+  isAtlas: boolean;
+  isVital: boolean;
+  isModded: boolean;
+  isOfficial: boolean;
+  isBuild: boolean;
   lastPolledAt: string | null;
   lastPollError: string;
 };
@@ -396,6 +498,39 @@ export class BackendClient {
     );
   }
 
+  claimNextWipeReactSchedulePost(workerId: string, guildId: string) {
+	return this.call<{ item: WipeReactSchedulePost | null }>(
+	  workerId,
+	  `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedule-posts/claim`,
+	  "POST",
+	  { workerId },
+	);
+  }
+
+  completeWipeReactSchedulePost(
+	workerId: string,
+	guildId: string,
+	postId: number,
+	messageId: string,
+	channelId: string,
+  ) {
+	return this.call<{ status: string }>(
+	  workerId,
+	  `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedule-posts/${postId}/complete`,
+	  "POST",
+	  { workerId, messageId, channelId },
+	);
+  }
+
+  releaseWipeReactSchedulePost(workerId: string, guildId: string, postId: number) {
+	return this.call<{ status: string }>(
+	  workerId,
+	  `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedule-posts/${postId}/release`,
+	  "POST",
+	  { workerId },
+	);
+  }
+
   listTrackedServers(workerId: string) {
     return this.call<TrackedServerListResponse>(
       workerId,
@@ -404,12 +539,28 @@ export class BackendClient {
     );
   }
 
-  createTrackedServer(workerId: string, bmId: string, name: string) {
+  createTrackedServer(
+    workerId: string,
+    payload: Omit<TrackedServer, "lastPolledAt" | "lastPollError">,
+  ) {
     return this.call<TrackedServer>(
       workerId,
       `/api/internal/bot/setup/tracked-servers`,
       "POST",
-      { bmId, name },
+      payload,
+    );
+  }
+
+  updateTrackedServer(
+    workerId: string,
+    currentBmId: string,
+    payload: Omit<TrackedServer, "lastPolledAt" | "lastPollError">,
+  ) {
+    return this.call<TrackedServer>(
+      workerId,
+      `/api/internal/bot/setup/tracked-servers/${currentBmId}`,
+      "PUT",
+      payload,
     );
   }
 
@@ -474,6 +625,22 @@ export class BackendClient {
     return this.call<SteamAccount>(
       workerId,
       `/api/internal/bot/setup/steam/by-bm/${bmId}`,
+      "GET",
+    );
+  }
+
+  getSteamProfile(workerId: string, steamId: string) {
+    return this.call<SteamProfile>(
+      workerId,
+      `/api/internal/bot/setup/steam/${steamId}/profile`,
+      "GET",
+    );
+  }
+
+  getSteamAnalytics(workerId: string, steamId: string) {
+    return this.call<SteamAnalytics>(
+      workerId,
+      `/api/internal/bot/setup/steam/${steamId}/analytics`,
       "GET",
     );
   }
@@ -592,6 +759,22 @@ export class BackendClient {
     return this.call<GuildOnlineSummaryListResponse>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/online-summary`,
+      "GET",
+    );
+  }
+
+  listGuildRecentGameBans(workerId: string, guildId: string) {
+    return this.call<GuildRecentGameBanListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/game-bans`,
+      "GET",
+    );
+  }
+
+  listGuildTrackedServerLogEvents(workerId: string, guildId: string) {
+    return this.call<TrackedServerLogEventsResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/tracked-server-log-events`,
       "GET",
     );
   }

@@ -1,4 +1,24 @@
+const steamIDPattern = /^\d{17}$/;
+const steamCommunityProfileURLPattern = /^https?:\/\/(?:www\.)?steamcommunity\.com\//i;
 const fallbackMessage = "Enter a 17-digit Steam ID or a supported steamcommunity.com profile URL.";
+
+export function isSteamProfileInput(input: string) {
+  const normalized = input.trim();
+  return steamIDPattern.test(normalized) || steamCommunityProfileURLPattern.test(normalized);
+}
+
+export async function resolveSteamProfileInput(
+  input: string,
+  resolve: (input: string) => Promise<{ steamId: string }>,
+) {
+  const normalized = input.trim();
+  if (!isSteamProfileInput(normalized)) {
+    return null;
+  }
+
+  const resolved = await resolve(normalized);
+  return resolved.steamId;
+}
 
 export function resolveSteamInputErrorMessage(error: unknown) {
   if (!(error instanceof Error)) {

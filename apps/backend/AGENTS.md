@@ -88,6 +88,29 @@ Recurring wipe-react schedule configs (max 3 per guild).
 
 **Limit**: 3 schedules per guild, enforced in `CreateWipeReactSchedule` via `SELECT COUNT(*)` before insert.
 
+### `wipe_react_schedule_posts`
+
+Backend-owned queue of due wipe-react schedule posts waiting for a bot shard to claim and send in Discord.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `BIGSERIAL` | PK |
+| `schedule_id` | `BIGINT NOT NULL` | FK to `wipe_react_schedules.id` |
+| `guild_id` | `TEXT NOT NULL` | Discord guild snowflake |
+| `channel_id` | `TEXT NOT NULL` | Target Discord channel |
+| `wipe_unix` | `BIGINT NOT NULL` | Scheduled wipe-react time |
+| `post_unix` | `BIGINT NOT NULL` | When the post becomes due |
+| `claimed_by` | `TEXT NOT NULL DEFAULT ''` | Bot worker ID that claimed the job |
+| `claimed_at` | `TIMESTAMPTZ` | Claim timestamp, nullable |
+| `message_id` | `TEXT NOT NULL DEFAULT ''` | Discord message ID after successful send |
+| `posted_channel_id` | `TEXT NOT NULL DEFAULT ''` | Discord channel ID after successful send |
+| `completed_at` | `TIMESTAMPTZ` | Completion timestamp, nullable |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**Indexes**:
+- `wipe_react_schedule_posts_claim_idx ON (guild_id, completed_at, post_unix, claimed_at)`
+- `UNIQUE (schedule_id, wipe_unix)` to prevent duplicate queue entries for the same occurrence.
+
 ### `steam_accounts`
 
 Known Steam player accounts with optional BattleMetrics ID.
@@ -96,9 +119,31 @@ Known Steam player accounts with optional BattleMetrics ID.
 |---|---|---|
 | `steam_id` | `TEXT` | PK (17-digit Steam ID) |
 | `bm_id` | `TEXT UNIQUE` | Nullable, BattleMetrics player ID |
-| `bm_name` | `TEXT NOT NULL DEFAULT ''` | Latest known BattleMetrics display name |
-| `avatar_image` | `TEXT NOT NULL DEFAULT ''` | Steam avatar URL |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+### `steam_account_cache`
+
+Volatile Steam/BattleMetrics profile data cached for lazy `/player` and `/view user` profile rendering. The profile route treats rows with `updated_at` newer than 24 hours as fresh and skips Steam/BattleMetrics API calls; if refresh fails for a stale row, the stale row is returned without changing `updated_at`. The same table also stores Steam game-ban cache state with a separate `game_ban_checked_at` timestamp used by the guild game-ban scan endpoint.
+
+| Column | Type | Notes |
+|---|---|---|
+| `steam_id` | `TEXT` | PK, FK to `steam_accounts.steam_id` |
+| `bm_id` | `TEXT NOT NULL DEFAULT ''` | BattleMetrics player ID used when the cache was built |
+| `bm_name` | `TEXT NOT NULL DEFAULT ''` | Latest cached BattleMetrics display name |
+| `avatar_image` | `TEXT NOT NULL DEFAULT ''` | Latest cached Steam avatar URL |
+| `first_seen_at` | `TIMESTAMPTZ` | Cached BattleMetrics player creation / first-seen time |
+| `vitality_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Vitality servers |
+| `atlas_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Atlas servers |
+| `vital_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Vital servers |
+| `modded_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Modded servers |
+| `official_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Official servers |
+| `build_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Build servers |
+| `bm_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours across all BattleMetrics-returned servers |
+| `rust_hours` | `BIGINT` | Cached Steam Rust playtime, nullable when unavailable/private |
+| `game_banned` | `BOOLEAN NOT NULL DEFAULT FALSE` | Cached whether Steam reported any game bans |
+| `game_banned_at` | `TIMESTAMPTZ` | Approximate game-ban timestamp derived from `DaysSinceLastBan`, null when no game ban exists |
+| `game_ban_checked_at` | `TIMESTAMPTZ` | Last Steam game-ban refresh timestamp used for the 6-hour TTL |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Cache refresh timestamp |
 
 ### `tracked_servers`
 
@@ -108,6 +153,12 @@ Global BattleMetrics servers the bot should track.
 |---|---|---|
 | `bm_id` | `TEXT` | PK |
 | `name` | `TEXT NOT NULL` | Display name |
+| `is_vitality` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
+| `is_atlas` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
+| `is_vital` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
+| `is_modded` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
+| `is_official` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
+| `is_build` | `BOOLEAN NOT NULL DEFAULT FALSE` | Global category flag |
 | `last_polled_at` | `TIMESTAMPTZ` | Nullable, last successful or failed poll attempt time |
 | `last_poll_error` | `TEXT NOT NULL DEFAULT ''` | Most recent poll error, empty on success |
 
@@ -147,7 +198,7 @@ BattleMetrics presence state per tracked server and player.
 
 ### Guild Online Summary
 
-`online_summary.go` joins `guild_steam_discord_links`, `guild_tracked_servers`, `steam_accounts`, `player_states`, and `tracked_servers` to produce the guild online summary used by the bot's `/online` command. The query only returns rows where the linked Steam account has a non-null `bm_id`, the matching player state is currently online, and the server is selected for that guild.
+`online_summary.go` joins `guild_steam_discord_links`, `guild_tracked_servers`, `steam_accounts`, `steam_account_cache`, `player_states`, and `tracked_servers` to produce the guild online summary used by the bot's `/online` command. The query only returns rows where the linked Steam account has a non-null `bm_id`, the matching player state is currently online, and the server is selected for that guild.
 
 ### `steam_discord_links`
 
@@ -200,7 +251,11 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - `cmd/server/main.go` imports `github.com/joho/godotenv/autoload`, so local backend runs automatically read `apps/backend/.env` before config loading.
 - The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, and updates `player_states` inside a single store transaction per server.
 - Steam profile resolution lives in `internal/steamapi/`. The bot uses `POST /api/internal/bot/setup/steam/resolve` to turn a raw 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` / `steamcommunity.com/id/...` URL into a canonical Steam ID. Vanity URLs are resolved live through `STEAM_API_KEY` and are not cached separately.
-- Outbound Steam API and BattleMetrics HTTP requests can be proxied by setting `PROXY_ENABLED=true` and `PROXY_ENDPOINTS` to a comma-separated list of proxy URLs such as `http://user:pass@proxy-1:8080,http://proxy-2:8080`. Proxy selection is round-robin per request, startup validates URL syntax but does not test reachability, and request logs include the proxy endpoint used with credentials redacted.
+- Bot-internal account lookup routes under `/api/internal/bot/setup/steam/` can backfill missing `steam_accounts` rows through direct, authorized BattleMetrics requests with `BATTLEMETRICS_API_KEY`. These fallback requests are sent directly and are never proxied.
+- Steam game-ban scans use `GET /api/internal/bot/setup/guilds/{guildID}/game-bans`, which batches guild-linked Steam IDs through `ISteamUser/GetPlayerBans`, refreshes stale cache rows after 6 hours, ignores VAC-only bans, and returns only game bans newer than 90 days.
+- Outbound BattleMetrics HTTP requests can be proxied by setting `PROXY_ENABLED=true` and `PROXY_ENDPOINTS` to a comma-separated list of proxy URLs such as `http://user:pass@proxy-1:8080,http://proxy-2:8080`. Proxy selection is round-robin per request, startup validates URL syntax but does not test reachability, and request logs include the proxy endpoint used with credentials redacted. Steam API requests are always sent directly.
+- The bot-internal steam profile route lazily refreshes `steam_account_cache` after a 24-hour TTL. Fresh cache rows skip Steam/BattleMetrics API calls; stale rows are returned without changing `updated_at` if refresh fails. Steam requests are sent directly.
+- The bot-internal steam analytics route shares the same `steam_account_cache.updated_at` TTL and refresh path as the bot-internal steam profile route. Fresh cache rows skip Steam/BattleMetrics API calls for both routes; stale cache rows are returned if refresh fails. Name-gap data is shared between the profile risk calculation and analytics gap display. If Steam summary reports `communityvisibilitystate = 1`, RustLens skips `GetOwnedGames` and leaves game totals/playtime private.
 
 ## Commands
 

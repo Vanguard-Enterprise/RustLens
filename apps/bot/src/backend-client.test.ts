@@ -121,25 +121,98 @@ describe("BackendClient", () => {
   it("posts tracked server creation", async () => {
     const mockResponse = {
       ok: true,
-      json: async () => ({ bmId: "12345", name: "Vital EU Main" }),
+      json: async () => ({
+        bmId: "12345",
+        name: "Vital EU Main",
+        isVitality: true,
+        isAtlas: false,
+        isVital: false,
+        isModded: true,
+        isOfficial: false,
+        isBuild: false,
+      }),
     } as Response;
 
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
 
     const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
-    await client.createTrackedServer("worker-a", "12345", "Vital EU Main");
+    await client.createTrackedServer("worker-a", {
+      bmId: "12345",
+      name: "Vital EU Main",
+      isVitality: true,
+      isAtlas: false,
+      isVital: false,
+      isModded: true,
+      isOfficial: false,
+      isBuild: false,
+    });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers");
     expect(init?.method).toBe("POST");
-    expect(init?.body).toBe(JSON.stringify({ bmId: "12345", name: "Vital EU Main" }));
+    expect(init?.body).toBe(JSON.stringify({
+      bmId: "12345",
+      name: "Vital EU Main",
+      isVitality: true,
+      isAtlas: false,
+      isVital: false,
+      isModded: true,
+      isOfficial: false,
+      isBuild: false,
+    }));
+  });
+
+  it("loads steam profile details", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({
+        steamId: "76561198000000000",
+        bmId: "918543318",
+        bmName: "turn it up",
+        avatarImage: "https://cdn.example/avatar.png",
+        firstSeenUnix: 1766616480,
+        hours: {
+          vitality: 10,
+          atlas: 20,
+          vital: 30,
+          modded: 40,
+          official: 50,
+          build: 60,
+          bm: 210,
+          rust: 7347,
+        },
+      }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.getSteamProfile("worker-a", "76561198000000000");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/steam/76561198000000000/profile");
+    expect(init?.method).toBe("GET");
   });
 
   it("loads tracked servers", async () => {
     const mockResponse = {
       ok: true,
-      json: async () => ({ items: [{ bmId: "12345", name: "Vital EU Main" }] }),
+      json: async () => ({
+        items: [{
+          bmId: "12345",
+          name: "Vital EU Main",
+          isVitality: true,
+          isAtlas: false,
+          isVital: false,
+          isModded: true,
+          isOfficial: false,
+          isBuild: false,
+          lastPolledAt: null,
+          lastPollError: "",
+        }],
+      }),
     } as Response;
 
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
@@ -151,6 +224,51 @@ describe("BackendClient", () => {
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers");
     expect(init?.method).toBe("GET");
+  });
+
+  it("updates tracked servers", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({
+        bmId: "98765",
+        name: "Atlas EU Main",
+        isVitality: false,
+        isAtlas: true,
+        isVital: false,
+        isModded: true,
+        isOfficial: false,
+        isBuild: false,
+      }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.updateTrackedServer("worker-a", "12345", {
+      bmId: "98765",
+      name: "Atlas EU Main",
+      isVitality: false,
+      isAtlas: true,
+      isVital: false,
+      isModded: true,
+      isOfficial: false,
+      isBuild: false,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers/12345");
+    expect(init?.method).toBe("PUT");
+    expect(init?.body).toBe(JSON.stringify({
+      bmId: "98765",
+      name: "Atlas EU Main",
+      isVitality: false,
+      isAtlas: true,
+      isVital: false,
+      isModded: true,
+      isOfficial: false,
+      isBuild: false,
+    }));
   });
 
   it("replaces guild tracked servers", async () => {

@@ -14,6 +14,10 @@ import {
   handleBindModalSubmit,
 } from "./bind-command.js";
 import {
+  ensureCheckGameBansCommand,
+  handleCheckGameBansChatInput,
+} from "./checkgamebans-command.js";
+import {
   ensureCompareCommand,
   handleCompareAutocomplete,
   handleCompareChatInput,
@@ -22,6 +26,11 @@ import {
   ensureOnlineCommand,
   handleOnlineChatInput,
 } from "./online-command.js";
+import {
+  ensurePlayerCommand,
+  handlePlayerButtonInteraction,
+  handlePlayerChatInput,
+} from "./player-command.js";
 import {
   ensureNicknameCommand,
   handleNicknameChatInput,
@@ -32,7 +41,9 @@ import {
 } from "./setsteam-command.js";
 import {
   ensureServerCommand,
+  handleServerAutocomplete,
   handleServerChatInput,
+  handleServerModalSubmit,
 } from "./server-command.js";
 import {
   ensureSettingsCommand,
@@ -57,6 +68,7 @@ import {
   rehydratePersistedWipeReacts,
   startWipeReactScheduler,
 } from "./wipereact-command.js";
+import { startTrackedServerLogPoller } from "./tracked-server-logs.js";
 import { registerUserGuildSync } from "./user-guilds.js";
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
@@ -81,11 +93,13 @@ client.once("clientReady", () => {
   Promise.allSettled([
     ensureAdminCommand(client, shardID),
     ensureBindCommand(client, shardID),
+    ensureCheckGameBansCommand(client, shardID),
     ensureCompareCommand(client, shardID),
     ensureWipeReactCommand(client, shardID),
     ensureSummonCommand(client, shardID),
     ensureAnnounceCommand(client, shardID),
     ensureOnlineCommand(client, shardID),
+    ensurePlayerCommand(client, shardID),
     ensureNicknameCommand(client, shardID),
     ensureSetSteamCommand(client, shardID),
     ensureSettingsCommand(client, shardID),
@@ -99,6 +113,7 @@ client.once("clientReady", () => {
       }
     }
     startWipeReactScheduler(client);
+    startTrackedServerLogPoller(client);
   });
 });
 
@@ -121,6 +136,10 @@ client.on("interactionCreate", async (interaction) => {
       if (await handleWipeReactAutocomplete(interaction)) {
         return;
       }
+
+      if (await handleServerAutocomplete(interaction)) {
+        return;
+      }
     }
 
     if (interaction.isChatInputCommand()) {
@@ -140,11 +159,19 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleCheckGameBansChatInput(interaction)) {
+        return;
+      }
+
       if (await handleCompareChatInput(interaction)) {
         return;
       }
 
       if (await handleOnlineChatInput(interaction)) {
+        return;
+      }
+
+      if (await handlePlayerChatInput(interaction)) {
         return;
       }
 
@@ -186,12 +213,20 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleServerModalSubmit(interaction)) {
+        return;
+      }
+
       await handleSettingsModalSubmit(interaction);
       return;
     }
 
     if (interaction.isButton()) {
       if (await handleBindButtonInteraction(interaction)) {
+        return;
+      }
+
+      if (await handlePlayerButtonInteraction(interaction)) {
         return;
       }
 

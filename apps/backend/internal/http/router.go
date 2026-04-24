@@ -9,6 +9,7 @@ import (
 
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/auth"
+	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
@@ -27,8 +28,17 @@ func claimsFromContext(ctx context.Context) *auth.Claims {
 	return claims
 }
 
-func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service, steamClient *steamapi.Client) http.Handler {
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient)
+func NewRouter(
+	cfg config.Config,
+	postgres *store.PostgresStore,
+	redis *store.RedisStore,
+	shardService *shards.Service,
+	steamClient *steamapi.Client,
+	steamSummaryClient *steamapi.Client,
+	battleMetricsClient *battlemetrics.Client,
+	authBattleMetricsClient *battlemetrics.Client,
+) http.Handler {
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, authBattleMetricsClient)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -69,8 +79,12 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 		r.Put("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.UpdateWipeReactSchedule)
 		r.Delete("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.DeleteWipeReactSchedule)
 		r.Post("/guilds/{guildID}/wipe-react-schedules/{scheduleID}/mark-posted", handler.MarkWipeReactSchedulePosted)
+		r.Post("/guilds/{guildID}/wipe-react-schedule-posts/claim", handler.ClaimNextWipeReactSchedulePost)
+		r.Post("/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/complete", handler.CompleteWipeReactSchedulePost)
+		r.Post("/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/release", handler.ReleaseWipeReactSchedulePost)
 		r.Get("/tracked-servers", handler.ListTrackedServers)
 		r.Post("/tracked-servers", handler.CreateTrackedServer)
+		r.Put("/tracked-servers/{bmID}", handler.UpdateTrackedServer)
 		r.Delete("/tracked-servers/{bmID}", handler.DeleteTrackedServer)
 		r.Get("/player-states/servers/{serverID}", handler.ListOnlinePlayerStatesByServer)
 		r.Get("/player-states/servers/{serverID}/players/{playerID}", handler.GetPlayerState)
@@ -78,6 +92,8 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 
 		// Steam & Discord linking endpoints
 		r.Get("/steam/by-bm/{bmID}", handler.GetSteamAccountByBmID)
+		r.Get("/steam/{steamID}/profile", handler.GetSteamProfile)
+		r.Get("/steam/{steamID}/analytics", handler.GetSteamAnalytics)
 		r.Post("/steam/resolve", handler.ResolveSteamID)
 		r.Post("/steam/links", handler.CreateSoftLink)
 		r.Post("/steam/bulk-hard-links", handler.BulkUpsertHardLinks)
@@ -91,6 +107,8 @@ func NewRouter(cfg config.Config, postgres *store.PostgresStore, redis *store.Re
 
 		// Guild-scoped steam-discord links
 		r.Get("/guilds/{guildID}/online-summary", handler.ListGuildOnlineSummary)
+		r.Get("/guilds/{guildID}/game-bans", handler.CheckGuildGameBans)
+		r.Get("/guilds/{guildID}/tracked-server-log-events", handler.ListGuildTrackedServerLogEvents)
 		r.Get("/guilds/{guildID}/links", handler.ListGuildLinks)
 		r.Get("/guilds/{guildID}/nickname-targets", handler.ListGuildNicknameTargets)
 		r.Post("/guilds/{guildID}/links", handler.CreateGuildSteamDiscordLink)

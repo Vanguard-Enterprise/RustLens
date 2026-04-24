@@ -215,15 +215,14 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   if (!(await hasGuildAdminAccess(interaction))) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "Only the configured admin role or administrators can use /nickname.",
-      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const { items } = await getBackend().listGuildNicknameTargets(getWorkerID(), interaction.guildId);
   const members = await getGuildMembers(interaction.guild);

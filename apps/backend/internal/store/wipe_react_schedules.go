@@ -114,7 +114,7 @@ func (p *PostgresStore) CreateWipeReactSchedule(ctx context.Context, record Wipe
 
 	var count int
 	err = tx.QueryRow(ctx, `
-		SELECT COUNT(*) FROM wipe_react_schedules WHERE guild_id = $1 FOR UPDATE
+		SELECT COUNT(*) FROM wipe_react_schedules WHERE guild_id = $1
 	`, record.GuildID).Scan(&count)
 	if err != nil {
 		return WipeReactSchedule{}, err

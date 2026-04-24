@@ -132,6 +132,25 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS wipe_react_schedules_guild_idx
 		ON wipe_react_schedules (guild_id);
 
+		CREATE TABLE IF NOT EXISTS wipe_react_schedule_posts (
+			id BIGSERIAL PRIMARY KEY,
+			schedule_id BIGINT NOT NULL REFERENCES wipe_react_schedules(id) ON DELETE CASCADE,
+			guild_id TEXT NOT NULL,
+			channel_id TEXT NOT NULL,
+			wipe_unix BIGINT NOT NULL,
+			post_unix BIGINT NOT NULL,
+			claimed_by TEXT NOT NULL DEFAULT '',
+			claimed_at TIMESTAMPTZ,
+			message_id TEXT NOT NULL DEFAULT '',
+			posted_channel_id TEXT NOT NULL DEFAULT '',
+			completed_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (schedule_id, wipe_unix)
+		);
+
+		CREATE INDEX IF NOT EXISTS wipe_react_schedule_posts_claim_idx
+		ON wipe_react_schedule_posts (guild_id, completed_at, post_unix, claimed_at);
+
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 		ALTER TABLE wipe_react_schedules ADD COLUMN IF NOT EXISTS ask_late_reason BOOLEAN NOT NULL DEFAULT FALSE;
@@ -142,20 +161,142 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS steam_accounts (
 			steam_id TEXT PRIMARY KEY,
 			bm_id TEXT UNIQUE,
-			bm_name TEXT NOT NULL DEFAULT '',
-			avatar_image TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
-		ALTER TABLE steam_accounts ADD COLUMN IF NOT EXISTS bm_name TEXT NOT NULL DEFAULT '';
+		CREATE TABLE IF NOT EXISTS steam_account_cache (
+			steam_id TEXT PRIMARY KEY REFERENCES steam_accounts(steam_id) ON DELETE CASCADE,
+			bm_id TEXT NOT NULL DEFAULT '',
+			bm_name TEXT NOT NULL DEFAULT '',
+			avatar_image TEXT NOT NULL DEFAULT '',
+			first_seen_at TIMESTAMPTZ,
+			vitality_hours BIGINT NOT NULL DEFAULT 0,
+			atlas_hours BIGINT NOT NULL DEFAULT 0,
+			vital_hours BIGINT NOT NULL DEFAULT 0,
+			modded_hours BIGINT NOT NULL DEFAULT 0,
+			official_hours BIGINT NOT NULL DEFAULT 0,
+			build_hours BIGINT NOT NULL DEFAULT 0,
+			bm_hours BIGINT NOT NULL DEFAULT 0,
+			bm_servers_played INTEGER NOT NULL DEFAULT 0,
+			name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb,
+			rust_hours BIGINT,
+			total_games INTEGER,
+			top_games JSONB NOT NULL DEFAULT '[]'::jsonb,
+			top_servers JSONB NOT NULL DEFAULT '[]'::jsonb,
+			game_banned BOOLEAN NOT NULL DEFAULT FALSE,
+			game_banned_at TIMESTAMPTZ,
+			game_ban_checked_at TIMESTAMPTZ,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_servers_played INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS total_games INTEGER;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS top_games JSONB NOT NULL DEFAULT '[]'::jsonb;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS top_servers JSONB NOT NULL DEFAULT '[]'::jsonb;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_total_games;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_top_games;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_total_servers;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_top_servers;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_banned BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_banned_at TIMESTAMPTZ;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_ban_checked_at TIMESTAMPTZ;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_gaps;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_updated_at;
+
+		CREATE INDEX IF NOT EXISTS steam_account_cache_updated_idx
+		ON steam_account_cache (updated_at);
+
+		DO $$
+		DECLARE
+			has_bm_name BOOLEAN;
+			has_avatar_image BOOLEAN;
+			has_first_seen_at BOOLEAN;
+			has_updated_at BOOLEAN;
+		BEGIN
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'steam_accounts' AND column_name = 'bm_name'
+			) INTO has_bm_name;
+
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'steam_accounts' AND column_name = 'avatar_image'
+			) INTO has_avatar_image;
+
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'steam_accounts' AND column_name = 'first_seen_at'
+			) INTO has_first_seen_at;
+
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'steam_accounts' AND column_name = 'updated_at'
+			) INTO has_updated_at;
+
+			IF has_bm_name AND has_avatar_image AND has_first_seen_at AND has_updated_at THEN
+				EXECUTE '
+					INSERT INTO steam_account_cache (steam_id, bm_id, bm_name, avatar_image, first_seen_at, updated_at)
+					SELECT steam_id, COALESCE(bm_id, ''''), COALESCE(bm_name, ''''), COALESCE(avatar_image, ''''), first_seen_at, updated_at
+					FROM steam_accounts
+					WHERE COALESCE(bm_name, '''') <> '''' OR COALESCE(avatar_image, '''') <> '''' OR first_seen_at IS NOT NULL
+					ON CONFLICT (steam_id) DO NOTHING
+				';
+			ELSIF has_bm_name AND has_first_seen_at AND has_updated_at THEN
+				EXECUTE '
+					INSERT INTO steam_account_cache (steam_id, bm_id, bm_name, first_seen_at, updated_at)
+					SELECT steam_id, COALESCE(bm_id, ''''), COALESCE(bm_name, ''''), first_seen_at, updated_at
+					FROM steam_accounts
+					WHERE COALESCE(bm_name, '''') <> '''' OR first_seen_at IS NOT NULL
+					ON CONFLICT (steam_id) DO NOTHING
+				';
+			ELSIF has_first_seen_at AND has_updated_at THEN
+				EXECUTE '
+					INSERT INTO steam_account_cache (steam_id, bm_id, first_seen_at, updated_at)
+					SELECT steam_id, COALESCE(bm_id, ''''), first_seen_at, updated_at
+					FROM steam_accounts
+					WHERE first_seen_at IS NOT NULL
+					ON CONFLICT (steam_id) DO NOTHING
+				';
+			END IF;
+
+			IF has_bm_name THEN
+				ALTER TABLE steam_accounts DROP COLUMN bm_name;
+			END IF;
+
+			IF has_avatar_image THEN
+				ALTER TABLE steam_accounts DROP COLUMN avatar_image;
+			END IF;
+
+			IF has_first_seen_at THEN
+				ALTER TABLE steam_accounts DROP COLUMN first_seen_at;
+			END IF;
+
+			IF has_updated_at THEN
+				ALTER TABLE steam_accounts DROP COLUMN updated_at;
+			END IF;
+		END $$;
 
 		CREATE TABLE IF NOT EXISTS tracked_servers (
 			bm_id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
+			is_vitality BOOLEAN NOT NULL DEFAULT FALSE,
+			is_atlas BOOLEAN NOT NULL DEFAULT FALSE,
+			is_vital BOOLEAN NOT NULL DEFAULT FALSE,
+			is_modded BOOLEAN NOT NULL DEFAULT FALSE,
+			is_official BOOLEAN NOT NULL DEFAULT FALSE,
+			is_build BOOLEAN NOT NULL DEFAULT FALSE,
 			last_polled_at TIMESTAMPTZ,
 			last_poll_error TEXT NOT NULL DEFAULT ''
 		);
 
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_vitality BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_atlas BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_vital BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_modded BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_official BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_build BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_polled_at TIMESTAMPTZ;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_poll_error TEXT NOT NULL DEFAULT '';
 
@@ -174,6 +315,9 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS player_states_server_online_idx
 		ON player_states (server_bm_id, is_online, online_since DESC, updated_at DESC);
+
+		DROP TABLE IF EXISTS guild_tracked_log_cursors;
+		DROP TABLE IF EXISTS player_state_events;
 
 		CREATE TABLE IF NOT EXISTS guild_tracked_servers (
 			guild_id TEXT NOT NULL,

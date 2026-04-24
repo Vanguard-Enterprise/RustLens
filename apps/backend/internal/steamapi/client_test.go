@@ -105,6 +105,65 @@ func TestResolveSteamIDLogsSelectedProxy(t *testing.T) {
 	}
 }
 
+func TestGetPlayerBans(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ISteamUser/GetPlayerBans/v1/" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("key"); got != "steam-key" {
+			t.Fatalf("unexpected key: %s", got)
+		}
+		if got := r.URL.Query().Get("steamids"); got != "76561198000000001,76561198000000002" {
+			t.Fatalf("unexpected steamids: %s", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"players":[{"SteamId":"76561198000000001","CommunityBanned":false,"VACBanned":true,"NumberOfVACBans":1,"DaysSinceLastBan":1667,"NumberOfGameBans":0,"EconomyBan":"none"},{"SteamId":"76561198000000002","CommunityBanned":false,"VACBanned":false,"NumberOfVACBans":0,"DaysSinceLastBan":12,"NumberOfGameBans":1,"EconomyBan":"none"}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("steam-key", nil)
+	client.baseURL = server.URL
+
+	bans, err := client.GetPlayerBans(context.Background(), []string{"76561198000000001", "76561198000000002"})
+	if err != nil {
+		t.Fatalf("GetPlayerBans returned error: %v", err)
+	}
+	if len(bans) != 2 {
+		t.Fatalf("GetPlayerBans returned %d bans, want 2", len(bans))
+	}
+	if bans[0].NumberOfGameBans != 0 {
+		t.Fatalf("first NumberOfGameBans = %d, want 0", bans[0].NumberOfGameBans)
+	}
+	if bans[1].DaysSinceLastBan != 12 {
+		t.Fatalf("second DaysSinceLastBan = %d, want 12", bans[1].DaysSinceLastBan)
+	}
+}
+
+func TestGetPlayerSummaryParsesCommunityVisibilityState(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ISteamUser/GetPlayerSummaries/v2/" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"response":{"players":[{"steamid":"76561198000000001","communityvisibilitystate":1,"avatarfull":"https://example.com/avatar.jpg"}]}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("steam-key", nil)
+	client.baseURL = server.URL
+
+	summary, err := client.GetPlayerSummary(context.Background(), "76561198000000001")
+	if err != nil {
+		t.Fatalf("GetPlayerSummary returned error: %v", err)
+	}
+	if summary.CommunityVisibilityState != 1 {
+		t.Fatalf("CommunityVisibilityState = %d, want 1", summary.CommunityVisibilityState)
+	}
+	if summary.AvatarFull != "https://example.com/avatar.jpg" {
+		t.Fatalf("AvatarFull = %q", summary.AvatarFull)
+	}
+}
+
 type staticProvider struct {
 	client   *http.Client
 	endpoint string
