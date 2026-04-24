@@ -39,7 +39,7 @@ describe("wipereact command", () => {
     });
   });
 
-  it("registers delete, missing, and react management subcommands", () => {
+  it("registers delete, notreacted, and react management subcommands", () => {
     const command = __testables.wipeReactCommand.toJSON();
     const options = command.options as any[];
 
@@ -47,7 +47,7 @@ describe("wipereact command", () => {
       "create",
       "schedule",
       "delete",
-      "missing",
+      "notreacted",
       "react",
     ]);
 

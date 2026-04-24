@@ -55,6 +55,9 @@ export function resolveCustomIdCategory(customId: string): BanCategory | null {
   if (customId.startsWith("wipereact_") || customId.startsWith("bind_")) {
     return "coordination";
   }
+  if (customId.startsWith("player:analytics:") || customId.startsWith("player:links:")) {
+    return "lookup";
+  }
   if (customId.startsWith("player:")) {
     return "lookup";
   }

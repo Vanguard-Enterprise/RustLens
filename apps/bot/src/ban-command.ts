@@ -139,7 +139,7 @@ function formatCategoriesDescription(categories: BanCategory[]) {
   if (categories.length === 0) {
     return "No restrictions — user has full access.";
   }
-  return categories.map((value) => `• ${labelForCategory(value)}`).join("\n");
+  return categories.map((value) => `> * ${labelForCategory(value)}`).join("\n");
 }
 
 export async function ensureBanCommand(client: Client, shardID: number) {
