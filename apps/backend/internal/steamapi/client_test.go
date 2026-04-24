@@ -139,6 +139,31 @@ func TestGetPlayerBans(t *testing.T) {
 	}
 }
 
+func TestGetPlayerSummaryParsesCommunityVisibilityState(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ISteamUser/GetPlayerSummaries/v2/" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"response":{"players":[{"steamid":"76561198000000001","communityvisibilitystate":1,"avatarfull":"https://example.com/avatar.jpg"}]}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("steam-key", nil)
+	client.baseURL = server.URL
+
+	summary, err := client.GetPlayerSummary(context.Background(), "76561198000000001")
+	if err != nil {
+		t.Fatalf("GetPlayerSummary returned error: %v", err)
+	}
+	if summary.CommunityVisibilityState != 1 {
+		t.Fatalf("CommunityVisibilityState = %d, want 1", summary.CommunityVisibilityState)
+	}
+	if summary.AvatarFull != "https://example.com/avatar.jpg" {
+		t.Fatalf("AvatarFull = %q", summary.AvatarFull)
+	}
+}
+
 type staticProvider struct {
 	client   *http.Client
 	endpoint string

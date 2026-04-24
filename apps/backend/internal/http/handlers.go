@@ -1612,10 +1612,14 @@ func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamA
 
 	avatarImage := account.AvatarImage
 	summary, summaryErr := h.steamSummaryClient.GetPlayerSummary(ctx, account.SteamID)
+	steamProfilePrivate := false
 	if summaryErr != nil {
 		log.Printf("[backend] fetchFreshSteamProfile steam summary error for %s: %v", account.SteamID, summaryErr)
-	} else if summary.AvatarFull != "" {
-		avatarImage = summary.AvatarFull
+	} else {
+		steamProfilePrivate = summary.CommunityVisibilityState == 1
+		if summary.AvatarFull != "" {
+			avatarImage = summary.AvatarFull
+		}
 	}
 
 	profile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, *account.BmID)
@@ -1642,10 +1646,11 @@ func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamA
 		cache.FirstSeenAt = profile.CreatedAt
 	}
 
-	ownedGames, ownedGamesErr := h.steamSummaryClient.GetOwnedGames(ctx, account.SteamID)
-	if ownedGamesErr != nil {
-		return store.SteamAccountCache{}, fmt.Errorf("fetch owned games: %w", ownedGamesErr)
-	} else {
+	if !steamProfilePrivate {
+		ownedGames, ownedGamesErr := h.steamSummaryClient.GetOwnedGames(ctx, account.SteamID)
+		if ownedGamesErr != nil {
+			return store.SteamAccountCache{}, fmt.Errorf("fetch owned games: %w", ownedGamesErr)
+		}
 		sort.Slice(ownedGames, func(i, j int) bool {
 			return ownedGames[i].PlaytimeForever > ownedGames[j].PlaytimeForever
 		})
