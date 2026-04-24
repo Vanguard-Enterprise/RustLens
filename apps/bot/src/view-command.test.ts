@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { SteamAccount } from "./backend-client.js";
 import { __testables, buildUserEmbed } from "./view-command.js";
 
 const OLD_FIRST_SEEN_UNIX = 1577836800;
@@ -231,5 +232,55 @@ describe("view-command", () => {
     const embed = buildUserEmbed("76561198000000000", null, "123456789012345678", false).toJSON();
 
     expect(embed.fields?.some((field) => field.name.startsWith("Risk Factor"))).toBe(false);
+  });
+
+  it("builds paginated /view all embeds with 20 users per page", () => {
+    const items = Array.from({ length: 25 }, (_, index) => ({
+      discordId: `${index + 1}`,
+      steamId: `76561198000000${String(index).padStart(3, "0")}`,
+    }));
+    const accountMap = new Map<string, SteamAccount>(items.map((item, index) => [item.steamId, {
+      steamId: item.steamId,
+      bmId: `${9000 + index}`,
+      bmName: "",
+      avatarImage: "",
+      firstSeenAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    }]));
+
+    const firstPage = __testables.buildViewAllPage(items, accountMap, 0).embed.toJSON();
+    const secondPage = __testables.buildViewAllPage(items, accountMap, 1).embed.toJSON();
+
+    expect(firstPage.description).toContain("<@1>");
+    expect(firstPage.description).toContain("<@20>");
+    expect(firstPage.description).not.toContain("<@21>");
+    expect(firstPage.footer?.text).toBe("RustLens.com • Page 1/2");
+
+    expect(secondPage.description).toContain("<@21>");
+    expect(secondPage.description).toContain("<@25>");
+    expect(secondPage.description).not.toContain("<@20>");
+    expect(secondPage.footer?.text).toBe("RustLens.com • Page 2/2");
+  });
+
+  it("builds paginator buttons with correct disabled states", () => {
+    const firstPageRows = __testables.buildViewAllPageButtons("123", 0, 3);
+    const lastPageRows = __testables.buildViewAllPageButtons("123", 2, 3);
+
+    const firstPageButtons = firstPageRows[0].toJSON().components;
+    const lastPageButtons = lastPageRows[0].toJSON().components;
+
+    expect(firstPageButtons[0]?.disabled).toBe(true);
+    expect(firstPageButtons[1]?.disabled).toBe(false);
+    expect(lastPageButtons[0]?.disabled).toBe(false);
+    expect(lastPageButtons[1]?.disabled).toBe(true);
+  });
+
+  it("parses /view all paginator custom ids", () => {
+    expect(__testables.parseViewAllPageCustomId("view:all:page:2:123456789012345678")).toEqual({
+      page: 2,
+      ownerId: "123456789012345678",
+    });
+    expect(__testables.parseViewAllPageCustomId("view:all:page:x:123456789012345678")).toBeNull();
   });
 });

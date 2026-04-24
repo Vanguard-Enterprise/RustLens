@@ -79,6 +79,7 @@ import {
 } from "./transfer-command.js";
 import {
   ensureViewCommand,
+  handleViewButtonInteraction,
   handleViewChatInput,
 } from "./view-command.js";
 import {
@@ -318,6 +319,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handlePlayerButtonInteraction(interaction)) {
+        return;
+      }
+
+      if (await handleViewButtonInteraction(interaction)) {
         return;
       }
 
