@@ -102,7 +102,7 @@ Known Steam player accounts with optional BattleMetrics ID.
 
 ### `steam_account_cache`
 
-Volatile Steam/BattleMetrics profile data cached for lazy `/player` and `/view user` profile rendering. The profile route treats rows with `updated_at` newer than 12 hours as fresh and skips Steam/BattleMetrics API calls; if refresh fails for a stale row, the stale row is returned without changing `updated_at`.
+Volatile Steam/BattleMetrics profile data cached for lazy `/player` and `/view user` profile rendering. The profile route treats rows with `updated_at` newer than 24 hours as fresh and skips Steam/BattleMetrics API calls; if refresh fails for a stale row, the stale row is returned without changing `updated_at`.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -228,7 +228,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, and updates `player_states` inside a single store transaction per server.
 - Steam profile resolution lives in `internal/steamapi/`. The bot uses `POST /api/internal/bot/setup/steam/resolve` to turn a raw 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` / `steamcommunity.com/id/...` URL into a canonical Steam ID. Vanity URLs are resolved live through `STEAM_API_KEY` and are not cached separately.
 - Outbound Steam API and BattleMetrics HTTP requests can be proxied by setting `PROXY_ENABLED=true` and `PROXY_ENDPOINTS` to a comma-separated list of proxy URLs such as `http://user:pass@proxy-1:8080,http://proxy-2:8080`. Proxy selection is round-robin per request, startup validates URL syntax but does not test reachability, and request logs include the proxy endpoint used with credentials redacted.
-- The bot-internal steam profile route lazily refreshes `steam_account_cache` after a 12-hour TTL. Fresh cache rows skip Steam/BattleMetrics API calls; stale rows are returned without changing `updated_at` if refresh fails. Steam summary and owned-games requests are sent directly, not through the proxy provider.
+- The bot-internal steam profile route lazily refreshes `steam_account_cache` after a 24-hour TTL. Fresh cache rows skip Steam/BattleMetrics API calls; stale rows are returned without changing `updated_at` if refresh fails. Steam summary and owned-games requests are sent directly, not through the proxy provider.
 
 ## Commands
 

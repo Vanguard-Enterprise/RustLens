@@ -31,7 +31,7 @@ var snowflakePattern = regexp.MustCompile(`^\d{17,20}$`)
 var steamIDPattern = regexp.MustCompile(`^\d{17}$`)
 
 const maxRequestBodyBytes = 1 << 20 // 1 MB
-const steamAccountCacheTTL = 12 * time.Hour
+const steamAccountCacheTTL = 24 * time.Hour
 
 type Handler struct {
 	cfg                 config.Config
