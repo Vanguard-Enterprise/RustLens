@@ -256,6 +256,27 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS player_states_server_online_idx
 		ON player_states (server_bm_id, is_online, online_since DESC, updated_at DESC);
 
+		CREATE TABLE IF NOT EXISTS player_state_events (
+			id BIGSERIAL PRIMARY KEY,
+			server_bm_id TEXT NOT NULL,
+			player_bm_id TEXT NOT NULL,
+			bm_name TEXT NOT NULL DEFAULT '',
+			event_type TEXT NOT NULL,
+			occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS player_state_events_id_idx
+		ON player_state_events (id);
+
+		CREATE INDEX IF NOT EXISTS player_state_events_server_id_idx
+		ON player_state_events (server_bm_id, id);
+
+		CREATE TABLE IF NOT EXISTS guild_tracked_log_cursors (
+			guild_id TEXT PRIMARY KEY,
+			last_event_id BIGINT NOT NULL DEFAULT 0,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
 		CREATE TABLE IF NOT EXISTS guild_tracked_servers (
 			guild_id TEXT NOT NULL,
 			server_bm_id TEXT NOT NULL REFERENCES tracked_servers(bm_id) ON DELETE CASCADE,

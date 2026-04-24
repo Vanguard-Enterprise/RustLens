@@ -208,6 +208,24 @@ export type GuildOnlineSummaryListResponse = {
   items: GuildOnlineSummaryItem[];
 };
 
+export type TrackedServerLogEvent = {
+  id: number;
+  serverBmId: string;
+  serverName: string;
+  playerBmId: string;
+  steamId: string;
+  discordId: string;
+  bmName: string;
+  avatarImage: string;
+  eventType: "online" | "offline";
+  occurredUnix: number;
+};
+
+export type TrackedServerLogEventsResponse = {
+  items: TrackedServerLogEvent[];
+  lastEventId: number;
+};
+
 export type TrackedServer = {
   bmId: string;
   name: string;
@@ -684,6 +702,23 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/online-summary`,
       "GET",
+    );
+  }
+
+  listGuildTrackedServerLogEvents(workerId: string, guildId: string) {
+    return this.call<TrackedServerLogEventsResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/tracked-server-log-events`,
+      "GET",
+    );
+  }
+
+  ackGuildTrackedServerLogEvents(workerId: string, guildId: string, lastEventId: number) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/tracked-server-log-events/ack`,
+      "POST",
+      { lastEventId },
     );
   }
 

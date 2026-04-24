@@ -2357,6 +2357,101 @@ func (h *Handler) ListGuildOnlineSummary(w http.ResponseWriter, r *http.Request)
 	writeGuildOnlineSummaryList(w, items)
 }
 
+type trackedServerLogEventResponse struct {
+	ID           int64  `json:"id"`
+	ServerBmID   string `json:"serverBmId"`
+	ServerName   string `json:"serverName"`
+	PlayerBmID   string `json:"playerBmId"`
+	SteamID      string `json:"steamId"`
+	DiscordID    string `json:"discordId"`
+	BmName       string `json:"bmName"`
+	AvatarImage  string `json:"avatarImage"`
+	EventType    string `json:"eventType"`
+	OccurredUnix int64  `json:"occurredUnix"`
+}
+
+type trackedServerLogEventsResponse struct {
+	Items       []trackedServerLogEventResponse `json:"items"`
+	LastEventID int64                           `json:"lastEventId"`
+}
+
+func (h *Handler) ListGuildTrackedServerLogEvents(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	cursor, err := h.postgres.GetGuildTrackedLogCursor(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] GetGuildTrackedLogCursor error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to load log cursor")
+		return
+	}
+
+	events, err := h.postgres.ListGuildTrackedServerLogEvents(r.Context(), guildID, cursor.LastEventID, 100)
+	if err != nil {
+		log.Printf("[backend] ListGuildTrackedServerLogEvents error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch events")
+		return
+	}
+
+	latest, err := h.postgres.LatestPlayerStateEventID(r.Context())
+	if err != nil {
+		log.Printf("[backend] LatestPlayerStateEventID error: %v", err)
+		latest = cursor.LastEventID
+	}
+
+	response := trackedServerLogEventsResponse{
+		Items:       make([]trackedServerLogEventResponse, 0, len(events)),
+		LastEventID: latest,
+	}
+	for _, event := range events {
+		response.Items = append(response.Items, trackedServerLogEventResponse{
+			ID:           event.ID,
+			ServerBmID:   event.ServerBmID,
+			ServerName:   event.ServerName,
+			PlayerBmID:   event.PlayerBmID,
+			SteamID:      event.SteamID,
+			DiscordID:    event.DiscordID,
+			BmName:       event.BmName,
+			AvatarImage:  event.AvatarImage,
+			EventType:    event.EventType,
+			OccurredUnix: event.OccurredAt.Unix(),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+type ackTrackedServerLogEventsRequest struct {
+	LastEventID int64 `json:"lastEventId"`
+}
+
+func (h *Handler) AckGuildTrackedServerLogEvents(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	var req ackTrackedServerLogEventsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.LastEventID < 0 {
+		writeError(w, http.StatusBadRequest, "lastEventId must be non-negative")
+		return
+	}
+
+	if err := h.postgres.SetGuildTrackedLogCursor(r.Context(), guildID, req.LastEventID); err != nil {
+		log.Printf("[backend] SetGuildTrackedLogCursor error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to ack events")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
 func (h *Handler) ListGuildLinksByDiscord(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
 	if !ok {

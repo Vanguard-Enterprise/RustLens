@@ -64,6 +64,7 @@ import {
   rehydratePersistedWipeReacts,
   startWipeReactScheduler,
 } from "./wipereact-command.js";
+import { startTrackedServerLogPoller } from "./tracked-server-logs.js";
 import { registerUserGuildSync } from "./user-guilds.js";
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
@@ -107,6 +108,7 @@ client.once("clientReady", () => {
       }
     }
     startWipeReactScheduler(client);
+    startTrackedServerLogPoller(client);
   });
 });
 

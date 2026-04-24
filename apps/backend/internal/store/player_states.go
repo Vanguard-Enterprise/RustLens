@@ -183,6 +183,9 @@ func (p *PostgresStore) SyncPlayerStates(ctx context.Context, serverBmID string,
 			`, serverBmID, player.PlayerBmID, observedAt); err != nil {
 				return err
 			}
+			if err := insertPlayerStateEvent(ctx, tx, serverBmID, player.PlayerBmID, player.BmName, "online", observedAt); err != nil {
+				return err
+			}
 			existing[player.PlayerBmID] = existingState{IsOnline: true}
 		case current.IsOnline:
 			if _, err := tx.Exec(ctx, `
@@ -202,6 +205,9 @@ func (p *PostgresStore) SyncPlayerStates(ctx context.Context, serverBmID string,
 					updated_at = $3
 				WHERE server_bm_id = $1 AND player_bm_id = $2
 			`, serverBmID, player.PlayerBmID, observedAt); err != nil {
+				return err
+			}
+			if err := insertPlayerStateEvent(ctx, tx, serverBmID, player.PlayerBmID, player.BmName, "online", observedAt); err != nil {
 				return err
 			}
 			existing[player.PlayerBmID] = existingState{IsOnline: true}
@@ -225,7 +231,18 @@ func (p *PostgresStore) SyncPlayerStates(ctx context.Context, serverBmID string,
 		`, serverBmID, playerBmID, observedAt); err != nil {
 			return err
 		}
+		if err := insertPlayerStateEvent(ctx, tx, serverBmID, playerBmID, "", "offline", observedAt); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit(ctx)
+}
+
+func insertPlayerStateEvent(ctx context.Context, tx pgx.Tx, serverBmID, playerBmID, bmName, eventType string, observedAt time.Time) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO player_state_events (server_bm_id, player_bm_id, bm_name, event_type, occurred_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`, serverBmID, playerBmID, bmName, eventType, observedAt)
+	return err
 }
