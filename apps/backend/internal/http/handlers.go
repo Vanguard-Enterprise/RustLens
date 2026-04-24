@@ -1680,6 +1680,11 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 	canUseCachedProfile := cacheErr == nil && cachedProfile.BmID == *account.BmID
 	if refreshErr != nil {
 		log.Printf("[backend] GetSteamProfile refresh error for %s: %v", steamID, refreshErr)
+		if errors.Is(refreshErr, battlemetrics.ErrPlayerNotFound) {
+			writeError(w, http.StatusNotFound, "battlemetrics profile private")
+			return
+		}
+
 		if canUseCachedProfile {
 			writeJSON(w, http.StatusOK, steamProfileResponseFromCache(account, cachedProfile))
 			return

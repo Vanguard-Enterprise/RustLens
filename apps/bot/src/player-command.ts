@@ -81,12 +81,60 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     return true;
   }
 
-  const profile = await fetchSteamProfileForView(account.steamId);
+  const profileResult = await fetchPlayerProfile(account.steamId);
+  if (profileResult.privateProfile) {
+    await interaction.editReply({ embeds: [buildPrivateProfileEmbed(account.steamId, account.bmId)] });
+    return true;
+  }
+
   await interaction.editReply({
-    embeds: [buildUserEmbed(account.steamId, profile)],
+    embeds: [buildUserEmbed(account.steamId, profileResult.profile)],
     components: buildProfileButtons(account.steamId),
   });
   return true;
+}
+
+async function fetchPlayerProfile(steamId: string) {
+  const { backend, workerId } = getBackend();
+
+  try {
+    return { privateProfile: false as const, profile: await backend.getSteamProfile(workerId, steamId) };
+  } catch (error) {
+    if (isBmPrivateProfileError(error)) {
+      return { privateProfile: true as const, profile: null };
+    }
+
+    return { privateProfile: false as const, profile: await fetchSteamProfileForView(steamId) };
+  }
+}
+
+function isBmPrivateProfileError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const status = "status" in error ? error.status : undefined;
+  const message = "message" in error && typeof error.message === "string" ? error.message : "";
+  return status === 404 && message.includes("battlemetrics profile private");
+}
+
+function buildPrivateProfileEmbed(steamId: string, bmId: string | null) {
+  const embed = new EmbedBuilder()
+    .setTitle("Error")
+    .setDescription("BM profile private")
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+
+  const info: string[] = [
+    `${PLAYER_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`,
+  ];
+  if (bmId) {
+    info.push(`${PLAYER_EMOJIS.battlemetrics} [${bmId}](https://www.battlemetrics.com/players/${bmId})`);
+  }
+
+  embed.addFields({ name: "Information", value: info.join("\n") });
+  return embed;
 }
 
 async function resolveLookupIdentifier(identifier: string) {
@@ -211,5 +259,7 @@ export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
 }
 
 export const __testables = {
+  buildPrivateProfileEmbed,
   buildAnalyticsEmbed,
+  isBmPrivateProfileError,
 };
