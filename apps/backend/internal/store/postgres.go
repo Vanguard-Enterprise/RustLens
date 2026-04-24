@@ -166,12 +166,18 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			bm_servers_played INTEGER NOT NULL DEFAULT 0,
 			name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb,
 			rust_hours BIGINT,
+			game_banned BOOLEAN NOT NULL DEFAULT FALSE,
+			game_banned_at TIMESTAMPTZ,
+			game_ban_checked_at TIMESTAMPTZ,
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_servers_played INTEGER NOT NULL DEFAULT 0;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_banned BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_banned_at TIMESTAMPTZ;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_ban_checked_at TIMESTAMPTZ;
 
 		CREATE INDEX IF NOT EXISTS steam_account_cache_updated_idx
 		ON steam_account_cache (updated_at);

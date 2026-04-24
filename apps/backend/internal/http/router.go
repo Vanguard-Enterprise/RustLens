@@ -103,6 +103,7 @@ func NewRouter(
 
 		// Guild-scoped steam-discord links
 		r.Get("/guilds/{guildID}/online-summary", handler.ListGuildOnlineSummary)
+		r.Get("/guilds/{guildID}/game-bans", handler.CheckGuildGameBans)
 		r.Get("/guilds/{guildID}/tracked-server-log-events", handler.ListGuildTrackedServerLogEvents)
 		r.Post("/guilds/{guildID}/tracked-server-log-events/ack", handler.AckGuildTrackedServerLogEvents)
 		r.Get("/guilds/{guildID}/links", handler.ListGuildLinks)

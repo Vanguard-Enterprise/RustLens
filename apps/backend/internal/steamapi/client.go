@@ -41,6 +41,16 @@ type OwnedGame struct {
 	PlaytimeForever int64
 }
 
+type PlayerBan struct {
+	SteamID          string
+	CommunityBanned  bool
+	VACBanned        bool
+	NumberOfVACBans  int
+	DaysSinceLastBan int
+	NumberOfGameBans int
+	EconomyBan       string
+}
+
 type requestPreparer interface {
 	Prepare() (*http.Client, string, bool)
 }
@@ -278,4 +288,81 @@ func (c *Client) GetOwnedGames(ctx context.Context, steamID string) ([]OwnedGame
 	}
 
 	return games, nil
+}
+
+func (c *Client) GetPlayerBans(ctx context.Context, steamIDs []string) ([]PlayerBan, error) {
+	if len(steamIDs) == 0 {
+		return []PlayerBan{}, nil
+	}
+	if c.apiKey == "" {
+		return nil, ErrSteamAPIKeyRequired
+	}
+
+	normalized := make([]string, 0, len(steamIDs))
+	for _, steamID := range steamIDs {
+		trimmed := strings.TrimSpace(steamID)
+		if !steamIDPattern.MatchString(trimmed) {
+			return nil, ErrUnsupportedProfileInput
+		}
+		normalized = append(normalized, trimmed)
+	}
+
+	endpoint, err := url.Parse(c.baseURL + "/ISteamUser/GetPlayerBans/v1/")
+	if err != nil {
+		return nil, err
+	}
+
+	query := endpoint.Query()
+	query.Set("key", c.apiKey)
+	query.Set("steamids", strings.Join(normalized, ","))
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
+	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("steam returned status %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Players []struct {
+			SteamID          string `json:"SteamId"`
+			CommunityBanned  bool   `json:"CommunityBanned"`
+			VACBanned        bool   `json:"VACBanned"`
+			NumberOfVACBans  int    `json:"NumberOfVACBans"`
+			DaysSinceLastBan int    `json:"DaysSinceLastBan"`
+			NumberOfGameBans int    `json:"NumberOfGameBans"`
+			EconomyBan       string `json:"EconomyBan"`
+		} `json:"players"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	bans := make([]PlayerBan, 0, len(payload.Players))
+	for _, player := range payload.Players {
+		bans = append(bans, PlayerBan{
+			SteamID:          player.SteamID,
+			CommunityBanned:  player.CommunityBanned,
+			VACBanned:        player.VACBanned,
+			NumberOfVACBans:  player.NumberOfVACBans,
+			DaysSinceLastBan: player.DaysSinceLastBan,
+			NumberOfGameBans: player.NumberOfGameBans,
+			EconomyBan:       player.EconomyBan,
+		})
+	}
+
+	return bans, nil
 }

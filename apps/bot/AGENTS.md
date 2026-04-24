@@ -25,6 +25,7 @@ src/
   settings-command.ts   # /settings embed + select-menu/modal flow for guild settings
   bind-command.ts       # /bind fullkit/turret/rocket/c4 registration + modal flow
   wipereact-command.ts  # /wipereact create/delete/missing/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, and logs embeds
+  checkgamebans-command.ts # /checkgamebans guild admin scan of linked Steam IDs for recent game bans
   summon-command.ts     # /summon {scope} — move voice-connected members of a role (or @everyone) into invoker's VC (admin-only)
   announce-command.ts   # /announce {scope} {message} — DM an embed announcement to all members of a role (admin-only)
   view-command.ts       # /view user {discord_user|identifier} and /view all — view guild-linked steam/discord accounts

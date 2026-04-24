@@ -32,6 +32,9 @@ var steamIDPattern = regexp.MustCompile(`^\d{17}$`)
 
 const maxRequestBodyBytes = 1 << 20 // 1 MB
 const steamAccountCacheTTL = 24 * time.Hour
+const steamGameBanCacheTTL = 6 * time.Hour
+const recentGameBanWindow = 90 * 24 * time.Hour
+const steamPlayerBanBatchSize = 100
 
 type Handler struct {
 	cfg                 config.Config
@@ -2209,6 +2212,24 @@ func writeGuildOnlineSummaryList(w http.ResponseWriter, items []store.GuildOnlin
 	writeJSON(w, http.StatusOK, map[string]any{"items": response})
 }
 
+func guildRecentGameBanToMap(item store.GuildRecentGameBan) map[string]any {
+	return map[string]any{
+		"guildId":        item.GuildID,
+		"discordId":      item.DiscordID,
+		"steamId":        item.SteamID,
+		"gameBannedAt":   item.GameBannedAt,
+		"gameBannedUnix": item.GameBannedAt.Unix(),
+	}
+}
+
+func writeGuildRecentGameBanList(w http.ResponseWriter, items []store.GuildRecentGameBan) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, guildRecentGameBanToMap(item))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
 type createGuildLinkRequest struct {
 	DiscordID string `json:"discordId"`
 	SteamID   string `json:"steamId"`
@@ -2355,6 +2376,144 @@ func (h *Handler) ListGuildOnlineSummary(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeGuildOnlineSummaryList(w, items)
+}
+
+func (h *Handler) CheckGuildGameBans(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	links, err := h.postgres.ListGuildLinks(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildLinks error for game ban scan %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild links")
+		return
+	}
+
+	steamIDs := uniqueGuildSteamIDs(links)
+	if len(steamIDs) == 0 {
+		writeGuildRecentGameBanList(w, []store.GuildRecentGameBan{})
+		return
+	}
+
+	cacheRows, err := h.postgres.ListSteamGameBanCache(r.Context(), steamIDs)
+	if err != nil {
+		log.Printf("[backend] ListSteamGameBanCache error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to load game ban cache")
+		return
+	}
+
+	now := time.Now().UTC()
+	cacheBySteamID := make(map[string]store.SteamGameBanCache, len(cacheRows))
+	for _, row := range cacheRows {
+		cacheBySteamID[row.SteamID] = row
+	}
+
+	staleSteamIDs := make([]string, 0)
+	for _, steamID := range steamIDs {
+		cache, ok := cacheBySteamID[steamID]
+		if !ok || cache.GameBanCheckedAt == nil || now.Sub(*cache.GameBanCheckedAt) >= steamGameBanCacheTTL {
+			staleSteamIDs = append(staleSteamIDs, steamID)
+		}
+	}
+
+	if len(staleSteamIDs) > 0 {
+		refreshed, refreshErr := h.refreshSteamGameBanCache(r.Context(), staleSteamIDs, now)
+		if refreshErr != nil {
+			log.Printf("[backend] refreshSteamGameBanCache error for guild %s: %v", guildID, refreshErr)
+			writeError(w, http.StatusInternalServerError, "failed to refresh game ban cache")
+			return
+		}
+		for steamID, cache := range refreshed {
+			cacheBySteamID[steamID] = cache
+		}
+	}
+
+	recent := make([]store.GuildRecentGameBan, 0)
+	for _, link := range links {
+		cache, ok := cacheBySteamID[link.SteamID]
+		if !ok || !cache.GameBanned || cache.GameBannedAt == nil {
+			continue
+		}
+		if now.Sub(*cache.GameBannedAt) > recentGameBanWindow {
+			continue
+		}
+		recent = append(recent, store.GuildRecentGameBan{
+			GuildID:      link.GuildID,
+			DiscordID:    link.DiscordID,
+			SteamID:      link.SteamID,
+			GameBannedAt: *cache.GameBannedAt,
+		})
+	}
+
+	sort.SliceStable(recent, func(i, j int) bool {
+		return recent[i].GameBannedAt.After(recent[j].GameBannedAt)
+	})
+
+	writeGuildRecentGameBanList(w, recent)
+}
+
+func uniqueGuildSteamIDs(links []store.GuildSteamDiscordLink) []string {
+	seen := make(map[string]struct{}, len(links))
+	steamIDs := make([]string, 0, len(links))
+	for _, link := range links {
+		if _, ok := seen[link.SteamID]; ok {
+			continue
+		}
+		seen[link.SteamID] = struct{}{}
+		steamIDs = append(steamIDs, link.SteamID)
+	}
+	sort.Strings(steamIDs)
+	return steamIDs
+}
+
+func (h *Handler) refreshSteamGameBanCache(
+	ctx context.Context,
+	steamIDs []string,
+	now time.Time,
+) (map[string]store.SteamGameBanCache, error) {
+	refreshed := make(map[string]store.SteamGameBanCache, len(steamIDs))
+	for start := 0; start < len(steamIDs); start += steamPlayerBanBatchSize {
+		end := start + steamPlayerBanBatchSize
+		if end > len(steamIDs) {
+			end = len(steamIDs)
+		}
+
+		batch := steamIDs[start:end]
+		bans, err := h.steamClient.GetPlayerBans(ctx, batch)
+		if err != nil {
+			return nil, err
+		}
+
+		banBySteamID := make(map[string]steamapi.PlayerBan, len(bans))
+		for _, ban := range bans {
+			banBySteamID[ban.SteamID] = ban
+		}
+
+		for _, steamID := range batch {
+			ban, ok := banBySteamID[steamID]
+			gameBannedAt := (*time.Time)(nil)
+			gameBanned := ok && ban.NumberOfGameBans > 0
+			if gameBanned {
+				banTime := now.Add(-time.Duration(ban.DaysSinceLastBan) * 24 * time.Hour)
+				gameBannedAt = &banTime
+			}
+
+			if err := h.postgres.UpsertSteamAccountGameBanCache(ctx, steamID, gameBanned, gameBannedAt, now); err != nil {
+				return nil, err
+			}
+
+			refreshed[steamID] = store.SteamGameBanCache{
+				SteamID:          steamID,
+				GameBanned:       gameBanned,
+				GameBannedAt:     gameBannedAt,
+				GameBanCheckedAt: &now,
+			}
+		}
+	}
+
+	return refreshed, nil
 }
 
 type trackedServerLogEventResponse struct {

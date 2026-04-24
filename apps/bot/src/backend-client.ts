@@ -208,6 +208,18 @@ export type GuildOnlineSummaryListResponse = {
   items: GuildOnlineSummaryItem[];
 };
 
+export type GuildRecentGameBan = {
+  guildId: string;
+  discordId: string;
+  steamId: string;
+  gameBannedAt: string;
+  gameBannedUnix: number;
+};
+
+export type GuildRecentGameBanListResponse = {
+  items: GuildRecentGameBan[];
+};
+
 export type TrackedServerLogEvent = {
   id: number;
   serverBmId: string;
@@ -701,6 +713,14 @@ export class BackendClient {
     return this.call<GuildOnlineSummaryListResponse>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/online-summary`,
+      "GET",
+    );
+  }
+
+  listGuildRecentGameBans(workerId: string, guildId: string) {
+    return this.call<GuildRecentGameBanListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/game-bans`,
       "GET",
     );
   }

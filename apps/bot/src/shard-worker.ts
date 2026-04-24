@@ -14,6 +14,10 @@ import {
   handleBindModalSubmit,
 } from "./bind-command.js";
 import {
+  ensureCheckGameBansCommand,
+  handleCheckGameBansChatInput,
+} from "./checkgamebans-command.js";
+import {
   ensureCompareCommand,
   handleCompareAutocomplete,
   handleCompareChatInput,
@@ -89,6 +93,7 @@ client.once("clientReady", () => {
   Promise.allSettled([
     ensureAdminCommand(client, shardID),
     ensureBindCommand(client, shardID),
+    ensureCheckGameBansCommand(client, shardID),
     ensureCompareCommand(client, shardID),
     ensureWipeReactCommand(client, shardID),
     ensureSummonCommand(client, shardID),
@@ -151,6 +156,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleViewChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleCheckGameBansChatInput(interaction)) {
         return;
       }
 

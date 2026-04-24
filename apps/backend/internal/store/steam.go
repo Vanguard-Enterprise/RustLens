@@ -29,22 +29,32 @@ type SteamAccount struct {
 }
 
 type SteamAccountCache struct {
-	SteamID         string
-	BmID            string
-	BmName          string
-	AvatarImage     string
-	FirstSeenAt     *time.Time
-	VitalityHours   int64
-	AtlasHours      int64
-	VitalHours      int64
-	ModdedHours     int64
-	OfficialHours   int64
-	BuildHours      int64
-	BmHours         int64
-	BmServersPlayed int
-	NameGaps        []NameGap
-	RustHours       *int64
-	UpdatedAt       time.Time
+	SteamID          string
+	BmID             string
+	BmName           string
+	AvatarImage      string
+	FirstSeenAt      *time.Time
+	VitalityHours    int64
+	AtlasHours       int64
+	VitalHours       int64
+	ModdedHours      int64
+	OfficialHours    int64
+	BuildHours       int64
+	BmHours          int64
+	BmServersPlayed  int
+	NameGaps         []NameGap
+	RustHours        *int64
+	GameBanned       bool
+	GameBannedAt     *time.Time
+	GameBanCheckedAt *time.Time
+	UpdatedAt        time.Time
+}
+
+type SteamGameBanCache struct {
+	SteamID          string
+	GameBanned       bool
+	GameBannedAt     *time.Time
+	GameBanCheckedAt *time.Time
 }
 
 type SteamDiscordLink struct {
@@ -53,6 +63,13 @@ type SteamDiscordLink struct {
 	Type      string
 	Source    string
 	CreatedAt time.Time
+}
+
+type GuildRecentGameBan struct {
+	GuildID      string
+	DiscordID    string
+	SteamID      string
+	GameBannedAt time.Time
 }
 
 func scanSteamAccount(scanner rowScanner) (SteamAccount, error) {
@@ -83,6 +100,9 @@ func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
 		&record.BmServersPlayed,
 		&nameGapsJSON,
 		&record.RustHours,
+		&record.GameBanned,
+		&record.GameBannedAt,
+		&record.GameBanCheckedAt,
 		&record.UpdatedAt,
 	)
 	if err != nil {
@@ -166,7 +186,8 @@ func (p *PostgresStore) GetSteamAccountByBmID(ctx context.Context, bmID string) 
 func (p *PostgresStore) GetSteamAccountCache(ctx context.Context, steamID string) (SteamAccountCache, error) {
 	record, err := scanSteamAccountCache(p.pool.QueryRow(ctx, `
 		SELECT steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
-			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours, updated_at
+			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours,
+			game_banned, game_banned_at, game_ban_checked_at, updated_at
 		FROM steam_account_cache
 		WHERE steam_id = $1
 	`, steamID))
@@ -212,7 +233,8 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 			rust_hours = EXCLUDED.rust_hours,
 			updated_at = NOW()
 		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
-			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours, updated_at
+			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours,
+			game_banned, game_banned_at, game_ban_checked_at, updated_at
 	`,
 		cache.SteamID,
 		cache.BmID,
@@ -230,6 +252,51 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 		nameGapsJSON,
 		cache.RustHours,
 	))
+}
+
+func (p *PostgresStore) ListSteamGameBanCache(ctx context.Context, steamIDs []string) ([]SteamGameBanCache, error) {
+	if len(steamIDs) == 0 {
+		return []SteamGameBanCache{}, nil
+	}
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT steam_id, game_banned, game_banned_at, game_ban_checked_at
+		FROM steam_account_cache
+		WHERE steam_id = ANY($1)
+	`, steamIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]SteamGameBanCache, 0, len(steamIDs))
+	for rows.Next() {
+		var record SteamGameBanCache
+		if err := rows.Scan(&record.SteamID, &record.GameBanned, &record.GameBannedAt, &record.GameBanCheckedAt); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+
+	return records, rows.Err()
+}
+
+func (p *PostgresStore) UpsertSteamAccountGameBanCache(
+	ctx context.Context,
+	steamID string,
+	gameBanned bool,
+	gameBannedAt *time.Time,
+	checkedAt time.Time,
+) error {
+	_, err := p.pool.Exec(ctx, `
+		INSERT INTO steam_account_cache (steam_id, game_banned, game_banned_at, game_ban_checked_at)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (steam_id) DO UPDATE
+		SET game_banned = EXCLUDED.game_banned,
+			game_banned_at = EXCLUDED.game_banned_at,
+			game_ban_checked_at = EXCLUDED.game_ban_checked_at
+	`, steamID, gameBanned, gameBannedAt, checkedAt)
+	return err
 }
 
 func (p *PostgresStore) CreateSteamDiscordLink(ctx context.Context, link SteamDiscordLink) (SteamDiscordLink, error) {

@@ -1083,6 +1083,34 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}/game-bans": map[string]any{
+				"get": map[string]any{
+					"summary":     "Check guild game bans",
+					"description": "Refreshes stale Steam game-ban cache entries for guild-linked Steam IDs using a 6 hour TTL and returns only game bans from the last 90 days.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Recent guild game bans returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildRecentGameBanListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/guilds/{guildID}/links": map[string]any{
 				"get": map[string]any{
 					"summary":     "List all guild steam-discord links",
@@ -1518,6 +1546,27 @@ func buildOpenAPIDocument() map[string]any {
 						"items": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"$ref": "#/components/schemas/GuildOnlineSummaryItem"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"GuildRecentGameBan": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId":        map[string]any{"type": "string"},
+						"discordId":      map[string]any{"type": "string"},
+						"steamId":        map[string]any{"type": "string"},
+						"gameBannedAt":   map[string]any{"type": "string", "format": "date-time"},
+						"gameBannedUnix": map[string]any{"type": "integer"},
+					},
+					"required": []string{"guildId", "discordId", "steamId", "gameBannedAt", "gameBannedUnix"},
+				},
+				"GuildRecentGameBanListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/GuildRecentGameBan"},
 						},
 					},
 					"required": []string{"items"},
