@@ -116,7 +116,8 @@ registerUserGuildSync(client);
 
 async function updateSteamAccountPresence() {
   const response = await backend.steamAccountCount(statusWorkerID);
-  await client.user?.setActivity(`${response.count} users`, { type: ActivityType.Watching });
+  const formattedCount = response.count.toLocaleString("en-US");
+  await client.user?.setActivity(`${formattedCount} users`, { type: ActivityType.Watching });
 }
 
 client.once("clientReady", () => {
