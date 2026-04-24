@@ -86,7 +86,7 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
     return true;
   }
 
-  await interaction.deferReply();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
     const response = await getBackend().listGuildRecentGameBans(getWorkerID(), interaction.guildId);

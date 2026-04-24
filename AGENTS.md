@@ -163,7 +163,7 @@ apps/bot/src/
   bind-command.ts       # /bind fullkit/turret/rocket/c4 modal registration + submit handling
   setsteam-command.ts   # /setsteam {steam_id} — user self-service guild soft-linking for Steam IDs
   player-command.ts     # /player {identifier} — public player profile lookup by Steam ID, supported steamcommunity.com profile URL, or BattleMetrics ID
-  checkgamebans-command.ts # /checkgamebans — guild admin scan of linked Steam IDs for recent Steam game bans using 6h cache TTL
+  checkgamebans-command.ts # /checkgamebans — guild admin scan of linked Steam IDs for recent Steam game bans using 6h cache TTL, replied ephemerally
   wipereact-command.ts  # /wipereact create/delete/notreacted/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, and logs embeds
   summon-command.ts     # /summon {scope} — move all online voice members of a role into the invoker's voice channel (admin-only)
   announce-command.ts   # /announce {scope} {message} — DM an embed announcement to all members of a role except the invoker (admin-only)
