@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, MessageFlags } from "discord.js";
+import { ActivityType, Client, GatewayIntentBits, MessageFlags } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import {
@@ -109,7 +109,7 @@ registerUserGuildSync(client);
 
 async function updateSteamAccountPresence() {
   const response = await backend.steamAccountCount(statusWorkerID);
-  await client.user?.setActivity(`tracking ${response.count} users`);
+  await client.user?.setActivity(`${response.count} users`, { type: ActivityType.Watching });
 }
 
 client.once("clientReady", () => {
