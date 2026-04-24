@@ -112,7 +112,7 @@ export function buildLogEmbed(event: TrackedServerLogEvent) {
   const embed = new EmbedBuilder()
     .setTitle(title)
     .setColor(color)
-    .setTimestamp(new Date(event.occurredUnix * 1000))
+    .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
     .addFields({ name: "Information", value: lines.join("\n") });
 
