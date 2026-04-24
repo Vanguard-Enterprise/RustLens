@@ -1546,6 +1546,54 @@ func (h *Handler) ListPlayerStatesByPlayer(w http.ResponseWriter, r *http.Reques
 	writePlayerStateList(w, items)
 }
 
+func (h *Handler) SearchPlayerStatesOnServer(w http.ResponseWriter, r *http.Request) {
+	serverID := strings.TrimSpace(chi.URLParam(r, "serverID"))
+	if serverID == "" {
+		writeError(w, http.StatusBadRequest, "serverID is required")
+		return
+	}
+
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "q is required")
+		return
+	}
+
+	limit := 50
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		if parsed > 100 {
+			parsed = 100
+		}
+		limit = parsed
+	}
+
+	items, err := h.postgres.SearchPlayerStatesByName(r.Context(), serverID, query, limit)
+	if err != nil {
+		log.Printf("[backend] SearchPlayerStatesByName error for %s/%q: %v", serverID, query, err)
+		writeError(w, http.StatusInternalServerError, "failed to search player states")
+		return
+	}
+
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, map[string]any{
+			"serverBmId": item.ServerBmID,
+			"serverName": item.ServerName,
+			"playerBmId": item.PlayerBmID,
+			"steamId":    item.SteamID,
+			"bmName":     item.BmName,
+			"isOnline":   item.IsOnline,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
 func (h *Handler) GetPlayerState(w http.ResponseWriter, r *http.Request) {
 	serverID := strings.TrimSpace(chi.URLParam(r, "serverID"))
 	if serverID == "" {

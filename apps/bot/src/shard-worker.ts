@@ -56,6 +56,11 @@ import {
   handleSetSteamChatInput,
 } from "./setsteam-command.js";
 import {
+  ensureSearchCommand,
+  handleSearchAutocomplete,
+  handleSearchChatInput,
+} from "./search-command.js";
+import {
   ensureServerCommand,
   handleServerAutocomplete,
   handleServerChatInput,
@@ -149,6 +154,7 @@ client.once("clientReady", () => {
     ensureServerCommand(client, shardID),
     ensureBanCommand(client, shardID),
     ensureTransferCommand(client, shardID),
+    ensureSearchCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
   ]).then((results) => {
     for (const result of results) {
@@ -190,6 +196,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleServerAutocomplete(interaction)) {
+        return;
+      }
+
+      if (await handleSearchAutocomplete(interaction)) {
         return;
       }
     }
@@ -238,6 +248,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handlePlayerChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleSearchChatInput(interaction)) {
         return;
       }
 

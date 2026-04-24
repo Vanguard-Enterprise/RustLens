@@ -297,6 +297,19 @@ export type PlayerStateListResponse = {
   items: PlayerState[];
 };
 
+export type PlayerSearchResult = {
+  serverBmId: string;
+  serverName: string;
+  playerBmId: string;
+  steamId: string;
+  bmName: string;
+  isOnline: boolean;
+};
+
+export type PlayerSearchListResponse = {
+  items: PlayerSearchResult[];
+};
+
 export type BulkHardLinkEntry = {
   steamId: string;
   bmId?: string | null;
@@ -607,6 +620,15 @@ export class BackendClient {
     return this.call<PlayerStateListResponse>(
       workerId,
       `/api/internal/bot/setup/player-states/servers/${serverId}`,
+      "GET",
+    );
+  }
+
+  searchPlayerStatesByName(workerId: string, serverId: string, query: string, limit: number) {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    return this.call<PlayerSearchListResponse>(
+      workerId,
+      `/api/internal/bot/setup/player-states/servers/${serverId}/search?${params.toString()}`,
       "GET",
     );
   }

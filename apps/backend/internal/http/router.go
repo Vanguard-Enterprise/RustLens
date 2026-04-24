@@ -87,6 +87,7 @@ func NewRouter(
 		r.Put("/tracked-servers/{bmID}", handler.UpdateTrackedServer)
 		r.Delete("/tracked-servers/{bmID}", handler.DeleteTrackedServer)
 		r.Get("/player-states/servers/{serverID}", handler.ListOnlinePlayerStatesByServer)
+		r.Get("/player-states/servers/{serverID}/search", handler.SearchPlayerStatesOnServer)
 		r.Get("/player-states/servers/{serverID}/players/{playerID}", handler.GetPlayerState)
 		r.Get("/player-states/players/{playerID}", handler.ListPlayerStatesByPlayer)
 
