@@ -1817,7 +1817,7 @@ type steamAnalyticsResponse struct {
 	Gaps         []steamAnalyticsGap    `json:"gaps"`
 }
 
-const analyticsGapThreshold = 60 * 24 * time.Hour // ~2 months
+const analyticsGapThreshold = 30 * 24 * time.Hour // ~1 month
 
 func (h *Handler) GetSteamAnalytics(w http.ResponseWriter, r *http.Request) {
 	steamID := chi.URLParam(r, "steamID")
