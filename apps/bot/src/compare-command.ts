@@ -169,6 +169,54 @@ function buildWipeReactComparisonEmbed(
   return embed;
 }
 
+function buildWipeReactServerComparisonEmbed(
+  wipeReact: WipeReact,
+  serverName: string,
+  acceptedNotOnServer: readonly string[],
+  lateNotOnServer: readonly string[],
+  declinedOnServer: readonly string[],
+) {
+  const outOfSyncCount = new Set([
+    ...acceptedNotOnServer,
+    ...lateNotOnServer,
+    ...declinedOnServer,
+  ]).size;
+
+  const embed = buildBaseEmbed(
+    "Wipe React vs Server Comparison",
+    `**Compared Against**\n${wipeReact.name} | ${formatWipeReactDate(wipeReact)} | \`${wipeReact.messageId}\`\n${serverName}\n\n${outOfSyncCount} users found out of sync`,
+  );
+
+  const fields: APIEmbedField[] = [];
+  if (acceptedNotOnServer.length > 0) {
+    fields.push({
+      name: "✅ Accepted - Not on Server",
+      value: formatUserLines(acceptedNotOnServer),
+      inline: false,
+    });
+  }
+  if (lateNotOnServer.length > 0) {
+    fields.push({
+      name: "⏰ Late - Not on Server",
+      value: formatUserLines(lateNotOnServer),
+      inline: false,
+    });
+  }
+  if (declinedOnServer.length > 0) {
+    fields.push({
+      name: "❌ Declined - On Server",
+      value: formatUserLines(declinedOnServer),
+      inline: false,
+    });
+  }
+
+  if (fields.length > 0) {
+    embed.addFields(fields);
+  }
+
+  return embed;
+}
+
 function buildServerComparisonEmbed(
   serverName: string,
   needToJoinServer: readonly string[],
@@ -392,6 +440,69 @@ async function handleServerComparison(
   return true;
 }
 
+async function handleWipeReactServerComparison(
+  interaction: ChatInputCommandInteraction,
+  wipeReactMessageId: string,
+  serverId: string,
+) {
+  const backend = getBackend();
+  const workerId = getWorkerID();
+  const [wipeReact, trackedServers, playerStates, mappings] = await Promise.all([
+    resolveSelectedWipeReact(interaction.guildId!, wipeReactMessageId),
+    listTrackedServers(),
+    backend.listOnlinePlayerStatesByServer(workerId, serverId),
+    resolveGuildMappings(interaction.guildId!),
+  ]);
+
+  if (!wipeReact) {
+    await interaction.editReply({
+      content: "No passed wipe react was found for this server.",
+      embeds: [],
+    });
+    return true;
+  }
+
+  const server = trackedServers.find((item) => item.bmId === serverId) ?? null;
+  const serverName = server?.name ?? playerStates.items[0]?.serverName ?? serverId;
+  const onlineBmIds = new Set(playerStates.items.map((item) => item.playerBmId));
+  const onlineDiscordIds = new Set<string>();
+
+  for (const bmId of onlineBmIds) {
+    const discordIds = mappings.bmToDiscordIds.get(bmId);
+    if (!discordIds) {
+      continue;
+    }
+
+    for (const discordId of discordIds) {
+      onlineDiscordIds.add(discordId);
+    }
+  }
+
+  const acceptedNotOnServer = uniqueSorted(
+    wipeReact.acceptedUserIds.filter((userId) => !onlineDiscordIds.has(userId)),
+  );
+  const lateNotOnServer = uniqueSorted(
+    wipeReact.lateUserIds.filter((userId) => !onlineDiscordIds.has(userId)),
+  );
+  const declinedSet = new Set(wipeReact.declinedUserIds);
+  const declinedOnServer = uniqueSorted(
+    [...onlineDiscordIds].filter((userId) => declinedSet.has(userId)),
+  );
+
+  await interaction.editReply({
+    embeds: [
+      buildWipeReactServerComparisonEmbed(
+        wipeReact,
+        serverName,
+        acceptedNotOnServer,
+        lateNotOnServer,
+        declinedOnServer,
+      ),
+    ],
+  });
+  return true;
+}
+
 export async function ensureCompareCommand(client: Client, shardID: number) {
   if (shardID !== 0 || !client.application) {
     return;
@@ -477,6 +588,10 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
 
   await interaction.deferReply();
 
+  if (wipeReactMessageId && serverId) {
+    return handleWipeReactServerComparison(interaction, wipeReactMessageId, serverId);
+  }
+
   if (wipeReactMessageId || !serverId) {
     const comparisonMembers = await fetchComparisonMembers(interaction);
     if (!comparisonMembers) {
@@ -502,6 +617,7 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
 export const __testables = {
   buildServerComparisonEmbed,
   buildWipeReactComparisonEmbed,
+  buildWipeReactServerComparisonEmbed,
   filterChoices,
   formatWipeReactChoiceName,
 };
