@@ -4,7 +4,9 @@ import type {
   Client,
 } from "discord.js";
 import {
+  ApplicationIntegrationType,
   EmbedBuilder,
+  InteractionContextType,
   MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
@@ -33,6 +35,8 @@ const searchCommand = new SlashCommandBuilder()
   .setName(SEARCH_COMMAND_NAME)
   .setDescription("Search players by name on a tracked server")
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
   .addStringOption((option) =>
     option
       .setName(SEARCH_STRING_OPTION_NAME)
