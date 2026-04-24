@@ -135,7 +135,10 @@ function formatHours(hours: number | null | undefined) {
 }
 
 function formatRustHours(hours: number | null | undefined) {
-  return hours === null || hours === undefined ? "**private**" : `**${hours}** hours`;
+  if (hours === null || hours === undefined || hours === 0) {
+    return "**private**";
+  }
+  return `**${hours}** hours`;
 }
 
 type RiskLevel = keyof typeof RISK_EMOJIS;
@@ -148,12 +151,12 @@ function riskEmoji(level: number) {
 function calculateSteamBmHourRisk(profile: SteamProfile | null) {
   const steamHours = profile?.hours.rust;
   const bmHours = profile?.hours.bm;
-  if (steamHours === null || steamHours === undefined || bmHours === undefined) {
+  if (steamHours === null || steamHours === undefined || steamHours === 0 || bmHours === undefined) {
     return null;
   }
 
   const difference = Math.max(0, steamHours - bmHours);
-  if (difference === 0 || steamHours <= 0) {
+  if (difference === 0) {
     return { level: 0, difference };
   }
 

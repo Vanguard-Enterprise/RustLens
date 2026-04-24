@@ -149,20 +149,24 @@ export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
   embed.addFields({ name: "Information", value: info.join("\n") });
 
   if (analytics.gaps.length > 0) {
-    const gapLines = analytics.gaps.map((gap) => `<t:${gap.fromUnix}:R> - <t:${gap.toUnix}:R>`);
+    const sortedGaps = [...analytics.gaps].sort((a, b) => b.toUnix - a.toUnix);
+    const gapLines = sortedGaps.map((gap) => `<t:${gap.fromUnix}:R> - <t:${gap.toUnix}:R>`);
     embed.addFields({ name: "**Did not play:**", value: gapLines.join("\n") });
   }
 
   if (analytics.totalGames !== null && analytics.topGames.length > 0) {
-    const gameLines = analytics.topGames.map((game) => `${game.name} **${game.hours}** hours`);
+    const hasPlaytime = analytics.topGames.some((game) => game.hours > 0);
+    const value = hasPlaytime
+      ? analytics.topGames.map((game) => `> * ${game.name} **${game.hours}** hours`).join("\n")
+      : "*Playtime is private*";
     embed.addFields({
       name: `Games owned: ${analytics.totalGames}`,
-      value: gameLines.join("\n"),
+      value,
     });
   }
 
   if (analytics.topServers.length > 0) {
-    const serverLines = analytics.topServers.map((server) => `${server.name} **${server.hours}** hours`);
+    const serverLines = analytics.topServers.map((server) => `> * ${server.name} **${server.hours}** hours`);
     embed.addFields({
       name: `Servers played: ${analytics.totalServers}`,
       value: serverLines.join("\n"),
