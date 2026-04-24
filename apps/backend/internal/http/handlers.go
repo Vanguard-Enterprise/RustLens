@@ -1559,15 +1559,15 @@ func (h *Handler) SearchPlayerStatesOnServer(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	limit := 50
+	limit := 20
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed <= 0 {
 			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
 			return
 		}
-		if parsed > 100 {
-			parsed = 100
+		if parsed > 20 {
+			parsed = 20
 		}
 		limit = parsed
 	}

@@ -125,7 +125,7 @@ func (p *PostgresStore) GetPlayerState(ctx context.Context, serverBmID string, p
 
 func (p *PostgresStore) SearchPlayerStatesByName(ctx context.Context, serverBmID string, query string, limit int) ([]PlayerSearchResult, error) {
 	if limit <= 0 {
-		limit = 50
+		limit = 20
 	}
 
 	rows, err := p.pool.Query(ctx, `
@@ -141,8 +141,9 @@ func (p *PostgresStore) SearchPlayerStatesByName(ctx context.Context, serverBmID
 		JOIN steam_accounts sa ON sa.bm_id = ps.player_bm_id
 		LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
 		WHERE ps.server_bm_id = $1
+			AND ps.is_online = TRUE
 			AND COALESCE(sac.bm_name, '') ILIKE '%' || $2 || '%'
-		ORDER BY ps.is_online DESC, COALESCE(sac.bm_name, '') ASC, sa.steam_id ASC
+		ORDER BY COALESCE(sac.bm_name, '') ASC, sa.steam_id ASC
 		LIMIT $3
 	`, serverBmID, query, limit)
 	if err != nil {

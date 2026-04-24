@@ -25,7 +25,7 @@ export const SEARCH_COMMAND_NAME = "search";
 
 const SEARCH_STRING_OPTION_NAME = "string";
 const SEARCH_SERVER_OPTION_NAME = "server";
-const SEARCH_RESULT_LIMIT = 50;
+const SEARCH_RESULT_LIMIT = 20;
 
 const shardID = process.env.SHARD_ID ?? "0";
 
@@ -190,7 +190,7 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
       embeds: [
         buildSearchEmbed(
           "No matches",
-          `No players found with **${query}** in their name on this server.`,
+          `No online players found with **${query}** in their name on this server.`,
         ),
       ],
     });
