@@ -72,6 +72,12 @@ import {
   handleSummonChatInput,
 } from "./summon-command.js";
 import {
+  ensureTransferCommand,
+  handleTransferButtonInteraction,
+  handleTransferChatInput,
+  handleTransferModalSubmit,
+} from "./transfer-command.js";
+import {
   ensureViewCommand,
   handleViewChatInput,
 } from "./view-command.js";
@@ -140,6 +146,7 @@ client.once("clientReady", () => {
     ensureViewCommand(client, shardID),
     ensureServerCommand(client, shardID),
     ensureBanCommand(client, shardID),
+    ensureTransferCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
   ]).then((results) => {
     for (const result of results) {
@@ -244,6 +251,10 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleTransferChatInput(interaction)) {
+        return;
+      }
+
       if (await handleBindChatInput(interaction)) {
         return;
       }
@@ -288,6 +299,10 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleTransferModalSubmit(interaction)) {
+        return;
+      }
+
       await handleSettingsModalSubmit(interaction);
       return;
     }
@@ -303,6 +318,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handlePlayerButtonInteraction(interaction)) {
+        return;
+      }
+
+      if (await handleTransferButtonInteraction(interaction)) {
         return;
       }
 

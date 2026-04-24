@@ -175,6 +175,7 @@ apps/bot/src/
   server-command.ts     # /server add|edit|remove|list — owner-only tracked BattleMetrics server management in the control guild with add/edit modals, a guild-settings visibility toggle, and autocomplete-backed selection
   ban-command.ts        # /ban {user} — owner-only restriction command in the control guild; modal with 6 feature category checkboxes that toggles `user_bans.categories` on the backend
   ban-categories.ts     # Canonical 6 ban categories plus maps from (commandName, subcommand) and interaction customId prefixes to a category
+  transfer-command.ts   # /transfer — guild-admin-only per-guild command that ingests Hexaytron /summary embed messages (by message ID) and bulk-creates global soft Steam/Discord links + guild-scoped links from them
   ban-check.ts          # In-memory TTL cache of per-user ban categories plus `enforceBan` / `enforceBanForAutocomplete` helpers used by the interaction dispatcher to short-circuit banned users with a red #d31239 "Error — You have been banned" embed
 ```
 

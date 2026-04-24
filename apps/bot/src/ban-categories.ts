@@ -23,6 +23,7 @@ export function labelForCategory(value: string): string {
 const COMMAND_CATEGORY_MAP: Record<string, BanCategory> = {
   settings: "setup",
   server: "setup",
+  transfer: "setup",
   setsteam: "linking",
   nickname: "linking",
   "admin:setsteam": "linking",
@@ -49,7 +50,11 @@ export function resolveCommandCategory(commandName: string, subcommand: string |
 }
 
 export function resolveCustomIdCategory(customId: string): BanCategory | null {
-  if (customId.startsWith("settings:") || customId.startsWith("server_modal:")) {
+  if (
+    customId.startsWith("settings:") ||
+    customId.startsWith("server_modal:") ||
+    customId.startsWith("transfer:")
+  ) {
     return "setup";
   }
   if (customId.startsWith("wipereact_") || customId.startsWith("bind_")) {
