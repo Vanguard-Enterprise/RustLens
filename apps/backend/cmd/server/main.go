@@ -59,6 +59,7 @@ func main() {
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
 		battlemetrics.NewClient("", outboundProvider),
+		battlemetrics.NewClient(cfg.BattleMetricsAPIKey, directProvider),
 	)
 	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient("", outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)

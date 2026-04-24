@@ -119,6 +119,178 @@ func TestFetchServerPlayersLogsSelectedProxy(t *testing.T) {
 	}
 }
 
+func TestFetchPlayerProfileParsesSteamIDIdentifier(t *testing.T) {
+	client := &Client{
+		baseURL: "https://api.battlemetrics.com",
+		provider: staticProvider{client: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				body := `{
+					"data": {
+						"type": "player",
+						"id": "918543318",
+						"attributes": {
+							"name": "Kappu",
+							"createdAt": "2019-12-15T15:49:15.568Z"
+						}
+					},
+					"included": [
+						{
+							"type": "identifier",
+							"id": "272422867",
+							"attributes": {
+								"type": "steamID",
+								"identifier": "76561198888013469"
+							}
+						},
+						{
+							"type": "identifier",
+							"id": "272422868",
+							"attributes": {
+								"type": "name",
+								"identifier": "Kappu",
+								"lastSeen": "2026-04-24T02:38:08.723Z"
+							}
+						}
+					]
+				}`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Header:     make(http.Header),
+				}, nil
+			}),
+		}},
+	}
+
+	profile, err := client.FetchPlayerProfile(context.Background(), "918543318")
+	if err != nil {
+		t.Fatalf("FetchPlayerProfile returned error: %v", err)
+	}
+
+	if profile.SteamID != "76561198888013469" {
+		t.Fatalf("unexpected steam id: %s", profile.SteamID)
+	}
+	if len(profile.NameIdentifiers) != 1 || profile.NameIdentifiers[0].Name != "Kappu" {
+		t.Fatalf("unexpected name identifiers: %#v", profile.NameIdentifiers)
+	}
+}
+
+func TestQuickMatchPlayerProfileBySteamIDUsesAuthorizedPost(t *testing.T) {
+	var capturedMethod string
+	var capturedAuth string
+	var capturedAccept string
+	var capturedContentType string
+	var capturedQuery string
+	var capturedBody string
+
+	client := &Client{
+		baseURL: "https://api.battlemetrics.com",
+		apiKey:  "test-api-key",
+		provider: staticProvider{client: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				capturedMethod = request.Method
+				capturedAuth = request.Header.Get("Authorization")
+				capturedAccept = request.Header.Get("Accept")
+				capturedContentType = request.Header.Get("Content-Type")
+				capturedQuery = request.URL.RawQuery
+				body, err := io.ReadAll(request.Body)
+				if err != nil {
+					return nil, err
+				}
+				capturedBody = string(body)
+
+				responseBody := `{
+					"data": [
+						{
+							"type": "identifier",
+							"attributes": {
+								"type": "steamID",
+								"identifier": "76561198888013469"
+							},
+							"relationships": {
+								"player": {
+									"data": {
+										"type": "player",
+										"id": "918543318"
+									}
+								}
+							}
+						}
+					],
+					"included": [
+						{
+							"type": "player",
+							"id": "918543318",
+							"attributes": {
+								"name": "Kappu"
+							}
+						},
+						{
+							"type": "server",
+							"id": "16741517",
+							"attributes": {
+								"name": "Atlas"
+							},
+							"meta": {
+								"timePlayed": 7200
+							}
+						},
+						{
+							"type": "identifier",
+							"id": "272422868",
+							"attributes": {
+								"type": "name",
+								"identifier": "Kappu"
+							}
+						}
+					]
+				}`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(responseBody)),
+					Header:     make(http.Header),
+				}, nil
+			}),
+		}},
+	}
+
+	profile, err := client.QuickMatchPlayerProfileBySteamID(context.Background(), "76561198888013469")
+	if err != nil {
+		t.Fatalf("QuickMatchPlayerProfileBySteamID returned error: %v", err)
+	}
+
+	if capturedMethod != http.MethodPost {
+		t.Fatalf("unexpected method: %s", capturedMethod)
+	}
+	if capturedAuth != "Bearer test-api-key" {
+		t.Fatalf("unexpected auth header: %s", capturedAuth)
+	}
+	if capturedAccept != "application/json" {
+		t.Fatalf("unexpected accept header: %s", capturedAccept)
+	}
+	if capturedContentType != "application/json" {
+		t.Fatalf("unexpected content-type header: %s", capturedContentType)
+	}
+	if capturedQuery != "include=player,server,identifier" {
+		t.Fatalf("unexpected query string: %s", capturedQuery)
+	}
+	if !strings.Contains(capturedBody, `"identifier":"76561198888013469"`) {
+		t.Fatalf("unexpected request body: %s", capturedBody)
+	}
+	if profile.BmID != "918543318" {
+		t.Fatalf("unexpected bm id: %s", profile.BmID)
+	}
+	if profile.SteamID != "76561198888013469" {
+		t.Fatalf("unexpected steam id: %s", profile.SteamID)
+	}
+	if profile.BmName != "Kappu" {
+		t.Fatalf("unexpected bm name: %s", profile.BmName)
+	}
+	if len(profile.Servers) != 1 || profile.Servers[0].ServerID != "16741517" {
+		t.Fatalf("unexpected servers: %#v", profile.Servers)
+	}
+}
+
 type staticProvider struct {
 	client   *http.Client
 	endpoint string

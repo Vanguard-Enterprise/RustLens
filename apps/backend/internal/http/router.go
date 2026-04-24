@@ -36,8 +36,9 @@ func NewRouter(
 	steamClient *steamapi.Client,
 	steamSummaryClient *steamapi.Client,
 	battleMetricsClient *battlemetrics.Client,
+	authBattleMetricsClient *battlemetrics.Client,
 ) http.Handler {
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient)
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, authBattleMetricsClient)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)

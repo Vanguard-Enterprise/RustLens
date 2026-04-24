@@ -37,19 +37,20 @@ const recentGameBanWindow = 90 * 24 * time.Hour
 const steamPlayerBanBatchSize = 100
 
 type Handler struct {
-	cfg                 config.Config
-	postgres            *store.PostgresStore
-	redis               *store.RedisStore
-	shardService        *shards.Service
-	jwtValidator        *auth.Validator
-	steamClient         *steamapi.Client
-	steamSummaryClient  *steamapi.Client
-	battleMetricsClient *battlemetrics.Client
-	rbacStore           *rbac.Store
-	rbacResolver        *rbac.Resolver
-	auditStore          *audit.Store
-	actionRegistry      *actions.Registry
-	actionDispatcher    *actions.Dispatcher
+	cfg                     config.Config
+	postgres                *store.PostgresStore
+	redis                   *store.RedisStore
+	shardService            *shards.Service
+	jwtValidator            *auth.Validator
+	steamClient             *steamapi.Client
+	steamSummaryClient      *steamapi.Client
+	battleMetricsClient     *battlemetrics.Client
+	authBattleMetricsClient *battlemetrics.Client
+	rbacStore               *rbac.Store
+	rbacResolver            *rbac.Resolver
+	auditStore              *audit.Store
+	actionRegistry          *actions.Registry
+	actionDispatcher        *actions.Dispatcher
 }
 
 func NewHandler(
@@ -60,6 +61,7 @@ func NewHandler(
 	steamClient *steamapi.Client,
 	steamSummaryClient *steamapi.Client,
 	battleMetricsClient *battlemetrics.Client,
+	authBattleMetricsClient *battlemetrics.Client,
 ) *Handler {
 	rbacStore := rbac.NewStore(postgres.Pool())
 	if err := rbacStore.SeedPermissionsAndRoles(context.Background()); err != nil {
@@ -79,19 +81,20 @@ func NewHandler(
 	}
 
 	return &Handler{
-		cfg:                 cfg,
-		postgres:            postgres,
-		redis:               redis,
-		shardService:        shardService,
-		jwtValidator:        auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
-		steamClient:         steamClient,
-		steamSummaryClient:  steamSummaryClient,
-		battleMetricsClient: battleMetricsClient,
-		rbacStore:           rbacStore,
-		rbacResolver:        resolver,
-		auditStore:          auditStore,
-		actionRegistry:      registry,
-		actionDispatcher:    dispatcher,
+		cfg:                     cfg,
+		postgres:                postgres,
+		redis:                   redis,
+		shardService:            shardService,
+		jwtValidator:            auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
+		steamClient:             steamClient,
+		steamSummaryClient:      steamSummaryClient,
+		battleMetricsClient:     battleMetricsClient,
+		authBattleMetricsClient: authBattleMetricsClient,
+		rbacStore:               rbacStore,
+		rbacResolver:            resolver,
+		auditStore:              auditStore,
+		actionRegistry:          registry,
+		actionDispatcher:        dispatcher,
 	}
 }
 
@@ -1605,11 +1608,7 @@ func steamAnalyticsResponseFromCache(account store.SteamAccount, cache store.Ste
 	return response
 }
 
-func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamAccount) (store.SteamAccountCache, error) {
-	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
-		return store.SteamAccountCache{}, store.ErrSteamAccountNotFound
-	}
-
+func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.SteamAccount, profile battlemetrics.PlayerProfile) (store.SteamAccountCache, error) {
 	avatarImage := account.AvatarImage
 	summary, summaryErr := h.steamSummaryClient.GetPlayerSummary(ctx, account.SteamID)
 	steamProfilePrivate := false
@@ -1620,11 +1619,6 @@ func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamA
 		if summary.AvatarFull != "" {
 			avatarImage = summary.AvatarFull
 		}
-	}
-
-	profile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, *account.BmID)
-	if err != nil {
-		return store.SteamAccountCache{}, fmt.Errorf("fetch battlemetrics profile: %w", err)
 	}
 
 	if profile.BmName == "" {
@@ -1731,6 +1725,67 @@ func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamA
 		cache.TopServers = append(cache.TopServers, store.AnalyticsServer{BmID: server.ServerID, Name: server.ServerName, Hours: toWholeHours(server.TimePlayed)})
 	}
 	return cache, nil
+}
+
+func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamAccount) (store.SteamAccountCache, error) {
+	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
+		return store.SteamAccountCache{}, store.ErrSteamAccountNotFound
+	}
+
+	profile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, *account.BmID)
+	if err != nil {
+		return store.SteamAccountCache{}, fmt.Errorf("fetch battlemetrics profile: %w", err)
+	}
+
+	return h.buildSteamCacheFromProfile(ctx, account, profile)
+}
+
+func (h *Handler) upsertResolvedSteamAccount(ctx context.Context, steamID string, profile battlemetrics.PlayerProfile) (store.SteamAccount, error) {
+	bmID := strings.TrimSpace(profile.BmID)
+	if steamID == "" || bmID == "" {
+		return store.SteamAccount{}, store.ErrSteamAccountNotFound
+	}
+
+	account, err := h.postgres.UpsertSteamAccount(ctx, steamID, &bmID)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	account.BmID = &bmID
+	account.BmName = profile.BmName
+
+	cache, err := h.buildSteamCacheFromProfile(ctx, account, profile)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	if _, err := h.postgres.UpsertSteamAccountCache(ctx, cache); err != nil {
+		return store.SteamAccount{}, err
+	}
+
+	return h.postgres.GetSteamAccountBySteamID(ctx, steamID)
+}
+
+func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID string) (store.SteamAccount, error) {
+	profile, err := h.authBattleMetricsClient.QuickMatchPlayerProfileBySteamID(ctx, steamID)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	if profile.SteamID == "" {
+		profile.SteamID = steamID
+	}
+
+	return h.upsertResolvedSteamAccount(ctx, profile.SteamID, profile)
+}
+
+func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (store.SteamAccount, error) {
+	profile, err := h.authBattleMetricsClient.FetchPlayerProfile(ctx, bmID)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	if strings.TrimSpace(profile.SteamID) == "" {
+		return store.SteamAccount{}, store.ErrSteamAccountNotFound
+	}
+
+	return h.upsertResolvedSteamAccount(ctx, profile.SteamID, profile)
 }
 
 type steamAnalyticsGame struct {
@@ -1876,13 +1931,33 @@ func (h *Handler) GetSteamAccount(w http.ResponseWriter, r *http.Request) {
 
 	account, err := h.postgres.GetSteamAccountBySteamID(r.Context(), steamID)
 	if errors.Is(err, store.ErrSteamAccountNotFound) {
-		writeError(w, http.StatusNotFound, "steam account not found")
-		return
+		account, err = h.resolveSteamAccountBySteamID(r.Context(), steamID)
+		if errors.Is(err, store.ErrSteamAccountNotFound) || errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+			writeError(w, http.StatusNotFound, "steam account not found")
+			return
+		}
+		if err != nil {
+			log.Printf("[backend] GetSteamAccount resolve error for %s: %v", steamID, err)
+			writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+			return
+		}
 	}
 	if err != nil {
 		log.Printf("[backend] GetSteamAccount error for %s: %v", steamID, err)
 		writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
 		return
+	}
+	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
+		account, err = h.resolveSteamAccountBySteamID(r.Context(), steamID)
+		if errors.Is(err, store.ErrSteamAccountNotFound) || errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+			writeError(w, http.StatusNotFound, "steam account not found")
+			return
+		}
+		if err != nil {
+			log.Printf("[backend] GetSteamAccount backfill error for %s: %v", steamID, err)
+			writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+			return
+		}
 	}
 
 	writeSteamAccount(w, account)
@@ -1897,8 +1972,16 @@ func (h *Handler) GetSteamAccountByBmID(w http.ResponseWriter, r *http.Request) 
 
 	account, err := h.postgres.GetSteamAccountByBmID(r.Context(), bmID)
 	if errors.Is(err, store.ErrSteamAccountNotFound) {
-		writeError(w, http.StatusNotFound, "steam account not found")
-		return
+		account, err = h.resolveSteamAccountByBmID(r.Context(), bmID)
+		if errors.Is(err, store.ErrSteamAccountNotFound) || errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+			writeError(w, http.StatusNotFound, "steam account not found")
+			return
+		}
+		if err != nil {
+			log.Printf("[backend] GetSteamAccountByBmID resolve error for %s: %v", bmID, err)
+			writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+			return
+		}
 	}
 	if err != nil {
 		log.Printf("[backend] GetSteamAccountByBmID error for %s: %v", bmID, err)
