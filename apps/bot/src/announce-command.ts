@@ -63,10 +63,11 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   if (!(await hasGuildAdminAccess(interaction))) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "Only the configured admin role or administrators can use /announce.",
-      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
@@ -75,14 +76,11 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
   const message = interaction.options.getString("message", true);
 
   if (message.length > 4096) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "The announcement message must be 4096 characters or fewer.",
-      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const members = await getGuildMembers(guild);
   const targets = members.filter((m) => !m.user.bot && m.roles.cache.has(role.id));

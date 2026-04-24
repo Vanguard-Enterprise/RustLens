@@ -148,6 +148,8 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
     return true;
   }
 
+  await deferEphemeral(interaction);
+
   if (!(await hasGuildAdminAccess(interaction))) {
     await replyEphemeralEmbed(
       interaction,
@@ -170,7 +172,6 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
     }
 
     const steamInput = interaction.options.getString(ADMIN_STEAM_ID_OPTION_NAME, true).trim();
-    await deferEphemeral(interaction);
 
     let steamID: string;
     try {
@@ -217,7 +218,6 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
 
   if (subcommand === ADMIN_REMOVE_STEAM_SUBCOMMAND_NAME) {
     const targetUser = interaction.options.getUser(ADMIN_USER_OPTION_NAME, true);
-    await deferEphemeral(interaction);
 
     let removed: { steamId: string }[] = [];
     try {

@@ -469,10 +469,11 @@ export async function handleViewChatInput(interaction: ChatInputCommandInteracti
     return true;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   if (!(await hasGuildAdminAccess(interaction))) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "Only the configured admin role or administrators can use /view.",
-      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
@@ -502,14 +503,15 @@ async function handleViewUser(interaction: ChatInputCommandInteraction) {
   const identifier = interaction.options.getString("identifier");
 
   if (!discordUser && !identifier) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "Provide either a discord user or an identifier.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
 
   const guildId = interaction.guildId!;
 
@@ -538,7 +540,9 @@ async function handleViewUser(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleViewAll(interaction: ChatInputCommandInteraction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
 
   const guildId = interaction.guildId!;
   const backend = getBackend();
@@ -588,7 +592,9 @@ async function handleViewAll(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
 
   const guildId = interaction.guildId!;
   const backend = getBackend();
