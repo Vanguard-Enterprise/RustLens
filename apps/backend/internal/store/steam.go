@@ -14,6 +14,18 @@ type NameGap struct {
 	ToUnix   int64 `json:"toUnix"`
 }
 
+type AnalyticsGame struct {
+	AppID int    `json:"appId"`
+	Name  string `json:"name"`
+	Hours int64  `json:"hours"`
+}
+
+type AnalyticsServer struct {
+	BmID  string `json:"bmId"`
+	Name  string `json:"name"`
+	Hours int64  `json:"hours"`
+}
+
 var ErrSteamAccountNotFound = errors.New("steam account not found")
 var ErrLinkAlreadyExists = errors.New("steam discord link already exists")
 var ErrGuildLinkNotFound = errors.New("guild steam discord link not found")
@@ -29,25 +41,31 @@ type SteamAccount struct {
 }
 
 type SteamAccountCache struct {
-	SteamID          string
-	BmID             string
-	BmName           string
-	AvatarImage      string
-	FirstSeenAt      *time.Time
-	VitalityHours    int64
-	AtlasHours       int64
-	VitalHours       int64
-	ModdedHours      int64
-	OfficialHours    int64
-	BuildHours       int64
-	BmHours          int64
-	BmServersPlayed  int
-	NameGaps         []NameGap
-	RustHours        *int64
-	GameBanned       bool
-	GameBannedAt     *time.Time
-	GameBanCheckedAt *time.Time
-	UpdatedAt        time.Time
+	SteamID               string
+	BmID                  string
+	BmName                string
+	AvatarImage           string
+	FirstSeenAt           *time.Time
+	VitalityHours         int64
+	AtlasHours            int64
+	VitalHours            int64
+	ModdedHours           int64
+	OfficialHours         int64
+	BuildHours            int64
+	BmHours               int64
+	BmServersPlayed       int
+	NameGaps              []NameGap
+	RustHours             *int64
+	AnalyticsTotalGames   *int
+	AnalyticsTopGames     []AnalyticsGame
+	AnalyticsTotalServers int
+	AnalyticsTopServers   []AnalyticsServer
+	AnalyticsGaps         []NameGap
+	AnalyticsUpdatedAt    *time.Time
+	GameBanned            bool
+	GameBannedAt          *time.Time
+	GameBanCheckedAt      *time.Time
+	UpdatedAt             time.Time
 }
 
 type SteamGameBanCache struct {
@@ -84,6 +102,9 @@ func scanSteamAccount(scanner rowScanner) (SteamAccount, error) {
 func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
 	var record SteamAccountCache
 	var nameGapsJSON []byte
+	var analyticsTopGamesJSON []byte
+	var analyticsTopServersJSON []byte
+	var analyticsGapsJSON []byte
 	err := scanner.Scan(
 		&record.SteamID,
 		&record.BmID,
@@ -100,6 +121,12 @@ func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
 		&record.BmServersPlayed,
 		&nameGapsJSON,
 		&record.RustHours,
+		&record.AnalyticsTotalGames,
+		&analyticsTopGamesJSON,
+		&record.AnalyticsTotalServers,
+		&analyticsTopServersJSON,
+		&analyticsGapsJSON,
+		&record.AnalyticsUpdatedAt,
 		&record.GameBanned,
 		&record.GameBannedAt,
 		&record.GameBanCheckedAt,
@@ -115,6 +142,30 @@ func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
 	}
 	if record.NameGaps == nil {
 		record.NameGaps = []NameGap{}
+	}
+	if len(analyticsTopGamesJSON) > 0 {
+		if err := json.Unmarshal(analyticsTopGamesJSON, &record.AnalyticsTopGames); err != nil {
+			return SteamAccountCache{}, err
+		}
+	}
+	if record.AnalyticsTopGames == nil {
+		record.AnalyticsTopGames = []AnalyticsGame{}
+	}
+	if len(analyticsTopServersJSON) > 0 {
+		if err := json.Unmarshal(analyticsTopServersJSON, &record.AnalyticsTopServers); err != nil {
+			return SteamAccountCache{}, err
+		}
+	}
+	if record.AnalyticsTopServers == nil {
+		record.AnalyticsTopServers = []AnalyticsServer{}
+	}
+	if len(analyticsGapsJSON) > 0 {
+		if err := json.Unmarshal(analyticsGapsJSON, &record.AnalyticsGaps); err != nil {
+			return SteamAccountCache{}, err
+		}
+	}
+	if record.AnalyticsGaps == nil {
+		record.AnalyticsGaps = []NameGap{}
 	}
 	return record, nil
 }
@@ -187,6 +238,8 @@ func (p *PostgresStore) GetSteamAccountCache(ctx context.Context, steamID string
 	record, err := scanSteamAccountCache(p.pool.QueryRow(ctx, `
 		SELECT steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
 			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours,
+			analytics_total_games, analytics_top_games, analytics_total_servers, analytics_top_servers,
+			analytics_gaps, analytics_updated_at,
 			game_banned, game_banned_at, game_ban_checked_at, updated_at
 		FROM steam_account_cache
 		WHERE steam_id = $1
@@ -234,6 +287,8 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 			updated_at = NOW()
 		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
 			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours,
+			analytics_total_games, analytics_top_games, analytics_total_servers, analytics_top_servers,
+			analytics_gaps, analytics_updated_at,
 			game_banned, game_banned_at, game_ban_checked_at, updated_at
 	`,
 		cache.SteamID,
@@ -251,6 +306,68 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 		cache.BmServersPlayed,
 		nameGapsJSON,
 		cache.RustHours,
+	))
+}
+
+func (p *PostgresStore) UpsertSteamAccountAnalyticsCache(ctx context.Context, cache SteamAccountCache) (SteamAccountCache, error) {
+	topGames := cache.AnalyticsTopGames
+	if topGames == nil {
+		topGames = []AnalyticsGame{}
+	}
+	topGamesJSON, err := json.Marshal(topGames)
+	if err != nil {
+		return SteamAccountCache{}, err
+	}
+
+	topServers := cache.AnalyticsTopServers
+	if topServers == nil {
+		topServers = []AnalyticsServer{}
+	}
+	topServersJSON, err := json.Marshal(topServers)
+	if err != nil {
+		return SteamAccountCache{}, err
+	}
+
+	gaps := cache.AnalyticsGaps
+	if gaps == nil {
+		gaps = []NameGap{}
+	}
+	analyticsGapsJSON, err := json.Marshal(gaps)
+	if err != nil {
+		return SteamAccountCache{}, err
+	}
+
+	return scanSteamAccountCache(p.pool.QueryRow(ctx, `
+		INSERT INTO steam_account_cache (
+			steam_id, bm_id, bm_name, avatar_image, analytics_total_games, analytics_top_games,
+			analytics_total_servers, analytics_top_servers, analytics_gaps, analytics_updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+		ON CONFLICT (steam_id) DO UPDATE
+		SET bm_id = EXCLUDED.bm_id,
+			bm_name = EXCLUDED.bm_name,
+			avatar_image = EXCLUDED.avatar_image,
+			analytics_total_games = EXCLUDED.analytics_total_games,
+			analytics_top_games = EXCLUDED.analytics_top_games,
+			analytics_total_servers = EXCLUDED.analytics_total_servers,
+			analytics_top_servers = EXCLUDED.analytics_top_servers,
+			analytics_gaps = EXCLUDED.analytics_gaps,
+			analytics_updated_at = NOW()
+		RETURNING steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,
+			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played, name_gaps, rust_hours,
+			analytics_total_games, analytics_top_games, analytics_total_servers, analytics_top_servers,
+			analytics_gaps, analytics_updated_at,
+			game_banned, game_banned_at, game_ban_checked_at, updated_at
+	`,
+		cache.SteamID,
+		cache.BmID,
+		cache.BmName,
+		cache.AvatarImage,
+		cache.AnalyticsTotalGames,
+		topGamesJSON,
+		cache.AnalyticsTotalServers,
+		topServersJSON,
+		analyticsGapsJSON,
 	))
 }
 

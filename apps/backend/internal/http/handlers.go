@@ -1742,35 +1742,91 @@ type steamAnalyticsResponse struct {
 
 const analyticsGapThreshold = 60 * 24 * time.Hour // ~2 months
 
-func (h *Handler) GetSteamAnalytics(w http.ResponseWriter, r *http.Request) {
-	steamID := chi.URLParam(r, "steamID")
-	if steamID == "" || !steamIDPattern.MatchString(steamID) {
-		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
-		return
+func steamAnalyticsResponseFromCache(account store.SteamAccount, cache store.SteamAccountCache) steamAnalyticsResponse {
+	bmID := cache.BmID
+	if bmID == "" && account.BmID != nil {
+		bmID = *account.BmID
 	}
+	bmName := cache.BmName
+	if bmName == "" {
+		bmName = account.BmName
+	}
+	avatarImage := cache.AvatarImage
+	if avatarImage == "" {
+		avatarImage = account.AvatarImage
+	}
+	response := steamAnalyticsResponse{
+		SteamID:      account.SteamID,
+		BmID:         bmID,
+		BmName:       bmName,
+		AvatarImage:  avatarImage,
+		TotalGames:   cache.AnalyticsTotalGames,
+		TopGames:     make([]steamAnalyticsGame, 0, len(cache.AnalyticsTopGames)),
+		TotalServers: cache.AnalyticsTotalServers,
+		TopServers:   make([]steamAnalyticsServer, 0, len(cache.AnalyticsTopServers)),
+		Gaps:         make([]steamAnalyticsGap, 0, len(cache.AnalyticsGaps)),
+	}
+	for _, game := range cache.AnalyticsTopGames {
+		response.TopGames = append(response.TopGames, steamAnalyticsGame{
+			AppID: game.AppID,
+			Name:  game.Name,
+			Hours: game.Hours,
+		})
+	}
+	for _, server := range cache.AnalyticsTopServers {
+		response.TopServers = append(response.TopServers, steamAnalyticsServer{
+			BmID:  server.BmID,
+			Name:  server.Name,
+			Hours: server.Hours,
+		})
+	}
+	for _, gap := range cache.AnalyticsGaps {
+		response.Gaps = append(response.Gaps, steamAnalyticsGap(gap))
+	}
+	return response
+}
 
-	account, err := h.postgres.GetSteamAccountBySteamID(r.Context(), steamID)
-	if errors.Is(err, store.ErrSteamAccountNotFound) {
-		writeError(w, http.StatusNotFound, "steam account not found")
-		return
+func steamAnalyticsCacheFromResponse(response steamAnalyticsResponse) store.SteamAccountCache {
+	cache := store.SteamAccountCache{
+		SteamID:               response.SteamID,
+		BmID:                  response.BmID,
+		BmName:                response.BmName,
+		AvatarImage:           response.AvatarImage,
+		AnalyticsTotalGames:   response.TotalGames,
+		AnalyticsTotalServers: response.TotalServers,
+		AnalyticsTopGames:     make([]store.AnalyticsGame, 0, len(response.TopGames)),
+		AnalyticsTopServers:   make([]store.AnalyticsServer, 0, len(response.TopServers)),
+		AnalyticsGaps:         make([]store.NameGap, 0, len(response.Gaps)),
 	}
-	if err != nil {
-		log.Printf("[backend] GetSteamAnalytics account error for %s: %v", steamID, err)
-		writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
-		return
+	for _, game := range response.TopGames {
+		cache.AnalyticsTopGames = append(cache.AnalyticsTopGames, store.AnalyticsGame{
+			AppID: game.AppID,
+			Name:  game.Name,
+			Hours: game.Hours,
+		})
 	}
+	for _, server := range response.TopServers {
+		cache.AnalyticsTopServers = append(cache.AnalyticsTopServers, store.AnalyticsServer{
+			BmID:  server.BmID,
+			Name:  server.Name,
+			Hours: server.Hours,
+		})
+	}
+	for _, gap := range response.Gaps {
+		cache.AnalyticsGaps = append(cache.AnalyticsGaps, store.NameGap(gap))
+	}
+	return cache
+}
+
+func (h *Handler) fetchFreshSteamAnalytics(ctx context.Context, account store.SteamAccount) (steamAnalyticsResponse, error) {
 	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
-		writeError(w, http.StatusNotFound, "steam account has no linked battlemetrics id")
-		return
+		return steamAnalyticsResponse{}, store.ErrSteamAccountNotFound
 	}
 
 	bmID := *account.BmID
-
-	profile, err := h.battleMetricsClient.FetchPlayerProfile(r.Context(), bmID)
+	profile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, bmID)
 	if err != nil {
-		log.Printf("[backend] GetSteamAnalytics battlemetrics error for %s: %v", steamID, err)
-		writeError(w, http.StatusBadGateway, "failed to fetch battlemetrics profile")
-		return
+		return steamAnalyticsResponse{}, fmt.Errorf("fetch battlemetrics profile: %w", err)
 	}
 
 	bmName := profile.BmName
@@ -1779,7 +1835,7 @@ func (h *Handler) GetSteamAnalytics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := steamAnalyticsResponse{
-		SteamID:     steamID,
+		SteamID:     account.SteamID,
 		BmID:        bmID,
 		BmName:      bmName,
 		AvatarImage: account.AvatarImage,
@@ -1788,14 +1844,14 @@ func (h *Handler) GetSteamAnalytics(w http.ResponseWriter, r *http.Request) {
 		Gaps:        []steamAnalyticsGap{},
 	}
 
-	summary, summaryErr := h.steamSummaryClient.GetPlayerSummary(r.Context(), steamID)
+	summary, summaryErr := h.steamSummaryClient.GetPlayerSummary(ctx, account.SteamID)
 	if summaryErr == nil && summary.AvatarFull != "" {
 		response.AvatarImage = summary.AvatarFull
 	}
 
-	ownedGames, ownedGamesErr := h.steamSummaryClient.GetOwnedGames(r.Context(), steamID)
+	ownedGames, ownedGamesErr := h.steamSummaryClient.GetOwnedGames(ctx, account.SteamID)
 	if ownedGamesErr != nil {
-		log.Printf("[backend] GetSteamAnalytics owned games error for %s: %v", steamID, ownedGamesErr)
+		log.Printf("[backend] GetSteamAnalytics owned games error for %s: %v", account.SteamID, ownedGamesErr)
 	} else {
 		sort.Slice(ownedGames, func(i, j int) bool {
 			return ownedGames[i].PlaytimeForever > ownedGames[j].PlaytimeForever
@@ -1831,8 +1887,61 @@ func (h *Handler) GetSteamAnalytics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Gaps = computeNameGaps(profile.NameIdentifiers)
+	return response, nil
+}
 
-	writeJSON(w, http.StatusOK, response)
+func (h *Handler) GetSteamAnalytics(w http.ResponseWriter, r *http.Request) {
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	account, err := h.postgres.GetSteamAccountBySteamID(r.Context(), steamID)
+	if errors.Is(err, store.ErrSteamAccountNotFound) {
+		writeError(w, http.StatusNotFound, "steam account not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetSteamAnalytics account error for %s: %v", steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+		return
+	}
+	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
+		writeError(w, http.StatusNotFound, "steam account has no linked battlemetrics id")
+		return
+	}
+
+	cachedAnalytics, cacheErr := h.postgres.GetSteamAccountCache(r.Context(), steamID)
+	canUseCachedAnalytics := cacheErr == nil && cachedAnalytics.AnalyticsUpdatedAt != nil
+	if canUseCachedAnalytics && time.Since(*cachedAnalytics.AnalyticsUpdatedAt) < steamAccountCacheTTL {
+		writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedAnalytics))
+		return
+	}
+
+	response, err := h.fetchFreshSteamAnalytics(r.Context(), account)
+	if err != nil {
+		log.Printf("[backend] GetSteamAnalytics refresh error for %s: %v", steamID, err)
+		if canUseCachedAnalytics {
+			writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedAnalytics))
+			return
+		}
+		writeError(w, http.StatusBadGateway, "failed to fetch analytics")
+		return
+	}
+
+	updatedCache, err := h.postgres.UpsertSteamAccountAnalyticsCache(r.Context(), steamAnalyticsCacheFromResponse(response))
+	if err != nil {
+		log.Printf("[backend] GetSteamAnalytics cache update error for %s: %v", steamID, err)
+		if canUseCachedAnalytics {
+			writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedAnalytics))
+			return
+		}
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, updatedCache))
 }
 
 func computeNameGaps(identifiers []battlemetrics.PlayerNameIdentifier) []steamAnalyticsGap {
