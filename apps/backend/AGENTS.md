@@ -96,9 +96,7 @@ Known Steam player accounts with optional BattleMetrics ID.
 |---|---|---|
 | `steam_id` | `TEXT` | PK (17-digit Steam ID) |
 | `bm_id` | `TEXT UNIQUE` | Nullable, BattleMetrics player ID |
-| `first_seen_at` | `TIMESTAMPTZ` | Nullable, BattleMetrics player creation / first-seen time |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
-| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last account row update time |
 
 ### `steam_account_cache`
 

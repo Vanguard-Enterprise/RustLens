@@ -186,11 +186,12 @@ func (p *PostgresStore) UpsertSteamAccount(ctx context.Context, steamID string, 
 		VALUES ($1, $2)
 		ON CONFLICT (steam_id) DO UPDATE
 		SET bm_id = COALESCE(EXCLUDED.bm_id, steam_accounts.bm_id)
-		RETURNING steam_id, bm_id, first_seen_at, created_at, updated_at
-	`, steamID, bmID).Scan(&record.SteamID, &record.BmID, &record.FirstSeenAt, &record.CreatedAt, &record.UpdatedAt)
+		RETURNING steam_id, bm_id, created_at
+	`, steamID, bmID).Scan(&record.SteamID, &record.BmID, &record.CreatedAt)
 	if err != nil {
 		return SteamAccount{}, err
 	}
+	record.UpdatedAt = record.CreatedAt
 	return record, nil
 }
 
@@ -201,9 +202,9 @@ func (p *PostgresStore) GetSteamAccountBySteamID(ctx context.Context, steamID st
 			sa.bm_id,
 			COALESCE(sac.bm_name, '') AS bm_name,
 			COALESCE(sac.avatar_image, '') AS avatar_image,
-			COALESCE(sac.first_seen_at, sa.first_seen_at) AS first_seen_at,
+			sac.first_seen_at,
 			sa.created_at,
-			sa.updated_at
+			COALESCE(sac.updated_at, sa.created_at) AS updated_at
 		FROM steam_accounts sa
 		LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
 		WHERE sa.steam_id = $1
@@ -221,9 +222,9 @@ func (p *PostgresStore) GetSteamAccountByBmID(ctx context.Context, bmID string) 
 			sa.bm_id,
 			COALESCE(sac.bm_name, '') AS bm_name,
 			COALESCE(sac.avatar_image, '') AS avatar_image,
-			COALESCE(sac.first_seen_at, sa.first_seen_at) AS first_seen_at,
+			sac.first_seen_at,
 			sa.created_at,
-			sa.updated_at
+			COALESCE(sac.updated_at, sa.created_at) AS updated_at
 		FROM steam_accounts sa
 		LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
 		WHERE sa.bm_id = $1

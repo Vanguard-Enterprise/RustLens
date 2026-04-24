@@ -126,7 +126,7 @@ Key patterns:
 
 **Steam & Discord linking**
 
-`steam_accounts` stores known Steam players, optionally with their BattleMetrics player ID (`bm_id`) and BattleMetrics first-seen timestamp (`first_seen_at`). The `bm_id` is populated when a hard link is created via BattleMetrics scrape. Volatile profile display/cache data lives in `steam_account_cache`, keyed by `steam_id`, with `bm_name`, `avatar_image`, first-seen metadata, total/category BattleMetrics hours, Steam Rust hours, game-ban cache fields (`game_banned`, `game_banned_at`, `game_ban_checked_at`), and an `updated_at` timestamp used for the 24-hour lazy profile refresh TTL.
+`steam_accounts` stores known Steam players and their optional BattleMetrics player ID (`bm_id`). The `bm_id` is populated when a hard link is created via BattleMetrics scrape. Volatile profile display/cache data lives in `steam_account_cache`, keyed by `steam_id`, with `bm_name`, `avatar_image`, first-seen metadata, total/category BattleMetrics hours, Steam Rust hours, game-ban cache fields (`game_banned`, `game_banned_at`, `game_ban_checked_at`), and an `updated_at` timestamp used for the 24-hour lazy profile refresh TTL.
 
 `steam_discord_links` maps Steam accounts to Discord users with a `type` and `source`:
 - **soft** — user self-reported via bot command or frontend. No verification that the Steam account actually belongs to them. Source examples: `bot_command`, `frontend`.

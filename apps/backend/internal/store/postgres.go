@@ -142,13 +142,8 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS steam_accounts (
 			steam_id TEXT PRIMARY KEY,
 			bm_id TEXT UNIQUE,
-			first_seen_at TIMESTAMPTZ,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
-
-		ALTER TABLE steam_accounts ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMPTZ;
-		ALTER TABLE steam_accounts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 		CREATE TABLE IF NOT EXISTS steam_account_cache (
 			steam_id TEXT PRIMARY KEY REFERENCES steam_accounts(steam_id) ON DELETE CASCADE,
@@ -198,6 +193,8 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		DECLARE
 			has_bm_name BOOLEAN;
 			has_avatar_image BOOLEAN;
+			has_first_seen_at BOOLEAN;
+			has_updated_at BOOLEAN;
 		BEGIN
 			SELECT EXISTS (
 				SELECT 1 FROM information_schema.columns
@@ -209,20 +206,38 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 				WHERE table_name = 'steam_accounts' AND column_name = 'avatar_image'
 			) INTO has_avatar_image;
 
-			IF has_bm_name AND has_avatar_image THEN
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'steam_accounts' AND column_name = 'first_seen_at'
+			) INTO has_first_seen_at;
+
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'steam_accounts' AND column_name = 'updated_at'
+			) INTO has_updated_at;
+
+			IF has_bm_name AND has_avatar_image AND has_first_seen_at AND has_updated_at THEN
 				EXECUTE '
 					INSERT INTO steam_account_cache (steam_id, bm_id, bm_name, avatar_image, first_seen_at, updated_at)
 					SELECT steam_id, COALESCE(bm_id, ''''), COALESCE(bm_name, ''''), COALESCE(avatar_image, ''''), first_seen_at, updated_at
 					FROM steam_accounts
-					WHERE COALESCE(bm_name, '''') <> '''' OR COALESCE(avatar_image, '''') <> ''''
+					WHERE COALESCE(bm_name, '''') <> '''' OR COALESCE(avatar_image, '''') <> '''' OR first_seen_at IS NOT NULL
 					ON CONFLICT (steam_id) DO NOTHING
 				';
-			ELSIF has_bm_name THEN
+			ELSIF has_bm_name AND has_first_seen_at AND has_updated_at THEN
 				EXECUTE '
 					INSERT INTO steam_account_cache (steam_id, bm_id, bm_name, first_seen_at, updated_at)
 					SELECT steam_id, COALESCE(bm_id, ''''), COALESCE(bm_name, ''''), first_seen_at, updated_at
 					FROM steam_accounts
-					WHERE COALESCE(bm_name, '''') <> ''''
+					WHERE COALESCE(bm_name, '''') <> '''' OR first_seen_at IS NOT NULL
+					ON CONFLICT (steam_id) DO NOTHING
+				';
+			ELSIF has_first_seen_at AND has_updated_at THEN
+				EXECUTE '
+					INSERT INTO steam_account_cache (steam_id, bm_id, first_seen_at, updated_at)
+					SELECT steam_id, COALESCE(bm_id, ''''), first_seen_at, updated_at
+					FROM steam_accounts
+					WHERE first_seen_at IS NOT NULL
 					ON CONFLICT (steam_id) DO NOTHING
 				';
 			END IF;
@@ -233,6 +248,14 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 			IF has_avatar_image THEN
 				ALTER TABLE steam_accounts DROP COLUMN avatar_image;
+			END IF;
+
+			IF has_first_seen_at THEN
+				ALTER TABLE steam_accounts DROP COLUMN first_seen_at;
+			END IF;
+
+			IF has_updated_at THEN
+				ALTER TABLE steam_accounts DROP COLUMN updated_at;
 			END IF;
 		END $$;
 
