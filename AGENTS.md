@@ -160,9 +160,9 @@ apps/bot/src/
   setsteam-command.ts   # /setsteam {steam_id} — user self-service guild soft-linking for Steam IDs
   player-command.ts     # /player {identifier} — public player profile lookup by Steam ID, supported steamcommunity.com profile URL, or BattleMetrics ID
   checkgamebans-command.ts # /checkgamebans — guild admin scan of linked Steam IDs for recent Steam game bans using 6h cache TTL
-  wipereact-command.ts  # /wipereact create/delete/missing/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, and logs embeds
+  wipereact-command.ts  # /wipereact create/delete/notreacted/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, and logs embeds
   summon-command.ts     # /summon {scope} — move all online voice members of a role into the invoker's voice channel (admin-only)
-  announce-command.ts   # /announce {scope} {message} — DM an embed announcement to all members of a role (admin-only)
+  announce-command.ts   # /announce {scope} {message} — DM an embed announcement to all members of a role except the invoker (admin-only)
   online-command.ts     # /online — public guild command that lists linked users currently online on tracked BattleMetrics servers
   nickname-command.ts   # /nickname — admin command that syncs guild nicknames to "{discord nickname} - {BattleMetrics name}" from guild links + steam_accounts
   compare-command.ts    # /compare {server?} {wipereact?} — admin comparison of the invoker's current voice channel against a tracked server, the most recent passed / specified wipe react, or both against each other when both options are supplied
@@ -202,7 +202,7 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `BATTLEMETRICS_API_KEY` | `` |
 | `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS` | `10` |
 
-The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY` and `BATTLEMETRICS_API_KEY` can be provided there without separate shell export. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
+The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY` and `BATTLEMETRICS_API_KEY` can be provided there without separate shell export. `/wipereact notreacted` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
 
 ## CI/CD
 

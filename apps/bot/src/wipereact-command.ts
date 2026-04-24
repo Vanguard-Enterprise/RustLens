@@ -52,7 +52,7 @@ export const WIPEREACT_COMMAND_NAME = "wipereact";
 
 const WIPEREACT_CREATE_SUBCOMMAND_NAME = "create";
 const WIPEREACT_DELETE_SUBCOMMAND_NAME = "delete";
-const WIPEREACT_MISSING_SUBCOMMAND_NAME = "missing";
+const WIPEREACT_NOT_REACTED_SUBCOMMAND_NAME = "notreacted";
 const WIPEREACT_REACT_GROUP_NAME = "react";
 const WIPEREACT_REACT_ADD_SUBCOMMAND_NAME = "add";
 const WIPEREACT_REACT_REMOVE_SUBCOMMAND_NAME = "remove";
@@ -71,6 +71,7 @@ const WIPEREACT_LATE_BUTTON_PREFIX = "wipereact_late:";
 const WIPEREACT_EDIT_BUTTON_CUSTOM_ID = "wipereact_edit";
 const WIPEREACT_EDIT_BUTTON_PREFIX = "wipereact_edit:";
 const WIPEREACT_TARGET_OPTION_NAME = "wipereact";
+const WIPEREACT_MESSAGE_OPTION_NAME = "message";
 const WIPEREACT_SCOPE_OPTION_NAME = "scope";
 const WIPEREACT_USER_OPTION_NAME = "user";
 const WIPEREACT_TYPE_OPTION_NAME = "type";
@@ -265,20 +266,26 @@ const wipeReactCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
-      .setName(WIPEREACT_MISSING_SUBCOMMAND_NAME)
-      .setDescription("List role members missing a response for a wipe react")
-      .addRoleOption((option) =>
-        option
-          .setName(WIPEREACT_SCOPE_OPTION_NAME)
-          .setDescription("Role to check")
-          .setRequired(true),
-      )
+      .setName(WIPEREACT_NOT_REACTED_SUBCOMMAND_NAME)
+      .setDescription("List members missing a response for a wipe react")
       .addStringOption((option) =>
         option
           .setName(WIPEREACT_TARGET_OPTION_NAME)
           .setDescription("Select an active wipe react")
-          .setRequired(true)
+          .setRequired(false)
           .setAutocomplete(true),
+      )
+      .addStringOption((option) =>
+        option
+          .setName(WIPEREACT_MESSAGE_OPTION_NAME)
+          .setDescription("DMs everyone who has not reacted")
+          .setRequired(false),
+      )
+      .addRoleOption((option) =>
+        option
+          .setName(WIPEREACT_SCOPE_OPTION_NAME)
+          .setDescription("Role to check")
+          .setRequired(false),
       ),
   )
   .addSubcommandGroup((group) =>
@@ -1522,21 +1529,60 @@ function buildReactionRemovalLogEmbed(
 
 function buildMissingReactantsEmbed(
   state: WipeReactMessageState,
-  role: Role,
   missingUserIds: readonly string[],
+  messageStatus?: { sent: number; failed: number },
 ) {
-  return {
-    title: "Missing reactants",
-    description:
+  const fields: { name: string; value: string }[] = [];
+
+  if (messageStatus) {
+    fields.push({
+      name: "Message status",
+      value:
+        `> * Successfully sent to **${messageStatus.sent}** member${messageStatus.sent === 1 ? "" : "s"}\n` +
+        `> * Failed to send to **${messageStatus.failed}** member${messageStatus.failed === 1 ? "" : "s"}`,
+    });
+  }
+
+  fields.push({
+    name: "Users",
+    value:
       missingUserIds.length > 0
         ? missingUserIds.map((userId) => `> * <@${userId}>`).join("\n")
         : "> * None",
+  });
+
+  return {
+    title: "Missing reactants",
     color: RUSTLENS_EMBED_COLOR,
     footer: {
-      text: `RustLens | ${state.name} | ${role.name}`,
+      text: "RustLens.com",
       icon_url: RUSTLENS_EMBED_ICON_URL,
     },
     timestamp: new Date().toISOString(),
+    thumbnail: {
+      url: "",
+    },
+    fields,
+  };
+}
+
+function buildNotReactedDmEmbed(message: string, wipeReactURL: string) {
+  return {
+    title: "You have not reacted to the wipe react",
+    description: `${message}\n\n${wipeReactURL}`,
+    timestamp: new Date().toISOString(),
+    color: RUSTLENS_EMBED_COLOR,
+    footer: {
+      text: "RustLens.com",
+      icon_url: RUSTLENS_EMBED_ICON_URL,
+    },
+    image: {
+      url: "",
+    },
+    thumbnail: {
+      url: "",
+    },
+    fields: [],
   };
 }
 
@@ -1667,6 +1713,19 @@ function formatWipeReactChoiceName(state: WipeReactMessageState) {
   }).format(new Date(state.scheduledUnix * 1000));
   const label = `${state.name} | ${dateLabel}`;
   return label.length <= 100 ? label : `${label.slice(0, 97)}...`;
+}
+
+function pickDefaultNotReactedWipeReact(records: readonly WipeReact[]) {
+  if (records.length === 0) {
+    return null;
+  }
+
+  const nowUnix = Math.floor(Date.now() / 1000);
+  const nextRecord = [...records]
+    .filter((record) => record.scheduledUnix >= nowUnix)
+    .sort((left, right) => left.scheduledUnix - right.scheduledUnix)[0];
+
+  return nextRecord ?? [...records].sort((left, right) => right.scheduledUnix - left.scheduledUnix)[0] ?? null;
 }
 
 function extractTargetFromCustomId(customId: string, prefix: string) {
@@ -1963,22 +2022,33 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     return true;
   }
 
-  if (subcommand === WIPEREACT_MISSING_SUBCOMMAND_NAME) {
-    const scope = interaction.options.getRole(WIPEREACT_SCOPE_OPTION_NAME, true);
-    if (!("members" in scope)) {
+  if (subcommand === WIPEREACT_NOT_REACTED_SUBCOMMAND_NAME) {
+    const scope = interaction.options.getRole(WIPEREACT_SCOPE_OPTION_NAME, false);
+    if (scope && !("members" in scope)) {
       await replyEphemeral(interaction, "That scope role is not available in this server.");
       return true;
     }
 
-    const messageId = interaction.options.getString(WIPEREACT_TARGET_OPTION_NAME, true);
-    const record = await getPersistedWipeReact(interaction.guildId, messageId).catch(() => null);
+    const messageText = interaction.options.getString(WIPEREACT_MESSAGE_OPTION_NAME)?.trim() ?? "";
+    const selectedMessageId = interaction.options.getString(WIPEREACT_TARGET_OPTION_NAME);
+    const record = selectedMessageId
+      ? await getPersistedWipeReact(interaction.guildId, selectedMessageId).catch(() => null)
+      : pickDefaultNotReactedWipeReact(await listActiveWipeReacts(interaction.guildId).catch(() => []));
     if (!record) {
       await replyEphemeral(interaction, "That wipe react could not be found.");
       return true;
     }
 
+    const wipeReactMessage = await fetchWipeReactMessage(guild, record.channelId, record.messageId);
+    if (!wipeReactMessage) {
+      await getBackend().deleteWipeReact(getWipeReactWorkerID(), interaction.guildId, record.messageId).catch(() => undefined);
+      await replyEphemeral(interaction, "That wipe react message no longer exists. RustLens removed its persisted state.");
+      return true;
+    }
+
+    let members;
     try {
-      await getGuildMembers(guild);
+      members = await getGuildMembers(guild);
     } catch {
       await replyEphemeral(
         interaction,
@@ -1992,13 +2062,41 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
       ...record.declinedUserIds,
       ...record.lateUserIds,
     ]);
-    const missingUserIds = [...scope.members.values()]
-      .filter((member) => !member.user.bot && !reactedUserIds.has(member.id))
+    const missingMembers = [...members.values()]
+      .filter((member) => !member.user.bot)
+      .filter((member) => scope ? member.roles.cache.has(scope.id) : true)
+      .filter((member) => !reactedUserIds.has(member.id))
       .sort((left, right) => left.displayName.localeCompare(right.displayName))
-      .map((member) => member.id);
+    const missingUserIds = missingMembers.map((member) => member.id);
+
+    let messageStatus: { sent: number; failed: number } | undefined;
+    if (messageText.length > 0 && missingMembers.length > 0) {
+      let sent = 0;
+      let failed = 0;
+
+      await Promise.all(
+        missingMembers
+          .filter((member) => member.id !== interaction.user.id)
+          .map(async (member) => {
+            try {
+              await member.send({
+                embeds: [buildNotReactedDmEmbed(messageText, wipeReactMessage.url)],
+                components: [],
+              });
+              sent++;
+            } catch {
+              failed++;
+            }
+          }),
+      );
+
+      messageStatus = { sent, failed };
+    }
 
     await interaction.reply({
-      embeds: [buildMissingReactantsEmbed(toWipeReactState(record), scope as Role, missingUserIds)],
+      embeds: [buildMissingReactantsEmbed(toWipeReactState(record), missingUserIds, messageStatus)],
+      components: [],
+      flags: MessageFlags.Ephemeral,
     });
     return true;
   }

@@ -189,11 +189,11 @@ describe("wipereact command", () => {
         lateUserIds: [],
         embedTimestamp: "2026-03-02T20:44:18.917Z",
       },
-      { name: "Member" } as any,
       ["111", "222"],
     );
 
     expect(embed.title).toBe("Missing reactants");
-    expect(embed.description).toBe("> * <@111>\n> * <@222>");
+    expect(embed.fields?.[0]?.name).toBe("Users");
+    expect(embed.fields?.[0]?.value).toBe("> * <@111>\n> * <@222>");
   });
 });
