@@ -179,7 +179,9 @@ export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
   embed.addFields({ name: "Information", value: info.join("\n") });
 
   if (analytics.gaps.length > 0) {
-    const sortedGaps = [...analytics.gaps].sort((a, b) => b.toUnix - a.toUnix);
+    const sortedGaps = [...analytics.gaps]
+      .sort((a, b) => b.toUnix - a.toUnix)
+      .slice(0, 10);
     const gapLines = sortedGaps.map((gap) =>
       `<t:${gap.fromUnix}:R> - <t:${gap.toUnix}:R> (${formatGapDurationDays(gap.fromUnix, gap.toUnix)})`
     );
