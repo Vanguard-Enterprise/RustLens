@@ -41,12 +41,12 @@ describe("server-command", () => {
       type: 18,
       label: "Include in guild settings?",
       component: {
-        type: 22,
+        type: 21,
         custom_id: "server_include_in_guild_settings",
-        required: false,
-        min_values: 0,
-        max_values: 1,
-        options: [{ label: "Yes", value: "yes", default: true }],
+        options: [
+          { label: "Yes", value: "yes", default: true },
+          { label: "No", value: "no", default: false },
+        ],
       },
     });
   });

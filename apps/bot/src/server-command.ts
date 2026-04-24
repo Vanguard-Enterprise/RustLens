@@ -6,7 +6,7 @@ import type {
 } from "discord.js";
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { type TrackedServer, BackendClient } from "./backend-client.js";
-import { CheckboxGroupBuilder, ModalV2Builder, TextInputBuilder } from "./builders/index.js";
+import { CheckboxGroupBuilder, ModalV2Builder, RadioGroupBuilder, TextInputBuilder } from "./builders/index.js";
 import { loadConfig } from "./config.js";
 import { getFieldValues, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
@@ -26,6 +26,7 @@ const SERVER_BM_ID_FIELD_CUSTOM_ID = "server_bm_id";
 const SERVER_CATEGORIES_FIELD_CUSTOM_ID = "server_categories";
 const SERVER_INCLUDE_IN_GUILD_SETTINGS_FIELD_CUSTOM_ID = "server_include_in_guild_settings";
 const SERVER_INCLUDE_IN_GUILD_SETTINGS_VALUE = "yes";
+const SERVER_EXCLUDE_FROM_GUILD_SETTINGS_VALUE = "no";
 
 const TRACKED_SERVER_CATEGORY_DEFINITIONS = [
   { key: "isVitality", value: "vitality", label: "Vitality" },
@@ -180,16 +181,20 @@ function buildTrackedServerModal(server?: TrackedServer) {
     )
     .addComponent(
       "Include in guild settings?",
-      new CheckboxGroupBuilder()
+      new RadioGroupBuilder()
         .setCustomId(SERVER_INCLUDE_IN_GUILD_SETTINGS_FIELD_CUSTOM_ID)
-        .setRequired(false)
-        .setMinValues(0)
-        .setMaxValues(1)
-        .addOption({
-          label: "Yes",
-          value: SERVER_INCLUDE_IN_GUILD_SETTINGS_VALUE,
-          default: server?.includeInGuildSettings ?? false,
-        }),
+        .addOptions(
+          {
+            label: "Yes",
+            value: SERVER_INCLUDE_IN_GUILD_SETTINGS_VALUE,
+            default: server?.includeInGuildSettings ?? false,
+          },
+          {
+            label: "No",
+            value: SERVER_EXCLUDE_FROM_GUILD_SETTINGS_VALUE,
+            default: server ? !server.includeInGuildSettings : true,
+          },
+        ),
     )
     .addComponent(
       "Server Categories",
