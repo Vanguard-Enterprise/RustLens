@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -66,7 +65,6 @@ type CurrentUser struct {
 
 var (
 	ErrUserNotFound         = errors.New("user not found")
-	ErrInvalidCredentials   = errors.New("invalid credentials")
 	ErrDiscordAlreadyLinked = errors.New("user already has a discord connection")
 	ErrDiscordLinkedToOther = errors.New("discord account is linked to another user")
 )
@@ -74,23 +72,6 @@ var (
 type Repo struct{ pool *pgxpool.Pool }
 
 func NewRepo(pool *pgxpool.Pool) *Repo { return &Repo{pool: pool} }
-
-// LookupPasswordLogin returns the user id and bcrypt hash for a given email,
-// or ErrUserNotFound if no row exists. Email match is case-insensitive.
-func (r *Repo) LookupPasswordLogin(ctx context.Context, email string) (userID, hash string, err error) {
-	email = strings.ToLower(strings.TrimSpace(email))
-	err = r.pool.QueryRow(ctx, `
-		SELECT e.user_id, c.password_hash
-		FROM user_emails e
-		JOIN user_password_credentials c ON c.user_id = e.user_id
-		WHERE lower(e.email) = $1
-		LIMIT 1
-	`, email).Scan(&userID, &hash)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", ErrUserNotFound
-	}
-	return userID, hash, err
-}
 
 // TouchLastLogin updates app_users.last_login_at and returns nothing.
 func (r *Repo) TouchLastLogin(ctx context.Context, userID string) error {

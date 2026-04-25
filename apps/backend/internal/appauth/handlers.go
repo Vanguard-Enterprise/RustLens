@@ -3,9 +3,6 @@ package appauth
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 type Handler struct {
@@ -13,45 +10,6 @@ type Handler struct {
 }
 
 func NewHandler(repo *Repo) *Handler { return &Handler{repo: repo} }
-
-type loginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-// Login handles POST /api/app/auth/login.
-// Body: { "email", "password" }. Response: CurrentUser.
-func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid_body")
-		return
-	}
-	req.Email = strings.TrimSpace(req.Email)
-	if req.Email == "" || req.Password == "" {
-		writeJSONError(w, http.StatusBadRequest, "email_and_password_required")
-		return
-	}
-
-	userID, hash, err := h.repo.LookupPasswordLogin(r.Context(), req.Email)
-	if err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "invalid_credentials")
-		return
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "invalid_credentials")
-		return
-	}
-	if err := h.repo.TouchLastLogin(r.Context(), userID); err != nil {
-		// non-fatal; the login still succeeds
-	}
-	cu, err := h.repo.LoadCurrentUser(r.Context(), userID)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "load_user_failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, cu)
-}
 
 // Me handles GET /api/app/me. Requires the RequireSession middleware.
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {

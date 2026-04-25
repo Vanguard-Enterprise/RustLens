@@ -146,7 +146,6 @@ func NewRouter(
 	r.Route("/api/app", func(r chi.Router) {
 		r.Use(requireAppSecret)
 
-		r.Post("/auth/login", appAuthHandler.Login)
 		r.Post("/auth/logout", appAuthHandler.Logout)
 
 		r.Group(func(r chi.Router) {
