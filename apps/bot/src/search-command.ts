@@ -37,7 +37,7 @@ const searchCommand = new SlashCommandBuilder()
   .setDescription("Search players by name on a tracked server")
   .setDMPermission(false)
   .setContexts(InteractionContextType.Guild)
-  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addStringOption((option) =>
     option
       .setName(SEARCH_STRING_OPTION_NAME)
