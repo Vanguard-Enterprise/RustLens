@@ -6,11 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -278,71 +278,62 @@ func (r *Repo) loadEmails(ctx context.Context, userID string) ([]UserEmail, erro
 	return out, rows.Err()
 }
 
-// FindUserByDiscordID returns the app_users.id linked to the given Discord
-// account ID, or ErrUserNotFound when no row exists.
-func (r *Repo) FindUserByDiscordID(ctx context.Context, discordID string) (string, error) {
-	var userID string
-	err := r.pool.QueryRow(ctx, `
-		SELECT user_id FROM user_connected_accounts
-		WHERE provider = 'discord' AND provider_account_id = $1
-	`, discordID).Scan(&userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrUserNotFound
-	}
-	return userID, err
-}
-
 // DiscordProfile is the subset of Discord OAuth profile data the appauth repo
-// needs to upsert and refresh user_connected_accounts rows.
+// needs to upsert and refresh app_users rows.
 type DiscordProfile struct {
-	ID          string
-	Username    string
-	DisplayName string
-	AvatarURL   string
-	Email       string
+	ID         string
+	Username   string
+	GlobalName string
+	Avatar     string
 }
 
-// RefreshDiscordConnection updates the connection row for a known Discord
-// account. The user_id must already match; this is called on repeat sign-ins
-// to keep username/display name/avatar/profile_email fresh.
-func (r *Repo) RefreshDiscordConnection(ctx context.Context, userID string, p DiscordProfile) error {
-	_, err := r.pool.Exec(ctx, `
-		UPDATE user_connected_accounts
-		   SET username       = $3,
-		       display_name   = $4,
-		       avatar_url     = $5,
-		       profile_email  = $6,
-		       updated_at     = NOW()
-		 WHERE user_id = $1
-		   AND provider = 'discord'
-		   AND provider_account_id = $2
-	`, userID, p.ID, p.Username, p.DisplayName, p.AvatarURL, p.Email)
-	return err
+// FindOrCreateByDiscordID looks up an app_users row by Discord ID. If found,
+// it refreshes the cached profile fields and returns (id, false, nil).
+// If not found, it inserts a new row with roles=["user"] and the supplied
+// profile and returns (id, true, nil).
+func (r *Repo) FindOrCreateByDiscordID(ctx context.Context, p DiscordProfile) (string, bool, error) {
+	const lookupSQL = `SELECT id FROM app_users WHERE discord_id = $1`
+	const refreshSQL = `
+		UPDATE app_users
+		SET discord_username    = $2,
+		    discord_global_name = NULLIF($3, ''),
+		    discord_avatar      = NULLIF($4, ''),
+		    updated_at          = NOW(),
+		    last_login_at       = NOW()
+		WHERE id = $1`
+	const insertSQL = `
+		INSERT INTO app_users (id, discord_id, discord_username, discord_global_name, discord_avatar, roles)
+		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), '["user"]'::jsonb)`
+
+	var id string
+	err := r.pool.QueryRow(ctx, lookupSQL, p.ID).Scan(&id)
+	switch {
+	case err == nil:
+		if _, err := r.pool.Exec(ctx, refreshSQL, id, p.Username, p.GlobalName, p.Avatar); err != nil {
+			return "", false, fmt.Errorf("refresh profile: %w", err)
+		}
+		return id, false, nil
+	case errors.Is(err, pgx.ErrNoRows):
+		newID, err := newUserID()
+		if err != nil {
+			return "", false, fmt.Errorf("new id: %w", err)
+		}
+		if _, err := r.pool.Exec(ctx, insertSQL, newID, p.ID, p.Username, p.GlobalName, p.Avatar); err != nil {
+			return "", false, fmt.Errorf("insert app_users: %w", err)
+		}
+		return newID, true, nil
+	default:
+		return "", false, fmt.Errorf("lookup: %w", err)
+	}
 }
 
-// FindUserByEmail looks up a user_emails row case-insensitively. Returns
-// (userID, isVerified, exists, err). When no row exists, returns
-// ("", false, false, nil) — *not* an error.
-func (r *Repo) FindUserByEmail(ctx context.Context, email string) (string, bool, bool, error) {
-	email = strings.ToLower(strings.TrimSpace(email))
-	if email == "" {
-		return "", false, false, nil
+// newUserID returns a "usr_<24 hex>" identifier.
+func newUserID() (string, error) {
+	var b [12]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
 	}
-	var userID string
-	var verified bool
-	err := r.pool.QueryRow(ctx, `
-		SELECT user_id, is_verified
-		FROM user_emails
-		WHERE lower(email) = $1
-		LIMIT 1
-	`, email).Scan(&userID, &verified)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, false, nil
-	}
-	if err != nil {
-		return "", false, false, err
-	}
-	return userID, verified, true, nil
+	return "usr_" + hex.EncodeToString(b[:]), nil
 }
 
 func (r *Repo) loadDiscordAccount(ctx context.Context, userID string) (*ConnectedAccount, error) {
@@ -370,98 +361,3 @@ func (r *Repo) loadDiscordAccount(ctx context.Context, userID string) (*Connecte
 	return &a, nil
 }
 
-// generateDiscordUserID returns a fresh "usr_<24-hex>" ID. Mirrors the format
-// used by admin/actions/users_invite.go so all app_users IDs share a shape.
-func generateDiscordUserID() (string, error) {
-	var buf [12]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return "", err
-	}
-	return "usr_" + hex.EncodeToString(buf[:]), nil
-}
-
-// CreateDiscordUser provisions a new user from a Discord profile in a single
-// transaction: app_users + verified primary user_emails + user_connected_accounts.
-// Trusts the caller to have already confirmed Discord reported the email as
-// verified; this method does not re-check.
-func (r *Repo) CreateDiscordUser(ctx context.Context, p DiscordProfile) (string, error) {
-	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	var userID string
-	for attempt := 0; attempt < 2; attempt++ {
-		userID, err = generateDiscordUserID()
-		if err != nil {
-			return "", err
-		}
-		_, ierr := tx.Exec(ctx, `
-			INSERT INTO app_users (id, display_name, avatar_url, roles)
-			VALUES ($1, $2, $3, '["user"]'::jsonb)
-		`, userID, p.DisplayName, p.AvatarURL)
-		if ierr == nil {
-			break
-		}
-		var pgErr *pgconn.PgError
-		if errors.As(ierr, &pgErr) && pgErr.Code == "23505" && attempt == 0 {
-			continue
-		}
-		return "", ierr
-	}
-
-	email := strings.ToLower(strings.TrimSpace(p.Email))
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO user_emails (email, user_id, is_primary, is_verified)
-		VALUES ($1, $2, true, true)
-	`, email, userID); err != nil {
-		return "", err
-	}
-
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO user_connected_accounts
-			(user_id, provider, provider_account_id, username, display_name, avatar_url, profile_email)
-		VALUES ($1, 'discord', $2, $3, $4, $5, $6)
-	`, userID, p.ID, p.Username, p.DisplayName, p.AvatarURL, p.Email); err != nil {
-		return "", err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return "", err
-	}
-	return userID, nil
-}
-
-// LinkDiscordToUser inserts a user_connected_accounts row attaching the given
-// Discord profile to userID. Returns:
-//   - ErrDiscordAlreadyLinked  when the user already has a discord row
-//     (UNIQUE(user_id, provider) violation).
-//   - ErrDiscordLinkedToOther  when the Discord account is already linked to
-//     a different user (PK(provider, provider_account_id) violation).
-func (r *Repo) LinkDiscordToUser(ctx context.Context, userID string, p DiscordProfile) error {
-	_, err := r.pool.Exec(ctx, `
-		INSERT INTO user_connected_accounts
-			(user_id, provider, provider_account_id, username, display_name, avatar_url, profile_email)
-		VALUES ($1, 'discord', $2, $3, $4, $5, $6)
-	`, userID, p.ID, p.Username, p.DisplayName, p.AvatarURL, p.Email)
-	if err == nil {
-		return nil
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		// Postgres returns 23505 (unique_violation) for both PK and UNIQUE.
-		// Disambiguate by constraint name.
-		switch {
-		case strings.Contains(pgErr.ConstraintName, "user_connected_accounts_pkey"):
-			return ErrDiscordLinkedToOther
-		case strings.Contains(pgErr.ConstraintName, "user_connected_accounts_user_id_provider_key"):
-			return ErrDiscordAlreadyLinked
-		}
-		// Fallback when the constraint name doesn't match either expected
-		// shape (e.g. Postgres renames in a future schema change). Treat as
-		// the more conservative "linked to other".
-		return ErrDiscordLinkedToOther
-	}
-	return err
-}

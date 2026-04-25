@@ -2,258 +2,77 @@ package appauth_test
 
 import (
 	"context"
-	"errors"
-	"os"
 	"testing"
 
 	"rustlens/backend/internal/appauth"
-	"rustlens/backend/internal/store"
 )
 
-func discordTestStore(t *testing.T) *store.PostgresStore {
-	t.Helper()
-	dsn := os.Getenv("TEST_POSTGRES_URL")
-	if dsn == "" {
-		t.Skip("TEST_POSTGRES_URL not set")
-	}
+func TestFindOrCreateByDiscordID_CreatesNewUser(t *testing.T) {
 	ctx := context.Background()
-	s, err := store.NewPostgresStore(ctx, dsn)
+	pool := testPool(t)
+	repo := appauth.NewRepo(pool)
+
+	profile := appauth.DiscordProfile{
+		ID:         "111111111111111111",
+		Username:   "alice",
+		GlobalName: "Alice A.",
+		Avatar:     "abc123",
+	}
+	userID, created, err := repo.FindOrCreateByDiscordID(ctx, profile)
 	if err != nil {
-		t.Fatalf("connect: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	t.Cleanup(s.Close)
-	if err := s.EnsureSchema(ctx); err != nil {
-		t.Fatalf("schema: %v", err)
+	if !created {
+		t.Fatalf("expected created=true on first call")
 	}
-	return s
-}
-
-func TestRepo_FindUserByDiscordID(t *testing.T) {
-	s := discordTestStore(t)
-	ctx := context.Background()
-	repo := appauth.NewRepo(s.Pool())
-
-	const userID = "usr_disc_find_1"
-	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO app_users (id, display_name) VALUES ($1, 'D') ON CONFLICT (id) DO NOTHING`, userID); err != nil {
-		t.Fatalf("seed user: %v", err)
-	}
-	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO user_connected_accounts (user_id, provider, provider_account_id, username)
-		 VALUES ($1, 'discord', '999111', 'd_user')
-		 ON CONFLICT (provider, provider_account_id) DO NOTHING`, userID); err != nil {
-		t.Fatalf("seed conn: %v", err)
-	}
-
-	got, err := repo.FindUserByDiscordID(ctx, "999111")
-	if err != nil {
-		t.Fatalf("FindUserByDiscordID: %v", err)
-	}
-	if got != userID {
-		t.Errorf("got %q, want %q", got, userID)
-	}
-
-	_, err = repo.FindUserByDiscordID(ctx, "no-such-discord-id")
-	if !errors.Is(err, appauth.ErrUserNotFound) {
-		t.Errorf("missing id: got %v, want ErrUserNotFound", err)
+	if userID == "" {
+		t.Fatalf("expected non-empty user id")
 	}
 }
 
-func TestRepo_RefreshDiscordConnection(t *testing.T) {
-	s := discordTestStore(t)
+func TestFindOrCreateByDiscordID_ReturnsExistingUser(t *testing.T) {
 	ctx := context.Background()
-	repo := appauth.NewRepo(s.Pool())
+	pool := testPool(t)
+	repo := appauth.NewRepo(pool)
 
-	const userID = "usr_disc_refresh_1"
-	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO app_users (id, display_name) VALUES ($1, 'D') ON CONFLICT (id) DO NOTHING`, userID); err != nil {
-		t.Fatalf("seed user: %v", err)
-	}
-	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO user_connected_accounts (user_id, provider, provider_account_id, username, display_name, avatar_url, profile_email)
-		 VALUES ($1, 'discord', '111222', 'old_name', 'Old Display', 'http://old/avatar', 'old@example.com')
-		 ON CONFLICT (provider, provider_account_id) DO UPDATE
-		 SET username='old_name', display_name='Old Display', avatar_url='http://old/avatar', profile_email='old@example.com'`, userID); err != nil {
-		t.Fatalf("seed conn: %v", err)
-	}
-
-	err := repo.RefreshDiscordConnection(ctx, userID, appauth.DiscordProfile{
-		ID:          "111222",
-		Username:    "new_name",
-		DisplayName: "New Display",
-		AvatarURL:   "http://new/avatar",
-		Email:       "new@example.com",
-	})
+	profile := appauth.DiscordProfile{ID: "222", Username: "bob"}
+	first, _, err := repo.FindOrCreateByDiscordID(ctx, profile)
 	if err != nil {
-		t.Fatalf("Refresh: %v", err)
+		t.Fatalf("first call: %v", err)
 	}
-
-	var u, d, a, e string
-	if err := s.Pool().QueryRow(ctx,
-		`SELECT username, display_name, avatar_url, profile_email
-		 FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='111222'`).
-		Scan(&u, &d, &a, &e); err != nil {
-		t.Fatalf("read: %v", err)
+	second, created, err := repo.FindOrCreateByDiscordID(ctx, profile)
+	if err != nil {
+		t.Fatalf("second call: %v", err)
 	}
-	if u != "new_name" || d != "New Display" || a != "http://new/avatar" || e != "new@example.com" {
-		t.Errorf("row not refreshed: %q %q %q %q", u, d, a, e)
+	if created {
+		t.Fatalf("expected created=false on returning user")
+	}
+	if second != first {
+		t.Fatalf("expected same user id; got %q vs %q", first, second)
 	}
 }
 
-func TestRepo_FindUserByEmail(t *testing.T) {
-	s := discordTestStore(t)
+func TestFindOrCreateByDiscordID_RefreshesProfileFields(t *testing.T) {
 	ctx := context.Background()
-	repo := appauth.NewRepo(s.Pool())
+	pool := testPool(t)
+	repo := appauth.NewRepo(pool)
 
-	const verifiedID = "usr_email_v"
-	const unverifiedID = "usr_email_u"
-	for _, id := range []string{verifiedID, unverifiedID} {
-		if _, err := s.Pool().Exec(ctx,
-			`INSERT INTO app_users (id, display_name) VALUES ($1, 'E') ON CONFLICT (id) DO NOTHING`, id); err != nil {
-			t.Fatalf("seed user %s: %v", id, err)
-		}
-	}
-	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO user_emails (email, user_id, is_primary, is_verified)
-		 VALUES ('Verified@Example.com', $1, true, true)
-		 ON CONFLICT (email) DO UPDATE SET user_id=$1, is_verified=true`, verifiedID); err != nil {
-		t.Fatalf("seed verified: %v", err)
-	}
-	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO user_emails (email, user_id, is_primary, is_verified)
-		 VALUES ('unverified@example.com', $1, true, false)
-		 ON CONFLICT (email) DO UPDATE SET user_id=$1, is_verified=false`, unverifiedID); err != nil {
-		t.Fatalf("seed unverified: %v", err)
-	}
-
-	id, verified, exists, err := repo.FindUserByEmail(ctx, "verified@example.com")
+	initial := appauth.DiscordProfile{ID: "333", Username: "old_name"}
+	userID, _, err := repo.FindOrCreateByDiscordID(ctx, initial)
 	if err != nil {
-		t.Fatalf("FindUserByEmail verified: %v", err)
-	}
-	if !exists || !verified || id != verifiedID {
-		t.Errorf("verified case: id=%q verified=%v exists=%v", id, verified, exists)
+		t.Fatalf("initial: %v", err)
 	}
 
-	id, verified, exists, err = repo.FindUserByEmail(ctx, "UNVERIFIED@example.com")
-	if err != nil {
-		t.Fatalf("FindUserByEmail unverified: %v", err)
-	}
-	if !exists || verified || id != unverifiedID {
-		t.Errorf("unverified case: id=%q verified=%v exists=%v", id, verified, exists)
+	updated := appauth.DiscordProfile{ID: "333", Username: "new_name", GlobalName: "New Name", Avatar: "newhash"}
+	if _, _, err := repo.FindOrCreateByDiscordID(ctx, updated); err != nil {
+		t.Fatalf("refresh: %v", err)
 	}
 
-	id, verified, exists, err = repo.FindUserByEmail(ctx, "missing@example.com")
-	if err != nil {
-		t.Fatalf("FindUserByEmail missing: %v", err)
+	var got string
+	if err := pool.QueryRow(ctx, `SELECT discord_username FROM app_users WHERE id=$1`, userID).Scan(&got); err != nil {
+		t.Fatalf("query: %v", err)
 	}
-	if exists || verified || id != "" {
-		t.Errorf("missing case: id=%q verified=%v exists=%v", id, verified, exists)
-	}
-}
-
-func TestRepo_CreateDiscordUser(t *testing.T) {
-	s := discordTestStore(t)
-	ctx := context.Background()
-	repo := appauth.NewRepo(s.Pool())
-
-	_, _ = s.Pool().Exec(ctx, `DELETE FROM user_connected_accounts WHERE provider_account_id='777888999'`)
-	_, _ = s.Pool().Exec(ctx, `DELETE FROM user_emails WHERE email='create_test@example.com'`)
-	_, _ = s.Pool().Exec(ctx, `DELETE FROM app_users WHERE display_name='Create Test'`)
-
-	id, err := repo.CreateDiscordUser(ctx, appauth.DiscordProfile{
-		ID:          "777888999",
-		Username:    "create_test",
-		DisplayName: "Create Test",
-		AvatarURL:   "http://avatar/c",
-		Email:       "create_test@example.com",
-	})
-	if err != nil {
-		t.Fatalf("CreateDiscordUser: %v", err)
-	}
-	if id == "" {
-		t.Fatalf("expected non-empty id")
-	}
-
-	var dn string
-	if err := s.Pool().QueryRow(ctx,
-		`SELECT display_name FROM app_users WHERE id=$1`, id).Scan(&dn); err != nil {
-		t.Fatalf("read user: %v", err)
-	}
-	if dn != "Create Test" {
-		t.Errorf("display_name = %q", dn)
-	}
-
-	var verified bool
-	if err := s.Pool().QueryRow(ctx,
-		`SELECT is_verified FROM user_emails WHERE user_id=$1 AND is_primary=true`, id).Scan(&verified); err != nil {
-		t.Fatalf("read email: %v", err)
-	}
-	if !verified {
-		t.Errorf("primary email should be verified")
-	}
-
-	var connID string
-	if err := s.Pool().QueryRow(ctx,
-		`SELECT provider_account_id FROM user_connected_accounts WHERE user_id=$1 AND provider='discord'`, id).Scan(&connID); err != nil {
-		t.Fatalf("read conn: %v", err)
-	}
-	if connID != "777888999" {
-		t.Errorf("provider_account_id = %q", connID)
-	}
-}
-
-func TestRepo_LinkDiscordToUser(t *testing.T) {
-	s := discordTestStore(t)
-	ctx := context.Background()
-	repo := appauth.NewRepo(s.Pool())
-
-	const userA = "usr_link_a"
-	const userB = "usr_link_b"
-	for _, id := range []string{userA, userB} {
-		if _, err := s.Pool().Exec(ctx,
-			`INSERT INTO app_users (id, display_name) VALUES ($1, 'L') ON CONFLICT (id) DO NOTHING`, id); err != nil {
-			t.Fatalf("seed user %s: %v", id, err)
-		}
-		// Clean up any prior link for this user so we start from a known state.
-		if _, err := s.Pool().Exec(ctx,
-			`DELETE FROM user_connected_accounts WHERE user_id=$1 AND provider='discord'`, id); err != nil {
-			t.Fatalf("clean conn %s: %v", id, err)
-		}
-	}
-	// Also clean any prior row for this Discord ID.
-	if _, err := s.Pool().Exec(ctx,
-		`DELETE FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='link_target_discord'`); err != nil {
-		t.Fatalf("clean discord id: %v", err)
-	}
-	if _, err := s.Pool().Exec(ctx,
-		`DELETE FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='second_discord'`); err != nil {
-		t.Fatalf("clean second discord id: %v", err)
-	}
-
-	prof := appauth.DiscordProfile{
-		ID:          "link_target_discord",
-		Username:    "link_user",
-		DisplayName: "Link User",
-		AvatarURL:   "http://avatar/l",
-		Email:       "link@example.com",
-	}
-
-	// Happy path: link to userA.
-	if err := repo.LinkDiscordToUser(ctx, userA, prof); err != nil {
-		t.Fatalf("first link: %v", err)
-	}
-
-	// userA tries to add a *second* Discord account → ErrDiscordAlreadyLinked.
-	otherProf := prof
-	otherProf.ID = "second_discord"
-	err := repo.LinkDiscordToUser(ctx, userA, otherProf)
-	if !errors.Is(err, appauth.ErrDiscordAlreadyLinked) {
-		t.Errorf("second link by same user: got %v, want ErrDiscordAlreadyLinked", err)
-	}
-
-	// userB tries to claim the same Discord ID userA already has → ErrDiscordLinkedToOther.
-	err = repo.LinkDiscordToUser(ctx, userB, prof)
-	if !errors.Is(err, appauth.ErrDiscordLinkedToOther) {
-		t.Errorf("conflict by other user: got %v, want ErrDiscordLinkedToOther", err)
+	if got != "new_name" {
+		t.Fatalf("expected profile refresh to update discord_username to %q, got %q", "new_name", got)
 	}
 }
