@@ -38,6 +38,12 @@ function getErrorMessage(error?: string) {
 		case "discord-profile":
 		case "discord-auth":
 			return "Discord sign-in failed. Try again.";
+		case "discord-no-email":
+			return "Discord didn't share an email address. Grant the email scope when prompted, or sign up with a password.";
+		case "discord-email-in-use":
+			return "That Discord email matches an existing unverified account. Verify that account's email first, or sign up with a different one.";
+		case "discord-already-signed-in":
+			return "You're already signed in. Use Settings to manage Discord.";
 		case "register-email":
 			return "Enter an email address to continue.";
 		case "register-password":
@@ -337,10 +343,10 @@ export function AuthPage({
 						<>
 							<AuthDivider>OR CONTINUE WITH</AuthDivider>
 							<Button asChild className="w-full" type="button" variant="outline">
-								<Link href="/auth/discord">
+								<a href="/api/auth/discord">
 									<IconBrandDiscordFilled data-icon="inline-start" />
 									Discord
-								</Link>
+								</a>
 							</Button>
 						</>
 					) : null}
