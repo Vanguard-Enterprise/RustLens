@@ -1533,6 +1533,39 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/auth/discord": map[string]any{
+				"get": map[string]any{
+					"summary":     "Begin Discord OAuth sign-in",
+					"description": "Sets PKCE/state cookies and 302-redirects to Discord. Refuses with /login?error=discord-already-signed-in if the user already has a session cookie.",
+					"responses": map[string]any{
+						"302": map[string]any{
+							"description": "Redirect to Discord authorize endpoint or back to /login on policy refusal.",
+						},
+					},
+				},
+			},
+			"/api/auth/discord/link": map[string]any{
+				"get": map[string]any{
+					"summary":     "Begin Discord OAuth account-link flow",
+					"description": "Requires an active session (rustlens_session cookie). 302s to /login?error=session when missing.",
+					"responses": map[string]any{
+						"302": map[string]any{"description": "Redirect to Discord authorize endpoint or /login on missing session."},
+					},
+				},
+			},
+			"/api/auth/discord/callback": map[string]any{
+				"get": map[string]any{
+					"summary":     "Discord OAuth callback (sign-in or link)",
+					"description": "Validates state, exchanges code, fetches profile, branches on intent cookie. Sign-in path mints rustlens_session cookie and redirects to /dashboard. Link path redirects to /dashboard/settings with notice or error query string.",
+					"parameters": []any{
+						map[string]any{"name": "code", "in": "query", "required": true, "schema": map[string]any{"type": "string"}},
+						map[string]any{"name": "state", "in": "query", "required": true, "schema": map[string]any{"type": "string"}},
+					},
+					"responses": map[string]any{
+						"302": map[string]any{"description": "Redirect to /dashboard, /dashboard/settings, or /login depending on outcome."},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"securitySchemes": map[string]any{
