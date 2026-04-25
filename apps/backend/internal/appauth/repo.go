@@ -287,6 +287,34 @@ func (r *Repo) FindUserByDiscordID(ctx context.Context, discordID string) (strin
 	return userID, err
 }
 
+// DiscordProfile is the subset of Discord OAuth profile data the appauth repo
+// needs to upsert and refresh user_connected_accounts rows.
+type DiscordProfile struct {
+	ID          string
+	Username    string
+	DisplayName string
+	AvatarURL   string
+	Email       string
+}
+
+// RefreshDiscordConnection updates the connection row for a known Discord
+// account. The user_id must already match; this is called on repeat sign-ins
+// to keep username/display name/avatar/profile_email fresh.
+func (r *Repo) RefreshDiscordConnection(ctx context.Context, userID string, p DiscordProfile) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE user_connected_accounts
+		   SET username       = $3,
+		       display_name   = $4,
+		       avatar_url     = $5,
+		       profile_email  = $6,
+		       updated_at     = NOW()
+		 WHERE user_id = $1
+		   AND provider = 'discord'
+		   AND provider_account_id = $2
+	`, userID, p.ID, p.Username, p.DisplayName, p.AvatarURL, p.Email)
+	return err
+}
+
 func (r *Repo) loadDiscordAccount(ctx context.Context, userID string) (*ConnectedAccount, error) {
 	var a ConnectedAccount
 	err := r.pool.QueryRow(ctx, `
