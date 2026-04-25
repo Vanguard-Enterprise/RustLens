@@ -24,6 +24,9 @@ type Config struct {
 	AppAPIInternalSecret string
 	AppSessionSecret     string
 	AppBaseURL           string
+	DiscordClientID      string
+	DiscordClientSecret  string
+	AppOrigin            string
 }
 
 func Load() Config {
@@ -49,6 +52,9 @@ func Load() Config {
 		AppAPIInternalSecret: getEnv("APP_API_INTERNAL_SECRET", "dev-app-internal-secret"),
 		AppSessionSecret:     getEnv("APP_SESSION_SECRET", "dev-app-session-secret"),
 		AppBaseURL:           getEnv("APP_BASE_URL", "http://localhost:3000"),
+		DiscordClientID:      getEnv("DISCORD_CLIENT_ID", ""),
+		DiscordClientSecret:  getEnv("DISCORD_CLIENT_SECRET", ""),
+		AppOrigin:            getEnv("APP_ORIGIN", "http://localhost"),
 	}
 }
 
