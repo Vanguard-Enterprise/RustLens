@@ -102,7 +102,7 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
       return true;
     }
 
-    await interaction.deferReply();
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const embed = await buildDiscordLinksEmbed(discordUser);
     await interaction.editReply({ embeds: [embed] });
     return true;
