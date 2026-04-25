@@ -24,6 +24,12 @@ function getMessage(error?: string, notice?: string) {
 	if (error === "csrf") {
 		return { kind: "error" as const, text: "Your form expired or came from the wrong origin." };
 	}
+	if (error === "discord-linked-to-other") {
+		return { kind: "error" as const, text: "That Discord account is linked to a different RustLens user." };
+	}
+	if (error === "discord-already-linked") {
+		return { kind: "error" as const, text: "You already have a Discord account linked." };
+	}
 	if (notice === "registered") {
 		return { kind: "notice" as const, text: "Account created. Verify your email when you're ready." };
 	}
@@ -36,7 +42,37 @@ function getMessage(error?: string, notice?: string) {
 	if (notice === "password-reset") {
 		return { kind: "notice" as const, text: "Password updated." };
 	}
+	if (notice === "discord-linked") {
+		return { kind: "notice" as const, text: "Discord account connected." };
+	}
 	return null;
+}
+
+function DiscordPanel({ account }: { account: { username: string; avatarUrl: string } | null }) {
+	if (!account) {
+		return (
+			<div className="rounded-md border px-4 py-3">
+				<p className="font-medium">Discord</p>
+				<p className="text-muted-foreground text-sm">
+					Connect your Discord account to sign in faster and link your identity across RustLens.
+				</p>
+				<a
+					href="/api/auth/discord/link"
+					className="mt-3 inline-flex items-center gap-2 rounded-md bg-[#5865F2] px-3 py-2 text-sm font-medium text-white hover:bg-[#4752c4]"
+				>
+					Connect Discord
+				</a>
+			</div>
+		);
+	}
+	return (
+		<div className="rounded-md border px-4 py-3">
+			<p className="font-medium">Discord</p>
+			<p className="text-sm">
+				Connected as <span className="font-medium">@{account.username}</span>
+			</p>
+		</div>
+	);
 }
 
 export default async function DashboardSettingsPage({
@@ -87,6 +123,16 @@ export default async function DashboardSettingsPage({
 						Open development verification link
 					</Link>
 				) : null}
+				<DiscordPanel
+					account={
+						currentUser.discordAccount
+							? {
+								username: currentUser.discordAccount.username,
+								avatarUrl: currentUser.discordAccount.avatarUrl,
+							}
+							: null
+					}
+				/>
 			</CardContent>
 		</Card>
 	);
