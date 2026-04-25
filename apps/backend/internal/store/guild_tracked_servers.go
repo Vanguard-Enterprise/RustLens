@@ -17,7 +17,7 @@ func (p *PostgresStore) ListGuildTrackedServers(ctx context.Context, guildID str
 		SELECT gts.guild_id, gts.server_bm_id, ts.name
 		FROM guild_tracked_servers gts
 		JOIN tracked_servers ts ON ts.bm_id = gts.server_bm_id
-		WHERE gts.guild_id = $1
+		WHERE gts.guild_id = $1 AND ts.include_in_guild_settings = TRUE
 		ORDER BY ts.name ASC, gts.server_bm_id ASC
 	`, guildID)
 	if err != nil {

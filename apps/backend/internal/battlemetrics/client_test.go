@@ -219,23 +219,6 @@ func TestQuickMatchPlayerProfileBySteamIDUsesAuthorizedPost(t *testing.T) {
 					],
 					"included": [
 						{
-							"type": "player",
-							"id": "918543318",
-							"attributes": {
-								"name": "Kappu"
-							}
-						},
-						{
-							"type": "server",
-							"id": "16741517",
-							"attributes": {
-								"name": "Atlas"
-							},
-							"meta": {
-								"timePlayed": 7200
-							}
-						},
-						{
 							"type": "identifier",
 							"id": "272422868",
 							"attributes": {
@@ -271,7 +254,7 @@ func TestQuickMatchPlayerProfileBySteamIDUsesAuthorizedPost(t *testing.T) {
 	if capturedContentType != "application/json" {
 		t.Fatalf("unexpected content-type header: %s", capturedContentType)
 	}
-	if capturedQuery != "include=player,server,identifier" {
+	if capturedQuery != "include=identifier" {
 		t.Fatalf("unexpected query string: %s", capturedQuery)
 	}
 	if !strings.Contains(capturedBody, `"identifier":"76561198888013469"`) {
@@ -283,10 +266,10 @@ func TestQuickMatchPlayerProfileBySteamIDUsesAuthorizedPost(t *testing.T) {
 	if profile.SteamID != "76561198888013469" {
 		t.Fatalf("unexpected steam id: %s", profile.SteamID)
 	}
-	if profile.BmName != "Kappu" {
+	if profile.BmName != "" {
 		t.Fatalf("unexpected bm name: %s", profile.BmName)
 	}
-	if len(profile.Servers) != 1 || profile.Servers[0].ServerID != "16741517" {
+	if len(profile.Servers) != 0 {
 		t.Fatalf("unexpected servers: %#v", profile.Servers)
 	}
 }

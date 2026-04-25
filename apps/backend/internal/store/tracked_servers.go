@@ -15,6 +15,7 @@ var ErrTrackedServerAlreadyExists = errors.New("tracked server already exists")
 type TrackedServer struct {
 	BmID          string
 	Name          string
+	IncludeInGuildSettings bool
 	IsVitality    bool
 	IsAtlas       bool
 	IsVital       bool
@@ -27,7 +28,7 @@ type TrackedServer struct {
 
 func (p *PostgresStore) ListTrackedServers(ctx context.Context) ([]TrackedServer, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
+		SELECT bm_id, name, include_in_guild_settings, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
 		FROM tracked_servers
 		ORDER BY name ASC, bm_id ASC
 	`)
@@ -42,6 +43,7 @@ func (p *PostgresStore) ListTrackedServers(ctx context.Context) ([]TrackedServer
 		if err := rows.Scan(
 			&item.BmID,
 			&item.Name,
+			&item.IncludeInGuildSettings,
 			&item.IsVitality,
 			&item.IsAtlas,
 			&item.IsVital,
@@ -63,11 +65,12 @@ func (p *PostgresStore) ListTrackedServers(ctx context.Context) ([]TrackedServer
 	return items, nil
 }
 
-func (p *PostgresStore) CreateTrackedServer(ctx context.Context, bmID string, name string, isVitality bool, isAtlas bool, isVital bool, isModded bool, isOfficial bool, isBuild bool) (TrackedServer, error) {
+func (p *PostgresStore) CreateTrackedServer(ctx context.Context, bmID string, name string, includeInGuildSettings bool, isVitality bool, isAtlas bool, isVital bool, isModded bool, isOfficial bool, isBuild bool) (TrackedServer, error) {
 	row := p.pool.QueryRow(ctx, `
 		INSERT INTO tracked_servers (
 			bm_id,
 			name,
+			include_in_guild_settings,
 			is_vitality,
 			is_atlas,
 			is_vital,
@@ -75,15 +78,16 @@ func (p *PostgresStore) CreateTrackedServer(ctx context.Context, bmID string, na
 			is_official,
 			is_build
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (bm_id) DO NOTHING
-		RETURNING bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
-	`, bmID, name, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild)
+		RETURNING bm_id, name, include_in_guild_settings, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
+	`, bmID, name, includeInGuildSettings, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild)
 
 	var item TrackedServer
 	err := row.Scan(
 		&item.BmID,
 		&item.Name,
+		&item.IncludeInGuildSettings,
 		&item.IsVitality,
 		&item.IsAtlas,
 		&item.IsVital,
@@ -108,6 +112,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 	currentBmID string,
 	nextBmID string,
 	name string,
+	includeInGuildSettings bool,
 	isVitality bool,
 	isAtlas bool,
 	isVital bool,
@@ -119,20 +124,22 @@ func (p *PostgresStore) UpdateTrackedServer(
 		row := p.pool.QueryRow(ctx, `
 			UPDATE tracked_servers
 			SET name = $2,
-				is_vitality = $3,
-				is_atlas = $4,
-				is_vital = $5,
-				is_modded = $6,
-				is_official = $7,
-				is_build = $8
+				include_in_guild_settings = $3,
+				is_vitality = $4,
+				is_atlas = $5,
+				is_vital = $6,
+				is_modded = $7,
+				is_official = $8,
+				is_build = $9
 			WHERE bm_id = $1
-			RETURNING bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
-		`, currentBmID, name, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild)
+			RETURNING bm_id, name, include_in_guild_settings, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
+		`, currentBmID, name, includeInGuildSettings, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild)
 
 		var item TrackedServer
 		err := row.Scan(
 			&item.BmID,
 			&item.Name,
+			&item.IncludeInGuildSettings,
 			&item.IsVitality,
 			&item.IsAtlas,
 			&item.IsVital,
@@ -149,6 +156,15 @@ func (p *PostgresStore) UpdateTrackedServer(
 			return TrackedServer{}, err
 		}
 
+		if !includeInGuildSettings {
+			if _, err := p.pool.Exec(ctx, `
+				DELETE FROM guild_tracked_servers
+				WHERE server_bm_id = $1
+			`, currentBmID); err != nil {
+				return TrackedServer{}, err
+			}
+		}
+
 		return item, nil
 	}
 
@@ -162,13 +178,14 @@ func (p *PostgresStore) UpdateTrackedServer(
 
 	var existing TrackedServer
 	row := p.pool.QueryRow(ctx, `
-		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
+		SELECT bm_id, name, include_in_guild_settings, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
 		FROM tracked_servers
 		WHERE bm_id = $1
 	`, currentBmID)
 	err = row.Scan(
 		&existing.BmID,
 		&existing.Name,
+		&existing.IncludeInGuildSettings,
 		&existing.IsVitality,
 		&existing.IsAtlas,
 		&existing.IsVital,
@@ -189,6 +206,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 		INSERT INTO tracked_servers (
 			bm_id,
 			name,
+			include_in_guild_settings,
 			is_vitality,
 			is_atlas,
 			is_vital,
@@ -198,8 +216,8 @@ func (p *PostgresStore) UpdateTrackedServer(
 			last_polled_at,
 			last_poll_error
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, nextBmID, name, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild, existing.LastPolledAt, existing.LastPollError)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`, nextBmID, name, includeInGuildSettings, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild, existing.LastPolledAt, existing.LastPollError)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -208,12 +226,21 @@ func (p *PostgresStore) UpdateTrackedServer(
 		return TrackedServer{}, err
 	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE guild_tracked_servers
-		SET server_bm_id = $2
-		WHERE server_bm_id = $1
-	`, currentBmID, nextBmID); err != nil {
-		return TrackedServer{}, err
+	if includeInGuildSettings {
+		if _, err := tx.Exec(ctx, `
+			UPDATE guild_tracked_servers
+			SET server_bm_id = $2
+			WHERE server_bm_id = $1
+		`, currentBmID, nextBmID); err != nil {
+			return TrackedServer{}, err
+		}
+	} else {
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM guild_tracked_servers
+			WHERE server_bm_id = $1
+		`, currentBmID); err != nil {
+			return TrackedServer{}, err
+		}
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -238,6 +265,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 	return TrackedServer{
 		BmID:          nextBmID,
 		Name:          name,
+		IncludeInGuildSettings: includeInGuildSettings,
 		IsVitality:    isVitality,
 		IsAtlas:       isAtlas,
 		IsVital:       isVital,
@@ -251,7 +279,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 
 func (p *PostgresStore) GetTrackedServer(ctx context.Context, bmID string) (TrackedServer, error) {
 	row := p.pool.QueryRow(ctx, `
-		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
+		SELECT bm_id, name, include_in_guild_settings, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
 		FROM tracked_servers
 		WHERE bm_id = $1
 	`, bmID)
@@ -260,6 +288,7 @@ func (p *PostgresStore) GetTrackedServer(ctx context.Context, bmID string) (Trac
 	err := row.Scan(
 		&item.BmID,
 		&item.Name,
+		&item.IncludeInGuildSettings,
 		&item.IsVitality,
 		&item.IsAtlas,
 		&item.IsVital,
@@ -296,7 +325,7 @@ func (p *PostgresStore) DeleteTrackedServer(ctx context.Context, bmID string) er
 
 func (p *PostgresStore) NextTrackedServerToPoll(ctx context.Context) (*TrackedServer, error) {
 	row := p.pool.QueryRow(ctx, `
-		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
+		SELECT bm_id, name, include_in_guild_settings, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
 		FROM tracked_servers
 		ORDER BY last_polled_at NULLS FIRST, bm_id ASC
 		LIMIT 1
@@ -306,6 +335,7 @@ func (p *PostgresStore) NextTrackedServerToPoll(ctx context.Context) (*TrackedSe
 	err := row.Scan(
 		&item.BmID,
 		&item.Name,
+		&item.IncludeInGuildSettings,
 		&item.IsVitality,
 		&item.IsAtlas,
 		&item.IsVital,

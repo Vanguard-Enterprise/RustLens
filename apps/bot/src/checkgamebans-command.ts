@@ -1,5 +1,5 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { BackendClient, type GuildRecentGameBan } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
@@ -11,7 +11,9 @@ const checkGameBansCommand = new SlashCommandBuilder()
   .setName(CHECK_GAME_BANS_COMMAND_NAME)
   .setDescription("Check linked guild Steam accounts for recent game bans")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-  .setDMPermission(false);
+  .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
 
 let _backend: BackendClient | undefined;
 let _workerID: string | undefined;
@@ -86,7 +88,7 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
     return true;
   }
 
-  await interaction.deferReply();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
     const response = await getBackend().listGuildRecentGameBans(getWorkerID(), interaction.guildId);

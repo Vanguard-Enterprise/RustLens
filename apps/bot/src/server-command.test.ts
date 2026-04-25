@@ -24,6 +24,7 @@ describe("server-command", () => {
     const modal = __testables.buildTrackedServerModal({
       bmId: "16741517",
       name: "Atlas Main",
+      includeInGuildSettings: true,
       isVitality: false,
       isAtlas: true,
       isVital: false,
@@ -35,13 +36,26 @@ describe("server-command", () => {
     }).toJSON();
 
     expect(modal.title).toBe("Edit Tracked Server");
-    expect(modal.components).toHaveLength(3);
+    expect(modal.components).toHaveLength(4);
+    expect(modal.components[2]).toEqual({
+      type: 18,
+      label: "Include in guild settings?",
+      component: {
+        type: 21,
+        custom_id: "server_include_in_guild_settings",
+        options: [
+          { label: "Yes", value: "yes", default: true },
+          { label: "No", value: "no", default: false },
+        ],
+      },
+    });
   });
 
   it("builds the tracked server list description", () => {
     const description = __testables.buildTrackedServerListDescription([{
       bmId: "16741517",
       name: "Atlas Main",
+      includeInGuildSettings: true,
       isVitality: false,
       isAtlas: true,
       isVital: false,

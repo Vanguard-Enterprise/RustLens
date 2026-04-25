@@ -1,5 +1,5 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
@@ -14,6 +14,8 @@ const setSteamCommand = new SlashCommandBuilder()
   .setName(SETSTEAM_COMMAND_NAME)
   .setDescription("Set your Steam ID for this guild")
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addStringOption((option) =>
     option
       .setName(SETSTEAM_STEAM_ID_OPTION_NAME)

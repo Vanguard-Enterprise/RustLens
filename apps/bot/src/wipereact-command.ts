@@ -12,9 +12,11 @@ import type {
 } from "discord.js";
 import {
   ActionRowBuilder,
+  ApplicationIntegrationType,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -213,6 +215,8 @@ const wipeReactCommand = new SlashCommandBuilder()
   .setName(WIPEREACT_COMMAND_NAME)
   .setDescription("RustLens wipe react commands")
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addSubcommand((subcommand) =>
     subcommand
       .setName(WIPEREACT_CREATE_SUBCOMMAND_NAME)

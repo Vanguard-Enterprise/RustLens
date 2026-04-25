@@ -12,6 +12,10 @@ type AssignmentsResponse = {
   shardIds: number[];
 };
 
+type CountResponse = {
+  count: number;
+};
+
 export type GuildSettings = {
   guildId: string;
   wipeReactLogChannelId: string;
@@ -254,6 +258,7 @@ export type TrackedServerLogEventsResponse = {
 export type TrackedServer = {
   bmId: string;
   name: string;
+  includeInGuildSettings: boolean;
   isVitality: boolean;
   isAtlas: boolean;
   isVital: boolean;
@@ -292,11 +297,29 @@ export type PlayerStateListResponse = {
   items: PlayerState[];
 };
 
+export type PlayerSearchResult = {
+  serverBmId: string;
+  serverName: string;
+  playerBmId: string;
+  steamId: string;
+  bmName: string;
+  isOnline: boolean;
+};
+
+export type PlayerSearchListResponse = {
+  items: PlayerSearchResult[];
+};
+
 export type BulkHardLinkEntry = {
   steamId: string;
   bmId?: string | null;
   discordId: string;
   source: string;
+};
+
+export type UserBan = {
+  discordId: string;
+  categories: string[];
 };
 
 export class BackendClient {
@@ -359,6 +382,10 @@ export class BackendClient {
   assignments(workerId: string) {
     const query = new URLSearchParams({ workerId }).toString();
     return this.call<AssignmentsResponse>(workerId, `/api/internal/bot/shards/assignments?${query}`, "GET");
+  }
+
+  steamAccountCount(workerId: string) {
+    return this.call<CountResponse>(workerId, "/api/internal/bot/setup/steam-accounts/count", "GET");
   }
 
   guildSettings(workerId: string, guildId: string) {
@@ -597,6 +624,24 @@ export class BackendClient {
     );
   }
 
+  searchPlayerStatesByName(
+    workerId: string,
+    serverId: string,
+    query: string,
+    limit: number,
+    includeOffline = false,
+  ) {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    if (includeOffline) {
+      params.set("includeOffline", "true");
+    }
+    return this.call<PlayerSearchListResponse>(
+      workerId,
+      `/api/internal/bot/setup/player-states/servers/${serverId}/search?${params.toString()}`,
+      "GET",
+    );
+  }
+
   getPlayerState(workerId: string, serverId: string, playerId: string) {
     return this.call<PlayerState>(
       workerId,
@@ -792,6 +837,23 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/steam/${steamId}/links`,
       "GET",
+    );
+  }
+
+  getUserBan(workerId: string, discordId: string) {
+    return this.call<UserBan>(
+      workerId,
+      `/api/internal/bot/setup/bans/${discordId}`,
+      "GET",
+    );
+  }
+
+  setUserBan(workerId: string, discordId: string, categories: string[], updatedBy: string) {
+    return this.call<UserBan>(
+      workerId,
+      `/api/internal/bot/setup/bans/${discordId}`,
+      "PUT",
+      { categories, updatedBy },
     );
   }
 }

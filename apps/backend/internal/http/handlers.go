@@ -316,14 +316,15 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 
 func trackedServerToMap(item store.TrackedServer) map[string]any {
 	result := map[string]any{
-		"bmId":       item.BmID,
-		"name":       item.Name,
-		"isVitality": item.IsVitality,
-		"isAtlas":    item.IsAtlas,
-		"isVital":    item.IsVital,
-		"isModded":   item.IsModded,
-		"isOfficial": item.IsOfficial,
-		"isBuild":    item.IsBuild,
+		"bmId":                   item.BmID,
+		"name":                   item.Name,
+		"includeInGuildSettings": item.IncludeInGuildSettings,
+		"isVitality":             item.IsVitality,
+		"isAtlas":                item.IsAtlas,
+		"isVital":                item.IsVital,
+		"isModded":               item.IsModded,
+		"isOfficial":             item.IsOfficial,
+		"isBuild":                item.IsBuild,
 	}
 	if item.LastPolledAt != nil {
 		result["lastPolledAt"] = *item.LastPolledAt
@@ -1264,14 +1265,15 @@ func (h *Handler) ReleaseWipeReactSchedulePost(w http.ResponseWriter, r *http.Re
 }
 
 type createTrackedServerRequest struct {
-	BmID       string `json:"bmId"`
-	Name       string `json:"name"`
-	IsVitality bool   `json:"isVitality"`
-	IsAtlas    bool   `json:"isAtlas"`
-	IsVital    bool   `json:"isVital"`
-	IsModded   bool   `json:"isModded"`
-	IsOfficial bool   `json:"isOfficial"`
-	IsBuild    bool   `json:"isBuild"`
+	BmID                   string `json:"bmId"`
+	Name                   string `json:"name"`
+	IncludeInGuildSettings bool   `json:"includeInGuildSettings"`
+	IsVitality             bool   `json:"isVitality"`
+	IsAtlas                bool   `json:"isAtlas"`
+	IsVital                bool   `json:"isVital"`
+	IsModded               bool   `json:"isModded"`
+	IsOfficial             bool   `json:"isOfficial"`
+	IsBuild                bool   `json:"isBuild"`
 }
 
 func (h *Handler) ListTrackedServers(w http.ResponseWriter, r *http.Request) {
@@ -1309,6 +1311,7 @@ func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		request.BmID,
 		request.Name,
+		request.IncludeInGuildSettings,
 		request.IsVitality,
 		request.IsAtlas,
 		request.IsVital,
@@ -1330,14 +1333,15 @@ func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateTrackedServerRequest struct {
-	BmID       string `json:"bmId"`
-	Name       string `json:"name"`
-	IsVitality bool   `json:"isVitality"`
-	IsAtlas    bool   `json:"isAtlas"`
-	IsVital    bool   `json:"isVital"`
-	IsModded   bool   `json:"isModded"`
-	IsOfficial bool   `json:"isOfficial"`
-	IsBuild    bool   `json:"isBuild"`
+	BmID                   string `json:"bmId"`
+	Name                   string `json:"name"`
+	IncludeInGuildSettings bool   `json:"includeInGuildSettings"`
+	IsVitality             bool   `json:"isVitality"`
+	IsAtlas                bool   `json:"isAtlas"`
+	IsVital                bool   `json:"isVital"`
+	IsModded               bool   `json:"isModded"`
+	IsOfficial             bool   `json:"isOfficial"`
+	IsBuild                bool   `json:"isBuild"`
 }
 
 func (h *Handler) UpdateTrackedServer(w http.ResponseWriter, r *http.Request) {
@@ -1371,6 +1375,7 @@ func (h *Handler) UpdateTrackedServer(w http.ResponseWriter, r *http.Request) {
 		currentBmID,
 		request.BmID,
 		request.Name,
+		request.IncludeInGuildSettings,
 		request.IsVitality,
 		request.IsAtlas,
 		request.IsVital,
@@ -1477,6 +1482,9 @@ func (h *Handler) ReplaceGuildTrackedServers(w http.ResponseWriter, r *http.Requ
 
 		available := make(map[string]struct{}, len(trackedServers))
 		for _, item := range trackedServers {
+			if !item.IncludeInGuildSettings {
+				continue
+			}
 			available[item.BmID] = struct{}{}
 		}
 
@@ -1536,6 +1544,64 @@ func (h *Handler) ListPlayerStatesByPlayer(w http.ResponseWriter, r *http.Reques
 	}
 
 	writePlayerStateList(w, items)
+}
+
+func (h *Handler) SearchPlayerStatesOnServer(w http.ResponseWriter, r *http.Request) {
+	serverID := strings.TrimSpace(chi.URLParam(r, "serverID"))
+	if serverID == "" {
+		writeError(w, http.StatusBadRequest, "serverID is required")
+		return
+	}
+
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "q is required")
+		return
+	}
+
+	limit := 20
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		if parsed > 20 {
+			parsed = 20
+		}
+		limit = parsed
+	}
+
+	includeOffline := false
+	if raw := strings.TrimSpace(r.URL.Query().Get("includeOffline")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "includeOffline must be a boolean")
+			return
+		}
+		includeOffline = parsed
+	}
+
+	items, err := h.postgres.SearchPlayerStatesByName(r.Context(), serverID, query, limit, includeOffline)
+	if err != nil {
+		log.Printf("[backend] SearchPlayerStatesByName error for %s/%q: %v", serverID, query, err)
+		writeError(w, http.StatusInternalServerError, "failed to search player states")
+		return
+	}
+
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, map[string]any{
+			"serverBmId": item.ServerBmID,
+			"serverName": item.ServerName,
+			"playerBmId": item.PlayerBmID,
+			"steamId":    item.SteamID,
+			"bmName":     item.BmName,
+			"isOnline":   item.IsOnline,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
 }
 
 func (h *Handler) GetPlayerState(w http.ResponseWriter, r *http.Request) {
@@ -1906,11 +1972,26 @@ func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID stri
 	if err != nil {
 		return store.SteamAccount{}, err
 	}
-	if profile.SteamID == "" {
-		profile.SteamID = steamID
+	bmID := strings.TrimSpace(profile.BmID)
+	if bmID == "" {
+		return store.SteamAccount{}, store.ErrSteamAccountNotFound
 	}
 
-	return h.upsertResolvedSteamAccount(ctx, profile.SteamID, profile)
+	fullProfile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, bmID)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	if fullProfile.SteamID == "" {
+		fullProfile.SteamID = profile.SteamID
+	}
+	if fullProfile.SteamID == "" {
+		fullProfile.SteamID = steamID
+	}
+	if fullProfile.BmName == "" {
+		fullProfile.BmName = profile.BmName
+	}
+
+	return h.upsertResolvedSteamAccount(ctx, fullProfile.SteamID, fullProfile)
 }
 
 func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (store.SteamAccount, error) {
@@ -2057,6 +2138,17 @@ func writeSteamDiscordLinkList(w http.ResponseWriter, links []store.SteamDiscord
 		items = append(items, steamDiscordLinkToMap(link))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *Handler) GetSteamAccountCount(w http.ResponseWriter, r *http.Request) {
+	count, err := h.postgres.CountSteamAccounts(r.Context())
+	if err != nil {
+		log.Printf("[backend] GetSteamAccountCount error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to count steam accounts")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"count": count})
 }
 
 func (h *Handler) GetSteamAccount(w http.ResponseWriter, r *http.Request) {
@@ -2913,6 +3005,92 @@ func (h *Handler) ListAdminRoles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+var banCategoryAllowlist = map[string]struct{}{
+	"setup":        {},
+	"linking":      {},
+	"lookup":       {},
+	"activity":     {},
+	"coordination": {},
+	"other":        {},
+}
+
+func validateDiscordIDPathParam(w http.ResponseWriter, r *http.Request) (string, bool) {
+	return validateSnowflakePathParam(w, r, "discordID")
+}
+
+func writeUserBan(w http.ResponseWriter, ban store.UserBan) {
+	categories := ban.Categories
+	if categories == nil {
+		categories = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"discordId":  ban.DiscordID,
+		"categories": categories,
+	})
+}
+
+func (h *Handler) GetUserBan(w http.ResponseWriter, r *http.Request) {
+	discordID, ok := validateDiscordIDPathParam(w, r)
+	if !ok {
+		return
+	}
+
+	ban, err := h.postgres.GetUserBan(r.Context(), discordID)
+	if err != nil {
+		log.Printf("[backend] GetUserBan error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch user ban")
+		return
+	}
+
+	writeUserBan(w, ban)
+}
+
+type updateUserBanRequest struct {
+	Categories []string `json:"categories"`
+	UpdatedBy  string   `json:"updatedBy"`
+}
+
+func (h *Handler) UpdateUserBan(w http.ResponseWriter, r *http.Request) {
+	discordID, ok := validateDiscordIDPathParam(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request updateUserBanRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	seen := map[string]struct{}{}
+	categories := make([]string, 0, len(request.Categories))
+	for _, raw := range request.Categories {
+		category := strings.ToLower(strings.TrimSpace(raw))
+		if category == "" {
+			continue
+		}
+		if _, ok := banCategoryAllowlist[category]; !ok {
+			writeError(w, http.StatusBadRequest, "invalid ban category: "+category)
+			return
+		}
+		if _, dup := seen[category]; dup {
+			continue
+		}
+		seen[category] = struct{}{}
+		categories = append(categories, category)
+	}
+
+	ban, err := h.postgres.UpsertUserBan(r.Context(), discordID, categories, request.UpdatedBy)
+	if err != nil {
+		log.Printf("[backend] UpdateUserBan error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update user ban")
+		return
+	}
+
+	writeUserBan(w, ban)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

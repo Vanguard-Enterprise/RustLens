@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { SteamAccount } from "./backend-client.js";
 import { __testables, buildUserEmbed } from "./view-command.js";
+
+const OLD_FIRST_SEEN_UNIX = 1577836800;
 
 describe("view-command", () => {
   it("normalizes raw discord ids", () => {
@@ -21,7 +24,7 @@ describe("view-command", () => {
       bmId: "918543318",
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
-      firstSeenUnix: 1766616480,
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
       serversPlayed: 12,
       nameGaps: [],
       hours: {
@@ -41,7 +44,7 @@ describe("view-command", () => {
     expect(embed.fields?.[0]?.value).toContain("https://steamcommunity.com/profiles/76561198000000000");
     expect(embed.fields?.[0]?.value).toContain("https://www.battlemetrics.com/players/918543318");
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
-    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_4:1487595713553502359>");
     expect(embed.fields).toHaveLength(11);
   });
 
@@ -51,7 +54,7 @@ describe("view-command", () => {
       bmId: "918543318",
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
-      firstSeenUnix: 1766616480,
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
       serversPlayed: 40,
       nameGaps: [],
       hours: {
@@ -78,7 +81,7 @@ describe("view-command", () => {
       bmId: "918543318",
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
-      firstSeenUnix: 1766616480,
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
       serversPlayed: 20,
       nameGaps: [],
       hours: {
@@ -100,7 +103,7 @@ describe("view-command", () => {
       bmId: "918543318",
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
-      firstSeenUnix: 1766616480,
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
       serversPlayed: 20,
       nameGaps: [],
       hours: {
@@ -170,13 +173,37 @@ describe("view-command", () => {
     expect(__testables.calculateBmHoursRisk({ hours: { bm: 275 } } as never)).toEqual({ level: 0, hours: 275 });
   });
 
+  it("scores account-created risk in 10-day buckets", () => {
+    const now = new Date("2026-04-01T00:00:00Z");
+
+    expect(__testables.calculateAccountCreatedRisk({ firstSeenUnix: Math.floor(new Date("2026-03-27T00:00:00Z").getTime() / 1000) } as never, now))
+      .toEqual({ level: 10, firstSeenUnix: Math.floor(new Date("2026-03-27T00:00:00Z").getTime() / 1000) });
+    expect(__testables.calculateAccountCreatedRisk({ firstSeenUnix: Math.floor(new Date("2026-03-12T00:00:00Z").getTime() / 1000) } as never, now))
+      .toEqual({ level: 9, firstSeenUnix: Math.floor(new Date("2026-03-12T00:00:00Z").getTime() / 1000) });
+    expect(__testables.calculateAccountCreatedRisk({ firstSeenUnix: Math.floor(new Date("2026-03-02T00:00:00Z").getTime() / 1000) } as never, now))
+      .toEqual({ level: 8, firstSeenUnix: Math.floor(new Date("2026-03-02T00:00:00Z").getTime() / 1000) });
+  });
+
+  it("includes the account-created line in the risk factor field", () => {
+    const firstSeenUnix = Math.floor(new Date("2026-03-27T00:00:00Z").getTime() / 1000);
+    const field = __testables.buildRiskFactorField({
+      firstSeenUnix,
+      hours: {
+        bm: null,
+        rust: null,
+      },
+    } as never, new Date("2026-04-01T00:00:00Z"));
+
+    expect(field.value).toContain(`<:risk_10:1487595719790432447> Account created: <t:${firstSeenUnix}:R>`);
+  });
+
   it("includes the linked discord user when provided", () => {
     const embed = buildUserEmbed("76561198000000000", {
       steamId: "76561198000000000",
       bmId: "918543318",
       bmName: "turn it up",
       avatarImage: "https://cdn.example/avatar.png",
-      firstSeenUnix: 1766616480,
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
       serversPlayed: 5,
       nameGaps: [],
       hours: {
@@ -205,5 +232,55 @@ describe("view-command", () => {
     const embed = buildUserEmbed("76561198000000000", null, "123456789012345678", false).toJSON();
 
     expect(embed.fields?.some((field) => field.name.startsWith("Risk Factor"))).toBe(false);
+  });
+
+  it("builds paginated /view all embeds with 20 users per page", () => {
+    const items = Array.from({ length: 25 }, (_, index) => ({
+      discordId: `${index + 1}`,
+      steamId: `76561198000000${String(index).padStart(3, "0")}`,
+    }));
+    const accountMap = new Map<string, SteamAccount>(items.map((item, index) => [item.steamId, {
+      steamId: item.steamId,
+      bmId: `${9000 + index}`,
+      bmName: "",
+      avatarImage: "",
+      firstSeenAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    }]));
+
+    const firstPage = __testables.buildViewAllPage(items, accountMap, 0).embed.toJSON();
+    const secondPage = __testables.buildViewAllPage(items, accountMap, 1).embed.toJSON();
+
+    expect(firstPage.description).toContain("<@1>");
+    expect(firstPage.description).toContain("<@20>");
+    expect(firstPage.description).not.toContain("<@21>");
+    expect(firstPage.footer?.text).toBe("RustLens.com • Page 1/2");
+
+    expect(secondPage.description).toContain("<@21>");
+    expect(secondPage.description).toContain("<@25>");
+    expect(secondPage.description).not.toContain("<@20>");
+    expect(secondPage.footer?.text).toBe("RustLens.com • Page 2/2");
+  });
+
+  it("builds paginator buttons with correct disabled states", () => {
+    const firstPageRows = __testables.buildViewAllPageButtons("123", 0, 3);
+    const lastPageRows = __testables.buildViewAllPageButtons("123", 2, 3);
+
+    const firstPageButtons = firstPageRows[0].toJSON().components;
+    const lastPageButtons = lastPageRows[0].toJSON().components;
+
+    expect(firstPageButtons[0]?.disabled).toBe(true);
+    expect(firstPageButtons[1]?.disabled).toBe(false);
+    expect(lastPageButtons[0]?.disabled).toBe(false);
+    expect(lastPageButtons[1]?.disabled).toBe(true);
+  });
+
+  it("parses /view all paginator custom ids", () => {
+    expect(__testables.parseViewAllPageCustomId("view:all:page:2:123456789012345678")).toEqual({
+      page: 2,
+      ownerId: "123456789012345678",
+    });
+    expect(__testables.parseViewAllPageCustomId("view:all:page:x:123456789012345678")).toBeNull();
   });
 });

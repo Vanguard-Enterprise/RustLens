@@ -48,6 +48,23 @@ describe("BackendClient", () => {
     expect(init?.body).toBe(JSON.stringify({ wipeReactLogChannelId: "456" }));
   });
 
+  it("loads steam account count", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({ count: 42 }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.steamAccountCount("worker-a");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/steam-accounts/count");
+    expect(init?.method).toBe("GET");
+  });
+
   it("posts wipe react reaction updates", async () => {
     const mockResponse = {
       ok: true,
@@ -124,6 +141,7 @@ describe("BackendClient", () => {
       json: async () => ({
         bmId: "12345",
         name: "Vital EU Main",
+        includeInGuildSettings: true,
         isVitality: true,
         isAtlas: false,
         isVital: false,
@@ -139,6 +157,7 @@ describe("BackendClient", () => {
     await client.createTrackedServer("worker-a", {
       bmId: "12345",
       name: "Vital EU Main",
+      includeInGuildSettings: true,
       isVitality: true,
       isAtlas: false,
       isVital: false,
@@ -154,6 +173,7 @@ describe("BackendClient", () => {
     expect(init?.body).toBe(JSON.stringify({
       bmId: "12345",
       name: "Vital EU Main",
+      includeInGuildSettings: true,
       isVitality: true,
       isAtlas: false,
       isVital: false,
@@ -203,6 +223,7 @@ describe("BackendClient", () => {
         items: [{
           bmId: "12345",
           name: "Vital EU Main",
+          includeInGuildSettings: true,
           isVitality: true,
           isAtlas: false,
           isVital: false,
@@ -232,6 +253,7 @@ describe("BackendClient", () => {
       json: async () => ({
         bmId: "98765",
         name: "Atlas EU Main",
+        includeInGuildSettings: false,
         isVitality: false,
         isAtlas: true,
         isVital: false,
@@ -247,6 +269,7 @@ describe("BackendClient", () => {
     await client.updateTrackedServer("worker-a", "12345", {
       bmId: "98765",
       name: "Atlas EU Main",
+      includeInGuildSettings: false,
       isVitality: false,
       isAtlas: true,
       isVital: false,
@@ -262,6 +285,7 @@ describe("BackendClient", () => {
     expect(init?.body).toBe(JSON.stringify({
       bmId: "98765",
       name: "Atlas EU Main",
+      includeInGuildSettings: false,
       isVitality: false,
       isAtlas: true,
       isVital: false,

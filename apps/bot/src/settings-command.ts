@@ -9,8 +9,10 @@ import type {
 } from "discord.js";
 import {
   ActionRowBuilder,
+  ApplicationIntegrationType,
   ChannelType,
   EmbedBuilder,
+  InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -43,7 +45,9 @@ const guildSettingsCommand = new SlashCommandBuilder()
   .setName(SETTINGS_COMMAND_NAME)
   .setDescription("Manage guild settings")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-  .setDMPermission(false);
+  .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
 
 const shardID = process.env.SHARD_ID ?? "0";
 
@@ -459,7 +463,9 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
       getBackend().listGuildTrackedServers(getWorkerID(), interaction.guildId),
     ]);
 
-    if (allTrackedServers.items.length === 0) {
+    const selectableTrackedServers = allTrackedServers.items.filter((server) => server.includeInGuildSettings);
+
+    if (selectableTrackedServers.length === 0) {
       await interaction.reply({
         content: "No tracked servers are available yet. Add them first with /server in the owner guild.",
         flags: MessageFlags.Ephemeral,
@@ -469,7 +475,7 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
 
     await interaction.showModal(
       buildTrackedServersModal(
-        allTrackedServers.items,
+        selectableTrackedServers,
         new Set(guildTrackedServers.items.map((server) => server.bmId)),
       ).toJSON() as any,
     );

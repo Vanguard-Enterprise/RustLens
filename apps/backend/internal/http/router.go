@@ -87,6 +87,7 @@ func NewRouter(
 		r.Put("/tracked-servers/{bmID}", handler.UpdateTrackedServer)
 		r.Delete("/tracked-servers/{bmID}", handler.DeleteTrackedServer)
 		r.Get("/player-states/servers/{serverID}", handler.ListOnlinePlayerStatesByServer)
+		r.Get("/player-states/servers/{serverID}/search", handler.SearchPlayerStatesOnServer)
 		r.Get("/player-states/servers/{serverID}/players/{playerID}", handler.GetPlayerState)
 		r.Get("/player-states/players/{playerID}", handler.ListPlayerStatesByPlayer)
 
@@ -97,6 +98,7 @@ func NewRouter(
 		r.Post("/steam/resolve", handler.ResolveSteamID)
 		r.Post("/steam/links", handler.CreateSoftLink)
 		r.Post("/steam/bulk-hard-links", handler.BulkUpsertHardLinks)
+		r.Get("/steam-accounts/count", handler.GetSteamAccountCount)
 		r.Post("/user-guilds", handler.CreateUserGuildLink)
 		r.Post("/user-guilds/leave", handler.MarkUserGuildLeft)
 		r.Get("/steam/{steamID}", handler.GetSteamAccount)
@@ -104,6 +106,10 @@ func NewRouter(
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
 		r.Get("/discord/{discordID}/links", handler.ListLinksByDiscordID)
 		r.Get("/discord/{discordID}/guilds", handler.ListUserGuildLinksByDiscord)
+
+		// User ban registry (owner-only /ban command)
+		r.Get("/bans/{discordID}", handler.GetUserBan)
+		r.Put("/bans/{discordID}", handler.UpdateUserBan)
 
 		// Guild-scoped steam-discord links
 		r.Get("/guilds/{guildID}/online-summary", handler.ListGuildOnlineSummary)

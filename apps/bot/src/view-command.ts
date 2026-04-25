@@ -1,9 +1,11 @@
-import type { ChatInputCommandInteraction, Client } from "discord.js";
+import type { ButtonInteraction, ChatInputCommandInteraction, Client } from "discord.js";
 import {
   ActionRowBuilder,
+  ApplicationIntegrationType,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -24,6 +26,8 @@ export const VIEW_COMMAND_NAME = "view";
 const VIEW_USER_SUBCOMMAND = "user";
 const VIEW_ALL_SUBCOMMAND = "all";
 const VIEW_NOSTEAM_SUBCOMMAND = "nosteam";
+const VIEW_ALL_PAGE_SIZE = 20;
+const VIEW_ALL_PAGE_CUSTOM_ID_PREFIX = "view:all:page:";
 
 const discordMentionPattern = /^<@!?(\d{16,20})>$/;
 const VIEW_EMOJIS = {
@@ -60,6 +64,8 @@ const viewCommand = new SlashCommandBuilder()
   .setDescription("View linked steam/discord accounts in this guild")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addSubcommand((sub) =>
     sub
       .setName(VIEW_USER_SUBCOMMAND)
@@ -233,13 +239,27 @@ function calculateBmHoursRisk(profile: SteamProfile | null) {
   return { level, hours: bmHours };
 }
 
-function buildRiskFactorField(profile: SteamProfile | null) {
+function calculateAccountCreatedRisk(profile: SteamProfile | null, now: Date = new Date()) {
+  const firstSeenUnix = profile?.firstSeenUnix;
+  if (firstSeenUnix === null || firstSeenUnix === undefined) {
+    return null;
+  }
+
+  const nowUnix = Math.floor(now.getTime() / 1000);
+  const ageDays = Math.max(0, (nowUnix - firstSeenUnix) / SECONDS_PER_DAY);
+  const level = Math.max(0, Math.min(10, 11 - Math.ceil(ageDays / 10)));
+  return { level, firstSeenUnix };
+}
+
+function buildRiskFactorField(profile: SteamProfile | null, now: Date = new Date()) {
   const steamBmRisk = calculateSteamBmHourRisk(profile);
-  const recentBreaksRisk = calculateRecentBreaksRisk(profile);
+  const recentBreaksRisk = calculateRecentBreaksRisk(profile, now);
   const serversRisk = calculateServersPlayedRisk(profile);
   const bmHoursRisk = calculateBmHoursRisk(profile);
+  const accountCreatedRisk = calculateAccountCreatedRisk(profile, now);
 
-  const factors = [steamBmRisk, recentBreaksRisk, serversRisk, bmHoursRisk].filter((factor) => factor !== null);
+  const factors = [steamBmRisk, recentBreaksRisk, serversRisk, bmHoursRisk, accountCreatedRisk]
+    .filter((factor) => factor !== null);
   const averageRisk = factors.length > 0
     ? factors.reduce((total, factor) => total + factor.level, 0) / factors.length
     : 0;
@@ -260,9 +280,13 @@ function buildRiskFactorField(profile: SteamProfile | null) {
     ? `${riskEmoji(bmHoursRisk.level)} BM hours: **${bmHoursRisk.hours}**`
     : `${riskEmoji(0)} BM hours: **unknown**`;
 
+  const accountCreatedLine = accountCreatedRisk
+    ? `${riskEmoji(accountCreatedRisk.level)} Account created: <t:${accountCreatedRisk.firstSeenUnix}:R>`
+    : `${riskEmoji(0)} Account created: **unknown**`;
+
   return {
     name: `Risk Factor ${riskEmoji(averageRisk)}`,
-    value: [steamBmLine, recentBreaksLine, serversLine, bmHoursLine].join("\n"),
+    value: [steamBmLine, recentBreaksLine, accountCreatedLine, serversLine, bmHoursLine].join("\n"),
   };
 }
 
@@ -279,6 +303,73 @@ export function buildProfileButtons(steamId: string) {
         .setStyle(ButtonStyle.Secondary),
     ),
   ];
+}
+
+type ViewAllPageData = {
+  embed: EmbedBuilder;
+  totalPages: number;
+  page: number;
+};
+
+function buildViewAllPageButtons(ownerId: string, page: number, totalPages: number) {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${VIEW_ALL_PAGE_CUSTOM_ID_PREFIX}${page - 1}:${ownerId}`)
+        .setEmoji("⬅️")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page <= 0),
+      new ButtonBuilder()
+        .setCustomId(`${VIEW_ALL_PAGE_CUSTOM_ID_PREFIX}${page + 1}:${ownerId}`)
+        .setEmoji("➡️")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page >= totalPages - 1),
+    ),
+  ];
+}
+
+function buildViewAllPage(items: ReadonlyArray<{ discordId: string; steamId: string }>, accountMap: ReadonlyMap<string, SteamAccount>, page: number): ViewAllPageData {
+  const totalPages = Math.max(1, Math.ceil(items.length / VIEW_ALL_PAGE_SIZE));
+  const normalizedPage = Math.max(0, Math.min(page, totalPages - 1));
+  const start = normalizedPage * VIEW_ALL_PAGE_SIZE;
+  const pageItems = items.slice(start, start + VIEW_ALL_PAGE_SIZE);
+  const description = pageItems.map((link) => {
+    const acct = accountMap.get(link.steamId);
+    let line = `<@${link.discordId}> - [${link.steamId}](https://steamcommunity.com/profiles/${link.steamId})`;
+    if (acct?.bmId) {
+      line += ` - [${acct.bmId}](https://www.battlemetrics.com/players/${acct.bmId})`;
+    }
+    return `> * ${line}`;
+  }).join("\n");
+
+  const embed = new EmbedBuilder()
+    .setTitle("Links summary")
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: `RustLens.com • Page ${normalizedPage + 1}/${totalPages}`, iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setDescription(description);
+
+  return { embed, totalPages, page: normalizedPage };
+}
+
+function parseViewAllPageCustomId(customId: string) {
+  if (!customId.startsWith(VIEW_ALL_PAGE_CUSTOM_ID_PREFIX)) {
+    return null;
+  }
+
+  const remainder = customId.slice(VIEW_ALL_PAGE_CUSTOM_ID_PREFIX.length);
+  const separatorIndex = remainder.indexOf(":");
+  if (separatorIndex === -1) {
+    return null;
+  }
+
+  const pageValue = Number(remainder.slice(0, separatorIndex));
+  const ownerId = remainder.slice(separatorIndex + 1);
+  if (!Number.isInteger(pageValue) || ownerId.length === 0) {
+    return null;
+  }
+
+  return { page: pageValue, ownerId };
 }
 
 export function buildUserEmbed(
@@ -580,28 +671,77 @@ async function handleViewAll(interaction: ChatInputCommandInteraction) {
     }),
   );
 
-  const lines = items.map((link) => {
-    const acct = accountMap.get(link.steamId);
-    let line = `<@${link.discordId}> - [${link.steamId}](https://steamcommunity.com/profiles/${link.steamId})`;
-    if (acct?.bmId) {
-      line += ` - [${acct.bmId}](https://www.battlemetrics.com/players/${acct.bmId})`;
-    }
-    return `> * ${line}`;
+  const pageData = buildViewAllPage(items, accountMap, 0);
+  await interaction.editReply({
+    embeds: [pageData.embed],
+    components: buildViewAllPageButtons(interaction.user.id, pageData.page, pageData.totalPages),
   });
+}
 
-  let description = lines.join("\n");
-  if (description.length > 4096) {
-    description = `${description.slice(0, 4093)}...`;
+export async function handleViewButtonInteraction(interaction: ButtonInteraction) {
+  const parsed = parseViewAllPageCustomId(interaction.customId);
+  if (!parsed) {
+    return false;
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle("Links summary")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
-    .setDescription(description);
+  if (!interaction.inGuild() || !interaction.guildId) {
+    await interaction.reply({
+      content: "This button can only be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
 
-  await interaction.editReply({ embeds: [embed] });
+  if (interaction.user.id !== parsed.ownerId) {
+    await interaction.reply({
+      content: "Only the user who ran /view all can use these buttons.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await interaction.reply({
+      content: "Only the configured admin role or administrators can use /view.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  await interaction.deferUpdate();
+
+  const backend = getBackend();
+  const workerId = getWorkerID();
+  const { items } = await backend.listGuildLinks(workerId, interaction.guildId);
+
+  if (items.length === 0) {
+    await interaction.editReply({
+      content: "No linked accounts in this guild.",
+      embeds: [],
+      components: [],
+    });
+    return true;
+  }
+
+  const steamIds = [...new Set(items.map((link) => link.steamId))];
+  const accountMap = new Map<string, SteamAccount>();
+
+  await Promise.all(
+    steamIds.map(async (sid) => {
+      const acct = await fetchSteamAccount(sid);
+      if (acct) {
+        accountMap.set(sid, acct);
+      }
+    }),
+  );
+
+  const pageData = buildViewAllPage(items, accountMap, parsed.page);
+  await interaction.editReply({
+    content: null,
+    embeds: [pageData.embed],
+    components: buildViewAllPageButtons(parsed.ownerId, pageData.page, pageData.totalPages),
+  });
+  return true;
 }
 
 async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
@@ -633,10 +773,14 @@ async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
 export const __testables = {
   buildUserEmbed,
   buildProfileButtons,
+  buildViewAllPage,
+  buildViewAllPageButtons,
   buildRiskFactorField,
   calculateSteamBmHourRisk,
   calculateServersPlayedRisk,
   calculateBmHoursRisk,
+  calculateAccountCreatedRisk,
   calculateRecentBreaksRisk,
   normalizeDiscordIdentifier,
+  parseViewAllPageCustomId,
 };

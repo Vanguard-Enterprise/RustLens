@@ -1,4 +1,6 @@
-import { Client, GatewayIntentBits, MessageFlags } from "discord.js";
+import { ActivityType, Client, GatewayIntentBits, MessageFlags } from "discord.js";
+import { BackendClient } from "./backend-client.js";
+import { loadConfig } from "./config.js";
 import {
   ensureAdminCommand,
   handleAdminChatInput,
@@ -7,6 +9,20 @@ import {
   ensureAnnounceCommand,
   handleAnnounceChatInput,
 } from "./announce-command.js";
+import {
+  BAN_COMMAND_NAME,
+  ensureBanCommand,
+  handleBanChatInput,
+  handleBanModalSubmit,
+} from "./ban-command.js";
+import {
+  resolveCommandCategory,
+  resolveCustomIdCategory,
+} from "./ban-categories.js";
+import {
+  enforceBan,
+  enforceBanForAutocomplete,
+} from "./ban-check.js";
 import {
   ensureBindCommand,
   handleBindButtonInteraction,
@@ -40,6 +56,11 @@ import {
   handleSetSteamChatInput,
 } from "./setsteam-command.js";
 import {
+  ensureSearchCommand,
+  handleSearchAutocomplete,
+  handleSearchChatInput,
+} from "./search-command.js";
+import {
   ensureServerCommand,
   handleServerAutocomplete,
   handleServerChatInput,
@@ -56,7 +77,14 @@ import {
   handleSummonChatInput,
 } from "./summon-command.js";
 import {
+  ensureTransferCommand,
+  handleTransferButtonInteraction,
+  handleTransferChatInput,
+  handleTransferModalSubmit,
+} from "./transfer-command.js";
+import {
   ensureViewCommand,
+  handleViewButtonInteraction,
   handleViewChatInput,
 } from "./view-command.js";
 import {
@@ -74,6 +102,10 @@ import { registerUserGuildSync } from "./user-guilds.js";
 const shardID = Number(process.env.SHARD_ID ?? "0");
 const shardCount = Number(process.env.SHARD_COUNT ?? "1");
 const token = process.env.DISCORD_TOKEN;
+const config = loadConfig();
+const backend = new BackendClient(config.backendUrl, config.jwtSecret, config.jwtIssuer, config.jwtAudience);
+const statusWorkerID = `${config.workerId}-status-${shardID}`;
+const statusRefreshIntervalMs = 60_000;
 
 if (!token) {
   throw new Error("DISCORD_TOKEN is required for shard worker process");
@@ -87,8 +119,23 @@ const client = new Client({
 
 registerUserGuildSync(client);
 
+async function updateSteamAccountPresence() {
+  const response = await backend.steamAccountCount(statusWorkerID);
+  const formattedCount = response.count.toLocaleString("en-US");
+  await client.user?.setActivity(`${formattedCount} users`, { type: ActivityType.Watching });
+}
+
 client.once("clientReady", () => {
   console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);
+
+  updateSteamAccountPresence().catch((error) => {
+    console.error("[bot] failed to update steam account presence", error);
+  });
+  setInterval(() => {
+    updateSteamAccountPresence().catch((error) => {
+      console.error("[bot] failed to refresh steam account presence", error);
+    });
+  }, statusRefreshIntervalMs);
 
   Promise.allSettled([
     ensureAdminCommand(client, shardID),
@@ -105,6 +152,9 @@ client.once("clientReady", () => {
     ensureSettingsCommand(client, shardID),
     ensureViewCommand(client, shardID),
     ensureServerCommand(client, shardID),
+    ensureBanCommand(client, shardID),
+    ensureTransferCommand(client, shardID),
+    ensureSearchCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
   ]).then((results) => {
     for (const result of results) {
@@ -129,6 +179,14 @@ function isIgnorableInteractionReplyError(error: unknown) {
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isAutocomplete()) {
+      const category = resolveCommandCategory(
+        interaction.commandName,
+        interaction.options.getSubcommand(false),
+      );
+      if (await enforceBanForAutocomplete(interaction, category)) {
+        return;
+      }
+
       if (await handleCompareAutocomplete(interaction)) {
         return;
       }
@@ -140,9 +198,27 @@ client.on("interactionCreate", async (interaction) => {
       if (await handleServerAutocomplete(interaction)) {
         return;
       }
+
+      if (await handleSearchAutocomplete(interaction)) {
+        return;
+      }
     }
 
     if (interaction.isChatInputCommand()) {
+      if (interaction.commandName !== BAN_COMMAND_NAME) {
+        const category = resolveCommandCategory(
+          interaction.commandName,
+          interaction.options.getSubcommand(false),
+        );
+        if (await enforceBan(interaction, category)) {
+          return;
+        }
+      }
+
+      if (await handleBanChatInput(interaction)) {
+        return;
+      }
+
       if (await handleAdminChatInput(interaction)) {
         return;
       }
@@ -175,6 +251,10 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleSearchChatInput(interaction)) {
+        return;
+      }
+
       if (await handleNicknameChatInput(interaction)) {
         return;
       }
@@ -184,6 +264,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleServerChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleTransferChatInput(interaction)) {
         return;
       }
 
@@ -200,11 +284,25 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isStringSelectMenu()) {
+      const category = resolveCustomIdCategory(interaction.customId);
+      if (category && (await enforceBan(interaction, category))) {
+        return;
+      }
+
       await handleSettingsSelect(interaction);
       return;
     }
 
     if (interaction.isModalSubmit()) {
+      if (await handleBanModalSubmit(interaction)) {
+        return;
+      }
+
+      const modalCategory = resolveCustomIdCategory(interaction.customId);
+      if (modalCategory && (await enforceBan(interaction, modalCategory))) {
+        return;
+      }
+
       if (await handleBindModalSubmit(interaction)) {
         return;
       }
@@ -217,16 +315,33 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleTransferModalSubmit(interaction)) {
+        return;
+      }
+
       await handleSettingsModalSubmit(interaction);
       return;
     }
 
     if (interaction.isButton()) {
+      const buttonCategory = resolveCustomIdCategory(interaction.customId);
+      if (buttonCategory && (await enforceBan(interaction, buttonCategory))) {
+        return;
+      }
+
       if (await handleBindButtonInteraction(interaction)) {
         return;
       }
 
       if (await handlePlayerButtonInteraction(interaction)) {
+        return;
+      }
+
+      if (await handleViewButtonInteraction(interaction)) {
+        return;
+      }
+
+      if (await handleTransferButtonInteraction(interaction)) {
         return;
       }
 

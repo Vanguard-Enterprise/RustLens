@@ -712,6 +712,24 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/steam-accounts/count": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get steam account count",
+					"description": "Returns the number of rows currently stored in steam_accounts.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Steam account count returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/CountResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/guilds/{guildID}/tracked-servers": map[string]any{
 				"get": map[string]any{
 					"summary":     "List guild tracked servers",
@@ -874,6 +892,75 @@ func buildOpenAPIDocument() map[string]any {
 							"content": map[string]any{
 								"application/json": map[string]any{
 									"schema": map[string]any{"$ref": "#/components/schemas/PlayerStateListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/player-states/servers/{serverID}/search": map[string]any{
+				"get": map[string]any{
+					"summary":     "Search player states by name on a server",
+					"description": "Returns matching player states for one tracked BattleMetrics server. By default only online players are returned; setting includeOffline=true also includes players whose offlineSince is within the last 24 hours.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "serverID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics server ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "q",
+							"in":          "query",
+							"required":    true,
+							"description": "Case-insensitive substring to match against steam_account_cache.bm_name.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "limit",
+							"in":          "query",
+							"required":    false,
+							"description": "Maximum number of results to return. Defaults to 20 and is capped at 20.",
+							"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": 20, "default": 20},
+						},
+						{
+							"name":        "includeOffline",
+							"in":          "query",
+							"required":    false,
+							"description": "When true, also includes players whose offlineSince is within the last 24 hours. Defaults to false.",
+							"schema":      map[string]any{"type": "boolean", "default": false},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Matching player states returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type":     "object",
+										"required": []string{"items"},
+										"properties": map[string]any{
+											"items": map[string]any{
+												"type": "array",
+												"items": map[string]any{
+													"type":     "object",
+													"required": []string{"serverBmId", "serverName", "playerBmId", "steamId", "bmName", "isOnline"},
+													"properties": map[string]any{
+														"serverBmId": map[string]any{"type": "string"},
+														"serverName": map[string]any{"type": "string"},
+														"playerBmId": map[string]any{"type": "string"},
+														"steamId":    map[string]any{"type": "string"},
+														"bmName":     map[string]any{"type": "string"},
+														"isOnline":   map[string]any{"type": "boolean"},
+													},
+												},
+											},
+										},
+									},
 								},
 							},
 						},
@@ -1529,6 +1616,13 @@ func buildOpenAPIDocument() map[string]any {
 					},
 					"required": []string{"status"},
 				},
+				"CountResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"count": map[string]any{"type": "integer"},
+					},
+					"required": []string{"count"},
+				},
 				"AssignmentsResponse": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
@@ -1602,12 +1696,13 @@ func buildOpenAPIDocument() map[string]any {
 				"TrackedServer": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"bmId":          map[string]any{"type": "string"},
-						"name":          map[string]any{"type": "string"},
-						"lastPolledAt":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
-						"lastPollError": map[string]any{"type": "string"},
+						"bmId":                   map[string]any{"type": "string"},
+						"name":                   map[string]any{"type": "string"},
+						"includeInGuildSettings": map[string]any{"type": "boolean"},
+						"lastPolledAt":           map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"lastPollError":          map[string]any{"type": "string"},
 					},
-					"required": []string{"bmId", "name", "lastPolledAt", "lastPollError"},
+					"required": []string{"bmId", "name", "includeInGuildSettings", "lastPolledAt", "lastPollError"},
 				},
 				"TrackedServerListResponse": map[string]any{
 					"type": "object",
@@ -1622,8 +1717,9 @@ func buildOpenAPIDocument() map[string]any {
 				"CreateTrackedServerRequest": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"bmId": map[string]any{"type": "string"},
-						"name": map[string]any{"type": "string"},
+						"bmId":                   map[string]any{"type": "string"},
+						"name":                   map[string]any{"type": "string"},
+						"includeInGuildSettings": map[string]any{"type": "boolean"},
 					},
 					"required": []string{"bmId", "name"},
 				},

@@ -25,6 +25,15 @@ type PlayerPresenceInput struct {
 	BmName     string
 }
 
+type PlayerSearchResult struct {
+	ServerBmID string
+	ServerName string
+	PlayerBmID string
+	SteamID    string
+	BmName     string
+	IsOnline   bool
+}
+
 func scanPlayerState(scanner rowScanner) (PlayerState, error) {
 	var state PlayerState
 	err := scanner.Scan(
@@ -112,6 +121,62 @@ func (p *PostgresStore) GetPlayerState(ctx context.Context, serverBmID string, p
 		return PlayerState{}, ErrPlayerStateNotFound
 	}
 	return state, err
+}
+
+func (p *PostgresStore) SearchPlayerStatesByName(ctx context.Context, serverBmID string, query string, limit int, includeOffline bool) ([]PlayerSearchResult, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	offlineCutoff := time.Now().UTC().Add(-24 * time.Hour)
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT
+			ps.server_bm_id,
+			ts.name,
+			ps.player_bm_id,
+			sa.steam_id,
+			COALESCE(sac.bm_name, '') AS bm_name,
+			ps.is_online
+		FROM player_states ps
+		JOIN tracked_servers ts ON ts.bm_id = ps.server_bm_id
+		JOIN steam_accounts sa ON sa.bm_id = ps.player_bm_id
+		LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
+		WHERE ps.server_bm_id = $1
+			AND (
+				ps.is_online = TRUE
+				OR ($4 = TRUE AND ps.offline_since IS NOT NULL AND ps.offline_since >= $5)
+			)
+			AND COALESCE(sac.bm_name, '') ILIKE '%' || $2 || '%'
+		ORDER BY ps.is_online DESC, COALESCE(sac.bm_name, '') ASC, sa.steam_id ASC
+		LIMIT $3
+	`, serverBmID, query, limit, includeOffline, offlineCutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]PlayerSearchResult, 0)
+	for rows.Next() {
+		var item PlayerSearchResult
+		if err := rows.Scan(
+			&item.ServerBmID,
+			&item.ServerName,
+			&item.PlayerBmID,
+			&item.SteamID,
+			&item.BmName,
+			&item.IsOnline,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
 }
 
 func (p *PostgresStore) SyncPlayerStates(ctx context.Context, serverBmID string, players []PlayerPresenceInput, observedAt time.Time) error {

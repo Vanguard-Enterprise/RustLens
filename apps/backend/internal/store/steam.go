@@ -220,6 +220,15 @@ func (p *PostgresStore) GetSteamAccountByBmID(ctx context.Context, bmID string) 
 	return record, err
 }
 
+func (p *PostgresStore) CountSteamAccounts(ctx context.Context) (int64, error) {
+	var count int64
+	err := p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM steam_accounts`).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (p *PostgresStore) GetSteamAccountCache(ctx context.Context, steamID string) (SteamAccountCache, error) {
 	record, err := scanSteamAccountCache(p.pool.QueryRow(ctx, `
 		SELECT steam_id, bm_id, bm_name, avatar_image, first_seen_at, vitality_hours, atlas_hours, vital_hours,

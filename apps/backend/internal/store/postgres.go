@@ -281,6 +281,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS tracked_servers (
 			bm_id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
+			include_in_guild_settings BOOLEAN NOT NULL DEFAULT FALSE,
 			is_vitality BOOLEAN NOT NULL DEFAULT FALSE,
 			is_atlas BOOLEAN NOT NULL DEFAULT FALSE,
 			is_vital BOOLEAN NOT NULL DEFAULT FALSE,
@@ -291,6 +292,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			last_poll_error TEXT NOT NULL DEFAULT ''
 		);
 
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS include_in_guild_settings BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_vitality BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_atlas BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_vital BOOLEAN NOT NULL DEFAULT FALSE;
@@ -391,6 +393,13 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS guild_steam_discord_links_guild_steam_idx
 		ON guild_steam_discord_links (guild_id, steam_id);
+
+		CREATE TABLE IF NOT EXISTS user_bans (
+			discord_id TEXT PRIMARY KEY,
+			categories TEXT[] NOT NULL DEFAULT '{}',
+			updated_by TEXT NOT NULL DEFAULT '',
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
 
 		CREATE TABLE IF NOT EXISTS admin_permissions (
 		    key TEXT PRIMARY KEY,
