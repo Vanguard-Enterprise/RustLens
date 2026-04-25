@@ -28,6 +28,7 @@ export default async function DashboardLayout({
 			csrfToken={csrfToken}
 			user={{
 				displayName: currentUser.user.displayName,
+				discordUsername: currentUser.user.discordUsername,
 				avatarUrl: currentUser.user.avatarUrl,
 				isInternalAdmin,
 			}}

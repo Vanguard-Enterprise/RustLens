@@ -25,7 +25,7 @@ import {
 type NavUserProps = {
 	user: {
 		displayName: string;
-		email?: string;
+		discordUsername?: string;
 		avatarUrl?: string;
 		isInternalAdmin: boolean;
 	};
@@ -56,9 +56,11 @@ export function NavUser({ csrfToken, user }: NavUserProps) {
 								{user.displayName}
 							</span>{" "}
 							<br />
-							<div className="truncate text-muted-foreground text-xs">
-								{user.email}
-							</div>
+							{user.discordUsername ? (
+								<div className="truncate text-muted-foreground text-xs">
+									@{user.discordUsername}
+								</div>
+							) : null}
 							<div className="mt-0.5 text-[10px] text-muted-foreground">
 								{user.isInternalAdmin ? "Internal admin" : "Product user"}
 							</div>

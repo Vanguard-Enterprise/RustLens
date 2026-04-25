@@ -22,6 +22,7 @@ export default async function AdminLayout({
 			csrfToken={csrfToken}
 			user={{
 				displayName: currentUser.user.displayName,
+				discordUsername: currentUser.user.discordUsername,
 				avatarUrl: currentUser.user.avatarUrl,
 				isInternalAdmin: true,
 				permissions: session.permissions ?? currentUser.permissions ?? [],
