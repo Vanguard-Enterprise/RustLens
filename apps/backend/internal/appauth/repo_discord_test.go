@@ -150,3 +150,54 @@ func TestRepo_FindUserByEmail(t *testing.T) {
 		t.Errorf("missing case: id=%q verified=%v exists=%v", id, verified, exists)
 	}
 }
+
+func TestRepo_CreateDiscordUser(t *testing.T) {
+	s := discordTestStore(t)
+	ctx := context.Background()
+	repo := appauth.NewRepo(s.Pool())
+
+	_, _ = s.Pool().Exec(ctx, `DELETE FROM user_connected_accounts WHERE provider_account_id='777888999'`)
+	_, _ = s.Pool().Exec(ctx, `DELETE FROM user_emails WHERE email='create_test@example.com'`)
+	_, _ = s.Pool().Exec(ctx, `DELETE FROM app_users WHERE display_name='Create Test'`)
+
+	id, err := repo.CreateDiscordUser(ctx, appauth.DiscordProfile{
+		ID:          "777888999",
+		Username:    "create_test",
+		DisplayName: "Create Test",
+		AvatarURL:   "http://avatar/c",
+		Email:       "create_test@example.com",
+	})
+	if err != nil {
+		t.Fatalf("CreateDiscordUser: %v", err)
+	}
+	if id == "" {
+		t.Fatalf("expected non-empty id")
+	}
+
+	var dn string
+	if err := s.Pool().QueryRow(ctx,
+		`SELECT display_name FROM app_users WHERE id=$1`, id).Scan(&dn); err != nil {
+		t.Fatalf("read user: %v", err)
+	}
+	if dn != "Create Test" {
+		t.Errorf("display_name = %q", dn)
+	}
+
+	var verified bool
+	if err := s.Pool().QueryRow(ctx,
+		`SELECT is_verified FROM user_emails WHERE user_id=$1 AND is_primary=true`, id).Scan(&verified); err != nil {
+		t.Fatalf("read email: %v", err)
+	}
+	if !verified {
+		t.Errorf("primary email should be verified")
+	}
+
+	var connID string
+	if err := s.Pool().QueryRow(ctx,
+		`SELECT provider_account_id FROM user_connected_accounts WHERE user_id=$1 AND provider='discord'`, id).Scan(&connID); err != nil {
+		t.Fatalf("read conn: %v", err)
+	}
+	if connID != "777888999" {
+		t.Errorf("provider_account_id = %q", connID)
+	}
+}

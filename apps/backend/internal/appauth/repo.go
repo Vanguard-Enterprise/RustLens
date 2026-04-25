@@ -2,12 +2,15 @@ package appauth
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -363,4 +366,67 @@ func (r *Repo) loadDiscordAccount(ctx context.Context, userID string) (*Connecte
 		return nil, err
 	}
 	return &a, nil
+}
+
+// generateDiscordUserID returns a fresh "usr_<24-hex>" ID. Mirrors the format
+// used by admin/actions/users_invite.go so all app_users IDs share a shape.
+func generateDiscordUserID() (string, error) {
+	var buf [12]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return "usr_" + hex.EncodeToString(buf[:]), nil
+}
+
+// CreateDiscordUser provisions a new user from a Discord profile in a single
+// transaction: app_users + verified primary user_emails + user_connected_accounts.
+// Trusts the caller to have already confirmed Discord reported the email as
+// verified; this method does not re-check.
+func (r *Repo) CreateDiscordUser(ctx context.Context, p DiscordProfile) (string, error) {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var userID string
+	for attempt := 0; attempt < 2; attempt++ {
+		userID, err = generateDiscordUserID()
+		if err != nil {
+			return "", err
+		}
+		_, ierr := tx.Exec(ctx, `
+			INSERT INTO app_users (id, display_name, avatar_url, roles)
+			VALUES ($1, $2, $3, '["user"]'::jsonb)
+		`, userID, p.DisplayName, p.AvatarURL)
+		if ierr == nil {
+			break
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(ierr, &pgErr) && pgErr.Code == "23505" && attempt == 0 {
+			continue
+		}
+		return "", ierr
+	}
+
+	email := strings.ToLower(strings.TrimSpace(p.Email))
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO user_emails (email, user_id, is_primary, is_verified)
+		VALUES ($1, $2, true, true)
+	`, email, userID); err != nil {
+		return "", err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO user_connected_accounts
+			(user_id, provider, provider_account_id, username, display_name, avatar_url, profile_email)
+		VALUES ($1, 'discord', $2, $3, $4, $5, $6)
+	`, userID, p.ID, p.Username, p.DisplayName, p.AvatarURL, p.Email); err != nil {
+		return "", err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return userID, nil
 }
