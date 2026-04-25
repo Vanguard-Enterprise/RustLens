@@ -315,6 +315,31 @@ func (r *Repo) RefreshDiscordConnection(ctx context.Context, userID string, p Di
 	return err
 }
 
+// FindUserByEmail looks up a user_emails row case-insensitively. Returns
+// (userID, isVerified, exists, err). When no row exists, returns
+// ("", false, false, nil) — *not* an error.
+func (r *Repo) FindUserByEmail(ctx context.Context, email string) (string, bool, bool, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return "", false, false, nil
+	}
+	var userID string
+	var verified bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT user_id, is_verified
+		FROM user_emails
+		WHERE lower(email) = $1
+		LIMIT 1
+	`, email).Scan(&userID, &verified)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, false, nil
+	}
+	if err != nil {
+		return "", false, false, err
+	}
+	return userID, verified, true, nil
+}
+
 func (r *Repo) loadDiscordAccount(ctx context.Context, userID string) (*ConnectedAccount, error) {
 	var a ConnectedAccount
 	err := r.pool.QueryRow(ctx, `

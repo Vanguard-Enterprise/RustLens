@@ -99,3 +99,54 @@ func TestRepo_RefreshDiscordConnection(t *testing.T) {
 		t.Errorf("row not refreshed: %q %q %q %q", u, d, a, e)
 	}
 }
+
+func TestRepo_FindUserByEmail(t *testing.T) {
+	s := discordTestStore(t)
+	ctx := context.Background()
+	repo := appauth.NewRepo(s.Pool())
+
+	const verifiedID = "usr_email_v"
+	const unverifiedID = "usr_email_u"
+	for _, id := range []string{verifiedID, unverifiedID} {
+		if _, err := s.Pool().Exec(ctx,
+			`INSERT INTO app_users (id, display_name) VALUES ($1, 'E') ON CONFLICT (id) DO NOTHING`, id); err != nil {
+			t.Fatalf("seed user %s: %v", id, err)
+		}
+	}
+	if _, err := s.Pool().Exec(ctx,
+		`INSERT INTO user_emails (email, user_id, is_primary, is_verified)
+		 VALUES ('Verified@Example.com', $1, true, true)
+		 ON CONFLICT (email) DO UPDATE SET user_id=$1, is_verified=true`, verifiedID); err != nil {
+		t.Fatalf("seed verified: %v", err)
+	}
+	if _, err := s.Pool().Exec(ctx,
+		`INSERT INTO user_emails (email, user_id, is_primary, is_verified)
+		 VALUES ('unverified@example.com', $1, true, false)
+		 ON CONFLICT (email) DO UPDATE SET user_id=$1, is_verified=false`, unverifiedID); err != nil {
+		t.Fatalf("seed unverified: %v", err)
+	}
+
+	id, verified, exists, err := repo.FindUserByEmail(ctx, "verified@example.com")
+	if err != nil {
+		t.Fatalf("FindUserByEmail verified: %v", err)
+	}
+	if !exists || !verified || id != verifiedID {
+		t.Errorf("verified case: id=%q verified=%v exists=%v", id, verified, exists)
+	}
+
+	id, verified, exists, err = repo.FindUserByEmail(ctx, "UNVERIFIED@example.com")
+	if err != nil {
+		t.Fatalf("FindUserByEmail unverified: %v", err)
+	}
+	if !exists || verified || id != unverifiedID {
+		t.Errorf("unverified case: id=%q verified=%v exists=%v", id, verified, exists)
+	}
+
+	id, verified, exists, err = repo.FindUserByEmail(ctx, "missing@example.com")
+	if err != nil {
+		t.Fatalf("FindUserByEmail missing: %v", err)
+	}
+	if exists || verified || id != "" {
+		t.Errorf("missing case: id=%q verified=%v exists=%v", id, verified, exists)
+	}
+}
