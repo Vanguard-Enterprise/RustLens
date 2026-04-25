@@ -449,9 +449,11 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 	}
 
 	// app_users — Discord-only identity. discord_id is the sole login key.
-	// user_emails / user_connected_accounts / user_password_credentials and
-	// the email-token tables are intentionally absent; the email/password
-	// auth surface was removed in the Discord-only migration.
+	// user_emails / user_connected_accounts / user_password_credentials and the
+	// email-token tables are intentionally absent; the email/password auth
+	// surface was removed in the Discord-only migration. Re-running against a
+	// legacy DB does NOT retroactively enforce NOT NULL/UNIQUE on existing
+	// rows — wipe and re-create for a clean shape.
 	if _, err := p.pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS app_users (
 			id                  TEXT PRIMARY KEY,
@@ -570,54 +572,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create app_users_active_idx: %w", err)
 	}
 
-	return nil
-}
-
-// ensureCascadeFK makes sure the given (table, column) has a foreign key to
-// app_users(id) with ON DELETE CASCADE. Drops any existing non-CASCADE FK on
-// the same column first.
-func ensureCascadeFK(ctx context.Context, pool *pgxpool.Pool, table, column string) error {
-	// Does the table exist at all?
-	var exists bool
-	if err := pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name=$1)`, table).Scan(&exists); err != nil {
-		return fmt.Errorf("check %s: %w", table, err)
-	}
-	if !exists {
-		return nil
-	}
-	// Does the column exist?
-	var hasCol bool
-	if err := pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name=$1 AND column_name=$2)`,
-		table, column).Scan(&hasCol); err != nil {
-		return fmt.Errorf("check %s.%s: %w", table, column, err)
-	}
-	if !hasCol {
-		return nil
-	}
-	// Drop any existing FK on this column, then add it back with CASCADE.
-	if _, err := pool.Exec(ctx, fmt.Sprintf(`
-		DO $$
-		DECLARE c text;
-		BEGIN
-			FOR c IN
-				SELECT tc.constraint_name
-				FROM information_schema.table_constraints tc
-				JOIN information_schema.key_column_usage kcu
-					ON tc.constraint_name = kcu.constraint_name
-				WHERE tc.table_name = '%s' AND tc.constraint_type = 'FOREIGN KEY'
-					AND kcu.column_name = '%s'
-			LOOP
-				EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %%I', c);
-			END LOOP;
-		END $$;
-		ALTER TABLE %s
-			ADD CONSTRAINT %s_%s_fk
-			FOREIGN KEY (%s) REFERENCES app_users(id) ON DELETE CASCADE;
-	`, table, column, table, table, table, column, column)); err != nil {
-		return fmt.Errorf("rewrite FK on %s.%s: %w", table, column, err)
-	}
 	return nil
 }
 
