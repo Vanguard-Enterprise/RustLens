@@ -275,20 +275,6 @@ async function backendFetch<T>(
 	return (await response.json()) as T;
 }
 
-export function completeDiscordAuth(payload: {
-	discordId: string;
-	username: string;
-	displayName: string;
-	avatarUrl: string;
-	email: string;
-	emailVerified: boolean;
-}) {
-	return backendFetch<CurrentUser>("/api/app/auth/discord/complete", {
-		method: "POST",
-		body: JSON.stringify(payload),
-	});
-}
-
 export function registerWithPassword(payload: {
 	email: string;
 	password: string;
