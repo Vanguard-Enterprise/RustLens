@@ -11,6 +11,7 @@ import (
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/config"
+	"rustlens/backend/internal/oauth/discord"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
@@ -127,6 +128,21 @@ func NewRouter(
 	appAuthHandler := appauth.NewHandler(appAuthRepo)
 	requireAppSecret := appauth.RequireAppSecret(cfg.AppAPIInternalSecret)
 	requireSession := appauth.RequireSession(cfg.AppSessionSecret, postgres.Pool())
+
+	discordHandler := discord.NewHandler(discord.HandlerConfig{
+		ClientID:      cfg.DiscordClientID,
+		ClientSecret:  cfg.DiscordClientSecret,
+		AppOrigin:     cfg.AppOrigin,
+		SessionSecret: cfg.AppSessionSecret,
+		Repo:          appAuthRepo,
+		Pool:          postgres.Pool(),
+	})
+
+	r.Route("/api/auth/discord", func(r chi.Router) {
+		r.Get("/", discordHandler.Initiate)
+		r.Get("/link", discordHandler.InitiateLink)
+		r.Get("/callback", discordHandler.Callback)
+	})
 
 	r.Route("/api/app", func(r chi.Router) {
 		r.Use(requireAppSecret)
