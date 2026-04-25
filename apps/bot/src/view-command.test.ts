@@ -44,7 +44,7 @@ describe("view-command", () => {
     expect(embed.fields?.[0]?.value).toContain("https://steamcommunity.com/profiles/76561198000000000");
     expect(embed.fields?.[0]?.value).toContain("https://www.battlemetrics.com/players/918543318");
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
-    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_4:1487595713553502359>");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
     expect(embed.fields).toHaveLength(11);
   });
 
@@ -69,7 +69,7 @@ describe("view-command", () => {
       },
     });
 
-    expect(field.name).toBe("Risk Factor <:risk_1:1487595708881178734>");
+    expect(field.name).toBe("Risk Factor <:risk_2:1487595710030417970>");
     expect(field.value).toContain("<:risk_4:1487595713553502359> Steam → BM hour difference: **1100** hours");
     expect(field.value).toContain("<:risk_0:1487595959809609758> Servers played: **40**");
     expect(field.value).toContain("<:risk_0:1487595959809609758> BM hours: **2200**");

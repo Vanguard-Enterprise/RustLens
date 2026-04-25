@@ -261,7 +261,8 @@ function buildRiskFactorField(profile: SteamProfile | null, now: Date = new Date
   const factors = [steamBmRisk, recentBreaksRisk, serversRisk, bmHoursRisk, accountCreatedRisk]
     .filter((factor) => factor !== null);
   const averageRisk = factors.length > 0
-    ? factors.reduce((total, factor) => total + factor.level, 0) / factors.length
+    ? factors.reduce((total, factor) => total + factor.level * (factor.level > 0 ? 3 : 1), 0)
+      / factors.reduce((total, factor) => total + (factor.level > 0 ? 3 : 1), 0)
     : 0;
 
   const steamBmLine = steamBmRisk
