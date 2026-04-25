@@ -12,3 +12,14 @@ export async function POST(request: Request) {
 	await clearSession();
 	return NextResponse.redirect(new URL("/", request.url));
 }
+
+export async function GET(request: Request) {
+	await clearSession();
+	const url = new URL(request.url);
+	const reason = url.searchParams.get("reason");
+	const target = new URL("/login", request.url);
+	if (reason) {
+		target.searchParams.set("error", reason);
+	}
+	return NextResponse.redirect(target);
+}

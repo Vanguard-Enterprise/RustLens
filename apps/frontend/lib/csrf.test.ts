@@ -32,7 +32,7 @@ describe("csrf", () => {
 	it("accepts a valid token plus same-origin Origin header", async () => {
 		const { getCsrfToken, validateCsrfRequest } = await import("./csrf");
 		const token = await getCsrfToken();
-		const request = new Request("https://rustlens.test/auth/login", {
+		const request = new Request("https://rustlens.test/auth/discord/initiate", {
 			method: "POST",
 			headers: {
 				origin: "https://rustlens.test",
@@ -47,7 +47,7 @@ describe("csrf", () => {
 		const token = await getCsrfToken();
 		const [issuedAt, nonce] = token.split(".");
 		const tamperedToken = `${issuedAt}.${nonce}.different-signature`;
-		const request = new Request("https://rustlens.test/auth/login", {
+		const request = new Request("https://rustlens.test/auth/discord/initiate", {
 			method: "POST",
 			headers: {
 				origin: "https://rustlens.test",
@@ -60,7 +60,7 @@ describe("csrf", () => {
 	it("rejects cross-site requests even with a valid token", async () => {
 		const { getCsrfToken, validateCsrfRequest } = await import("./csrf");
 		const token = await getCsrfToken();
-		const request = new Request("https://rustlens.test/auth/login", {
+		const request = new Request("https://rustlens.test/auth/discord/initiate", {
 			method: "POST",
 			headers: {
 				origin: "https://attacker.test",
@@ -79,7 +79,7 @@ describe("csrf", () => {
 
 		vi.setSystemTime(new Date("2026-04-18T21:00:01Z"));
 
-		const request = new Request("https://rustlens.test/auth/login", {
+		const request = new Request("https://rustlens.test/auth/discord/initiate", {
 			method: "POST",
 			headers: {
 				origin: "https://rustlens.test",
