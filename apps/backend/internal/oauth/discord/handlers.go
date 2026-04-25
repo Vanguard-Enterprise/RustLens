@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -36,7 +37,7 @@ func NewHandler(cfg HandlerConfig) *Handler {
 }
 
 func (h *Handler) frontendURL(path string) string {
-	return h.cfg.AppOrigin + path
+	return strings.TrimRight(h.cfg.AppOrigin, "/") + path
 }
 
 // Initiate handles GET /api/auth/discord (sign-in).
@@ -243,7 +244,7 @@ func (h *Handler) mintAndRedirect(w http.ResponseWriter, r *http.Request, userID
 
 func (h *Handler) callbackLink(w http.ResponseWriter, r *http.Request, profile Profile) {
 	ctx := r.Context()
-	session, err := appauth.SessionFromCookie(r, h.cfg.SessionSecret)
+	session, err := appauth.ValidateSessionFromCookie(ctx, r, h.cfg.SessionSecret, h.cfg.Pool)
 	if err != nil || session == nil {
 		http.Redirect(w, r, h.frontendURL("/login?error=session"), http.StatusFound)
 		return
@@ -257,28 +258,33 @@ func (h *Handler) callbackLink(w http.ResponseWriter, r *http.Request, profile P
 		Email:       profile.Email,
 	}
 
-	err = h.cfg.Repo.LinkDiscordToUser(ctx, session.UserID, dp)
-	switch {
-	case err == nil:
-		http.Redirect(w, r, h.frontendURL("/dashboard/settings?notice=discord-linked"), http.StatusFound)
-	case errors.Is(err, appauth.ErrDiscordLinkedToOther):
-		// Could still be the *same* user that the row belongs to (idempotent case);
-		// LinkDiscordToUser only returns ErrDiscordLinkedToOther on a PK violation,
-		// which means a row already exists for this provider_account_id.
-		ownerID, lookupErr := h.cfg.Repo.FindUserByDiscordID(ctx, profile.ID)
-		if lookupErr == nil && ownerID == session.UserID {
+	// Idempotent fast path: if this Discord ID is already linked to the
+	// current user, refresh and exit without attempting an insert. Avoids
+	// relying on Postgres reporting the PK constraint first when a re-link
+	// would violate both PK and UNIQUE.
+	if ownerID, lookupErr := h.cfg.Repo.FindUserByDiscordID(ctx, profile.ID); lookupErr == nil {
+		if ownerID == session.UserID {
 			if err := h.cfg.Repo.RefreshDiscordConnection(ctx, session.UserID, dp); err != nil {
-				http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-linked-to-other"), http.StatusFound)
+				http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-auth"), http.StatusFound)
 				return
 			}
 			http.Redirect(w, r, h.frontendURL("/dashboard/settings?notice=discord-linked"), http.StatusFound)
 			return
 		}
 		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-linked-to-other"), http.StatusFound)
+		return
+	}
+
+	err = h.cfg.Repo.LinkDiscordToUser(ctx, session.UserID, dp)
+	switch {
+	case err == nil:
+		http.Redirect(w, r, h.frontendURL("/dashboard/settings?notice=discord-linked"), http.StatusFound)
 	case errors.Is(err, appauth.ErrDiscordAlreadyLinked):
 		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-already-linked"), http.StatusFound)
+	case errors.Is(err, appauth.ErrDiscordLinkedToOther):
+		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-linked-to-other"), http.StatusFound)
 	default:
-		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-already-linked"), http.StatusFound)
+		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-auth"), http.StatusFound)
 	}
 }
 

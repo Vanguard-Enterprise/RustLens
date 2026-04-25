@@ -83,6 +83,18 @@ func SessionFromCookie(r *http.Request, secret string) (*SessionUser, error) {
 	return ParseSession(c.Value, secret)
 }
 
+// ValidateSessionFromCookie reads the rustlens_session cookie and runs full
+// validation including the session_epoch revocation check against the
+// database. Returns the same errors as ValidateSession plus http.ErrNoCookie
+// when the cookie is absent.
+func ValidateSessionFromCookie(ctx context.Context, r *http.Request, secret string, pool *pgxpool.Pool) (*SessionUser, error) {
+	c, err := r.Cookie(SessionCookieName)
+	if err != nil {
+		return nil, err
+	}
+	return ValidateSession(ctx, c.Value, secret, pool)
+}
+
 // InjectSessionForTest is a test-only helper that attaches a synthetic
 // SessionUser to a context. Production code paths always populate the session
 // via RequireSession middleware; this helper lets internal handler tests
