@@ -1,13 +1,19 @@
 package discord_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/oauth/discord"
+	"rustlens/backend/internal/store"
 )
 
 func TestInitiate_RedirectsToDiscord_SetsCookies(t *testing.T) {
@@ -124,4 +130,250 @@ func TestInitiateLink_SetsIntentLink(t *testing.T) {
 		}
 	}
 	t.Errorf("expected intent=link cookie")
+}
+
+func discordTestPool(t *testing.T) (*pgxpool.Pool, func()) {
+	t.Helper()
+	dsn := os.Getenv("TEST_POSTGRES_URL")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_URL not set")
+	}
+	ctx := context.Background()
+	s, err := store.NewPostgresStore(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if err := s.EnsureSchema(ctx); err != nil {
+		s.Close()
+		t.Fatalf("schema: %v", err)
+	}
+	return s.Pool(), s.Close
+}
+
+// fakeDiscord returns an httptest server that pretends to be Discord. The
+// returned profile is whatever the caller wires in.
+func fakeDiscord(t *testing.T, profileJSON string) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"tok","token_type":"Bearer"}`))
+	})
+	mux.HandleFunc("/api/users/@me", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(profileJSON))
+	})
+	return httptest.NewServer(mux)
+}
+
+func newCallbackRequest(state, verifier, intent, code string) *http.Request {
+	r := httptest.NewRequest("GET", "/api/auth/discord/callback?code="+code+"&state="+state, nil)
+	r.AddCookie(&http.Cookie{Name: discord.CookieState, Value: state})
+	r.AddCookie(&http.Cookie{Name: discord.CookieVerifier, Value: verifier})
+	r.AddCookie(&http.Cookie{Name: discord.CookieIntent, Value: intent})
+	return r
+}
+
+func newCallbackHandler(t *testing.T, pool *pgxpool.Pool, baseURL string) *discord.Handler {
+	t.Helper()
+	repo := appauth.NewRepo(pool)
+	c := discord.NewClient("id", "secret",
+		discord.WithBaseURL(baseURL),
+		discord.WithRedirectURI("http://localhost/api/auth/discord/callback"))
+	return discord.NewHandler(discord.HandlerConfig{
+		ClientID:      "id",
+		ClientSecret:  "secret",
+		AppOrigin:     "http://localhost",
+		SessionSecret: "session-secret",
+		Repo:          repo,
+		Pool:          pool,
+		Client:        c,
+	})
+}
+
+func TestCallback_Signin_StateMismatch(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	srv := fakeDiscord(t, `{}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequest("client-state", "v", discord.IntentSignin, "code")
+	r.URL.RawQuery = "code=code&state=other-state"
+	h.Callback(w, r)
+	if !strings.Contains(w.Header().Get("Location"), "discord-state") {
+		t.Errorf("expected discord-state error, got %q", w.Header().Get("Location"))
+	}
+}
+
+func TestCallback_Signin_NoEmail(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	srv := fakeDiscord(t, `{"id":"d_no_email_1","username":"u","verified":false}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequest("s", "v", discord.IntentSignin, "code")
+	h.Callback(w, r)
+	if !strings.Contains(w.Header().Get("Location"), "discord-no-email") {
+		t.Errorf("expected discord-no-email, got %q", w.Header().Get("Location"))
+	}
+}
+
+func TestCallback_Signin_ExistingDiscordRefreshesAndMintsSession(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	const userID = "usr_callback_existing"
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO app_users (id, display_name) VALUES ($1, 'Existing') ON CONFLICT (id) DO NOTHING`, userID); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO user_connected_accounts (user_id, provider, provider_account_id, username)
+		 VALUES ($1, 'discord', 'd_callback_existing', 'old')
+		 ON CONFLICT (provider, provider_account_id) DO UPDATE SET username='old'`, userID); err != nil {
+		t.Fatalf("seed conn: %v", err)
+	}
+	srv := fakeDiscord(t, `{"id":"d_callback_existing","username":"new_name","global_name":"New","email":"e@x.com","verified":true,"avatar":"abc"}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequest("s", "v", discord.IntentSignin, "code")
+	h.Callback(w, r)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if got := w.Header().Get("Location"); !strings.HasSuffix(got, "/dashboard") {
+		t.Errorf("Location = %q, want suffix /dashboard", got)
+	}
+	var sessionFound bool
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "rustlens_session" && c.Value != "" {
+			sessionFound = true
+		}
+	}
+	if !sessionFound {
+		t.Errorf("expected rustlens_session cookie set")
+	}
+	var u string
+	if err := pool.QueryRow(ctx,
+		`SELECT username FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='d_callback_existing'`).Scan(&u); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if u != "new_name" {
+		t.Errorf("username not refreshed: %q", u)
+	}
+}
+
+func TestCallback_Signin_AutoLinkVerifiedEmail(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	const userID = "usr_callback_autolink"
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO app_users (id, display_name) VALUES ($1, 'AutoLink') ON CONFLICT (id) DO NOTHING`, userID); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO user_emails (email, user_id, is_primary, is_verified)
+		 VALUES ('autolink@example.com', $1, true, true)
+		 ON CONFLICT (email) DO UPDATE SET user_id=$1, is_verified=true`, userID); err != nil {
+		t.Fatalf("seed email: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='d_autolink'`); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	srv := fakeDiscord(t, `{"id":"d_autolink","username":"al","email":"autolink@example.com","verified":true}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequest("s", "v", discord.IntentSignin, "code")
+	h.Callback(w, r)
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if !strings.HasSuffix(w.Header().Get("Location"), "/dashboard") {
+		t.Errorf("Location = %q", w.Header().Get("Location"))
+	}
+	var linkedUser string
+	if err := pool.QueryRow(ctx,
+		`SELECT user_id FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='d_autolink'`).Scan(&linkedUser); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if linkedUser != userID {
+		t.Errorf("auto-link target = %q, want %q", linkedUser, userID)
+	}
+}
+
+func TestCallback_Signin_EmailInUse_Unverified(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	const userID = "usr_callback_unverified"
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO app_users (id, display_name) VALUES ($1, 'U') ON CONFLICT (id) DO NOTHING`, userID); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO user_emails (email, user_id, is_primary, is_verified)
+		 VALUES ('inuse@example.com', $1, true, false)
+		 ON CONFLICT (email) DO UPDATE SET user_id=$1, is_verified=false`, userID); err != nil {
+		t.Fatalf("seed email: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='d_inuse'`); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	srv := fakeDiscord(t, `{"id":"d_inuse","username":"u","email":"inuse@example.com","verified":true}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequest("s", "v", discord.IntentSignin, "code")
+	h.Callback(w, r)
+	if !strings.Contains(w.Header().Get("Location"), "discord-email-in-use") {
+		t.Errorf("Location = %q, want discord-email-in-use", w.Header().Get("Location"))
+	}
+}
+
+func TestCallback_Signin_NewUserCreated(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM user_emails WHERE email='brand_new@example.com'`); err != nil {
+		t.Fatalf("clean email: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='d_new'`); err != nil {
+		t.Fatalf("clean conn: %v", err)
+	}
+	srv := fakeDiscord(t, `{"id":"d_new","username":"newbie","email":"brand_new@example.com","verified":true}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequest("s", "v", discord.IntentSignin, "code")
+	h.Callback(w, r)
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if !strings.HasSuffix(w.Header().Get("Location"), "/dashboard") {
+		t.Errorf("Location = %q", w.Header().Get("Location"))
+	}
+	var newID string
+	if err := pool.QueryRow(ctx,
+		`SELECT user_id FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='d_new'`).Scan(&newID); err != nil {
+		t.Fatalf("read conn: %v", err)
+	}
+	if newID == "" {
+		t.Errorf("expected new user")
+	}
 }
