@@ -468,7 +468,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			last_login_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
-		CREATE INDEX IF NOT EXISTS app_users_discord_id_idx ON app_users (discord_id);
 	`); err != nil {
 		return fmt.Errorf("create app_users: %w", err)
 	}
@@ -481,6 +480,10 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			ADD COLUMN IF NOT EXISTS discord_avatar      TEXT;
 	`); err != nil {
 		return fmt.Errorf("alter app_users add discord columns: %w", err)
+	}
+
+	if _, err := p.pool.Exec(ctx, `CREATE INDEX IF NOT EXISTS app_users_discord_id_idx ON app_users (discord_id)`); err != nil {
+		return fmt.Errorf("create app_users_discord_id_idx: %w", err)
 	}
 
 	// Drop orphaned legacy users(UUID) table if empty — it's been supplanted by

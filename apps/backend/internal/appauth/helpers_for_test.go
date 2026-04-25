@@ -10,9 +10,12 @@ import (
 	"rustlens/backend/internal/store"
 )
 
-// testPool returns a *pgxpool.Pool connected to the test Postgres instance,
-// ensures the schema is installed, and truncates app_users so each test
-// starts from a clean slate. Skips the test if TEST_POSTGRES_URL is not set.
+// testPool returns a connected pool to the test Postgres instance. Each
+// call truncates app_users CASCADE for isolation. Do NOT use t.Parallel()
+// in tests that call testPool unless TEST_POSTGRES_URL points at a per-test
+// database — concurrent truncates would race.
+//
+// Skips the test if TEST_POSTGRES_URL is not set.
 func testPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("TEST_POSTGRES_URL")

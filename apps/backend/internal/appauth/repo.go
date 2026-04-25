@@ -284,47 +284,39 @@ type DiscordProfile struct {
 	ID         string
 	Username   string
 	GlobalName string
-	Avatar     string
+	AvatarHash string // Discord CDN avatar hash, NOT a URL
 }
 
-// FindOrCreateByDiscordID looks up an app_users row by Discord ID. If found,
-// it refreshes the cached profile fields and returns (id, false, nil).
-// If not found, it inserts a new row with roles=["user"] and the supplied
-// profile and returns (id, true, nil).
+// FindOrCreateByDiscordID looks up or creates an app_users row keyed on
+// Discord ID. On hit, the cached profile fields are refreshed and the
+// existing id is returned with created=false. On miss, a new row is
+// inserted with roles=["user"] and created=true. Atomic — safe under
+// concurrent OAuth callbacks for the same Discord account.
 func (r *Repo) FindOrCreateByDiscordID(ctx context.Context, p DiscordProfile) (string, bool, error) {
-	const lookupSQL = `SELECT id FROM app_users WHERE discord_id = $1`
-	const refreshSQL = `
-		UPDATE app_users
-		SET discord_username    = $2,
-		    discord_global_name = NULLIF($3, ''),
-		    discord_avatar      = NULLIF($4, ''),
-		    updated_at          = NOW(),
-		    last_login_at       = NOW()
-		WHERE id = $1`
-	const insertSQL = `
+	const upsertSQL = `
 		INSERT INTO app_users (id, discord_id, discord_username, discord_global_name, discord_avatar, roles)
-		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), '["user"]'::jsonb)`
+		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), '["user"]'::jsonb)
+		ON CONFLICT (discord_id) DO UPDATE
+			SET discord_username    = EXCLUDED.discord_username,
+			    discord_global_name = EXCLUDED.discord_global_name,
+			    discord_avatar      = EXCLUDED.discord_avatar,
+			    updated_at          = NOW()
+		RETURNING id, (xmax = 0) AS created`
 
-	var id string
-	err := r.pool.QueryRow(ctx, lookupSQL, p.ID).Scan(&id)
-	switch {
-	case err == nil:
-		if _, err := r.pool.Exec(ctx, refreshSQL, id, p.Username, p.GlobalName, p.Avatar); err != nil {
-			return "", false, fmt.Errorf("refresh profile: %w", err)
-		}
-		return id, false, nil
-	case errors.Is(err, pgx.ErrNoRows):
-		newID, err := newUserID()
-		if err != nil {
-			return "", false, fmt.Errorf("new id: %w", err)
-		}
-		if _, err := r.pool.Exec(ctx, insertSQL, newID, p.ID, p.Username, p.GlobalName, p.Avatar); err != nil {
-			return "", false, fmt.Errorf("insert app_users: %w", err)
-		}
-		return newID, true, nil
-	default:
-		return "", false, fmt.Errorf("lookup: %w", err)
+	newID, err := newUserID()
+	if err != nil {
+		return "", false, fmt.Errorf("generate user id: %w", err)
 	}
+
+	var (
+		id      string
+		created bool
+	)
+	if err := r.pool.QueryRow(ctx, upsertSQL, newID, p.ID, p.Username, p.GlobalName, p.AvatarHash).
+		Scan(&id, &created); err != nil {
+		return "", false, fmt.Errorf("upsert app_users: %w", err)
+	}
+	return id, created, nil
 }
 
 // newUserID returns a "usr_<24 hex>" identifier.
