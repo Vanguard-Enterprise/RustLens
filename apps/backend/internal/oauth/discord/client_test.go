@@ -74,18 +74,17 @@ func TestClient_FetchProfile_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchProfile: %v", err)
 	}
-	if p.ID != "777" || p.Username != "alice" || p.GlobalName != "Alice" || p.Email != "alice@example.com" || !p.Verified {
+	if p.ID != "777" || p.Username != "alice" || p.GlobalName != "Alice" {
 		t.Errorf("profile mismatch: %+v", p)
 	}
-	wantAvatar := "https://cdn.discordapp.com/avatars/777/abcd.png?size=256"
-	if p.AvatarURL != wantAvatar {
-		t.Errorf("AvatarURL = %q, want %q", p.AvatarURL, wantAvatar)
+	if p.AvatarHash != "abcd" {
+		t.Errorf("AvatarHash = %q, want %q", p.AvatarHash, "abcd")
 	}
 }
 
 func TestClient_FetchProfile_NoAvatar(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"id":"1","username":"x","avatar":null,"verified":false}`))
+		_, _ = w.Write([]byte(`{"id":"1","username":"x","avatar":null}`))
 	}))
 	defer srv.Close()
 	c := discord.NewClient("id", "secret", discord.WithBaseURL(srv.URL), discord.WithRedirectURI("x"))
@@ -93,7 +92,7 @@ func TestClient_FetchProfile_NoAvatar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchProfile: %v", err)
 	}
-	if p.AvatarURL != "" {
-		t.Errorf("AvatarURL with null avatar = %q, want empty", p.AvatarURL)
+	if p.AvatarHash != "" {
+		t.Errorf("AvatarHash with null avatar = %q, want empty", p.AvatarHash)
 	}
 }

@@ -12,13 +12,6 @@ import (
 const (
 	CookieState    = "rustlens_discord_oauth_state"
 	CookieVerifier = "rustlens_discord_oauth_verifier"
-	CookieIntent   = "rustlens_discord_oauth_intent"
-)
-
-// Intent cookie values.
-const (
-	IntentSignin = "signin"
-	IntentLink   = "link"
 )
 
 // CookieMaxAgeSeconds is the lifetime of the per-flow cookies set on initiate.

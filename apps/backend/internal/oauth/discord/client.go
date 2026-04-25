@@ -17,9 +17,7 @@ type Profile struct {
 	ID         string
 	Username   string
 	GlobalName string
-	AvatarURL  string
-	Email      string
-	Verified   bool
+	AvatarHash string // Discord CDN avatar hash, NOT a URL
 }
 
 // DisplayName returns global_name when set, falling back to username.
@@ -134,8 +132,6 @@ func (c *Client) FetchProfile(ctx context.Context, accessToken string) (Profile,
 		Username   string  `json:"username"`
 		GlobalName *string `json:"global_name"`
 		Avatar     *string `json:"avatar"`
-		Email      string  `json:"email"`
-		Verified   bool    `json:"verified"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return Profile{}, err
@@ -143,14 +139,12 @@ func (c *Client) FetchProfile(ctx context.Context, accessToken string) (Profile,
 	p := Profile{
 		ID:       raw.ID,
 		Username: raw.Username,
-		Email:    raw.Email,
-		Verified: raw.Verified,
 	}
 	if raw.GlobalName != nil {
 		p.GlobalName = *raw.GlobalName
 	}
-	if raw.Avatar != nil && *raw.Avatar != "" {
-		p.AvatarURL = fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.png?size=256", raw.ID, *raw.Avatar)
+	if raw.Avatar != nil {
+		p.AvatarHash = *raw.Avatar
 	}
 	return p, nil
 }

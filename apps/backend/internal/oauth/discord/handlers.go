@@ -1,7 +1,7 @@
 package discord
 
 import (
-	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -47,20 +47,10 @@ func (h *Handler) Initiate(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, h.frontendURL("/login?error=discord-already-signed-in"), http.StatusFound)
 		return
 	}
-	h.beginFlow(w, r, IntentSignin)
+	h.beginFlow(w, r)
 }
 
-// InitiateLink handles GET /api/auth/discord/link. Requires an active session
-// (refuses with /login?error=session otherwise).
-func (h *Handler) InitiateLink(w http.ResponseWriter, r *http.Request) {
-	if _, err := appauth.SessionFromCookie(r, h.cfg.SessionSecret); err != nil {
-		http.Redirect(w, r, h.frontendURL("/login?error=session"), http.StatusFound)
-		return
-	}
-	h.beginFlow(w, r, IntentLink)
-}
-
-func (h *Handler) beginFlow(w http.ResponseWriter, r *http.Request, intent string) {
+func (h *Handler) beginFlow(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.ClientID == "" {
 		http.Redirect(w, r, h.frontendURL("/login?error=discord-config"), http.StatusFound)
 		return
@@ -78,14 +68,13 @@ func (h *Handler) beginFlow(w http.ResponseWriter, r *http.Request, intent strin
 
 	setShortCookie(w, CookieState, state)
 	setShortCookie(w, CookieVerifier, verifier)
-	setShortCookie(w, CookieIntent, intent)
 
 	authorize, _ := url.Parse("https://discord.com/oauth2/authorize")
 	q := authorize.Query()
 	q.Set("client_id", h.cfg.ClientID)
 	q.Set("response_type", "code")
 	q.Set("redirect_uri", RedirectURI(h.cfg.AppOrigin))
-	q.Set("scope", "identify email")
+	q.Set("scope", "identify")
 	q.Set("prompt", "consent")
 	q.Set("state", state)
 	q.Set("code_challenge", PkceChallenge(verifier))
@@ -107,23 +96,21 @@ func setShortCookie(w http.ResponseWriter, name, value string) {
 }
 
 // Callback handles GET /api/auth/discord/callback. Validates the state cookie,
-// exchanges the code with Discord, fetches the profile, then branches on the
-// intent cookie (sign-in vs link).
+// exchanges the code with Discord, fetches the profile, then finds-or-creates
+// the user and mints a session.
 func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	// Always clear the per-flow cookies on the way out, regardless of outcome.
 	defer func() {
 		clearCookie(w, CookieState)
 		clearCookie(w, CookieVerifier)
-		clearCookie(w, CookieIntent)
 	}()
 
 	stateCookie, _ := r.Cookie(CookieState)
 	verifierCookie, _ := r.Cookie(CookieVerifier)
-	intentCookie, _ := r.Cookie(CookieIntent)
 	queryState := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
 
-	if stateCookie == nil || verifierCookie == nil || intentCookie == nil ||
+	if stateCookie == nil || verifierCookie == nil ||
 		queryState == "" || code == "" || queryState != stateCookie.Value {
 		http.Redirect(w, r, h.frontendURL("/login?error=discord-state"), http.StatusFound)
 		return
@@ -141,67 +128,22 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch intentCookie.Value {
-	case IntentLink:
-		h.callbackLink(w, r, profile)
-	default:
-		h.callbackSignin(w, r, profile)
-	}
-}
-
-func (h *Handler) callbackSignin(w http.ResponseWriter, r *http.Request, profile Profile) {
-	ctx := r.Context()
-	repo := h.cfg.Repo
-
 	dp := appauth.DiscordProfile{
-		ID:          profile.ID,
-		Username:    profile.Username,
-		DisplayName: profile.DisplayName(),
-		AvatarURL:   profile.AvatarURL,
-		Email:       profile.Email,
+		ID:         profile.ID,
+		Username:   profile.Username,
+		GlobalName: profile.GlobalName,
+		AvatarHash: profile.AvatarHash,
 	}
-
-	// Step 1: existing Discord ID? Refresh + sign in.
-	if userID, err := repo.FindUserByDiscordID(ctx, profile.ID); err == nil {
-		if err := repo.RefreshDiscordConnection(ctx, userID, dp); err != nil {
-			http.Redirect(w, r, h.frontendURL("/login?error=discord-auth"), http.StatusFound)
-			return
-		}
-		_ = repo.TouchLastLogin(ctx, userID)
-		h.mintAndRedirect(w, r, userID, "/dashboard")
-		return
-	}
-
-	// Step 2: no email or unverified email from Discord → reject.
-	if profile.Email == "" || !profile.Verified {
-		http.Redirect(w, r, h.frontendURL("/login?error=discord-no-email"), http.StatusFound)
-		return
-	}
-
-	// Step 3: existing user_emails row?
-	existingUserID, isVerified, exists, err := repo.FindUserByEmail(ctx, profile.Email)
+	userID, _, err := h.cfg.Repo.FindOrCreateByDiscordID(ctx, dp)
 	if err != nil {
 		http.Redirect(w, r, h.frontendURL("/login?error=discord-auth"), http.StatusFound)
 		return
 	}
-	switch {
-	case exists && isVerified:
-		if err := repo.LinkDiscordToUser(ctx, existingUserID, dp); err != nil {
-			http.Redirect(w, r, h.frontendURL("/login?error=discord-auth"), http.StatusFound)
-			return
-		}
-		_ = repo.TouchLastLogin(ctx, existingUserID)
-		h.mintAndRedirect(w, r, existingUserID, "/dashboard")
-	case exists && !isVerified:
-		http.Redirect(w, r, h.frontendURL("/login?error=discord-email-in-use"), http.StatusFound)
-	default:
-		newID, err := repo.CreateDiscordUser(ctx, dp)
-		if err != nil {
-			http.Redirect(w, r, h.frontendURL("/login?error=discord-auth"), http.StatusFound)
-			return
-		}
-		h.mintAndRedirect(w, r, newID, "/dashboard")
+	if err := h.cfg.Repo.TouchLastLogin(ctx, userID); err != nil {
+		// Log-and-continue: failing to touch last_login_at must not block sign-in.
+		log.Printf("discord callback: TouchLastLogin(%s): %v", userID, err)
 	}
+	h.mintAndRedirect(w, r, userID, "/dashboard")
 }
 
 func (h *Handler) mintAndRedirect(w http.ResponseWriter, r *http.Request, userID string, target string) {
@@ -240,52 +182,6 @@ func (h *Handler) mintAndRedirect(w http.ResponseWriter, r *http.Request, userID
 		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, h.frontendURL(target), http.StatusFound)
-}
-
-func (h *Handler) callbackLink(w http.ResponseWriter, r *http.Request, profile Profile) {
-	ctx := r.Context()
-	session, err := appauth.ValidateSessionFromCookie(ctx, r, h.cfg.SessionSecret, h.cfg.Pool)
-	if err != nil || session == nil {
-		http.Redirect(w, r, h.frontendURL("/login?error=session"), http.StatusFound)
-		return
-	}
-
-	dp := appauth.DiscordProfile{
-		ID:          profile.ID,
-		Username:    profile.Username,
-		DisplayName: profile.DisplayName(),
-		AvatarURL:   profile.AvatarURL,
-		Email:       profile.Email,
-	}
-
-	// Idempotent fast path: if this Discord ID is already linked to the
-	// current user, refresh and exit without attempting an insert. Avoids
-	// relying on Postgres reporting the PK constraint first when a re-link
-	// would violate both PK and UNIQUE.
-	if ownerID, lookupErr := h.cfg.Repo.FindUserByDiscordID(ctx, profile.ID); lookupErr == nil {
-		if ownerID == session.UserID {
-			if err := h.cfg.Repo.RefreshDiscordConnection(ctx, session.UserID, dp); err != nil {
-				http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-auth"), http.StatusFound)
-				return
-			}
-			http.Redirect(w, r, h.frontendURL("/dashboard/settings?notice=discord-linked"), http.StatusFound)
-			return
-		}
-		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-linked-to-other"), http.StatusFound)
-		return
-	}
-
-	err = h.cfg.Repo.LinkDiscordToUser(ctx, session.UserID, dp)
-	switch {
-	case err == nil:
-		http.Redirect(w, r, h.frontendURL("/dashboard/settings?notice=discord-linked"), http.StatusFound)
-	case errors.Is(err, appauth.ErrDiscordAlreadyLinked):
-		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-already-linked"), http.StatusFound)
-	case errors.Is(err, appauth.ErrDiscordLinkedToOther):
-		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-linked-to-other"), http.StatusFound)
-	default:
-		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-auth"), http.StatusFound)
-	}
 }
 
 func clearCookie(w http.ResponseWriter, name string) {

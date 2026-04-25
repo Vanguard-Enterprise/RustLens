@@ -140,7 +140,6 @@ func NewRouter(
 
 	r.Route("/api/auth/discord", func(r chi.Router) {
 		r.Get("/", discordHandler.Initiate)
-		r.Get("/link", discordHandler.InitiateLink)
 		r.Get("/callback", discordHandler.Callback)
 	})
 

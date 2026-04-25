@@ -61,11 +61,8 @@ func TestRedirectURI_BuildsCallback(t *testing.T) {
 	}
 }
 
-func TestIntentCookie_Constants(t *testing.T) {
-	if discord.IntentSignin != "signin" || discord.IntentLink != "link" {
-		t.Errorf("intent constants drifted: signin=%q link=%q", discord.IntentSignin, discord.IntentLink)
-	}
-	for _, name := range []string{discord.CookieState, discord.CookieVerifier, discord.CookieIntent} {
+func TestCookieNames_HavePrefix(t *testing.T) {
+	for _, name := range []string{discord.CookieState, discord.CookieVerifier} {
 		if !strings.HasPrefix(name, "rustlens_discord_oauth_") {
 			t.Errorf("cookie name %q lacks expected prefix", name)
 		}
