@@ -273,6 +273,20 @@ func (r *Repo) loadEmails(ctx context.Context, userID string) ([]UserEmail, erro
 	return out, rows.Err()
 }
 
+// FindUserByDiscordID returns the app_users.id linked to the given Discord
+// account ID, or ErrUserNotFound when no row exists.
+func (r *Repo) FindUserByDiscordID(ctx context.Context, discordID string) (string, error) {
+	var userID string
+	err := r.pool.QueryRow(ctx, `
+		SELECT user_id FROM user_connected_accounts
+		WHERE provider = 'discord' AND provider_account_id = $1
+	`, discordID).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrUserNotFound
+	}
+	return userID, err
+}
+
 func (r *Repo) loadDiscordAccount(ctx context.Context, userID string) (*ConnectedAccount, error) {
 	var a ConnectedAccount
 	err := r.pool.QueryRow(ctx, `
