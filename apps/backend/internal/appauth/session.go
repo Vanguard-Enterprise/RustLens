@@ -21,6 +21,7 @@ type SessionUser struct {
 	DisplayName string   `json:"displayName"`
 	AvatarURL   string   `json:"avatarUrl"`
 	Roles       []string `json:"roles"`
+	AdminRoles  []string `json:"adminRoles,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
 	DiscordID   string   `json:"discordId,omitempty"`
 	Email       string   `json:"email,omitempty"`

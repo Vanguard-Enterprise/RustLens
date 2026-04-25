@@ -84,3 +84,26 @@ func TestValidateSession_BadSignature(t *testing.T) {
 		t.Errorf("got %v, want ErrBadSignature", err)
 	}
 }
+
+func TestSerializeSession_RoundTripsAdminRoles(t *testing.T) {
+	secret := "test-secret"
+	in := appauth.SessionUser{
+		UserID:      "usr_admin_round_trip",
+		Roles:       []string{"user"},
+		AdminRoles:  []string{"superadmin"},
+		Permissions: []string{"users.read"},
+		Epoch:       0,
+		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
+	}
+	tok, err := appauth.SerializeSession(in, secret)
+	if err != nil {
+		t.Fatalf("serialize: %v", err)
+	}
+	got, err := appauth.ParseSession(tok, secret)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(got.AdminRoles) != 1 || got.AdminRoles[0] != "superadmin" {
+		t.Errorf("AdminRoles = %v, want [superadmin]", got.AdminRoles)
+	}
+}
