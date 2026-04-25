@@ -448,45 +448,37 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return err
 	}
 
-	// app_users and the login/connected-account/email tables are created by the
-	// appauth subsystem in production, but we mirror them here as IF-NOT-EXISTS
-	// so a fresh test database can install the full admin + app-auth schema
-	// from a single EnsureSchema call.
+	// app_users — Discord-only identity. discord_id is the sole login key.
+	// user_emails / user_connected_accounts / user_password_credentials and
+	// the email-token tables are intentionally absent; the email/password
+	// auth surface was removed in the Discord-only migration.
 	if _, err := p.pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS app_users (
-			id            TEXT PRIMARY KEY,
-			display_name  TEXT NOT NULL DEFAULT '',
-			avatar_url    TEXT NOT NULL DEFAULT '',
-			roles         JSONB NOT NULL DEFAULT '["user"]'::jsonb,
-			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-		CREATE TABLE IF NOT EXISTS user_emails (
-			email       TEXT PRIMARY KEY,
-			user_id     TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-			is_primary  BOOLEAN NOT NULL DEFAULT FALSE,
-			is_verified BOOLEAN NOT NULL DEFAULT FALSE,
-			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
-		CREATE INDEX IF NOT EXISTS user_emails_user_idx ON user_emails (user_id);
-		CREATE TABLE IF NOT EXISTS user_connected_accounts (
-			user_id             TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-			provider            TEXT NOT NULL,
-			provider_account_id TEXT NOT NULL,
-			username            TEXT NOT NULL DEFAULT '',
+			id                  TEXT PRIMARY KEY,
+			discord_id          TEXT UNIQUE NOT NULL,
+			discord_username    TEXT NOT NULL,
+			discord_global_name TEXT NULL,
+			discord_avatar      TEXT NULL,
 			display_name        TEXT NOT NULL DEFAULT '',
 			avatar_url          TEXT NOT NULL DEFAULT '',
-			profile_email       TEXT NOT NULL DEFAULT '',
+			roles               JSONB NOT NULL DEFAULT '["user"]'::jsonb,
 			created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			PRIMARY KEY (provider, provider_account_id),
-			UNIQUE (user_id, provider)
+			last_login_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
-		CREATE INDEX IF NOT EXISTS user_connected_accounts_user_idx ON user_connected_accounts (user_id);
+		CREATE INDEX IF NOT EXISTS app_users_discord_id_idx ON app_users (discord_id);
 	`); err != nil {
-		return fmt.Errorf("create app_users and related tables: %w", err)
+		return fmt.Errorf("create app_users: %w", err)
+	}
+
+	if _, err := p.pool.Exec(ctx, `
+		ALTER TABLE app_users
+			ADD COLUMN IF NOT EXISTS discord_id          TEXT,
+			ADD COLUMN IF NOT EXISTS discord_username    TEXT,
+			ADD COLUMN IF NOT EXISTS discord_global_name TEXT,
+			ADD COLUMN IF NOT EXISTS discord_avatar      TEXT;
+	`); err != nil {
+		return fmt.Errorf("alter app_users add discord columns: %w", err)
 	}
 
 	// Drop orphaned legacy users(UUID) table if empty — it's been supplanted by
@@ -578,60 +570,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create app_users_active_idx: %w", err)
 	}
 
-	// Auth support tables — the full schemas live in the frontend's
-	// idempotent migration module. Here we only ensure enough structure for
-	// the admin backend tests: a user_password_credentials row (PK = user_id
-	// with FK→app_users CASCADE) and a password_reset_tokens table keyed by
-	// user_id with FK CASCADE so users.purge removes all child rows.
-	if _, err := p.pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS user_password_credentials (
-			user_id        TEXT PRIMARY KEY,
-			password_hash  TEXT NOT NULL,
-			created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-			updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
-		);
-		CREATE TABLE IF NOT EXISTS password_reset_tokens (
-			token_hash  TEXT PRIMARY KEY,
-			user_id     TEXT NOT NULL,
-			email       TEXT,
-			expires_at  TIMESTAMPTZ NOT NULL,
-			consumed_at TIMESTAMPTZ NULL,
-			created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-		);
-		CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx ON password_reset_tokens (user_id);
-		CREATE TABLE IF NOT EXISTS email_verification_tokens (
-			token_hash  TEXT PRIMARY KEY,
-			user_id     TEXT NOT NULL,
-			email       TEXT NOT NULL,
-			expires_at  TIMESTAMPTZ NOT NULL,
-			consumed_at TIMESTAMPTZ NULL,
-			created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-		);
-		CREATE INDEX IF NOT EXISTS email_verification_tokens_user_idx ON email_verification_tokens (user_id);
-		CREATE TABLE IF NOT EXISTS email_sign_in_tokens (
-			token_hash  TEXT PRIMARY KEY,
-			email       TEXT NOT NULL,
-			expires_at  TIMESTAMPTZ NOT NULL,
-			consumed_at TIMESTAMPTZ NULL,
-			created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-		);
-		CREATE INDEX IF NOT EXISTS email_sign_in_tokens_email_idx ON email_sign_in_tokens (email);
-	`); err != nil {
-		return fmt.Errorf("create auth token tables: %w", err)
-	}
-
-	// Ensure ON DELETE CASCADE on user_id → app_users(id) for the child
-	// tables that participate in users.purge. The existing tables may have
-	// been created without CASCADE; rebuild the FK in-place when needed.
-	if err := ensureCascadeFK(ctx, p.pool, "user_password_credentials", "user_id"); err != nil {
-		return err
-	}
-	if err := ensureCascadeFK(ctx, p.pool, "password_reset_tokens", "user_id"); err != nil {
-		return err
-	}
-	if err := ensureCascadeFK(ctx, p.pool, "email_verification_tokens", "user_id"); err != nil {
-		return err
-	}
 	return nil
 }
 
