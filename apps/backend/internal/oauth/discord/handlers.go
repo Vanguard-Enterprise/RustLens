@@ -47,6 +47,16 @@ func (h *Handler) Initiate(w http.ResponseWriter, r *http.Request) {
 	h.beginFlow(w, r, IntentSignin)
 }
 
+// InitiateLink handles GET /api/auth/discord/link. Requires an active session
+// (refuses with /login?error=session otherwise).
+func (h *Handler) InitiateLink(w http.ResponseWriter, r *http.Request) {
+	if _, err := appauth.SessionFromCookie(r, h.cfg.SessionSecret); err != nil {
+		http.Redirect(w, r, h.frontendURL("/login?error=session"), http.StatusFound)
+		return
+	}
+	h.beginFlow(w, r, IntentLink)
+}
+
 func (h *Handler) beginFlow(w http.ResponseWriter, r *http.Request, intent string) {
 	if h.cfg.ClientID == "" {
 		http.Redirect(w, r, h.frontendURL("/login?error=discord-config"), http.StatusFound)

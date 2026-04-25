@@ -86,3 +86,42 @@ func TestInitiate_RefusesWhenSessionPresent(t *testing.T) {
 		t.Errorf("Location = %q, want ?error=discord-already-signed-in", loc)
 	}
 }
+
+func TestInitiateLink_RequiresSession(t *testing.T) {
+	h := discord.NewHandler(discord.HandlerConfig{
+		ClientID:      "id",
+		AppOrigin:     "http://localhost",
+		SessionSecret: "session-secret",
+	})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/auth/discord/link", nil)
+	h.InitiateLink(w, r)
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if got := w.Header().Get("Location"); !strings.Contains(got, "/login?error=session") {
+		t.Errorf("Location = %q", got)
+	}
+}
+
+func TestInitiateLink_SetsIntentLink(t *testing.T) {
+	tok := mustSerializeSessionForTest(t, "session-secret", "usr_link")
+	h := discord.NewHandler(discord.HandlerConfig{
+		ClientID:      "id",
+		AppOrigin:     "http://localhost",
+		SessionSecret: "session-secret",
+	})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/auth/discord/link", nil)
+	r.AddCookie(&http.Cookie{Name: "rustlens_session", Value: tok})
+	h.InitiateLink(w, r)
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d", w.Code)
+	}
+	for _, c := range w.Result().Cookies() {
+		if c.Name == discord.CookieIntent && c.Value == discord.IntentLink {
+			return
+		}
+	}
+	t.Errorf("expected intent=link cookie")
+}
