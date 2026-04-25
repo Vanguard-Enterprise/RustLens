@@ -16,6 +16,6 @@ export default async function LoginPage({
 	const csrfToken = await getCsrfToken();
 
 	return (
-		<AuthPage csrfToken={csrfToken} error={error} notice={notice} showDiscord />
+		<AuthPage csrfToken={csrfToken} error={error} notice={notice} />
 	);
 }
