@@ -179,7 +179,7 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
     return true;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
   let results;
   try {
