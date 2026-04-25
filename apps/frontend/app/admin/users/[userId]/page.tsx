@@ -14,7 +14,6 @@ export default async function UserOverviewPage({
 	const canEdit = (session.permissions ?? []).includes("users.edit");
 
 	const guildCount = user.guilds.length;
-	const steamCount = user.connections.filter((c) => c.provider === "steam").length;
 
 	return (
 		<div className="grid gap-6">
@@ -29,12 +28,10 @@ export default async function UserOverviewPage({
 					<dd>{user.user.updatedAt?.slice(0, 19).replace("T", " ") || "—"}</dd>
 					<dt className="text-muted-foreground">Last login</dt>
 					<dd>{user.user.lastLoginAt?.slice(0, 19).replace("T", " ") || "—"}</dd>
-					<dt className="text-muted-foreground">Primary email</dt>
-					<dd>{user.primaryEmail || "—"}</dd>
+					<dt className="text-muted-foreground">Discord</dt>
+					<dd>@{user.discordUsername}{user.discordGlobalName ? ` (${user.discordGlobalName})` : ""}</dd>
 					<dt className="text-muted-foreground">Guilds</dt>
 					<dd>{guildCount}</dd>
-					<dt className="text-muted-foreground">Steam accounts</dt>
-					<dd>{steamCount}</dd>
 				</dl>
 			</section>
 

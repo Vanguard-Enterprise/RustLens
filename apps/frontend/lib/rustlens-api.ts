@@ -63,8 +63,8 @@ export type AdminUserItem = {
 	user: AppUser;
 	discordId: string;
 	discordUsername: string;
-	primaryEmail: string;
-	emailVerified: boolean;
+	discordGlobalName?: string;
+	discordAvatar?: string;
 	guildCount: number;
 	steamConnectionCount: number;
 	adminRoles: string[];
@@ -78,7 +78,6 @@ export type AdminUsersQuery = {
 	status?: "active" | "suspended" | "deleted" | "any";
 	discord?: "any" | "linked" | "unlinked";
 	steam?: "any" | "linked" | "unlinked";
-	emailVerified?: "any" | "yes" | "no";
 	sort?: string;
 	page?: number;
 	pageSize?: number;
@@ -131,19 +130,6 @@ export type AuditEventItem = {
 	reason?: string | null;
 };
 
-export type AdminUserEmail = {
-	email: string;
-	isPrimary: boolean;
-	isVerified: boolean;
-};
-
-export type AdminUserConnection = {
-	provider: string;
-	providerAccountId: string;
-	username: string;
-	connectedAt: string;
-};
-
 export type AdminUserGuild = {
 	guildId: string;
 	nick?: string;
@@ -153,9 +139,10 @@ export type AdminUserAuditItem = AuditEventItem;
 
 export type AdminUserDetail = {
 	user: AppUser;
-	primaryEmail: string;
-	emails: AdminUserEmail[];
-	connections: AdminUserConnection[];
+	discordId: string;
+	discordUsername: string;
+	discordGlobalName?: string;
+	discordAvatar?: string;
 	guilds: AdminUserGuild[];
 	adminRoles: string[];
 	suspendedAt?: string;
@@ -177,25 +164,6 @@ export type TokenResponse = {
 export type AdminActionResponse<T = unknown> = {
 	ok: true;
 	result: T;
-};
-
-/** Output of users.password.forceReset — contains the one-time reset URL. */
-export type ForceResetOutput = {
-	userId: string;
-	tokenUrl: string;
-};
-
-/** Output of users.email.resendVerification — contains the one-time verification URL. */
-export type ResendVerificationOutput = {
-	userId: string;
-	email: string;
-	tokenUrl: string;
-};
-
-/** Output of users.invite — newly created user id and one-time sign-in URL. */
-export type InviteUserOutput = {
-	userId: string;
-	tokenUrl: string;
 };
 
 const API_BASE_URL =
@@ -327,7 +295,6 @@ export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<Admin
 	if (params.status) sp.set("status", params.status);
 	if (params.discord) sp.set("discord", params.discord);
 	if (params.steam) sp.set("steam", params.steam);
-	if (params.emailVerified) sp.set("emailVerified", params.emailVerified);
 	if (params.sort) sp.set("sort", params.sort);
 	if (params.page) sp.set("page", String(params.page));
 	if (params.pageSize) sp.set("pageSize", String(params.pageSize));

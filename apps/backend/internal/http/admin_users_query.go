@@ -16,9 +16,9 @@ import (
 // final SQL.
 //
 // If an "ids" query value is present (comma-separated), it overrides every
-// other predicate (q, role, status, connection filters, emailVerified) and
-// scopes the selection to exactly those app_users.id values. This is used by
-// the bulk toolbar "Export selected" flow.
+// other predicate (q, role, status, connection filters) and scopes the
+// selection to exactly those app_users.id values. This is used by the bulk
+// toolbar "Export selected" flow.
 func buildUsersQuery(q url.Values) (string, []any, string, error) {
 	args := []any{}
 	where := []string{}
@@ -66,8 +66,9 @@ func buildUsersQuery(q url.Values) (string, []any, string, error) {
 		where = append(where, fmt.Sprintf(`(
 			u.display_name ILIKE %[1]s
 			OR u.id ILIKE %[1]s
-			OR EXISTS (SELECT 1 FROM user_emails e WHERE e.user_id = u.id AND e.email ILIKE %[1]s)
-			OR EXISTS (SELECT 1 FROM user_connected_accounts d WHERE d.user_id = u.id AND d.provider='discord' AND (d.username ILIKE %[1]s OR d.provider_account_id ILIKE %[1]s))
+			OR u.discord_username ILIKE %[1]s
+			OR u.discord_global_name ILIKE %[1]s
+			OR u.discord_id ILIKE %[1]s
 		)`, p))
 	}
 
@@ -80,34 +81,31 @@ func buildUsersQuery(q url.Values) (string, []any, string, error) {
 		)`, p))
 	}
 
+	// Discord identity is now intrinsic to app_users — every account has a
+	// discord_id NOT NULL. The "linked" filter therefore matches every active
+	// user; "unlinked" matches none. Kept for backward-compat with bookmarked
+	// querystrings.
 	switch q.Get("discord") {
 	case "", "any":
 	case "linked":
-		where = append(where, `EXISTS (SELECT 1 FROM user_connected_accounts d WHERE d.user_id = u.id AND d.provider='discord')`)
+		where = append(where, `u.discord_id IS NOT NULL AND u.discord_id <> ''`)
 	case "unlinked":
-		where = append(where, `NOT EXISTS (SELECT 1 FROM user_connected_accounts d WHERE d.user_id = u.id AND d.provider='discord')`)
+		where = append(where, `(u.discord_id IS NULL OR u.discord_id = '')`)
 	default:
 		return "", nil, "", errors.New("invalid discord")
 	}
 
+	// Steam connections were previously tracked via user_connected_accounts,
+	// which the Discord-only migration removed. The filter is accepted but
+	// has no effect; "linked" returns nothing and "unlinked" returns all.
 	switch q.Get("steam") {
 	case "", "any":
 	case "linked":
-		where = append(where, `EXISTS (SELECT 1 FROM user_connected_accounts s WHERE s.user_id = u.id AND s.provider='steam')`)
+		where = append(where, `FALSE`)
 	case "unlinked":
-		where = append(where, `NOT EXISTS (SELECT 1 FROM user_connected_accounts s WHERE s.user_id = u.id AND s.provider='steam')`)
+		// no-op
 	default:
 		return "", nil, "", errors.New("invalid steam")
-	}
-
-	switch q.Get("emailVerified") {
-	case "", "any":
-	case "yes":
-		where = append(where, `EXISTS (SELECT 1 FROM user_emails e WHERE e.user_id = u.id AND e.is_primary=true AND e.is_verified=true)`)
-	case "no":
-		where = append(where, `EXISTS (SELECT 1 FROM user_emails e WHERE e.user_id = u.id AND e.is_primary=true AND e.is_verified=false)`)
-	default:
-		return "", nil, "", errors.New("invalid emailVerified")
 	}
 
 	orderBy := orderByClause(q)

@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/toggle-group";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { InviteUserDialog } from "./invite-user-dialog";
 
 type Option = { value: string; label: string };
 
@@ -42,20 +41,11 @@ const TRISTATE: Option[] = [
 	{ value: "linked", label: "Linked" },
 	{ value: "unlinked", label: "Unlinked" },
 ];
-const VERIFIED: Option[] = [
-	{ value: "any", label: "Any" },
-	{ value: "yes", label: "Verified" },
-	{ value: "no", label: "Unverified" },
-];
 
 export function UsersFilterBar({
 	roleOptions,
-	csrfToken,
-	canInvite,
 }: {
 	roleOptions: Option[];
-	csrfToken?: string;
-	canInvite?: boolean;
 }) {
 	const router = useRouter();
 	const pathname = usePathname();
@@ -79,14 +69,12 @@ export function UsersFilterBar({
 	const currentStatus = sp.get("status") ?? "any";
 	const currentDiscord = sp.get("discord") ?? "any";
 	const currentSteam = sp.get("steam") ?? "any";
-	const currentVerified = sp.get("emailVerified") ?? "any";
 
 	// Badge counts only filters housed inside the popover — not the search term.
 	const activeFilterCount =
 		(sp.get("status") ? 1 : 0) +
 		(sp.get("discord") ? 1 : 0) +
 		(sp.get("steam") ? 1 : 0) +
-		(sp.get("emailVerified") ? 1 : 0) +
 		currentRoles.length;
 
 	// Clear is enabled when anything — filters OR search — is active.
@@ -100,7 +88,7 @@ export function UsersFilterBar({
 				</InputGroupAddon>
 				<InputGroupInput
 					aria-label="Search users"
-					placeholder="Search name, email, id, Discord…"
+					placeholder="Search name, id, Discord…"
 					value={q}
 					onChange={(e) => setQ(e.target.value)}
 					onKeyDown={(e) => {
@@ -177,19 +165,6 @@ export function UsersFilterBar({
 								/>
 							)}
 						</FilterRow>
-
-						<FilterRow label="Verified">
-							{(labelId) => (
-								<FilterToggleGroup
-									labelledBy={labelId}
-									value={currentVerified}
-									options={VERIFIED}
-									onChange={(v) =>
-										updateParam("emailVerified", v === "any" ? null : v)
-									}
-								/>
-							)}
-						</FilterRow>
 					</div>
 
 					<Separator />
@@ -209,12 +184,6 @@ export function UsersFilterBar({
 					</div>
 				</PopoverContent>
 			</Popover>
-
-			{canInvite && csrfToken ? (
-				<div className="ml-auto">
-					<InviteUserDialog csrfToken={csrfToken} />
-				</div>
-			) : null}
 		</div>
 	);
 }

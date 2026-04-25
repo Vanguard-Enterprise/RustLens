@@ -23,10 +23,13 @@ var adminUsersExportTimeout = 60 * time.Second
 // csvFlushInterval is how many rows are written between explicit flushes.
 const csvFlushInterval = 1000
 
-// exportRowColumns is the ordered list of columns written to the CSV.
+// exportRowColumns is the ordered list of columns written to the CSV. The
+// email and email-verified columns from the legacy schema were dropped along
+// with user_emails; Discord identity columns replace them as the user's
+// primary handle.
 var exportRowColumns = []string{
-	"id", "display_name", "primary_email", "email_verified", "status",
-	"admin_roles", "discord_id", "discord_username", "steam_count",
+	"id", "display_name", "discord_id", "discord_username",
+	"discord_global_name", "status", "admin_roles",
 	"guild_count", "created_at", "last_login_at",
 }
 
@@ -81,26 +84,23 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 
 	listSQL := fmt.Sprintf(`
 		SELECT u.id, u.display_name,
-		       COALESCE((SELECT email FROM user_emails e WHERE e.user_id = u.id AND e.is_primary=true LIMIT 1), '') AS primary_email,
-		       COALESCE((SELECT is_verified FROM user_emails e WHERE e.user_id = u.id AND e.is_primary=true LIMIT 1), false) AS email_verified,
+		       COALESCE(u.discord_id, '') AS discord_id,
+		       COALESCE(u.discord_username, '') AS discord_username,
+		       COALESCE(u.discord_global_name, '') AS discord_global_name,
 		       CASE
 		         WHEN u.deleted_at IS NOT NULL THEN 'deleted'
 		         WHEN u.suspended_at IS NOT NULL THEN 'suspended'
 		         ELSE 'active'
 		       END AS status,
 		       COALESCE(array_agg(DISTINCT r.key) FILTER (WHERE r.key IS NOT NULL), ARRAY[]::text[]) AS admin_roles,
-		       COALESCE(d.provider_account_id, '') AS discord_id,
-		       COALESCE(d.username, '') AS discord_username,
-		       (SELECT COUNT(*) FROM user_connected_accounts s WHERE s.user_id = u.id AND s.provider='steam') AS steam_count,
-		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = d.provider_account_id AND g.left_at IS NULL), 0) AS guild_count,
+		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = u.discord_id AND g.left_at IS NULL), 0) AS guild_count,
 		       u.created_at,
 		       u.last_login_at
 		FROM app_users u
-		LEFT JOIN user_connected_accounts d ON d.user_id = u.id AND d.provider='discord'
 		LEFT JOIN admin_user_roles aur ON aur.user_id = u.id
 		LEFT JOIN admin_roles r ON r.id = aur.role_id
 		%s
-		GROUP BY u.id, d.provider_account_id, d.username
+		GROUP BY u.id
 		ORDER BY %s
 	`, whereSQL, orderBy)
 
@@ -121,30 +121,26 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 	written := 0
 	for rows.Next() {
 		var (
-			id, name, email, status string
-			emailVerified           bool
-			adminRoles              []string
-			discordID, discordName  string
-			steamCount, guildCount  int64
-			createdAt, lastLoginAt  time.Time
+			id, name, status                                string
+			discordID, discordName, discordGlobal           string
+			adminRoles                                      []string
+			guildCount                                      int64
+			createdAt, lastLoginAt                          time.Time
 		)
 		if err := rows.Scan(
-			&id, &name, &email, &emailVerified, &status, &adminRoles,
-			&discordID, &discordName, &steamCount, &guildCount,
-			&createdAt, &lastLoginAt,
+			&id, &name, &discordID, &discordName, &discordGlobal, &status,
+			&adminRoles, &guildCount, &createdAt, &lastLoginAt,
 		); err != nil {
 			return
 		}
 		record := []string{
 			id,
 			name,
-			email,
-			strconv.FormatBool(emailVerified),
-			status,
-			strings.Join(adminRoles, "|"),
 			discordID,
 			discordName,
-			strconv.FormatInt(steamCount, 10),
+			discordGlobal,
+			status,
+			strings.Join(adminRoles, "|"),
 			strconv.FormatInt(guildCount, 10),
 			createdAt.UTC().Format(time.RFC3339),
 			lastLoginAt.UTC().Format(time.RFC3339),
@@ -165,3 +161,4 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 }
+

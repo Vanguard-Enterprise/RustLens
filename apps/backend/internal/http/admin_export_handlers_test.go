@@ -29,7 +29,7 @@ func newExportHandlerServer(t *testing.T) (*Handler, *store.PostgresStore) {
 		t.Fatalf("ensure schema: %v", err)
 	}
 	if _, err := s.Pool().Exec(ctx, `
-		TRUNCATE admin_user_roles, user_emails, user_connected_accounts, user_guilds, app_users RESTART IDENTITY CASCADE
+		TRUNCATE admin_user_roles, user_guilds, app_users RESTART IDENTITY CASCADE
 	`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
@@ -41,9 +41,10 @@ func newExportHandlerServer(t *testing.T) (*Handler, *store.PostgresStore) {
 
 	// Seed a superadmin caller so the HasPermission check passes.
 	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO app_users (id, display_name) VALUES ($1, $2)
+		`INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name`,
-		"usr_exporter", "Exporter"); err != nil {
+		"usr_exporter", "d_exporter", "exporter", "Exporter"); err != nil {
 		t.Fatalf("seed caller: %v", err)
 	}
 	saID, err := rbStore.RoleIDByKey(ctx, rbac.RoleSuperadmin)
@@ -60,9 +61,9 @@ func newExportHandlerServer(t *testing.T) (*Handler, *store.PostgresStore) {
 
 func TestExportAdminUsersCSV_HappyPath(t *testing.T) {
 	h, s := newExportHandlerServer(t)
-	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{PrimaryEmail: "a@example.com", Verified: true})
-	seedUser(t, s.Pool(), "usr_b", "Bob", seedOpts{PrimaryEmail: "b@example.com", Verified: false})
-	seedUser(t, s.Pool(), "usr_c", "Carol", seedOpts{PrimaryEmail: "c@example.com", Verified: true})
+	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{Discord: "alice", DiscordID: "d_alice"})
+	seedUser(t, s.Pool(), "usr_b", "Bob", seedOpts{Discord: "bob", DiscordID: "d_bob"})
+	seedUser(t, s.Pool(), "usr_c", "Carol", seedOpts{Discord: "carol", DiscordID: "d_carol"})
 
 	req := httptest.NewRequest("GET", "/api/app/admin/users/export.csv", nil)
 	req = req.WithContext(appauth.InjectSessionForTest(req.Context(), &appauth.SessionUser{UserID: "usr_exporter", Roles: []string{"superadmin"}}))
@@ -88,16 +89,16 @@ func TestExportAdminUsersCSV_HappyPath(t *testing.T) {
 	if len(records) != 5 {
 		t.Fatalf("expected 1 header + 4 rows, got %d", len(records))
 	}
-	if records[0][0] != "id" || records[0][1] != "display_name" {
+	if records[0][0] != "id" || records[0][1] != "display_name" || records[0][2] != "discord_id" || records[0][3] != "discord_username" {
 		t.Errorf("unexpected header: %v", records[0])
 	}
 }
 
 func TestExportAdminUsersCSV_IdsFilter(t *testing.T) {
 	h, s := newExportHandlerServer(t)
-	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{PrimaryEmail: "a@example.com"})
-	seedUser(t, s.Pool(), "usr_b", "Bob", seedOpts{PrimaryEmail: "b@example.com"})
-	seedUser(t, s.Pool(), "usr_c", "Carol", seedOpts{PrimaryEmail: "c@example.com"})
+	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{Discord: "alice", DiscordID: "d_alice"})
+	seedUser(t, s.Pool(), "usr_b", "Bob", seedOpts{Discord: "bob", DiscordID: "d_bob"})
+	seedUser(t, s.Pool(), "usr_c", "Carol", seedOpts{Discord: "carol", DiscordID: "d_carol"})
 
 	req := httptest.NewRequest("GET", "/api/app/admin/users/export.csv?ids=usr_a,usr_c", nil)
 	req = req.WithContext(appauth.InjectSessionForTest(req.Context(), &appauth.SessionUser{UserID: "usr_exporter", Roles: []string{"superadmin"}}))
@@ -122,9 +123,9 @@ func TestExportAdminUsersCSV_IdsFilter(t *testing.T) {
 
 func TestExportAdminUsersCSV_RowCapEnforced(t *testing.T) {
 	h, s := newExportHandlerServer(t)
-	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{PrimaryEmail: "a@example.com"})
-	seedUser(t, s.Pool(), "usr_b", "Bob", seedOpts{PrimaryEmail: "b@example.com"})
-	seedUser(t, s.Pool(), "usr_c", "Carol", seedOpts{PrimaryEmail: "c@example.com"})
+	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{Discord: "alice", DiscordID: "d_alice"})
+	seedUser(t, s.Pool(), "usr_b", "Bob", seedOpts{Discord: "bob", DiscordID: "d_bob"})
+	seedUser(t, s.Pool(), "usr_c", "Carol", seedOpts{Discord: "carol", DiscordID: "d_carol"})
 
 	prev := adminUsersExportRowCap
 	adminUsersExportRowCap = 1
@@ -144,7 +145,8 @@ func TestExportAdminUsersCSV_PermissionDenied(t *testing.T) {
 	// Seed a non-privileged caller.
 	ctx := context.Background()
 	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO app_users (id, display_name) VALUES ('usr_noperm', 'NoPerm')
+		`INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		 VALUES ('usr_noperm', 'd_noperm', 'noperm', 'NoPerm')
 		 ON CONFLICT (id) DO NOTHING`); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

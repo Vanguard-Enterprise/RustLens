@@ -23,12 +23,10 @@ const (
 
 // tokenGeneratingActions is the hardcoded set of action types that issue
 // one-time tokens. These are rate-limited more aggressively than ordinary
-// mutating actions.
-var tokenGeneratingActions = map[string]struct{}{
-	"users.invite":                   {},
-	"users.password.forceReset":      {},
-	"users.email.resendVerification": {},
-}
+// mutating actions. The Discord-only migration removed every entry; the map
+// remains so future token-generating actions can opt in without plumbing
+// changes.
+var tokenGeneratingActions = map[string]struct{}{}
 
 type tokenBucket struct {
 	capacity     float64

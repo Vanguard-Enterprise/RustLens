@@ -65,9 +65,11 @@ func newTestHandlerServer(t *testing.T) *testHandlerServer {
 	if err := s.EnsureSchema(ctx); err != nil {
 		t.Fatalf("ensure schema: %v", err)
 	}
-	// Wipe user-related tables so each test starts fresh.
+	// Wipe user-related tables so each test starts fresh. The Discord-only
+	// migration removed user_emails / user_connected_accounts; identity now
+	// lives directly on app_users.
 	if _, err := s.Pool().Exec(ctx, `
-		TRUNCATE admin_user_roles, user_emails, user_connected_accounts, user_guilds, app_users RESTART IDENTITY CASCADE
+		TRUNCATE admin_user_roles, user_guilds, app_users RESTART IDENTITY CASCADE
 	`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
@@ -77,23 +79,35 @@ func newTestHandlerServer(t *testing.T) *testHandlerServer {
 }
 
 type seedOpts struct {
-	PrimaryEmail  string
-	Verified      bool
 	Discord       string // discord username
 	DiscordID     string
+	GlobalName    string
 	Suspended     bool
 	Deleted       bool
-	LinkSteam     bool
 	AdminRoleKeys []string
 }
 
 func seedUser(t *testing.T, pool *pgxpool.Pool, id, displayName string, opts seedOpts) {
 	t.Helper()
 	ctx := context.Background()
+	discordID := opts.DiscordID
+	if discordID == "" {
+		discordID = fmt.Sprintf("d_%s", id)
+	}
+	discordUsername := opts.Discord
+	if discordUsername == "" {
+		discordUsername = "u_" + id
+	}
+	globalName := opts.GlobalName
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO app_users (id, display_name) VALUES ($1, $2)
-		 ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name`,
-		id, displayName,
+		`INSERT INTO app_users (id, discord_id, discord_username, discord_global_name, display_name)
+		 VALUES ($1, $2, $3, NULLIF($4, ''), $5)
+		 ON CONFLICT (id) DO UPDATE SET
+		   discord_id = EXCLUDED.discord_id,
+		   discord_username = EXCLUDED.discord_username,
+		   discord_global_name = EXCLUDED.discord_global_name,
+		   display_name = EXCLUDED.display_name`,
+		id, discordID, discordUsername, globalName, displayName,
 	); err != nil {
 		t.Fatalf("seed app_user %s: %v", id, err)
 	}
@@ -107,44 +121,13 @@ func seedUser(t *testing.T, pool *pgxpool.Pool, id, displayName string, opts see
 			t.Fatalf("delete: %v", err)
 		}
 	}
-	if opts.PrimaryEmail != "" {
-		if _, err := pool.Exec(ctx,
-			`INSERT INTO user_emails (email, user_id, is_primary, is_verified) VALUES ($1, $2, true, $3)
-			 ON CONFLICT (email) DO UPDATE SET user_id = EXCLUDED.user_id, is_primary = true, is_verified = EXCLUDED.is_verified`,
-			opts.PrimaryEmail, id, opts.Verified,
-		); err != nil {
-			t.Fatalf("seed email: %v", err)
-		}
-	}
-	if opts.Discord != "" || opts.DiscordID != "" {
-		discordID := opts.DiscordID
-		if discordID == "" {
-			discordID = fmt.Sprintf("d_%s", id)
-		}
-		if _, err := pool.Exec(ctx,
-			`INSERT INTO user_connected_accounts (user_id, provider, provider_account_id, username) VALUES ($1, 'discord', $2, $3)
-			 ON CONFLICT (provider, provider_account_id) DO UPDATE SET user_id = EXCLUDED.user_id, username = EXCLUDED.username`,
-			id, discordID, opts.Discord,
-		); err != nil {
-			t.Fatalf("seed discord: %v", err)
-		}
-	}
-	if opts.LinkSteam {
-		if _, err := pool.Exec(ctx,
-			`INSERT INTO user_connected_accounts (user_id, provider, provider_account_id) VALUES ($1, 'steam', $2)
-			 ON CONFLICT (provider, provider_account_id) DO NOTHING`,
-			id, "steam_"+id,
-		); err != nil {
-			t.Fatalf("seed steam: %v", err)
-		}
-	}
 }
 
 func TestListAdminUsers_FiltersAndPagination(t *testing.T) {
 	ts := newTestHandlerServer(t)
 
-	seedUser(t, ts.pool, "usr_aaaa", "Alice", seedOpts{PrimaryEmail: "a@x", Verified: true, Discord: "a#1", DiscordID: "d_alice"})
-	seedUser(t, ts.pool, "usr_bbbb", "Bob", seedOpts{PrimaryEmail: "b@x", Verified: false})
+	seedUser(t, ts.pool, "usr_aaaa", "Alice", seedOpts{Discord: "alice", DiscordID: "d_alice"})
+	seedUser(t, ts.pool, "usr_bbbb", "Bob", seedOpts{Discord: "bob", DiscordID: "d_bob"})
 	seedUser(t, ts.pool, "usr_cccc", "Carol", seedOpts{Suspended: true})
 	seedUser(t, ts.pool, "usr_dddd", "Dan", seedOpts{Deleted: true})
 
@@ -162,12 +145,9 @@ func TestListAdminUsers_FiltersAndPagination(t *testing.T) {
 		t.Errorf("suspended: want 1 got %d", r.Total)
 	}
 
-	if r := ts.get(t, "/api/app/admin/users?discord=linked"); r.Total != 1 {
-		t.Errorf("discord=linked: want 1 got %d", r.Total)
-	}
-
-	if r := ts.get(t, "/api/app/admin/users?emailVerified=yes"); r.Total != 1 {
-		t.Errorf("emailVerified=yes: want 1 got %d", r.Total)
+	// Every active user has discord_id intrinsically; "linked" returns active count.
+	if r := ts.get(t, "/api/app/admin/users?discord=linked"); r.Total != 2 {
+		t.Errorf("discord=linked: want 2 got %d", r.Total)
 	}
 
 	r := ts.get(t, "/api/app/admin/users?status=any&pageSize=2&page=1")

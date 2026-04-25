@@ -21,7 +21,9 @@ func randSuffix() string {
 func seedAppUser(t *testing.T, pool *pgxpool.Pool, id string) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(),
-		`INSERT INTO app_users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, id)
+		`INSERT INTO app_users (id, discord_id, discord_username)
+		 VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
+		id, "d_"+id, "u_"+id)
 	if err != nil {
 		t.Fatalf("seed app_user %s: %v", id, err)
 	}

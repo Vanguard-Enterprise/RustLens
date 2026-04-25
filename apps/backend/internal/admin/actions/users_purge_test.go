@@ -73,17 +73,10 @@ func TestUsersPurge_HappyPathCascades(t *testing.T) {
 
 	const tid = "usr_purge_t"
 	seedAppUser(t, s, tid, "Target", false)
-	// Seed children that must cascade.
-	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO user_emails (email, user_id, is_primary, is_verified) VALUES ($1, $2, true, true) ON CONFLICT DO NOTHING`,
-		tid+"@example.com", tid); err != nil {
-		t.Fatalf("seed email: %v", err)
-	}
-	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO user_password_credentials (user_id, password_hash) VALUES ($1, 'hash') ON CONFLICT DO NOTHING`,
-		tid); err != nil {
-		t.Fatalf("seed cred: %v", err)
-	}
+	// The user_emails / user_password_credentials children went away with the
+	// Discord-only migration; admin_user_roles / audit_events are the only
+	// dependents left, both of which are exercised implicitly by the seed +
+	// dispatch.
 
 	body := mustJSON(t, map[string]any{
 		"params":            map[string]any{"userId": tid, "confirmId": tid},
@@ -99,14 +92,6 @@ func TestUsersPurge_HappyPathCascades(t *testing.T) {
 	_ = s.Pool().QueryRow(ctx, `SELECT COUNT(*) FROM app_users WHERE id=$1`, tid).Scan(&n)
 	if n != 0 {
 		t.Errorf("app_users row still present")
-	}
-	_ = s.Pool().QueryRow(ctx, `SELECT COUNT(*) FROM user_emails WHERE user_id=$1`, tid).Scan(&n)
-	if n != 0 {
-		t.Errorf("user_emails not cascaded (n=%d)", n)
-	}
-	_ = s.Pool().QueryRow(ctx, `SELECT COUNT(*) FROM user_password_credentials WHERE user_id=$1`, tid).Scan(&n)
-	if n != 0 {
-		t.Errorf("user_password_credentials not cascaded (n=%d)", n)
 	}
 }
 

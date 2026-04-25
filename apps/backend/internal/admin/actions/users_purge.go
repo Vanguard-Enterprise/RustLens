@@ -19,8 +19,8 @@ type usersPurgeAction struct{ pool *pgxpool.Pool }
 
 // NewUsersPurgeAction hard-deletes a user row. Superadmin-only; bypasses the
 // normal permission-key check via SuperadminOnly(). FK cascades remove the
-// user's emails, credentials, connected accounts, admin role assignments and
-// outstanding auth tokens.
+// user's admin role assignments. The legacy email/credential/connected-account
+// children went away with the Discord-only migration.
 func NewUsersPurgeAction(pool *pgxpool.Pool) AdminAction {
 	return &usersPurgeAction{pool: pool}
 }
@@ -77,10 +77,9 @@ func (a *usersPurgeAction) Execute(ctx context.Context, in ActionInput) (ActionR
 		return ActionResult{}, err
 	}
 
-	// FK cascades on user_emails, user_password_credentials,
-	// user_connected_accounts, admin_user_roles, and the token tables handle
-	// the children. audit_events.target_user_id does NOT have a FK so the
-	// audit trail survives the purge.
+	// FK cascades on admin_user_roles handle the remaining children.
+	// audit_events.target_user_id does NOT have a FK so the audit trail
+	// survives the purge.
 	if _, err := a.pool.Exec(ctx, `DELETE FROM app_users WHERE id=$1`, p.UserID); err != nil {
 		return ActionResult{}, err
 	}

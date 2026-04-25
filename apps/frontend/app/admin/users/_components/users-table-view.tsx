@@ -25,11 +25,6 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import type { AdminUserItem } from "@/lib/rustlens-api";
 import { UsersBulkToolbar } from "./users-bulk-toolbar";
 
@@ -123,11 +118,9 @@ export function UsersTableView({
 									/>
 								</TableHead>
 								<TableHead>User</TableHead>
-								<TableHead>Email</TableHead>
+								<TableHead>Discord</TableHead>
 								<TableHead>Roles</TableHead>
 								<TableHead>Status</TableHead>
-								<TableHead>Discord</TableHead>
-								<TableHead className="text-right">Steam</TableHead>
 								<TableHead className="text-right">Guilds</TableHead>
 								<TableHead>Last login</TableHead>
 							</TableRow>
@@ -183,16 +176,14 @@ export function UsersTableView({
 											</div>
 										</TableCell>
 										<TableCell>
-											{u.primaryEmail ? (
-												<div className="flex items-center gap-2">
-													<span className="truncate">{u.primaryEmail}</span>
-													{!u.emailVerified ? (
-														<Badge variant="outline">unverified</Badge>
-													) : null}
-												</div>
-											) : (
-												<span className="text-muted-foreground">—</span>
-											)}
+											<div className="flex min-w-0 flex-col">
+												<span className="truncate font-medium">
+													{u.discordGlobalName || `@${u.discordUsername}`}
+												</span>
+												<span className="truncate font-mono text-[11px] text-muted-foreground">
+													@{u.discordUsername}
+												</span>
+											</div>
 										</TableCell>
 										<TableCell>
 											{u.adminRoles.length === 0 ? (
@@ -209,27 +200,6 @@ export function UsersTableView({
 										</TableCell>
 										<TableCell>
 											<Badge variant={status.variant}>{status.label}</Badge>
-										</TableCell>
-										<TableCell>
-											{u.discordUsername || u.discordId ? (
-												<Tooltip>
-													<TooltipTrigger asChild>
-														<span className="block max-w-[12rem] truncate">
-															{u.discordUsername || u.discordId}
-														</span>
-													</TooltipTrigger>
-													<TooltipContent>
-														{u.discordUsername
-															? `${u.discordUsername} · ${u.discordId}`
-															: u.discordId}
-													</TooltipContent>
-												</Tooltip>
-											) : (
-												<span className="text-muted-foreground">—</span>
-											)}
-										</TableCell>
-										<TableCell className="text-right tabular-nums">
-											{u.steamConnectionCount}
 										</TableCell>
 										<TableCell className="text-right tabular-nums">
 											{u.guildCount}

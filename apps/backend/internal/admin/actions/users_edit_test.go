@@ -78,9 +78,14 @@ func (b auditSinkBridge) RecordEntry(ctx context.Context, e actions.AuditEntryIn
 func seedAppUser(t *testing.T, s *store.PostgresStore, id, name string, deleted bool) {
 	t.Helper()
 	ctx := context.Background()
+	// app_users requires discord_id NOT NULL UNIQUE and discord_username NOT
+	// NULL (Discord-only auth). Synthesize unique values from the test id so
+	// fixtures don't collide on the discord_id unique index.
 	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO app_users (id, display_name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name`,
-		id, name); err != nil {
+		`INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name`,
+		id, "d_"+id, "u_"+id, name); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 	if deleted {

@@ -9,7 +9,11 @@ import (
 
 // registerAdminActions wires the concrete AdminAction implementations into
 // the action registry at handler boot. Keep this list alphabetised.
-func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *rbac.Resolver, appBaseURL string) error {
+//
+// appBaseURL is unused now that the email/password admin actions are gone, but
+// the parameter is kept on the call site so future token-generating actions
+// can be wired here without churn.
+func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *rbac.Resolver, _ string) error {
 	if err := reg.Register(actions.NewUsersEditAction(pool)); err != nil {
 		return err
 	}
@@ -32,27 +36,6 @@ func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *r
 		return err
 	}
 	if err := reg.Register(actions.NewUsersPurgeAction(pool)); err != nil {
-		return err
-	}
-	if err := reg.Register(actions.NewUsersPasswordForceResetAction(pool, appBaseURL)); err != nil {
-		return err
-	}
-	if err := reg.Register(actions.NewUsersEmailResendVerificationAction(pool, appBaseURL)); err != nil {
-		return err
-	}
-	if err := reg.Register(actions.NewUsersEmailSetPrimaryAction(pool)); err != nil {
-		return err
-	}
-	if err := reg.Register(actions.NewUsersEmailAddAction(pool)); err != nil {
-		return err
-	}
-	if err := reg.Register(actions.NewUsersEmailRemoveAction(pool)); err != nil {
-		return err
-	}
-	if err := reg.Register(actions.NewUsersInviteAction(pool, appBaseURL)); err != nil {
-		return err
-	}
-	if err := reg.Register(actions.NewUsersConnectionsUnlinkAction(pool)); err != nil {
 		return err
 	}
 	return nil

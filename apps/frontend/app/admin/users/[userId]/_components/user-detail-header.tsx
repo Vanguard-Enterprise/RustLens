@@ -14,9 +14,7 @@ export function UserDetailHeader({ user }: { user: AdminUserDetail }) {
 			<div className="flex-1">
 				<h1 className="text-2xl font-semibold">{u.displayName || u.id}</h1>
 				<div className="text-sm text-muted-foreground">{u.id}</div>
-				{user.primaryEmail ? (
-					<div className="text-sm">{user.primaryEmail}</div>
-				) : null}
+				<div className="text-sm">@{user.discordUsername}</div>
 				<div className="mt-2 flex flex-wrap gap-1">
 					{user.deletedAt ? <Badge variant="destructive">deleted</Badge> : null}
 					{user.suspendedAt ? <Badge variant="destructive">suspended</Badge> : null}

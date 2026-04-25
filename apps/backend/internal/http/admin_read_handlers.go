@@ -15,15 +15,14 @@ import (
 
 // Read-side admin endpoints consumed by the frontend admin pages.
 // Deliberately minimal — the shapes match the TypeScript admin item types in
-// apps/frontend/lib/rustlens-api.ts. These will be expanded in the per-area
-// feature specs (C/D/E/F).
+// apps/frontend/lib/rustlens-api.ts.
 
 type adminUserItem struct {
 	User                 adminAppUser `json:"user"`
 	DiscordID            string       `json:"discordId"`
 	DiscordUsername      string       `json:"discordUsername"`
-	PrimaryEmail         string       `json:"primaryEmail"`
-	EmailVerified        bool         `json:"emailVerified"`
+	DiscordGlobalName    string       `json:"discordGlobalName,omitempty"`
+	DiscordAvatar        string       `json:"discordAvatar,omitempty"`
 	GuildCount           int          `json:"guildCount"`
 	SteamConnectionCount int          `json:"steamConnectionCount"`
 	AdminRoles           []string     `json:"adminRoles"`
@@ -72,45 +71,32 @@ type auditEventItem struct {
 	Reason            *string        `json:"reason,omitempty"`
 }
 
-type adminUserEmail struct {
-	Email      string `json:"email"`
-	IsPrimary  bool   `json:"isPrimary"`
-	IsVerified bool   `json:"isVerified"`
-}
-
-type adminUserConnection struct {
-	Provider          string `json:"provider"`
-	ProviderAccountID string `json:"providerAccountId"`
-	Username          string `json:"username"`
-	ConnectedAt       string `json:"connectedAt"`
-}
-
 type adminUserGuild struct {
 	GuildID string `json:"guildId"`
 	Nick    string `json:"nick,omitempty"`
 }
 
 type adminUserDetail struct {
-	User          adminAppUser          `json:"user"`
-	PrimaryEmail  string                `json:"primaryEmail"`
-	Emails        []adminUserEmail      `json:"emails"`
-	Connections   []adminUserConnection `json:"connections"`
-	Guilds        []adminUserGuild      `json:"guilds"`
-	AdminRoles    []string              `json:"adminRoles"`
-	SuspendedAt   *string               `json:"suspendedAt,omitempty"`
-	SuspendReason string                `json:"suspendReason,omitempty"`
-	DeletedAt     *string               `json:"deletedAt,omitempty"`
-	RecentAudit   []auditEventItem      `json:"recentAudit"`
+	User              adminAppUser     `json:"user"`
+	DiscordID         string           `json:"discordId"`
+	DiscordUsername   string           `json:"discordUsername"`
+	DiscordGlobalName string           `json:"discordGlobalName,omitempty"`
+	DiscordAvatar     string           `json:"discordAvatar,omitempty"`
+	Guilds            []adminUserGuild `json:"guilds"`
+	AdminRoles        []string         `json:"adminRoles"`
+	SuspendedAt       *string          `json:"suspendedAt,omitempty"`
+	SuspendReason     string           `json:"suspendReason,omitempty"`
+	DeletedAt         *string          `json:"deletedAt,omitempty"`
+	RecentAudit       []auditEventItem `json:"recentAudit"`
 }
 
 // ListAdminUsers: GET /api/app/admin/users
 // Query:
-//   q=<substring>           matches display_name / primary email / discord username / app_users.id
+//   q=<substring>           matches display_name / app_users.id / discord_username / discord_id
 //   role=<roleKey>          (repeatable) any matched role
 //   status=active|suspended|deleted|any (default: active)
 //   discord=any|linked|unlinked
 //   steam=any|linked|unlinked
-//   emailVerified=any|yes|no
 //   sort=<field> or -<field>  field in {createdAt, lastLoginAt, displayName}
 //   page=1 pageSize=50 (max 200)
 func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
@@ -152,19 +138,18 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		SELECT u.id, u.display_name, u.avatar_url, u.roles::text,
 		       u.created_at, u.updated_at, u.last_login_at,
 		       u.suspended_at, u.deleted_at,
-		       COALESCE(d.provider_account_id, ''),
-		       COALESCE(d.username, ''),
-		       COALESCE((SELECT email FROM user_emails e WHERE e.user_id = u.id AND e.is_primary=true LIMIT 1), ''),
-		       COALESCE((SELECT is_verified FROM user_emails e WHERE e.user_id = u.id AND e.is_primary=true LIMIT 1), false),
-		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = d.provider_account_id AND g.left_at IS NULL), 0),
-		       (SELECT COUNT(*) FROM user_connected_accounts s WHERE s.user_id = u.id AND s.provider='steam'),
+		       COALESCE(u.discord_id, ''),
+		       COALESCE(u.discord_username, ''),
+		       COALESCE(u.discord_global_name, ''),
+		       COALESCE(u.discord_avatar, ''),
+		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = u.discord_id AND g.left_at IS NULL), 0),
+		       0 AS steam_count,
 		       COALESCE(array_agg(DISTINCT r.key) FILTER (WHERE r.key IS NOT NULL), ARRAY[]::text[])
 		FROM app_users u
-		LEFT JOIN user_connected_accounts d ON d.user_id = u.id AND d.provider='discord'
 		LEFT JOIN admin_user_roles aur ON aur.user_id = u.id
 		LEFT JOIN admin_roles r ON r.id = aur.role_id
 		%s
-		GROUP BY u.id, d.provider_account_id, d.username
+		GROUP BY u.id
 		ORDER BY %s
 		LIMIT $%d OFFSET $%d
 	`, whereSQL, orderBy, len(args)-1, len(args))
@@ -182,13 +167,12 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		var rolesLegacyJSON string
 		var suspendedAt, deletedAt *time.Time
 		var guildCount, steamCount int64
-		var emailVerified bool
 		var adminRoleKeys []string
 		if err := rows.Scan(
 			&it.User.ID, &it.User.DisplayName, &it.User.AvatarURL, &rolesLegacyJSON,
 			&it.User.CreatedAt, &it.User.UpdatedAt, &it.User.LastLoginAt,
 			&suspendedAt, &deletedAt,
-			&it.DiscordID, &it.DiscordUsername, &it.PrimaryEmail, &emailVerified,
+			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
 			&guildCount, &steamCount, &adminRoleKeys,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -202,7 +186,6 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		it.GuildCount = int(guildCount)
 		it.SteamConnectionCount = int(steamCount)
-		it.EmailVerified = emailVerified
 		it.AdminRoles = adminRoleKeys
 		if it.AdminRoles == nil {
 			it.AdminRoles = []string{}
@@ -484,12 +467,15 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 	err := pool.QueryRow(ctx, `
 		SELECT id, display_name, avatar_url, roles::text,
 		       created_at, updated_at, last_login_at,
-		       suspended_at, COALESCE(suspend_reason,''), deleted_at
+		       suspended_at, COALESCE(suspend_reason,''), deleted_at,
+		       COALESCE(discord_id, ''), COALESCE(discord_username, ''),
+		       COALESCE(discord_global_name, ''), COALESCE(discord_avatar, '')
 		FROM app_users WHERE id = $1
 	`, id).Scan(
 		&d.User.ID, &d.User.DisplayName, &d.User.AvatarURL, &rolesJSON,
 		&d.User.CreatedAt, &d.User.UpdatedAt, &d.User.LastLoginAt,
 		&suspendedAt, &d.SuspendReason, &deletedAt,
+		&d.DiscordID, &d.DiscordUsername, &d.DiscordGlobalName, &d.DiscordAvatar,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -514,52 +500,6 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 		d.DeletedAt = &s
 	}
 
-	// Emails
-	d.Emails = []adminUserEmail{}
-	erows, err := pool.Query(ctx, `
-		SELECT email, is_primary, is_verified FROM user_emails WHERE user_id = $1 ORDER BY is_primary DESC, email ASC
-	`, id)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	for erows.Next() {
-		var e adminUserEmail
-		if err := erows.Scan(&e.Email, &e.IsPrimary, &e.IsVerified); err != nil {
-			erows.Close()
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if e.IsPrimary {
-			d.PrimaryEmail = e.Email
-		}
-		d.Emails = append(d.Emails, e)
-	}
-	erows.Close()
-
-	// Connections
-	d.Connections = []adminUserConnection{}
-	crows, err := pool.Query(ctx, `
-		SELECT provider, provider_account_id, COALESCE(username,''), created_at
-		FROM user_connected_accounts WHERE user_id = $1 ORDER BY provider, created_at DESC
-	`, id)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	for crows.Next() {
-		var c adminUserConnection
-		var ca time.Time
-		if err := crows.Scan(&c.Provider, &c.ProviderAccountID, &c.Username, &ca); err != nil {
-			crows.Close()
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.ConnectedAt = ca.Format(time.RFC3339)
-		d.Connections = append(d.Connections, c)
-	}
-	crows.Close()
-
 	// Admin roles
 	d.AdminRoles = []string{}
 	rrows, err := pool.Query(ctx, `
@@ -579,17 +519,10 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 	}
 	rrows.Close()
 
-	// Guilds via discord connection
+	// Guilds via the user's discord_id (stored directly on app_users now).
 	d.Guilds = []adminUserGuild{}
-	var discordID string
-	for _, c := range d.Connections {
-		if c.Provider == "discord" {
-			discordID = c.ProviderAccountID
-			break
-		}
-	}
-	if discordID != "" {
-		grows, err := pool.Query(ctx, `SELECT guild_id, COALESCE(nickname,'') FROM user_guilds WHERE discord_id = $1 AND left_at IS NULL ORDER BY guild_id`, discordID)
+	if d.DiscordID != "" {
+		grows, err := pool.Query(ctx, `SELECT guild_id, COALESCE(nickname,'') FROM user_guilds WHERE discord_id = $1 AND left_at IS NULL ORDER BY guild_id`, d.DiscordID)
 		if err == nil {
 			for grows.Next() {
 				var g adminUserGuild

@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -30,6 +29,18 @@ func (noop) ResourceType() string                                        { retur
 func (noop) Validate(_ json.RawMessage) (actions.ValidatedParams, error) { return actions.ValidatedParams{ResourceID: "ping"}, nil }
 func (noop) Execute(_ context.Context, _ actions.ActionInput) (actions.ActionResult, error) {
 	return actions.ActionResult{ResourceID: "ping"}, nil
+}
+
+// seedDiscordUser inserts an app_users row with a Discord identity that
+// satisfies the post-migration NOT NULL/UNIQUE constraints.
+func seedDiscordUser(ctx context.Context, t *testing.T, s *store.PostgresStore, id string) {
+	t.Helper()
+	if _, err := s.Pool().Exec(ctx,
+		`INSERT INTO app_users (id, discord_id, discord_username)
+		 VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
+		id, "d_"+id, "u_"+id); err != nil {
+		t.Fatalf("seed user %s: %v", id, err)
+	}
 }
 
 func TestAdminFoundation_E2E(t *testing.T) {
@@ -74,9 +85,7 @@ func TestAdminFoundation_E2E(t *testing.T) {
 	userID := "usr_e2e_actor"
 
 	// Seed app_users row — admin_user_roles.user_id FK references app_users(id).
-	if _, err := s.Pool().Exec(ctx, `INSERT INTO app_users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, userID); err != nil {
-		t.Fatalf("seed user: %v", err)
-	}
+	seedDiscordUser(ctx, t, s, userID)
 	// Drop any residual audit rows for this actor from prior runs (shared DB).
 	if _, err := s.Pool().Exec(ctx, `DELETE FROM audit_events WHERE actor_user_id::text = $1`, userID); err != nil {
 		t.Fatalf("cleanup audit: %v", err)
@@ -107,10 +116,9 @@ func TestAdminFoundation_E2E(t *testing.T) {
 	}
 }
 
-// TestAdminUsers_BulkSuspendE2E exercises the admin foundation end-to-end for
-// plan 5: invite two users, bulk-suspend them, and assert the audit trail.
-// CSV export is covered at the handler layer in httpapi (requires rbacResolver
-// wiring that this thin e2e harness intentionally omits).
+// TestAdminUsers_BulkSuspendE2E exercises the admin foundation end-to-end:
+// pre-seed two Discord users, bulk-suspend them, and assert the audit trail.
+// The legacy invite-via-email flow is gone, so users are seeded directly.
 func TestAdminUsers_BulkSuspendE2E(t *testing.T) {
 	dsn := os.Getenv("TEST_POSTGRES_URL")
 	if dsn == "" {
@@ -133,9 +141,7 @@ func TestAdminUsers_BulkSuspendE2E(t *testing.T) {
 	au := audit.NewStore(s.Pool())
 
 	actorID := "usr_bulk_e2e_actor"
-	if _, err := s.Pool().Exec(ctx, `INSERT INTO app_users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, actorID); err != nil {
-		t.Fatalf("seed actor: %v", err)
-	}
+	seedDiscordUser(ctx, t, s, actorID)
 	// Drop prior audit rows for this actor so repeated runs don't inflate counts.
 	if _, err := s.Pool().Exec(ctx, `DELETE FROM audit_events WHERE actor_user_id::text = $1`, actorID); err != nil {
 		t.Fatalf("cleanup audit: %v", err)
@@ -149,9 +155,6 @@ func TestAdminUsers_BulkSuspendE2E(t *testing.T) {
 	}
 
 	reg := actions.NewRegistry(rbac.IsValidPermission)
-	if err := reg.Register(actions.NewUsersInviteAction(s.Pool(), "https://example.com")); err != nil {
-		t.Fatalf("register invite: %v", err)
-	}
 	if err := reg.Register(actions.NewUsersSuspendAction(s.Pool())); err != nil {
 		t.Fatalf("register suspend: %v", err)
 	}
@@ -168,37 +171,18 @@ func TestAdminUsers_BulkSuspendE2E(t *testing.T) {
 	r := chi.NewRouter()
 	r.Post("/api/app/admin/actions/{type}", disp.ServeHTTP)
 
-	invite := func(email string) string {
-		t.Helper()
-		body, _ := json.Marshal(map[string]any{
-			"params":            map[string]any{"email": email, "displayName": email},
-			"reason":            "invite",
-			"typedConfirmation": email,
-		})
-		req := httptest.NewRequest("POST", "/api/app/admin/actions/users.invite", bytes.NewReader(body))
-		rr := httptest.NewRecorder()
-		r.ServeHTTP(rr, req)
-		if rr.Code != 200 {
-			t.Fatalf("invite %s: status=%d body=%s", email, rr.Code, rr.Body.String())
-		}
-		var resp struct {
-			Result struct {
-				UserID string `json:"userId"`
-			} `json:"result"`
-		}
-		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("decode invite: %v", err)
-		}
-		if resp.Result.UserID == "" {
-			t.Fatalf("invite result missing userId: %s", rr.Body.String())
-		}
-		return resp.Result.UserID
+	// Seed two unique target users.
+	u1 := fmt.Sprintf("usr_bulk_e2e_t1_%d", randSuffixCounter())
+	u2 := fmt.Sprintf("usr_bulk_e2e_t2_%d", randSuffixCounter())
+	seedDiscordUser(ctx, t, s, u1)
+	seedDiscordUser(ctx, t, s, u2)
+	// Make sure repeated runs against a shared DB start with a fresh
+	// (un-suspended) target — seed uses ON CONFLICT DO NOTHING.
+	if _, err := s.Pool().Exec(ctx,
+		`UPDATE app_users SET suspended_at = NULL, suspended_by = NULL, suspend_reason = NULL, deleted_at = NULL WHERE id IN ($1, $2)`,
+		u1, u2); err != nil {
+		t.Fatalf("reset users: %v", err)
 	}
-	// Use a nanosecond-suffixed email so repeated test runs against a shared
-	// Postgres don't collide on user_emails.email uniqueness.
-	suffix := time.Now().UnixNano()
-	u1 := invite(fmt.Sprintf("bulk-e2e-1-%d@example.com", suffix))
-	u2 := invite(fmt.Sprintf("bulk-e2e-2-%d@example.com", suffix))
 
 	// Bulk-suspend both.
 	bulkBody, _ := json.Marshal(map[string]any{
@@ -224,7 +208,7 @@ func TestAdminUsers_BulkSuspendE2E(t *testing.T) {
 		t.Fatalf("decode bulk: %v", err)
 	}
 	if bulkResp.Result.Succeeded != 2 || bulkResp.Result.Failed != 0 {
-		t.Errorf("expected 2/0, got %d/%d", bulkResp.Result.Succeeded, bulkResp.Result.Failed)
+		t.Errorf("expected 2/0, got %d/%d body=%s", bulkResp.Result.Succeeded, bulkResp.Result.Failed, rr.Body.String())
 	}
 
 	// Both users should be suspended now.
@@ -238,7 +222,7 @@ func TestAdminUsers_BulkSuspendE2E(t *testing.T) {
 		}
 	}
 
-	// Audit trail: at least 2 users.suspend + 1 users.bulk + 2 users.invite for this actor.
+	// Audit trail: at least 2 users.suspend + 1 users.bulk for this actor.
 	rows, err := au.Query(ctx, audit.QueryFilters{ActorUserID: &actorID, Limit: 50})
 	if err != nil {
 		t.Fatalf("audit query: %v", err)
@@ -253,9 +237,17 @@ func TestAdminUsers_BulkSuspendE2E(t *testing.T) {
 	if counts["users.bulk"] < 1 {
 		t.Errorf("expected >=1 users.bulk audit row, got %d", counts["users.bulk"])
 	}
-	if counts["users.invite"] < 2 {
-		t.Errorf("expected >=2 users.invite audit rows, got %d", counts["users.invite"])
-	}
+}
+
+// randSuffixCounter returns a process-unique monotonic int suitable for making
+// test fixtures unique within a single run. Time.UnixNano() works too but
+// producing duplicates inside the same nanosecond is possible on Windows;
+// this is simpler and deterministic.
+var e2eCounter int64
+
+func randSuffixCounter() int64 {
+	e2eCounter++
+	return e2eCounter
 }
 
 type auditBridge struct{ s *audit.Store }

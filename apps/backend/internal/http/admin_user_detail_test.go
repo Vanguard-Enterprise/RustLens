@@ -19,11 +19,9 @@ func TestGetAdminUser_HappyPath(t *testing.T) {
 	ctx := context.Background()
 
 	seedUser(t, ts.pool, "usr_detail_1", "Alice", seedOpts{
-		PrimaryEmail: "alice@example.com",
-		Verified:     true,
-		Discord:      "alice#0001",
-		DiscordID:    "d_alice",
-		LinkSteam:    true,
+		Discord:    "alice",
+		GlobalName: "Alice Wonderland",
+		DiscordID:  "d_alice",
 	})
 
 	// Seed admin_user_roles via rbac store so we have the FK right.
@@ -66,14 +64,14 @@ func TestGetAdminUser_HappyPath(t *testing.T) {
 	if d.User.ID != "usr_detail_1" {
 		t.Errorf("user.id = %q", d.User.ID)
 	}
-	if d.PrimaryEmail != "alice@example.com" {
-		t.Errorf("primaryEmail = %q", d.PrimaryEmail)
+	if d.DiscordID != "d_alice" {
+		t.Errorf("discordId = %q", d.DiscordID)
 	}
-	if len(d.Emails) != 1 {
-		t.Errorf("emails = %+v", d.Emails)
+	if d.DiscordUsername != "alice" {
+		t.Errorf("discordUsername = %q", d.DiscordUsername)
 	}
-	if len(d.Connections) < 2 {
-		t.Errorf("connections = %+v (want discord + steam)", d.Connections)
+	if d.DiscordGlobalName != "Alice Wonderland" {
+		t.Errorf("discordGlobalName = %q", d.DiscordGlobalName)
 	}
 	foundMod := false
 	for _, k := range d.AdminRoles {

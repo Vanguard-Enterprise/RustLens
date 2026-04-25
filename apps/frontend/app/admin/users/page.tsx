@@ -4,7 +4,7 @@ import {
 	type AdminUsersQuery,
 } from "@/lib/rustlens-api";
 import { getCsrfToken } from "@/lib/csrf";
-import { requirePermission, requireAdminSession } from "@/lib/session";
+import { requirePermission } from "@/lib/session";
 import { UsersFilterBar } from "./_components/users-filter-bar";
 import { UsersPagination } from "./_components/users-pagination";
 import { UsersTableView } from "./_components/users-table-view";
@@ -26,8 +26,6 @@ function parseQuery(sp: SP): AdminUsersQuery {
 	const discord =
 		(first(sp.discord) as AdminUsersQuery["discord"]) ?? undefined;
 	const steam = (first(sp.steam) as AdminUsersQuery["steam"]) ?? undefined;
-	const emailVerified =
-		(first(sp.emailVerified) as AdminUsersQuery["emailVerified"]) ?? undefined;
 	const role = sp.role
 		? Array.isArray(sp.role)
 			? sp.role
@@ -39,7 +37,6 @@ function parseQuery(sp: SP): AdminUsersQuery {
 		status,
 		discord,
 		steam,
-		emailVerified,
 		sort: first(sp.sort),
 		page,
 		pageSize,
@@ -53,7 +50,6 @@ function queryToString(query: AdminUsersQuery): string {
 	if (query.status) sp.set("status", query.status);
 	if (query.discord) sp.set("discord", query.discord);
 	if (query.steam) sp.set("steam", query.steam);
-	if (query.emailVerified) sp.set("emailVerified", query.emailVerified);
 	if (query.sort) sp.set("sort", query.sort);
 	return sp.toString();
 }
@@ -66,22 +62,16 @@ export default async function AdminUsersPage({
 	await requirePermission("users.read");
 	const sp = await searchParams;
 	const query = parseQuery(sp);
-	const [page, roles, session, csrfToken] = await Promise.all([
+	const [page, roles, csrfToken] = await Promise.all([
 		getAdminUsers(query),
 		getAdminRoles(),
-		requireAdminSession(),
 		getCsrfToken(),
 	]);
 	const roleOptions = roles.map((r) => ({ value: r.key, label: r.name }));
-	const canInvite = (session.permissions ?? []).includes("users.create");
 
 	return (
 		<div>
-			<UsersFilterBar
-				roleOptions={roleOptions}
-				csrfToken={csrfToken}
-				canInvite={canInvite}
-			/>
+			<UsersFilterBar roleOptions={roleOptions} />
 			<UsersTableView
 				items={page.items}
 				roleOptions={roleOptions}
