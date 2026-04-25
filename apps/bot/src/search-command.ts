@@ -22,6 +22,7 @@ import {
   buildUserEmbed,
   fetchSteamProfileForView,
 } from "./view-command.js";
+import { mapProxiedRequests } from "./proxy-aware-parallelism.js";
 
 export const SEARCH_COMMAND_NAME = "search";
 
@@ -237,8 +238,10 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
     ],
   });
 
-  for (const result of results) {
-    const profile = await fetchPlayerProfile(result.steamId);
+  const profiles = await mapProxiedRequests(results, (result) => fetchPlayerProfile(result.steamId));
+
+  for (const [index, result] of results.entries()) {
+    const profile = profiles[index];
     try {
       await interaction.followUp({
         embeds: [buildUserEmbed(result.steamId, profile)],
