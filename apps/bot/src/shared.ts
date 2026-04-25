@@ -1,9 +1,18 @@
 import type { ModalSubmitInteraction, ChatInputCommandInteraction, ButtonInteraction } from "discord.js";
-import { ActionRowBuilder, ButtonBuilder, MessageFlags } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, EmbedBuilder, MessageFlags } from "discord.js";
 
 export const RUSTLENS_EMBED_COLOR = 14582045;
 export const RUSTLENS_EMBED_ICON_URL =
   "https://i.ibb.co/n8MWVLDN/1ee153f3c14d7decaeb6cb62c28fb5b4.webp";
+
+export function buildWebsiteAdminOnlyEmbed() {
+  return new EmbedBuilder()
+    .setTitle("Error")
+    .setDescription("This is locked to website admins only.")
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
 
 export type ModalComponentNode = {
   customId?: string;

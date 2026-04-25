@@ -1,13 +1,23 @@
-import type { ButtonInteraction, ChatInputCommandInteraction, Client } from "discord.js";
+import type { ButtonInteraction, ChatInputCommandInteraction, Client, User } from "discord.js";
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
-import { BackendClient, type SteamAccount, type SteamAnalytics } from "./backend-client.js";
+import {
+  BackendClient,
+  type SteamAccount,
+  type SteamAnalytics,
+  type SteamDiscordLink,
+} from "./backend-client.js";
 import { loadConfig } from "./config.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import {
+  RUSTLENS_EMBED_COLOR,
+  RUSTLENS_EMBED_ICON_URL,
+  buildWebsiteAdminOnlyEmbed,
+} from "./shared.js";
 import {
   resolveSteamInputErrorMessage,
   resolveSteamProfileInput,
 } from "./steam-input.js";
 import { buildProfileButtons, buildUserEmbed, fetchSteamProfileForView } from "./view-command.js";
+import { isWebsiteAdmin } from "./website-admin.js";
 
 export const PLAYER_COMMAND_NAME = "player";
 
@@ -28,7 +38,13 @@ const playerCommand = new SlashCommandBuilder()
     opt
       .setName("identifier")
       .setDescription("Steam ID, BattleMetrics ID, or steamcommunity.com profile URL")
-      .setRequired(true),
+      .setRequired(false),
+  )
+  .addUserOption((opt) =>
+    opt
+      .setName("discord_user")
+      .setDescription("Discord user to look up (website admins only)")
+      .setRequired(false),
   );
 
 let _backend: BackendClient | undefined;
@@ -66,7 +82,32 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     return false;
   }
 
-  const identifier = interaction.options.getString("identifier", true).trim();
+  const identifier = interaction.options.getString("identifier", false)?.trim() ?? "";
+  const discordUser = interaction.options.getUser("discord_user", false);
+
+  if (!identifier && !discordUser) {
+    await interaction.reply({
+      content: "Provide either an identifier or a discord user.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  if (discordUser) {
+    if (!(await isWebsiteAdmin(interaction.user.id))) {
+      await interaction.reply({
+        embeds: [buildWebsiteAdminOnlyEmbed()],
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    await interaction.deferReply();
+    const embed = await buildDiscordLinksEmbed(discordUser);
+    await interaction.editReply({ embeds: [embed] });
+    return true;
+  }
+
   await interaction.deferReply();
 
   const lookupIdentifier = await resolveLookupIdentifier(identifier);
@@ -176,31 +217,242 @@ async function lookupAccountByIdentifier(identifier: string): Promise<SteamAccou
 }
 
 export async function handlePlayerButtonInteraction(interaction: ButtonInteraction) {
-  if (!interaction.customId.startsWith("player:analytics:")) {
-    return false;
-  }
+  if (interaction.customId.startsWith("player:analytics:")) {
+    const steamId = interaction.customId.slice("player:analytics:".length);
+    if (!/^\d{17}$/.test(steamId)) {
+      await interaction.reply({
+        content: "Invalid analytics button.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
 
-  const steamId = interaction.customId.slice("player:analytics:".length);
-  if (!/^\d{17}$/.test(steamId)) {
-    await interaction.reply({
-      content: "Invalid analytics button.",
-      flags: MessageFlags.Ephemeral,
-    });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      const { backend, workerId } = getBackend();
+      const analytics = await backend.getSteamAnalytics(workerId, steamId);
+      await interaction.editReply({ embeds: [buildAnalyticsEmbed(analytics)] });
+    } catch (error) {
+      console.error("[bot] failed to load player analytics", error);
+      await interaction.editReply({ content: "Failed to load analytics for this player." });
+    }
+
     return true;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (interaction.customId.startsWith("player:links:")) {
+    const steamId = interaction.customId.slice("player:links:".length);
+    if (!/^\d{17}$/.test(steamId)) {
+      await interaction.reply({
+        content: "Invalid links button.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
 
-  try {
-    const { backend, workerId } = getBackend();
-    const analytics = await backend.getSteamAnalytics(workerId, steamId);
-    await interaction.editReply({ embeds: [buildAnalyticsEmbed(analytics)] });
-  } catch (error) {
-    console.error("[bot] failed to load player analytics", error);
-    await interaction.editReply({ content: "Failed to load analytics for this player." });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const isAdmin = await isWebsiteAdmin(interaction.user.id);
+    try {
+      const embed = await buildSteamLinksEmbed(steamId, isAdmin);
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error("[bot] failed to load steam links", error);
+      await interaction.editReply({ content: "Failed to load links for this player." });
+    }
+
+    return true;
   }
 
-  return true;
+  return false;
+}
+
+async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<EmbedBuilder> {
+  const { backend, workerId } = getBackend();
+
+  const [account, linksResponse] = await Promise.all([
+    backend.getSteamAccount(workerId, steamId).catch(() => null),
+    backend.getLinksBySteamID(workerId, steamId).catch(() => ({ items: [] as SteamDiscordLink[] })),
+  ]);
+
+  const links = linksResponse.items;
+  const { strong, soft } = partitionLinksByDiscord(links);
+
+  const title = account?.bmName ? `Links - ${account.bmName}` : "Links";
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+
+  if (account?.avatarImage) {
+    embed.setThumbnail(account.avatarImage);
+  }
+
+  const info: string[] = [
+    `${PLAYER_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`,
+  ];
+  if (account?.bmId) {
+    info.push(`${PLAYER_EMOJIS.battlemetrics} [${account.bmId}](https://www.battlemetrics.com/players/${account.bmId})`);
+  }
+  embed.addFields({ name: "Information", value: info.join("\n") });
+
+  embed.addFields({
+    name: "Strong links",
+    value: strong.length > 0
+      ? strong.map((id) => `> * <@${id}>`).join("\n")
+      : "> * None",
+  });
+
+  if (isAdmin) {
+    embed.addFields({
+      name: "Soft links",
+      value: soft.length > 0
+        ? soft.map((id) => `> * <@${id}>`).join("\n")
+        : "> * None",
+    });
+    embed.addFields({
+      name: "What do these mean?",
+      value: "> * A **strong link** is a link that is certainly valid\n> * A **soft link** is a link that is usually valid",
+    });
+  } else {
+    embed.addFields({
+      name: "What do these mean?",
+      value: "> * A **strong link** is a link that is certainly valid",
+    });
+  }
+
+  return embed;
+}
+
+function partitionLinksByDiscord(links: readonly SteamDiscordLink[]) {
+  const strongDiscordIds = new Set<string>();
+  for (const link of links) {
+    if (link.type === "hard") {
+      strongDiscordIds.add(link.discordId);
+    }
+  }
+  const softDiscordIds = new Set<string>();
+  for (const link of links) {
+    if (link.type === "soft" && !strongDiscordIds.has(link.discordId)) {
+      softDiscordIds.add(link.discordId);
+    }
+  }
+  return {
+    strong: [...strongDiscordIds],
+    soft: [...softDiscordIds],
+  };
+}
+
+async function ensureSteamAccountWithBm(steamId: string): Promise<SteamAccount | null> {
+  const { backend, workerId } = getBackend();
+  try {
+    const account = await backend.getSteamAccount(workerId, steamId);
+    if (account.bmId) {
+      return account;
+    }
+    // Try the same fallback /player uses — the backend lazily backfills bm_id
+    // through the steam profile endpoint.
+    try {
+      await backend.getSteamProfile(workerId, steamId);
+    } catch {
+      // ignore — return what we have
+    }
+    try {
+      return await backend.getSteamAccount(workerId, steamId);
+    } catch {
+      return account;
+    }
+  } catch {
+    return null;
+  }
+}
+
+async function buildDiscordLinksEmbed(discordUser: User): Promise<EmbedBuilder> {
+  const { backend, workerId } = getBackend();
+
+  const linksResponse = await backend
+    .getLinksByDiscordID(workerId, discordUser.id)
+    .catch(() => ({ items: [] as SteamDiscordLink[] }));
+
+  const links = linksResponse.items;
+  const { strongSteamIds, softSteamIds } = partitionLinksBySteam(links);
+
+  const [strongAccounts, softAccounts] = await Promise.all([
+    Promise.all(strongSteamIds.map((sid) => ensureSteamAccountWithBm(sid))),
+    Promise.all(softSteamIds.map((sid) => ensureSteamAccountWithBm(sid))),
+  ]);
+
+  const discordName = discordUser.displayName ?? discordUser.username ?? discordUser.tag;
+  const embed = new EmbedBuilder()
+    .setTitle(`Links - ${discordName}`)
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+
+  const avatarUrl = discordUser.displayAvatarURL({ size: 256 });
+  if (avatarUrl) {
+    embed.setThumbnail(avatarUrl);
+  }
+
+  embed.addFields({ name: "Information", value: `<@${discordUser.id}>` });
+  embed.addFields({
+    name: "Strong links",
+    value: formatSteamAccountList(strongSteamIds, strongAccounts),
+  });
+  embed.addFields({
+    name: "Soft links",
+    value: formatSteamAccountList(softSteamIds, softAccounts),
+  });
+  embed.addFields({
+    name: "What do these mean?",
+    value: "> * A **strong link** is a link that is certainly valid\n> * A **soft link** is a link that is usually valid",
+  });
+
+  return embed;
+}
+
+function partitionLinksBySteam(links: readonly SteamDiscordLink[]) {
+  const strongSteamIds = new Set<string>();
+  for (const link of links) {
+    if (link.type === "hard") {
+      strongSteamIds.add(link.steamId);
+    }
+  }
+  const softSteamIds = new Set<string>();
+  for (const link of links) {
+    if (link.type === "soft" && !strongSteamIds.has(link.steamId)) {
+      softSteamIds.add(link.steamId);
+    }
+  }
+  return {
+    strongSteamIds: [...strongSteamIds],
+    softSteamIds: [...softSteamIds],
+  };
+}
+
+function formatSteamAccountList(
+  steamIds: readonly string[],
+  accounts: ReadonlyArray<SteamAccount | null>,
+): string {
+  if (steamIds.length === 0) {
+    return "> * None";
+  }
+
+  const blocks: string[] = [];
+  for (let i = 0; i < steamIds.length; i++) {
+    const steamId = steamIds[i];
+    const account = accounts[i];
+    const lines: string[] = [
+      `> *  ${PLAYER_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`,
+    ];
+    if (account?.bmId) {
+      lines.push(`> *   ${PLAYER_EMOJIS.battlemetrics} [${account.bmId}](https://www.battlemetrics.com/players/${account.bmId})`);
+    }
+    blocks.push(lines.join("\n"));
+  }
+  return blocks.join("\n\n");
 }
 
 function formatGapDurationDays(fromUnix: number, toUnix: number) {

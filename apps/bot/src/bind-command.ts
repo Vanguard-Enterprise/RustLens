@@ -120,6 +120,7 @@ const attachmentOptions: readonly CraftableOption[] = [
   { value: "laser", label: "Weapon Lasersight", itemIds: [-132516482] },
   { value: "extended_mag", label: "Extended Magazine", itemIds: [2005491391] },
   { value: "flashlight", label: "Weapon Flashlight", itemIds: [952603248] },
+  { value: "muzzle_boost", label: "Muzzle Boost", itemIds: [-1405508498] },
 ] as const;
 
 const ammoOptions: readonly AmmoOption[] = [
@@ -252,7 +253,7 @@ function buildBindFullkitStartModal() {
         .setCustomId(BIND_FULLKIT_ATTACHMENTS_CUSTOM_ID)
         .setRequired(false)
         .setMinValues(0)
-        .setMaxValues(4)
+        .setMaxValues(5)
         .addOptions(
           ...attachmentOptions.map(({ label, value }) => ({ label, value })),
         ),

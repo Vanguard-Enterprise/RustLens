@@ -706,6 +706,14 @@ export class BackendClient {
     );
   }
 
+  isDiscordWebsiteAdmin(workerId: string, discordId: string) {
+    return this.call<{ isAdmin: boolean }>(
+      workerId,
+      `/api/internal/bot/setup/discord/${discordId}/is-website-admin`,
+      "GET",
+    );
+  }
+
   resolveSteamID(workerId: string, input: string) {
     return this.call<ResolveSteamIDResponse>(
       workerId,

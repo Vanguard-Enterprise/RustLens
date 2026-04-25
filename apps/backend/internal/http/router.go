@@ -107,6 +107,7 @@ func NewRouter(
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
 		r.Get("/discord/{discordID}/links", handler.ListLinksByDiscordID)
 		r.Get("/discord/{discordID}/guilds", handler.ListUserGuildLinksByDiscord)
+		r.Get("/discord/{discordID}/is-website-admin", handler.IsDiscordWebsiteAdmin)
 
 		// User ban registry (owner-only /ban command)
 		r.Get("/bans/{discordID}", handler.GetUserBan)

@@ -16,13 +16,18 @@ import {
   type TrackedServer,
 } from "./backend-client.js";
 import { loadConfig } from "./config.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import {
+  RUSTLENS_EMBED_COLOR,
+  RUSTLENS_EMBED_ICON_URL,
+  buildWebsiteAdminOnlyEmbed,
+} from "./shared.js";
 import {
   buildProfileButtons,
   buildUserEmbed,
   fetchSteamProfileForView,
 } from "./view-command.js";
 import { mapProxiedRequests } from "./proxy-aware-parallelism.js";
+import { isWebsiteAdmin } from "./website-admin.js";
 
 export const SEARCH_COMMAND_NAME = "search";
 
@@ -179,6 +184,14 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
   if (!interaction.inGuild()) {
     await interaction.reply({
       embeds: [buildSearchEmbed("Error", "This command can only be used inside a server.")],
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  if (!(await isWebsiteAdmin(interaction.user.id))) {
+    await interaction.reply({
+      embeds: [buildWebsiteAdminOnlyEmbed()],
       flags: MessageFlags.Ephemeral,
     });
     return true;

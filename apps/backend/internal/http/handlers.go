@@ -2255,6 +2255,23 @@ func (h *Handler) ListLinksByDiscordID(w http.ResponseWriter, r *http.Request) {
 	writeSteamDiscordLinkList(w, links)
 }
 
+func (h *Handler) IsDiscordWebsiteAdmin(w http.ResponseWriter, r *http.Request) {
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	isAdmin, err := h.postgres.IsDiscordWebsiteAdmin(r.Context(), discordID)
+	if err != nil {
+		log.Printf("[backend] IsDiscordWebsiteAdmin error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to check website admin status")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"isAdmin": isAdmin})
+}
+
 type createSoftLinkRequest struct {
 	SteamID   string `json:"steamId"`
 	DiscordID string `json:"discordId"`
