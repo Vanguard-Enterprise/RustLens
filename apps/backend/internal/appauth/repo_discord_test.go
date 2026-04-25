@@ -201,3 +201,59 @@ func TestRepo_CreateDiscordUser(t *testing.T) {
 		t.Errorf("provider_account_id = %q", connID)
 	}
 }
+
+func TestRepo_LinkDiscordToUser(t *testing.T) {
+	s := discordTestStore(t)
+	ctx := context.Background()
+	repo := appauth.NewRepo(s.Pool())
+
+	const userA = "usr_link_a"
+	const userB = "usr_link_b"
+	for _, id := range []string{userA, userB} {
+		if _, err := s.Pool().Exec(ctx,
+			`INSERT INTO app_users (id, display_name) VALUES ($1, 'L') ON CONFLICT (id) DO NOTHING`, id); err != nil {
+			t.Fatalf("seed user %s: %v", id, err)
+		}
+		// Clean up any prior link for this user so we start from a known state.
+		if _, err := s.Pool().Exec(ctx,
+			`DELETE FROM user_connected_accounts WHERE user_id=$1 AND provider='discord'`, id); err != nil {
+			t.Fatalf("clean conn %s: %v", id, err)
+		}
+	}
+	// Also clean any prior row for this Discord ID.
+	if _, err := s.Pool().Exec(ctx,
+		`DELETE FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='link_target_discord'`); err != nil {
+		t.Fatalf("clean discord id: %v", err)
+	}
+	if _, err := s.Pool().Exec(ctx,
+		`DELETE FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='second_discord'`); err != nil {
+		t.Fatalf("clean second discord id: %v", err)
+	}
+
+	prof := appauth.DiscordProfile{
+		ID:          "link_target_discord",
+		Username:    "link_user",
+		DisplayName: "Link User",
+		AvatarURL:   "http://avatar/l",
+		Email:       "link@example.com",
+	}
+
+	// Happy path: link to userA.
+	if err := repo.LinkDiscordToUser(ctx, userA, prof); err != nil {
+		t.Fatalf("first link: %v", err)
+	}
+
+	// userA tries to add a *second* Discord account → ErrDiscordAlreadyLinked.
+	otherProf := prof
+	otherProf.ID = "second_discord"
+	err := repo.LinkDiscordToUser(ctx, userA, otherProf)
+	if !errors.Is(err, appauth.ErrDiscordAlreadyLinked) {
+		t.Errorf("second link by same user: got %v, want ErrDiscordAlreadyLinked", err)
+	}
+
+	// userB tries to claim the same Discord ID userA already has → ErrDiscordLinkedToOther.
+	err = repo.LinkDiscordToUser(ctx, userB, prof)
+	if !errors.Is(err, appauth.ErrDiscordLinkedToOther) {
+		t.Errorf("conflict by other user: got %v, want ErrDiscordLinkedToOther", err)
+	}
+}

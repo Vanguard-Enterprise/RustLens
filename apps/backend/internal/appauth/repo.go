@@ -84,8 +84,10 @@ type CurrentUser struct {
 }
 
 var (
-	ErrUserNotFound        = errors.New("user not found")
-	ErrInvalidCredentials  = errors.New("invalid credentials")
+	ErrUserNotFound         = errors.New("user not found")
+	ErrInvalidCredentials   = errors.New("invalid credentials")
+	ErrDiscordAlreadyLinked = errors.New("user already has a discord connection")
+	ErrDiscordLinkedToOther = errors.New("discord account is linked to another user")
 )
 
 type Repo struct{ pool *pgxpool.Pool }
@@ -429,4 +431,37 @@ func (r *Repo) CreateDiscordUser(ctx context.Context, p DiscordProfile) (string,
 		return "", err
 	}
 	return userID, nil
+}
+
+// LinkDiscordToUser inserts a user_connected_accounts row attaching the given
+// Discord profile to userID. Returns:
+//   - ErrDiscordAlreadyLinked  when the user already has a discord row
+//     (UNIQUE(user_id, provider) violation).
+//   - ErrDiscordLinkedToOther  when the Discord account is already linked to
+//     a different user (PK(provider, provider_account_id) violation).
+func (r *Repo) LinkDiscordToUser(ctx context.Context, userID string, p DiscordProfile) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO user_connected_accounts
+			(user_id, provider, provider_account_id, username, display_name, avatar_url, profile_email)
+		VALUES ($1, 'discord', $2, $3, $4, $5, $6)
+	`, userID, p.ID, p.Username, p.DisplayName, p.AvatarURL, p.Email)
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		// Postgres returns 23505 (unique_violation) for both PK and UNIQUE.
+		// Disambiguate by constraint name.
+		switch {
+		case strings.Contains(pgErr.ConstraintName, "user_connected_accounts_pkey"):
+			return ErrDiscordLinkedToOther
+		case strings.Contains(pgErr.ConstraintName, "user_connected_accounts_user_id_provider_key"):
+			return ErrDiscordAlreadyLinked
+		}
+		// Fallback when the constraint name doesn't match either expected
+		// shape (e.g. Postgres renames in a future schema change). Treat as
+		// the more conservative "linked to other".
+		return ErrDiscordLinkedToOther
+	}
+	return err
 }
