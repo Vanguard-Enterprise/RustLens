@@ -224,6 +224,15 @@ export async function handleTransferModalSubmit(interaction: ModalSubmitInteract
     return true;
   }
 
+  const guild = interaction.guild;
+  if (!guild) {
+    await interaction.reply({
+      embeds: [buildTransferEmbed("Error", "This command can only be used inside a server.")],
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
   await interaction.deferUpdate();
 
   const raw = interaction.fields.getTextInputValue(TRANSFER_MESSAGE_IDS_CUSTOM_ID);
@@ -273,6 +282,12 @@ export async function handleTransferModalSubmit(interaction: ModalSubmitInteract
 
   for (const pair of pairs) {
     try {
+      const member = await guild.members.fetch(pair.discordId).catch(() => null);
+      if (!member) {
+        failed++;
+        continue;
+      }
+
       try {
         await backend.createSoftLink(workerId, pair.steamId, pair.discordId, "transfer_hexaytron");
       } catch (error) {
