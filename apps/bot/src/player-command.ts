@@ -314,7 +314,7 @@ async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<
     });
     embed.addFields({
       name: "What do these mean?",
-      value: "> * A **strong link** is a link that is certainly valid\n> * A **soft link** is a link that is usually valid",
+      value: "> * A **strong link** is a link that is certainly valid\n> * A **soft link** is a link that is usually valid, but can also be invalid",
     });
   } else {
     embed.addFields({
@@ -407,7 +407,7 @@ async function buildDiscordLinksEmbed(discordUser: User): Promise<EmbedBuilder> 
   });
   embed.addFields({
     name: "What do these mean?",
-    value: "> * A **strong link** is a link that is certainly valid\n> * A **soft link** is a link that is usually valid",
+    value: "> * A **strong link** is a link that is certainly valid\n> * A **soft link** is a link that is usually valid, but can also be invalid",
   });
 
   return embed;
@@ -452,7 +452,7 @@ function formatSteamAccountList(
     }
     blocks.push(lines.join("\n"));
   }
-  return blocks.join("\n\n");
+  return blocks.join("\n");
 }
 
 function formatGapDurationDays(fromUnix: number, toUnix: number) {
