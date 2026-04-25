@@ -11,6 +11,11 @@ const SESSION_INVALID_ERRORS = new Set([
 
 export type AppUser = {
 	id: string;
+	discordId: string;
+	discordUsername: string;
+	discordGlobalName?: string;
+	/** Discord CDN avatar HASH, NOT a URL. */
+	discordAvatar?: string;
 	displayName: string;
 	avatarUrl: string;
 	roles: string[];
@@ -18,25 +23,6 @@ export type AppUser = {
 	updatedAt: string;
 	lastLoginAt: string;
 	sessionEpoch?: number;
-};
-
-export type ConnectedAccount = {
-	provider: string;
-	providerAccountId: string;
-	username: string;
-	displayName: string;
-	avatarUrl: string;
-	profileEmail: string;
-	createdAt: string;
-	updatedAt: string;
-};
-
-export type UserEmail = {
-	email: string;
-	isPrimary: boolean;
-	isVerified: boolean;
-	createdAt: string;
-	updatedAt: string;
 };
 
 export type LinkedSteamAccount = {
@@ -58,9 +44,6 @@ export type UserGuildMembership = {
 
 export type CurrentUser = {
 	user: AppUser;
-	discordAccount: ConnectedAccount | null;
-	primaryEmail: UserEmail | null;
-	emails: UserEmail[];
 	steamAccounts: LinkedSteamAccount[];
 	guilds: UserGuildMembership[];
 	/**

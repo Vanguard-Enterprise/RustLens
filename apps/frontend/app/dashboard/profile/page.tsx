@@ -26,12 +26,12 @@ export default async function DashboardProfilePage() {
 					<p>{currentUser.user.displayName}</p>
 				</div>
 				<div>
-					<p className="text-muted-foreground text-sm">Primary email</p>
-					<p>{currentUser.primaryEmail?.email ?? "No email linked"}</p>
+					<p className="text-muted-foreground text-sm">Discord username</p>
+					<p>@{currentUser.user.discordUsername}</p>
 				</div>
 				<div>
 					<p className="text-muted-foreground text-sm">Discord ID</p>
-					<p>{currentUser.discordAccount?.providerAccountId ?? "Unavailable"}</p>
+					<p>{currentUser.user.discordId || "Unavailable"}</p>
 				</div>
 			</CardContent>
 		</Card>

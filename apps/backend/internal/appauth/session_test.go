@@ -28,7 +28,8 @@ func TestValidateSession_EpochRevocation(t *testing.T) {
 
 	const userID = "usr_sess_epoch_1"
 	if _, err := s.Pool().Exec(ctx,
-		`INSERT INTO app_users (id, display_name) VALUES ($1, 'Test')
+		`INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		 VALUES ($1, 'discord-sess-epoch-1', 'sess_epoch_tester', 'Test')
 		 ON CONFLICT (id) DO UPDATE SET session_epoch = 0`, userID); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

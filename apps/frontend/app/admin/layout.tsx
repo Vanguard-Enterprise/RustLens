@@ -22,7 +22,6 @@ export default async function AdminLayout({
 			csrfToken={csrfToken}
 			user={{
 				displayName: currentUser.user.displayName,
-				email: currentUser.primaryEmail?.email,
 				avatarUrl: currentUser.user.avatarUrl,
 				isInternalAdmin: true,
 				permissions: session.permissions ?? currentUser.permissions ?? [],

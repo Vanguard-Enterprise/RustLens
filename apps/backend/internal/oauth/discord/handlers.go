@@ -159,14 +159,9 @@ func (h *Handler) mintAndRedirect(w http.ResponseWriter, r *http.Request, userID
 		Roles:       cu.User.Roles,
 		AdminRoles:  cu.AdminRoles,
 		Permissions: cu.Permissions,
+		DiscordID:   cu.User.DiscordID,
 		Epoch:       cu.User.SessionEpoch,
 		ExpiresAt:   time.Now().Add(14 * 24 * time.Hour).UnixMilli(),
-	}
-	if cu.DiscordAccount != nil {
-		session.DiscordID = cu.DiscordAccount.ProviderAccountID
-	}
-	if cu.PrimaryEmail != nil {
-		session.Email = cu.PrimaryEmail.Email
 	}
 	tok, err := appauth.SerializeSession(session, h.cfg.SessionSecret)
 	if err != nil {

@@ -206,13 +206,23 @@ func TestCallback_FindOrCreateUpsertsUser(t *testing.T) {
 	r := newCallbackRequest("s", "v", "code")
 	h.Callback(w, r)
 
-	// NOTE: success-path session minting is verified end-to-end after Task 5
-	// trims the CurrentUser response shape; LoadCurrentUser currently still
-	// queries dropped tables (user_emails / user_connected_accounts) and so
-	// the redirect lands on /login?error=discord-auth even though the row was
-	// upserted. Asserting on the upsert is the unambiguous Task 4 contract.
 	if w.Code != http.StatusFound {
 		t.Fatalf("status = %d", w.Code)
+	}
+	// Success path: redirect to /dashboard with a session cookie.
+	loc := w.Header().Get("Location")
+	if !strings.Contains(loc, "/dashboard") {
+		t.Errorf("expected redirect to /dashboard, got %q", loc)
+	}
+	foundSessionCookie := false
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "rustlens_session" && c.Value != "" {
+			foundSessionCookie = true
+			break
+		}
+	}
+	if !foundSessionCookie {
+		t.Errorf("expected session cookie to be set, got cookies %v", w.Result().Cookies())
 	}
 	var username, globalName, avatar string
 	if err := pool.QueryRow(ctx,

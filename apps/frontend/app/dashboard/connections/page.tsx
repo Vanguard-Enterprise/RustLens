@@ -18,39 +18,13 @@ export default async function DashboardConnectionsPage() {
 			<Card>
 				<CardHeader>
 					<CardTitle>Discord</CardTitle>
-					<CardDescription>Optional linked identity for guild and game data</CardDescription>
+					<CardDescription>Linked Discord identity used to sign in</CardDescription>
 				</CardHeader>
 				<CardContent className="flex flex-col gap-2">
-					<p>{currentUser.discordAccount?.displayName ?? "Not connected"}</p>
+					<p>{currentUser.user.discordGlobalName || `@${currentUser.user.discordUsername}`}</p>
 					<p className="text-muted-foreground text-sm">
-						{currentUser.discordAccount?.providerAccountId ?? "No Discord account"}
+						Discord ID: {currentUser.user.discordId}
 					</p>
-				</CardContent>
-			</Card>
-			<Card>
-				<CardHeader>
-					<CardTitle>Email</CardTitle>
-					<CardDescription>Primary browser login and account recovery</CardDescription>
-				</CardHeader>
-				<CardContent className="flex flex-col gap-2">
-					{currentUser.emails.length ? (
-						currentUser.emails.map((email) => (
-							<div
-								className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
-								key={email.email}
-							>
-								<span>{email.email}</span>
-								<div className="flex gap-2">
-									{email.isPrimary ? <Badge>Primary</Badge> : null}
-									{email.isVerified ? (
-										<Badge variant="secondary">Verified</Badge>
-									) : null}
-								</div>
-							</div>
-						))
-					) : (
-						<p className="text-muted-foreground text-sm">No linked email yet.</p>
-					)}
 				</CardContent>
 			</Card>
 			<Card className="lg:col-span-2">

@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { getCsrfToken } from "@/lib/csrf";
 import { getCurrentUserSafe } from "@/lib/rustlens-api";
-import { clearSession, requireSession } from "@/lib/session";
+import { requireSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 
 export default async function DashboardLayout({
@@ -14,8 +14,7 @@ export default async function DashboardLayout({
 	const csrfToken = await getCsrfToken();
 
 	if (!currentUser) {
-		await clearSession();
-		redirect("/login?error=session");
+		redirect("/logout?reason=session");
 	}
 
 	const isInternalAdmin =
@@ -29,7 +28,6 @@ export default async function DashboardLayout({
 			csrfToken={csrfToken}
 			user={{
 				displayName: currentUser.user.displayName,
-				email: currentUser.primaryEmail?.email,
 				avatarUrl: currentUser.user.avatarUrl,
 				isInternalAdmin,
 			}}

@@ -24,7 +24,6 @@ type SessionUser struct {
 	AdminRoles  []string `json:"adminRoles,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
 	DiscordID   string   `json:"discordId,omitempty"`
-	Email       string   `json:"email,omitempty"`
 	Epoch       int      `json:"epoch"`
 	ExpiresAt   int64    `json:"expiresAt"` // milliseconds since epoch, matches JS Date.now()
 }
