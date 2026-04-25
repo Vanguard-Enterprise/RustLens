@@ -377,3 +377,171 @@ func TestCallback_Signin_NewUserCreated(t *testing.T) {
 		t.Errorf("expected new user")
 	}
 }
+
+func newCallbackRequestWithSession(state, verifier, intent, code, sessionTok string) *http.Request {
+	r := newCallbackRequest(state, verifier, intent, code)
+	r.AddCookie(&http.Cookie{Name: "rustlens_session", Value: sessionTok})
+	return r
+}
+
+func TestCallback_Link_Success(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	const userID = "usr_link_success"
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO app_users (id, display_name) VALUES ($1, 'L') ON CONFLICT (id) DO NOTHING`, userID); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM user_connected_accounts WHERE user_id=$1`, userID); err != nil {
+		t.Fatalf("clean self: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='d_link_success'`); err != nil {
+		t.Fatalf("clean target: %v", err)
+	}
+	srv := fakeDiscord(t, `{"id":"d_link_success","username":"linker","email":"l@x.com","verified":true}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+	tok := mustSerializeSessionForTest(t, "session-secret", userID)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequestWithSession("s", "v", discord.IntentLink, "code", tok)
+	h.Callback(w, r)
+
+	if !strings.Contains(w.Header().Get("Location"), "/dashboard/settings?notice=discord-linked") {
+		t.Errorf("Location = %q", w.Header().Get("Location"))
+	}
+}
+
+func TestCallback_Link_AlreadyLinkedToOther(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	const ownerID = "usr_link_owner"
+	const otherID = "usr_link_other"
+	for _, id := range []string{ownerID, otherID} {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO app_users (id, display_name) VALUES ($1, 'L') ON CONFLICT (id) DO NOTHING`, id); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+		if _, err := pool.Exec(ctx,
+			`DELETE FROM user_connected_accounts WHERE user_id=$1`, id); err != nil {
+			t.Fatalf("clean %s: %v", id, err)
+		}
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO user_connected_accounts (user_id, provider, provider_account_id, username)
+		 VALUES ($1, 'discord', 'd_collide', 'owner')
+		 ON CONFLICT (provider, provider_account_id) DO UPDATE SET user_id=$1`, ownerID); err != nil {
+		t.Fatalf("seed conn: %v", err)
+	}
+
+	srv := fakeDiscord(t, `{"id":"d_collide","username":"x","email":"x@x.com","verified":true}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+	tok := mustSerializeSessionForTest(t, "session-secret", otherID)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequestWithSession("s", "v", discord.IntentLink, "code", tok)
+	h.Callback(w, r)
+
+	if !strings.Contains(w.Header().Get("Location"), "discord-linked-to-other") {
+		t.Errorf("Location = %q", w.Header().Get("Location"))
+	}
+}
+
+func TestCallback_Link_AlreadyLinkedSameUser_Idempotent(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	const userID = "usr_link_idem"
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO app_users (id, display_name) VALUES ($1, 'I') ON CONFLICT (id) DO NOTHING`, userID); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM user_connected_accounts WHERE user_id=$1`, userID); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO user_connected_accounts (user_id, provider, provider_account_id, username)
+		 VALUES ($1, 'discord', 'd_idem', 'old')
+		 ON CONFLICT (provider, provider_account_id) DO UPDATE SET user_id=$1, username='old'`, userID); err != nil {
+		t.Fatalf("seed conn: %v", err)
+	}
+	srv := fakeDiscord(t, `{"id":"d_idem","username":"new_username","email":"i@x.com","verified":true}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+	tok := mustSerializeSessionForTest(t, "session-secret", userID)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequestWithSession("s", "v", discord.IntentLink, "code", tok)
+	h.Callback(w, r)
+
+	if !strings.Contains(w.Header().Get("Location"), "/dashboard/settings?notice=discord-linked") {
+		t.Errorf("Location = %q", w.Header().Get("Location"))
+	}
+	var u string
+	if err := pool.QueryRow(ctx,
+		`SELECT username FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='d_idem'`).Scan(&u); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if u != "new_username" {
+		t.Errorf("username not refreshed: %q", u)
+	}
+}
+
+func TestCallback_Link_AlreadyLinked_DifferentDiscordOnSameUser(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	const userID = "usr_link_dup"
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO app_users (id, display_name) VALUES ($1, 'D') ON CONFLICT (id) DO NOTHING`, userID); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM user_connected_accounts WHERE user_id=$1`, userID); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO user_connected_accounts (user_id, provider, provider_account_id, username)
+		 VALUES ($1, 'discord', 'd_already_owned', 'owned')
+		 ON CONFLICT (provider, provider_account_id) DO UPDATE SET user_id=$1`, userID); err != nil {
+		t.Fatalf("seed conn: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM user_connected_accounts WHERE provider='discord' AND provider_account_id='d_brand_new'`); err != nil {
+		t.Fatalf("clean target: %v", err)
+	}
+
+	srv := fakeDiscord(t, `{"id":"d_brand_new","username":"x","email":"x@x.com","verified":true}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+	tok := mustSerializeSessionForTest(t, "session-secret", userID)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequestWithSession("s", "v", discord.IntentLink, "code", tok)
+	h.Callback(w, r)
+
+	if !strings.Contains(w.Header().Get("Location"), "discord-already-linked") {
+		t.Errorf("Location = %q", w.Header().Get("Location"))
+	}
+}
+
+func TestCallback_Link_NoSession(t *testing.T) {
+	pool, cleanup := discordTestPool(t)
+	defer cleanup()
+	srv := fakeDiscord(t, `{"id":"x","username":"x","email":"x@x.com","verified":true}`)
+	defer srv.Close()
+	h := newCallbackHandler(t, pool, srv.URL)
+
+	w := httptest.NewRecorder()
+	r := newCallbackRequest("s", "v", discord.IntentLink, "code")
+	h.Callback(w, r)
+	if !strings.Contains(w.Header().Get("Location"), "/login?error=session") {
+		t.Errorf("Location = %q", w.Header().Get("Location"))
+	}
+}

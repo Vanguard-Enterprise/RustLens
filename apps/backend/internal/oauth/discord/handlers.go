@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"time"
@@ -240,10 +241,45 @@ func (h *Handler) mintAndRedirect(w http.ResponseWriter, r *http.Request, userID
 	http.Redirect(w, r, h.frontendURL(target), http.StatusFound)
 }
 
-// callbackLink is implemented in Task 14. For now, a temporary stub so the
-// file compiles while sign-in tests exercise the IntentSignin path.
 func (h *Handler) callbackLink(w http.ResponseWriter, r *http.Request, profile Profile) {
-	http.Redirect(w, r, h.frontendURL("/dashboard/settings"), http.StatusFound)
+	ctx := r.Context()
+	session, err := appauth.SessionFromCookie(r, h.cfg.SessionSecret)
+	if err != nil || session == nil {
+		http.Redirect(w, r, h.frontendURL("/login?error=session"), http.StatusFound)
+		return
+	}
+
+	dp := appauth.DiscordProfile{
+		ID:          profile.ID,
+		Username:    profile.Username,
+		DisplayName: profile.DisplayName(),
+		AvatarURL:   profile.AvatarURL,
+		Email:       profile.Email,
+	}
+
+	err = h.cfg.Repo.LinkDiscordToUser(ctx, session.UserID, dp)
+	switch {
+	case err == nil:
+		http.Redirect(w, r, h.frontendURL("/dashboard/settings?notice=discord-linked"), http.StatusFound)
+	case errors.Is(err, appauth.ErrDiscordLinkedToOther):
+		// Could still be the *same* user that the row belongs to (idempotent case);
+		// LinkDiscordToUser only returns ErrDiscordLinkedToOther on a PK violation,
+		// which means a row already exists for this provider_account_id.
+		ownerID, lookupErr := h.cfg.Repo.FindUserByDiscordID(ctx, profile.ID)
+		if lookupErr == nil && ownerID == session.UserID {
+			if err := h.cfg.Repo.RefreshDiscordConnection(ctx, session.UserID, dp); err != nil {
+				http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-linked-to-other"), http.StatusFound)
+				return
+			}
+			http.Redirect(w, r, h.frontendURL("/dashboard/settings?notice=discord-linked"), http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-linked-to-other"), http.StatusFound)
+	case errors.Is(err, appauth.ErrDiscordAlreadyLinked):
+		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-already-linked"), http.StatusFound)
+	default:
+		http.Redirect(w, r, h.frontendURL("/dashboard/settings?error=discord-already-linked"), http.StatusFound)
+	}
 }
 
 func clearCookie(w http.ResponseWriter, name string) {
