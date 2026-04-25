@@ -52,11 +52,36 @@ There is no "link" branch — sign-in is the only branch. The previously-added `
 - `apps/frontend/app/auth/password/reset/consume/route.ts`
 - `apps/frontend/app/auth/password/reset/request/route.ts`
 
+### Frontend pages (delete — duplicate / email-only scaffolding)
+- `apps/frontend/app/sign-in/page.tsx`
+- `apps/frontend/app/sign-up/page.tsx`
+- `apps/frontend/app/signin/page.tsx`
+- `apps/frontend/app/signup/page.tsx`
+- `apps/frontend/app/forgot-password/page.tsx`
+- `apps/frontend/app/reset-password/page.tsx`
+
+`/login` is the single retained sign-in page.
+
+### Admin actions (delete — email/password-specific)
+All are under `apps/backend/internal/admin/actions/`:
+- `users_email_add.go` (+ test)
+- `users_email_remove.go` (+ test)
+- `users_email_set_primary.go` (+ test)
+- `users_email_resend_verification.go` (+ test)
+- `users_password_force_reset.go` (+ test)
+- `users_invite.go` (+ test) — email-based invite, useless without email
+- `users_connections_unlink.go` (+ test) — `user_connected_accounts` is dropped
+
+`users_purge.go` and other non-email admin actions stay. The dispatcher in `apps/backend/internal/admin/actions/dispatcher.go` is updated to remove the deleted action registrations.
+
 ### Backend (delete)
 - bcrypt password hashing/verification helpers
 - Email-token issue/consume handlers (sign-in tokens, verify tokens, password reset tokens)
 - `FindUserByEmail` repo method
 - Discord OAuth `Link` branch (callback collapses to a single sign-in branch)
+
+### Schema changes
+The schema is bootstrapped in Go (`apps/backend/internal/store/postgres.go`), not via SQL migration files. Changes are applied to the bootstrap code; the running dev DB is wiped and recreated.
 
 ### DB migration (drop)
 - `user_emails`
