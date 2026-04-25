@@ -67,6 +67,22 @@ func SessionFromContext(ctx context.Context) *SessionUser {
 	return s
 }
 
+// SessionCookieName is the cookie set by the frontend's setSession() and by
+// the backend after a successful Discord OAuth sign-in. Mirrors
+// SESSION_COOKIE in apps/frontend/lib/session.ts.
+const SessionCookieName = "rustlens_session"
+
+// SessionFromCookie reads and verifies the rustlens_session cookie on the
+// given request. Returns ErrMalformedToken / ErrBadSignature / ErrExpired on
+// invalid tokens, or http.ErrNoCookie when the cookie isn't present.
+func SessionFromCookie(r *http.Request, secret string) (*SessionUser, error) {
+	c, err := r.Cookie(SessionCookieName)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSession(c.Value, secret)
+}
+
 // InjectSessionForTest is a test-only helper that attaches a synthetic
 // SessionUser to a context. Production code paths always populate the session
 // via RequireSession middleware; this helper lets internal handler tests
