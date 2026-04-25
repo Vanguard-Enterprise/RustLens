@@ -779,17 +779,16 @@ func (p *PostgresStore) DeleteGuildSteamDiscordLink(ctx context.Context, guildID
 	return nil
 }
 
-// IsDiscordWebsiteAdmin reports whether the given Discord user is connected to
-// an app_users account that has at least one admin role granted via
-// admin_user_roles.
+// IsDiscordWebsiteAdmin reports whether the given Discord user has an
+// app_users account with at least one admin role granted via admin_user_roles.
 func (p *PostgresStore) IsDiscordWebsiteAdmin(ctx context.Context, discordID string) (bool, error) {
 	var exists bool
 	err := p.pool.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
-			FROM user_connected_accounts uca
-			JOIN admin_user_roles aur ON aur.user_id = uca.user_id
-			WHERE uca.provider = 'discord' AND uca.provider_account_id = $1
+			FROM app_users u
+			JOIN admin_user_roles aur ON aur.user_id = u.id
+			WHERE u.discord_id = $1
 		)
 	`, discordID).Scan(&exists)
 	if err != nil {
