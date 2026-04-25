@@ -90,6 +90,23 @@ function buildSearchEmbed(title: string, description: string) {
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
 }
 
+function formatSearchEta(seconds: number) {
+  const normalized = Math.max(0, Math.ceil(seconds));
+  return `${normalized} second${normalized === 1 ? "" : "s"}`;
+}
+
+function buildSearchProgressEmbed(
+  description: string,
+  successfulCount: number,
+  totalCount: number,
+  remainingCount: number,
+) {
+  return buildSearchEmbed("Search", description).addFields({
+    name: "Status",
+    value: `ETA: ${formatSearchEta(remainingCount * 2)}\nSuccessful: ${successfulCount}/${totalCount}`,
+  });
+}
+
 async function fetchPlayerProfile(steamId: string): Promise<SteamProfile | null> {
   try {
     return await getBackend().getSteamProfile(getWorkerID(), steamId);
@@ -227,18 +244,42 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
   }
 
   const serverName = results[0]?.serverName ?? "this server";
+  const searchDescription = includeOffline
+    ? `Found **${results.length}** player${results.length === 1 ? "" : "s"} matching **${query}** on **${serverName}** including players offline for less than 24 hours.`
+    : `Found **${results.length}** player${results.length === 1 ? "" : "s"} matching **${query}** on **${serverName}**.`;
+
+  let completedCount = 0;
+  let successfulCount = 0;
+  let progressUpdate = Promise.resolve();
+
   await interaction.editReply({
-    embeds: [
-      buildSearchEmbed(
-        "Search",
-        includeOffline
-          ? `Found **${results.length}** player${results.length === 1 ? "" : "s"} matching **${query}** on **${serverName}** including players offline for less than 24 hours.`
-          : `Found **${results.length}** player${results.length === 1 ? "" : "s"} matching **${query}** on **${serverName}**.`,
-      ),
-    ],
+    embeds: [buildSearchProgressEmbed(searchDescription, successfulCount, results.length, results.length)],
   });
 
-  const profiles = await mapProxiedRequests(results, (result) => fetchPlayerProfile(result.steamId));
+  const profiles = await mapProxiedRequests(results, async (result) => {
+    const profile = await fetchPlayerProfile(result.steamId);
+    completedCount += 1;
+    if (profile) {
+      successfulCount += 1;
+    }
+
+    progressUpdate = progressUpdate.then(async () => {
+      await interaction.editReply({
+        embeds: [
+          buildSearchProgressEmbed(
+            searchDescription,
+            successfulCount,
+            results.length,
+            results.length - completedCount,
+          ),
+        ],
+      });
+    });
+
+    return profile;
+  });
+
+  await progressUpdate;
 
   for (const [index, result] of results.entries()) {
     const profile = profiles[index];
