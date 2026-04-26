@@ -17,6 +17,7 @@ import {
   PermissionFlagsBits,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
+  escapeMarkdown,
 } from "discord.js";
 import { CheckboxGroupBuilder, StringSelectBuilder, ModalV2Builder } from "./builders/index.js";
 import { BackendClient, type GuildSettingsPatch } from "./backend-client.js";
@@ -34,6 +35,8 @@ const SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID = "settings:tracked-servers";
 const SETTINGS_SELECT_FIELD_CUSTOM_ID = "settings:value";
 const SETTINGS_TRACKED_SERVERS_FIELD_CUSTOM_ID = "settings:tracked-servers:value";
 const SETTINGS_UNSET_VALUE = "__unset__";
+const SETTINGS_CREATE_TRACKED_USERS_CATEGORY_VALUE = "__create_tracked_users_category__";
+const TRACKED_USERS_CATEGORY_NAME = "Tracked clans";
 
 const SETTINGS_OPTION_WIPE_REACT_LOGS = "wipe_react_logs";
 const SETTINGS_OPTION_LINKING_LOGS = "linking_logs";
@@ -125,8 +128,20 @@ function formatChannelValue(channelId: string) {
   return channelId ? `<#${channelId}>` : "`Not set`";
 }
 
-function formatCategoryValue(categoryId: string) {
-  return categoryId ? `<#${categoryId}>` : "`Not set`";
+async function formatCategoryValue(guild: Guild, categoryId: string) {
+  if (!categoryId) {
+    return "`Not set`";
+  }
+
+  const category =
+    guild.channels.cache.get(categoryId) ??
+    (await guild.channels.fetch(categoryId).catch(() => null));
+
+  if (!category || category.type !== ChannelType.GuildCategory) {
+    return "`Not set`";
+  }
+
+  return `**${escapeMarkdown(category.name)}**`;
 }
 
 function formatRoleValue(roleId: string) {
@@ -146,6 +161,7 @@ async function buildSettingsPayload(guild: Guild) {
     fetchGuildSettings(guild.id),
     getBackend().listGuildTrackedServers(getWorkerID(), guild.id),
   ]);
+  const trackedUsersCategoryValue = await formatCategoryValue(guild, settings.trackedUsersCategoryId);
 
   const embed = new EmbedBuilder()
     .setTitle("Server Settings")
@@ -181,7 +197,7 @@ async function buildSettingsPayload(guild: Guild) {
       },
       {
         name: "📁 Tracked users",
-        value: `Category where channels get created for tracked users.\n${formatCategoryValue(settings.trackedUsersCategoryId)}`,
+        value: `Category where channels get created for tracked users.\n${trackedUsersCategoryValue}`,
         inline: true,
       },
     );
@@ -383,8 +399,13 @@ function buildCategorySettingsModal(
           value: SETTINGS_UNSET_VALUE,
           ...(currentCategoryId.length === 0 && { default: true }),
         })
+        .addOption({
+          label: "Create One",
+          value: SETTINGS_CREATE_TRACKED_USERS_CATEGORY_VALUE,
+          description: `Create a ${TRACKED_USERS_CATEGORY_NAME} category`,
+        })
         .addOptions(
-          ...categories.slice(0, 24).map((category) => ({
+          ...categories.slice(0, 23).map((category) => ({
             label: trimOptionLabel(category.name),
             value: category.id,
             ...(category.id === currentCategoryId && { default: true }),
@@ -441,6 +462,25 @@ function isValidGuildChannel(channel: GuildBasedChannel | null, channelId: strin
 
 function isValidGuildRole(role: Role | null, roleId: string) {
   return Boolean(role && role.id === roleId);
+}
+
+async function createTrackedUsersCategory(interaction: ModalSubmitInteraction) {
+  const sourceChannel = interaction.channel;
+  const permissionOverwrites =
+    sourceChannel && "permissionOverwrites" in sourceChannel
+      ? [...sourceChannel.permissionOverwrites.cache.values()].map((overwrite) => ({
+          id: overwrite.id,
+          type: overwrite.type,
+          allow: overwrite.allow.bitfield,
+          deny: overwrite.deny.bitfield,
+        }))
+      : undefined;
+
+  return interaction.guild!.channels.create({
+    name: TRACKED_USERS_CATEGORY_NAME,
+    type: ChannelType.GuildCategory,
+    ...(permissionOverwrites && { permissionOverwrites }),
+  });
 }
 
 export async function ensureSettingsCommand(client: Client, shardID: number) {
@@ -669,13 +709,30 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
       return true;
     }
 
+    let valueToSave = selectedValue ?? "";
     let category: GuildBasedChannel | null = null;
-    if (selectedValue) {
-      category =
-        interaction.guild.channels.cache.get(selectedValue) ??
-        (await interaction.guild.channels.fetch(selectedValue).catch(() => null));
+    if (selectedValue === SETTINGS_CREATE_TRACKED_USERS_CATEGORY_VALUE) {
+      try {
+        category = await createTrackedUsersCategory(interaction);
+      } catch (error) {
+        console.error("[bot] failed to create tracked users category", error);
+        await interaction.reply({
+          content: "I could not create the Tracked clans category. Check that I have Manage Channels permission.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return true;
+      }
+      valueToSave = category.id;
+    }
 
-      if (!category || category.id !== selectedValue || category.type !== ChannelType.GuildCategory) {
+    if (selectedValue) {
+      if (!category) {
+        category =
+          interaction.guild.channels.cache.get(selectedValue) ??
+          (await interaction.guild.channels.fetch(selectedValue).catch(() => null));
+      }
+
+      if (!category || category.id !== valueToSave || category.type !== ChannelType.GuildCategory) {
         await interaction.reply({
           content: "That category is no longer available.",
           flags: MessageFlags.Ephemeral,
@@ -684,7 +741,7 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
       }
     }
 
-    await updateGuildSettings(interaction.guildId, { [field]: selectedValue ?? undefined });
+    await updateGuildSettings(interaction.guildId, { [field]: valueToSave });
     await refreshSettingsMessage(interaction, interaction.guild);
     return true;
   }
