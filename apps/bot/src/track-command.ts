@@ -52,6 +52,11 @@ const TRACK_TEAM_NAME_MAX = 12;
 const ONLINE_COLOR = 8421504;
 const JOIN_COLOR = 1233708;
 const LEAVE_COLOR = 13832761;
+const TRACK_ONLINE_EMOJI = "<:Online:1497993468981805076>";
+const TRACK_OFFLINE_EMOJI = "<:Offline:1497993467660599476>";
+const TRACK_ADD_EMOJI = { id: "1498006709866856458", name: "user_add" };
+const TRACK_REMOVE_EMOJI = { id: "1498006708549587155", name: "user_remove" };
+const TRACK_NOTIFICATION_EMOJI = { id: "1498033713764761852", name: "notification" };
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -101,6 +106,7 @@ function getWorkerID() {
 
 const STEAM_ID_PATTERN = /^\d{17}$/;
 const BM_ID_PATTERN = /^\d{1,16}$/;
+const pendingInitialPosts = new Set<number>();
 
 function sanitizeGroupNameForChannel(name: string) {
   const slug = name
@@ -159,11 +165,11 @@ export function buildTrackEmbed(
     .setColor(ONLINE_COLOR)
     .addFields(
       {
-        name: `🟢 Online ${online.length}`,
+        name: `${TRACK_ONLINE_EMOJI} Online ${online.length}`,
         value: trimSummary(onlineLines),
       },
       {
-        name: `🔴 Offline ${offline.length}`,
+        name: `${TRACK_OFFLINE_EMOJI} Offline ${offline.length}`,
         value: trimSummary(offlineLines),
       },
     )
@@ -176,17 +182,17 @@ export function buildTrackButtons(groupId: number) {
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_ADD_PREFIX}${groupId}`)
-        .setEmoji("➕")
+        .setEmoji(TRACK_ADD_EMOJI)
         .setLabel("Add")
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_REMOVE_PREFIX}${groupId}`)
-        .setEmoji("➖")
+        .setEmoji(TRACK_REMOVE_EMOJI)
         .setLabel("Remove")
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_NOTIFY_PREFIX}${groupId}`)
-        .setEmoji("🔔")
+        .setEmoji(TRACK_NOTIFICATION_EMOJI)
         .setLabel("Notifications")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
@@ -368,12 +374,17 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
 
   const embed = buildTrackEmbed({ name: group.name, serverName: server.name }, []);
   const components = buildTrackButtons(group.id);
-  const message = await channel.send({ embeds: [embed], components });
-  await message.pin().catch(() => null);
+  pendingInitialPosts.add(group.id);
+  try {
+    const message = await channel.send({ embeds: [embed], components });
+    await message.pin().catch(() => null);
 
-  await getBackend().updateTrackGroup(getWorkerID(), interaction.guildId, group.id, {
-    messageId: message.id,
-  });
+    await getBackend().updateTrackGroup(getWorkerID(), interaction.guildId, group.id, {
+      messageId: message.id,
+    });
+  } finally {
+    pendingInitialPosts.delete(group.id);
+  }
 
   await interaction.editReply({
     embeds: [
@@ -702,6 +713,10 @@ async function pollGuildGroups(guild: Guild) {
 }
 
 async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: string) {
+  if (pendingInitialPosts.has(group.id)) {
+    return;
+  }
+
   const channel = await guild.channels.fetch(group.channelId).catch(() => null);
   if (!channel || channel.type !== ChannelType.GuildText) {
     return;
@@ -720,6 +735,17 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   let message = group.messageId
     ? await textChannel.messages.fetch(group.messageId).catch(() => null)
     : null;
+
+  if (!message) {
+    const existing = await findExistingTrackMessage(textChannel, group, serverName);
+    if (existing) {
+      await existing.edit({ embeds: [embed], components }).catch(() => null);
+      await getBackend().updateTrackGroup(getWorkerID(), guild.id, group.id, {
+        messageId: existing.id,
+      });
+      message = existing;
+    }
+  }
 
   if (!message) {
     const sent = await textChannel.send({ embeds: [embed], components }).catch(() => null);
@@ -765,6 +791,15 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   }
 
   previousSnapshots.set(group.id, current);
+}
+
+async function findExistingTrackMessage(textChannel: TextChannel, group: TrackGroup, serverName: string) {
+  const expectedTitle = `${group.name} - ${serverName}`;
+  const messages = await textChannel.messages.fetch({ limit: 25 }).catch(() => null);
+  return messages?.find((message) =>
+    message.author.id === textChannel.client.user?.id &&
+    message.embeds.some((embed) => embed.title === expectedTitle),
+  ) ?? null;
 }
 
 function buildJoinLeaveEmbed(row: TrackGroupOnlineRow, isOnline: boolean, serverName: string) {
