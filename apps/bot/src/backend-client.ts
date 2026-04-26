@@ -355,6 +355,8 @@ export type TrackGroupOnlineRow = {
   steamId: string;
   bmId: string;
   bmName: string;
+  discordId: string;
+  avatarImage: string;
   isOnline: boolean;
   onlineUnix: number;
 };

@@ -35,11 +35,13 @@ type TrackGroupMember struct {
 }
 
 type TrackGroupOnlineRow struct {
-	SteamID    string
-	BmID       string
-	BmName     string
-	IsOnline   bool
-	OnlineUnix int64
+	SteamID     string
+	BmID        string
+	BmName      string
+	DiscordID   string
+	AvatarImage string
+	IsOnline    bool
+	OnlineUnix  int64
 }
 
 func scanTrackGroup(scanner rowScanner) (TrackGroup, error) {
@@ -285,6 +287,8 @@ func (p *PostgresStore) ListTrackGroupOnlineState(ctx context.Context, trackGrou
 			tgm.steam_id,
 			COALESCE(NULLIF(tgm.bm_id, ''), COALESCE(sa.bm_id, '')) AS bm_id,
 			COALESCE(sac.bm_name, '') AS bm_name,
+			COALESCE(gsl.discord_id, '') AS discord_id,
+			COALESCE(sac.avatar_image, '') AS avatar_image,
 			COALESCE(ps.is_online, FALSE) AS is_online,
 			COALESCE(EXTRACT(EPOCH FROM ps.online_since)::BIGINT, 0) AS online_unix,
 			COALESCE(EXTRACT(EPOCH FROM ps.offline_since)::BIGINT, 0) AS offline_unix
@@ -292,6 +296,13 @@ func (p *PostgresStore) ListTrackGroupOnlineState(ctx context.Context, trackGrou
 		JOIN track_group_members tgm ON tgm.track_group_id = tg.id
 		LEFT JOIN steam_accounts sa ON sa.steam_id = tgm.steam_id
 		LEFT JOIN steam_account_cache sac ON sac.steam_id = tgm.steam_id
+		LEFT JOIN LATERAL (
+			SELECT discord_id
+			FROM guild_steam_discord_links
+			WHERE guild_id = tg.guild_id AND steam_id = tgm.steam_id
+			ORDER BY discord_id ASC
+			LIMIT 1
+		) gsl ON TRUE
 		LEFT JOIN player_states ps
 			ON ps.server_bm_id = tg.server_bm_id
 			AND ps.player_bm_id = COALESCE(NULLIF(tgm.bm_id, ''), sa.bm_id)
@@ -307,7 +318,7 @@ func (p *PostgresStore) ListTrackGroupOnlineState(ctx context.Context, trackGrou
 	for rows.Next() {
 		var row TrackGroupOnlineRow
 		var offlineUnix int64
-		if err := rows.Scan(&row.SteamID, &row.BmID, &row.BmName, &row.IsOnline, &row.OnlineUnix, &offlineUnix); err != nil {
+		if err := rows.Scan(&row.SteamID, &row.BmID, &row.BmName, &row.DiscordID, &row.AvatarImage, &row.IsOnline, &row.OnlineUnix, &offlineUnix); err != nil {
 			return nil, err
 		}
 		if !row.IsOnline {

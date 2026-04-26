@@ -69,11 +69,13 @@ func trackGroupMemberToMap(member store.TrackGroupMember) map[string]any {
 
 func trackGroupOnlineRowToMap(row store.TrackGroupOnlineRow) map[string]any {
 	return map[string]any{
-		"steamId":    row.SteamID,
-		"bmId":       row.BmID,
-		"bmName":     row.BmName,
-		"isOnline":   row.IsOnline,
-		"onlineUnix": row.OnlineUnix,
+		"steamId":     row.SteamID,
+		"bmId":        row.BmID,
+		"bmName":      row.BmName,
+		"discordId":   row.DiscordID,
+		"avatarImage": row.AvatarImage,
+		"isOnline":    row.IsOnline,
+		"onlineUnix":  row.OnlineUnix,
 	}
 }
 

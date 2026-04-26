@@ -32,7 +32,10 @@ import { getFieldValues, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from ".
 
 export const TRACK_COMMAND_NAME = "track";
 
+const TRACK_CREATE_SUBCOMMAND = "create";
+const TRACK_DELETE_SUBCOMMAND = "delete";
 const TRACK_GROUP_OPTION = "group_name";
+const TRACK_DELETE_GROUP_OPTION = "track_name";
 const TRACK_SERVER_OPTION = "server";
 
 const TRACK_BUTTON_ADD_PREFIX = "track:add:";
@@ -49,7 +52,7 @@ const TRACK_FIELD_NOTIFY_OPTIONS = "track_notify_options";
 const TRACK_NOTIFY_SEND_UPDATES = "send_updates";
 
 const TRACK_TEAM_NAME_MAX = 12;
-const ONLINE_COLOR = 8421504;
+const TRACK_EMBED_COLOR = 0xde811d;
 const JOIN_COLOR = 1233708;
 const LEAVE_COLOR = 13832761;
 const TRACK_ONLINE_EMOJI = "<:Online:1497993468981805076>";
@@ -57,29 +60,51 @@ const TRACK_OFFLINE_EMOJI = "<:Offline:1497993467660599476>";
 const TRACK_ADD_EMOJI = { id: "1498006709866856458", name: "user_add" };
 const TRACK_REMOVE_EMOJI = { id: "1498006708549587155", name: "user_remove" };
 const TRACK_NOTIFICATION_EMOJI = { id: "1498033713764761852", name: "notification" };
+const EMOJIS = {
+  steam: "<:steam:1444016467648581642>",
+  battlemetrics: "<:battlemetrics:1444011821529956472>",
+  discord: "<:discord:1496989877831729284>",
+} as const;
 
 const POLL_INTERVAL_MS = 30_000;
 
 const trackCommand = new SlashCommandBuilder()
   .setName(TRACK_COMMAND_NAME)
-  .setDescription("Create a tracking channel for a group of users on a tracked server")
+  .setDescription("Manage tracking channels for groups of users on tracked servers")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
-  .addStringOption((opt) =>
-    opt
-      .setName(TRACK_GROUP_OPTION)
-      .setDescription(`Team name (max ${TRACK_TEAM_NAME_MAX} chars). Spaces become dashes in the channel name.`)
-      .setRequired(true)
-      .setMaxLength(TRACK_TEAM_NAME_MAX),
+  .addSubcommand((sub) =>
+    sub
+      .setName(TRACK_CREATE_SUBCOMMAND)
+      .setDescription("Create a tracking channel")
+      .addStringOption((opt) =>
+        opt
+          .setName(TRACK_GROUP_OPTION)
+          .setDescription(`Team name (max ${TRACK_TEAM_NAME_MAX} chars). Spaces become dashes in the channel name.`)
+          .setRequired(true)
+          .setMaxLength(TRACK_TEAM_NAME_MAX),
+      )
+      .addStringOption((opt) =>
+        opt
+          .setName(TRACK_SERVER_OPTION)
+          .setDescription("Tracked server")
+          .setRequired(true)
+          .setAutocomplete(true),
+      ),
   )
-  .addStringOption((opt) =>
-    opt
-      .setName(TRACK_SERVER_OPTION)
-      .setDescription("Tracked server (from the global tracked servers list)")
-      .setRequired(true)
-      .setAutocomplete(true),
+  .addSubcommand((sub) =>
+    sub
+      .setName(TRACK_DELETE_SUBCOMMAND)
+      .setDescription("Delete a tracking channel")
+      .addStringOption((opt) =>
+        opt
+          .setName(TRACK_DELETE_GROUP_OPTION)
+          .setDescription("Track to delete")
+          .setRequired(true)
+          .setAutocomplete(true),
+      ),
   );
 
 let _backend: BackendClient | undefined;
@@ -119,6 +144,10 @@ function sanitizeGroupNameForChannel(name: string) {
 
 function buildChannelName(groupName: string, onlineCount: number) {
   return `${sanitizeGroupNameForChannel(groupName)}-${onlineCount}`.slice(0, 100);
+}
+
+function buildChannelTopic(groupName: string) {
+  return `Channel with information about ${groupName} clan.`.slice(0, 1024);
 }
 
 function trimSummary(value: string, max = 1024) {
@@ -162,7 +191,7 @@ export function buildTrackEmbed(
 
   return new EmbedBuilder()
     .setTitle(`${group.name} - ${group.serverName}`)
-    .setColor(ONLINE_COLOR)
+    .setColor(TRACK_EMBED_COLOR)
     .addFields(
       {
         name: `${TRACK_ONLINE_EMOJI} Online ${online.length}`,
@@ -193,7 +222,6 @@ export function buildTrackButtons(groupId: number) {
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_NOTIFY_PREFIX}${groupId}`)
         .setEmoji(TRACK_NOTIFICATION_EMOJI)
-        .setLabel("Notifications")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_ANALYTICS_PREFIX}${groupId}`)
@@ -257,14 +285,30 @@ export async function handleTrackAutocomplete(interaction: AutocompleteInteracti
   }
 
   const focused = interaction.options.getFocused(true);
-  if (focused.name !== TRACK_SERVER_OPTION) {
-    await interaction.respond([]);
-    return true;
-  }
-
   try {
-    const { items } = await getBackend().listTrackedServers(getWorkerID());
     const query = focused.value.trim().toLocaleLowerCase();
+
+    if (focused.name === TRACK_DELETE_GROUP_OPTION) {
+      const { items } = interaction.guildId
+        ? await getBackend().listTrackGroups(getWorkerID(), interaction.guildId)
+        : { items: [] };
+      const filtered = items
+        .filter((item) => query.length === 0 || item.name.toLocaleLowerCase().includes(query))
+        .slice(0, 25)
+        .map((item) => ({
+          name: item.name.slice(0, 100),
+          value: String(item.id),
+        }));
+      await interaction.respond(filtered);
+      return true;
+    }
+
+    if (focused.name !== TRACK_SERVER_OPTION) {
+      await interaction.respond([]);
+      return true;
+    }
+
+    const { items } = await getBackend().listTrackedServers(getWorkerID());
     const filtered = items
       .filter((item) =>
         query.length === 0 ||
@@ -273,7 +317,7 @@ export async function handleTrackAutocomplete(interaction: AutocompleteInteracti
       )
       .slice(0, 25)
       .map((item) => ({
-        name: `${item.name} (${item.bmId})`.slice(0, 100),
+        name: item.name.slice(0, 100),
         value: item.bmId,
       }));
     await interaction.respond(filtered);
@@ -302,6 +346,11 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
       flags: MessageFlags.Ephemeral,
     });
     return true;
+  }
+
+  const subcommand = interaction.options.getSubcommand(false);
+  if (subcommand === TRACK_DELETE_SUBCOMMAND) {
+    return handleTrackDeleteChatInput(interaction);
   }
 
   const groupName = (interaction.options.getString(TRACK_GROUP_OPTION, true) ?? "").trim();
@@ -348,6 +397,7 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
     name: buildChannelName(groupName, 0),
     type: ChannelType.GuildText,
     parent: category.id,
+    topic: buildChannelTopic(groupName),
     reason: `/track group ${groupName}`,
   });
 
@@ -397,6 +447,50 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
     ],
   });
 
+  return true;
+}
+
+async function handleTrackDeleteChatInput(interaction: ChatInputCommandInteraction) {
+  if (!interaction.inGuild() || !interaction.guild || !interaction.guildId) {
+    return true;
+  }
+
+  const groupId = Number(interaction.options.getString(TRACK_DELETE_GROUP_OPTION, true));
+  if (!Number.isInteger(groupId) || groupId <= 0) {
+    await interaction.reply({
+      embeds: [buildErrorEmbed("Choose a valid track to delete.")],
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  let group: TrackGroup;
+  try {
+    group = await getBackend().getTrackGroup(getWorkerID(), interaction.guildId, groupId);
+  } catch {
+    await interaction.editReply({ embeds: [buildErrorEmbed("That track group could not be found.")] });
+    return true;
+  }
+
+  const channel = await interaction.guild.channels.fetch(group.channelId).catch(() => null);
+  if (channel) {
+    await channel.delete(`/track delete ${group.name}`).catch(() => null);
+  }
+  await getBackend().deleteTrackGroup(getWorkerID(), interaction.guildId, group.id);
+  previousSnapshots.delete(group.id);
+
+  await interaction.editReply({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("Track Group Deleted")
+        .setDescription(`Deleted **${group.name}**.`)
+        .setColor(RUSTLENS_EMBED_COLOR)
+        .setTimestamp()
+        .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+    ],
+  });
   return true;
 }
 
@@ -719,6 +813,8 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
 
   const channel = await guild.channels.fetch(group.channelId).catch(() => null);
   if (!channel || channel.type !== ChannelType.GuildText) {
+    await getBackend().deleteTrackGroup(getWorkerID(), guild.id, group.id).catch(() => null);
+    previousSnapshots.delete(group.id);
     return;
   }
   const textChannel = channel as TextChannel;
@@ -772,6 +868,11 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
     });
   }
 
+  const desiredTopic = buildChannelTopic(group.name);
+  if (textChannel.topic !== desiredTopic) {
+    await textChannel.setTopic(desiredTopic).catch(() => null);
+  }
+
   // Post change updates if enabled.
   const previous = previousSnapshots.get(group.id);
   const current: Snapshot = new Map(rows.map((row) => [row.steamId, row.isOnline]));
@@ -807,18 +908,27 @@ function buildJoinLeaveEmbed(row: TrackGroupOnlineRow, isOnline: boolean, server
   const color = isOnline ? JOIN_COLOR : LEAVE_COLOR;
   const label = row.bmName.trim().length > 0 ? row.bmName : (row.bmId || row.steamId);
   const lines = [
-    `<:steam:1444016467648581642> [${row.steamId}](https://steamcommunity.com/profiles/${row.steamId})`,
+    `${EMOJIS.steam} [${row.steamId}](https://steamcommunity.com/profiles/${row.steamId})`,
   ];
   if (row.bmId) {
-    lines.push(`<:battlemetrics:1444011821529956472> [${row.bmId}](https://www.battlemetrics.com/rcon/players/${row.bmId})`);
+    lines.push(`${EMOJIS.battlemetrics} [${row.bmId}](https://www.battlemetrics.com/rcon/players/${row.bmId})`);
+  }
+  if (row.discordId) {
+    lines.push(`${EMOJIS.discord} <@${row.discordId}>`);
   }
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(`${label} has ${action} ${serverName}`)
     .setColor(color)
     .addFields({ name: "Information", value: lines.join("\n") })
     .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+
+  if (row.avatarImage) {
+    embed.setThumbnail(row.avatarImage);
+  }
+
+  return embed;
 }
 
 export const __testables = {
