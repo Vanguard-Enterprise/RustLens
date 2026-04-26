@@ -21,7 +21,7 @@ export type GuildSettings = {
   wipeReactLogChannelId: string;
   linkingLogChannelId: string;
   trackedServerLogChannelId: string;
-  alertsChannelId: string;
+  trackedUsersCategoryId: string;
   adminRoleId: string;
 };
 
@@ -320,6 +320,47 @@ export type BulkHardLinkEntry = {
 export type UserBan = {
   discordId: string;
   categories: string[];
+};
+
+export type TrackGroup = {
+  id: number;
+  guildId: string;
+  name: string;
+  serverBmId: string;
+  channelId: string;
+  messageId: string;
+  sendUpdates: boolean;
+  onlineCount: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TrackGroupListResponse = {
+  items: TrackGroup[];
+};
+
+export type TrackGroupMember = {
+  trackGroupId: number;
+  steamId: string;
+  bmId: string;
+  createdAt: string;
+};
+
+export type TrackGroupMemberListResponse = {
+  items: TrackGroupMember[];
+};
+
+export type TrackGroupOnlineRow = {
+  steamId: string;
+  bmId: string;
+  bmName: string;
+  isOnline: boolean;
+  onlineUnix: number;
+};
+
+export type TrackGroupOnlineStateResponse = {
+  items: TrackGroupOnlineRow[];
 };
 
 export class BackendClient {
@@ -862,6 +903,109 @@ export class BackendClient {
       `/api/internal/bot/setup/bans/${discordId}`,
       "PUT",
       { categories, updatedBy },
+    );
+  }
+
+  listTrackGroups(workerId: string, guildId: string) {
+    return this.call<TrackGroupListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups`,
+      "GET",
+    );
+  }
+
+  createTrackGroup(
+    workerId: string,
+    guildId: string,
+    payload: {
+      name: string;
+      serverBmId: string;
+      channelId: string;
+      messageId: string;
+      sendUpdates: boolean;
+      onlineCount: number;
+      createdBy: string;
+    },
+  ) {
+    return this.call<TrackGroup>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups`,
+      "POST",
+      payload,
+    );
+  }
+
+  getTrackGroup(workerId: string, guildId: string, groupId: number) {
+    return this.call<TrackGroup>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}`,
+      "GET",
+    );
+  }
+
+  updateTrackGroup(
+    workerId: string,
+    guildId: string,
+    groupId: number,
+    patch: {
+      channelId?: string;
+      messageId?: string;
+      sendUpdates?: boolean;
+      onlineCount?: number;
+    },
+  ) {
+    return this.call<TrackGroup>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}`,
+      "PUT",
+      patch,
+    );
+  }
+
+  deleteTrackGroup(workerId: string, guildId: string, groupId: number) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}`,
+      "DELETE",
+    );
+  }
+
+  listTrackGroupMembers(workerId: string, guildId: string, groupId: number) {
+    return this.call<TrackGroupMemberListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/members`,
+      "GET",
+    );
+  }
+
+  addTrackGroupMembers(
+    workerId: string,
+    guildId: string,
+    groupId: number,
+    members: { steamId: string; bmId: string }[],
+  ) {
+    return this.call<{ added: string[]; count: number }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/members`,
+      "POST",
+      { members },
+    );
+  }
+
+  removeTrackGroupMembers(workerId: string, guildId: string, groupId: number, identifiers: string[]) {
+    return this.call<{ count: number }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/members/remove`,
+      "POST",
+      { identifiers },
+    );
+  }
+
+  listTrackGroupOnlineState(workerId: string, guildId: string, groupId: number) {
+    return this.call<TrackGroupOnlineStateResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/online-state`,
+      "GET",
     );
   }
 }

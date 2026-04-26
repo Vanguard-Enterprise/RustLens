@@ -309,7 +309,7 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 		"wipeReactLogChannelId":     settings.WipeReactLogChannelID,
 		"linkingLogChannelId":       settings.LinkingLogChannelID,
 		"trackedServerLogChannelId": settings.TrackedServerLogChannelID,
-		"alertsChannelId":           settings.AlertsChannelID,
+		"trackedUsersCategoryId":    settings.TrackedUsersCategoryID,
 		"adminRoleId":               settings.AdminRoleID,
 	})
 }
@@ -468,7 +468,7 @@ type updateGuildSettingsRequest struct {
 	WipeReactLogChannelID     *string `json:"wipeReactLogChannelId"`
 	LinkingLogChannelID       *string `json:"linkingLogChannelId"`
 	TrackedServerLogChannelID *string `json:"trackedServerLogChannelId"`
-	AlertsChannelID           *string `json:"alertsChannelId"`
+	TrackedUsersCategoryID    *string `json:"trackedUsersCategoryId"`
 	AdminRoleID               *string `json:"adminRoleId"`
 }
 
@@ -511,7 +511,7 @@ func (h *Handler) UpdateGuildSettings(w http.ResponseWriter, r *http.Request) {
 	if !validateSnowflakeOptionalField(w, request.TrackedServerLogChannelID, "trackedServerLogChannelId") {
 		return
 	}
-	if !validateSnowflakeOptionalField(w, request.AlertsChannelID, "alertsChannelId") {
+	if !validateSnowflakeOptionalField(w, request.TrackedUsersCategoryID, "trackedUsersCategoryId") {
 		return
 	}
 	if !validateSnowflakeOptionalField(w, request.AdminRoleID, "adminRoleId") {
@@ -522,7 +522,7 @@ func (h *Handler) UpdateGuildSettings(w http.ResponseWriter, r *http.Request) {
 		WipeReactLogChannelID:     request.WipeReactLogChannelID,
 		LinkingLogChannelID:       request.LinkingLogChannelID,
 		TrackedServerLogChannelID: request.TrackedServerLogChannelID,
-		AlertsChannelID:           request.AlertsChannelID,
+		TrackedUsersCategoryID:    request.TrackedUsersCategoryID,
 		AdminRoleID:               request.AdminRoleID,
 	})
 	if err != nil {

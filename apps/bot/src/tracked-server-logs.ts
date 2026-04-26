@@ -105,7 +105,7 @@ export function buildLogEmbed(event: TrackedServerLogEvent) {
 
   const lines = [
     `${EMOJIS.steam} [${event.steamId}](https://steamcommunity.com/profiles/${event.steamId})`,
-    `${EMOJIS.battlemetrics} [${event.playerBmId}](https://www.battlemetrics.com/players/${event.playerBmId})`,
+    `${EMOJIS.battlemetrics} [${event.playerBmId}](https://www.battlemetrics.com/rcon/players/${event.playerBmId})`,
     `${EMOJIS.discord} <@${event.discordId}>`,
   ];
 

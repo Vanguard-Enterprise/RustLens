@@ -63,7 +63,7 @@ function truncateText(value: string, maxLength: number) {
 
 function buildSummaryLine(item: GuildOnlineSummaryItem) {
   const bmName = sanitizeBmName(item.bmName, item.playerBmId);
-  return `> * <@${item.discordId}> as **[${bmName}](https://www.battlemetrics.com/players/${item.playerBmId})** since <t:${item.onlineUnix}:R>`;
+  return `> * <@${item.discordId}> as **[${bmName}](https://www.battlemetrics.com/rcon/players/${item.playerBmId})** since <t:${item.onlineUnix}:R>`;
 }
 
 function groupSummaryItems(items: GuildOnlineSummaryItem[]) {

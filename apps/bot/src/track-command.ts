@@ -1,0 +1,794 @@
+import type {
+  AutocompleteInteraction,
+  ButtonInteraction,
+  ChatInputCommandInteraction,
+  Client,
+  Guild,
+  ModalSubmitInteraction,
+  TextChannel,
+} from "discord.js";
+import {
+  ActionRowBuilder,
+  ApplicationIntegrationType,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
+  EmbedBuilder,
+  InteractionContextType,
+  MessageFlags,
+  PermissionFlagsBits,
+  SlashCommandBuilder,
+} from "discord.js";
+import {
+  BackendClient,
+  type TrackGroup,
+  type TrackGroupOnlineRow,
+} from "./backend-client.js";
+import { CheckboxGroupBuilder, ModalV2Builder, TextInputBuilder } from "./builders/index.js";
+import { TextInputStyle } from "./builders/types.js";
+import { loadConfig } from "./config.js";
+import { fetchGuildSettings, hasGuildAdminAccess } from "./guild-settings.js";
+import { getFieldValues, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+
+export const TRACK_COMMAND_NAME = "track";
+
+const TRACK_GROUP_OPTION = "group_name";
+const TRACK_SERVER_OPTION = "server";
+
+const TRACK_BUTTON_ADD_PREFIX = "track:add:";
+const TRACK_BUTTON_REMOVE_PREFIX = "track:remove:";
+const TRACK_BUTTON_NOTIFY_PREFIX = "track:notify:";
+const TRACK_BUTTON_ANALYTICS_PREFIX = "track:analytics:";
+
+const TRACK_MODAL_ADD_PREFIX = "track_modal:add:";
+const TRACK_MODAL_REMOVE_PREFIX = "track_modal:remove:";
+const TRACK_MODAL_NOTIFY_PREFIX = "track_modal:notify:";
+
+const TRACK_FIELD_IDS = "track_ids";
+const TRACK_FIELD_NOTIFY_OPTIONS = "track_notify_options";
+const TRACK_NOTIFY_SEND_UPDATES = "send_updates";
+
+const TRACK_TEAM_NAME_MAX = 12;
+const ONLINE_COLOR = 8421504;
+const JOIN_COLOR = 1233708;
+const LEAVE_COLOR = 13832761;
+
+const POLL_INTERVAL_MS = 30_000;
+
+const trackCommand = new SlashCommandBuilder()
+  .setName(TRACK_COMMAND_NAME)
+  .setDescription("Create a tracking channel for a group of users on a tracked server")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+  .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
+  .addStringOption((opt) =>
+    opt
+      .setName(TRACK_GROUP_OPTION)
+      .setDescription(`Team name (max ${TRACK_TEAM_NAME_MAX} chars). Spaces become dashes in the channel name.`)
+      .setRequired(true)
+      .setMaxLength(TRACK_TEAM_NAME_MAX),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName(TRACK_SERVER_OPTION)
+      .setDescription("Tracked server (from the global tracked servers list)")
+      .setRequired(true)
+      .setAutocomplete(true),
+  );
+
+let _backend: BackendClient | undefined;
+let _workerID: string | undefined;
+
+function getBackend() {
+  if (!_backend) {
+    const config = loadConfig();
+    _backend = new BackendClient(
+      config.backendUrl,
+      config.jwtSecret,
+      config.jwtIssuer,
+      config.jwtAudience,
+    );
+    _workerID = `${config.workerId}-track`;
+  }
+  return _backend;
+}
+
+function getWorkerID() {
+  getBackend();
+  return _workerID!;
+}
+
+const STEAM_ID_PATTERN = /^\d{17}$/;
+const BM_ID_PATTERN = /^\d{1,16}$/;
+
+function sanitizeGroupNameForChannel(name: string) {
+  const slug = name
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9-_]/g, "")
+    .toLowerCase();
+  return slug.length > 0 ? slug.slice(0, 90) : "tracked";
+}
+
+function buildChannelName(groupName: string, onlineCount: number) {
+  return `${sanitizeGroupNameForChannel(groupName)}-${onlineCount}`.slice(0, 100);
+}
+
+function trimSummary(value: string, max = 1024) {
+  if (value.length <= max) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(0, max - 3))}...`;
+}
+
+function bmLink(row: TrackGroupOnlineRow) {
+  const label = row.bmName.trim().length > 0 ? row.bmName : (row.bmId || row.steamId);
+  if (!row.bmId) {
+    return `[${label}](https://steamcommunity.com/profiles/${row.steamId})`;
+  }
+  return `[${label}](https://www.battlemetrics.com/rcon/players/${row.bmId})`;
+}
+
+function buildOnlineLine(row: TrackGroupOnlineRow) {
+  const stamp = row.onlineUnix > 0 ? ` - <t:${row.onlineUnix}:R>` : "";
+  return `${bmLink(row)}${stamp}`;
+}
+
+function buildOfflineLine(row: TrackGroupOnlineRow) {
+  const stamp = row.onlineUnix > 0 ? ` - <t:${row.onlineUnix}:R>` : "";
+  return `${bmLink(row)}${stamp}`;
+}
+
+export function buildTrackEmbed(
+  group: { name: string; serverName: string },
+  rows: TrackGroupOnlineRow[],
+) {
+  const online = rows.filter((row) => row.isOnline);
+  const offline = rows.filter((row) => !row.isOnline);
+
+  const onlineLines = online.length > 0
+    ? online.map(buildOnlineLine).join("\n")
+    : "*None*";
+  const offlineLines = offline.length > 0
+    ? offline.map(buildOfflineLine).join("\n")
+    : "*None*";
+
+  return new EmbedBuilder()
+    .setTitle(`${group.name} - ${group.serverName}`)
+    .setColor(ONLINE_COLOR)
+    .addFields(
+      {
+        name: `🟢 Online ${online.length}`,
+        value: trimSummary(onlineLines),
+      },
+      {
+        name: `🔴 Offline ${offline.length}`,
+        value: trimSummary(offlineLines),
+      },
+    )
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+export function buildTrackButtons(groupId: number) {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${TRACK_BUTTON_ADD_PREFIX}${groupId}`)
+        .setEmoji("➕")
+        .setLabel("Add")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`${TRACK_BUTTON_REMOVE_PREFIX}${groupId}`)
+        .setEmoji("➖")
+        .setLabel("Remove")
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(`${TRACK_BUTTON_NOTIFY_PREFIX}${groupId}`)
+        .setEmoji("🔔")
+        .setLabel("Notifications")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`${TRACK_BUTTON_ANALYTICS_PREFIX}${groupId}`)
+        .setEmoji("📈")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+function buildErrorEmbed(description: string) {
+  return new EmbedBuilder()
+    .setTitle("Error")
+    .setDescription(description)
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+function buildStatusEmbed(successful: number, unsuccessful: number, failedIds: string[]) {
+  const lines = [`> * Successfully tracked: ${successful}`, `> * Unsuccessfully tracked: ${unsuccessful}`];
+  if (failedIds.length > 0) {
+    lines.push("");
+    lines.push(failedIds.map((id) => `> - \`${id}\``).join("\n"));
+  }
+  return new EmbedBuilder()
+    .setTitle("Tracking Status")
+    .setDescription(lines.join("\n"))
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+function parseIdentifiers(raw: string) {
+  return raw
+    .split(/[,.\n]/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
+export async function ensureTrackCommand(client: Client, shardID: number) {
+  if (shardID !== 0 || !client.application) {
+    return;
+  }
+
+  const data = trackCommand.toJSON();
+  const commands = await client.application.commands.fetch();
+  const existing = commands.find((command) => command.name === data.name);
+
+  if (existing) {
+    await client.application.commands.edit(existing.id, data);
+  } else {
+    await client.application.commands.create(data);
+  }
+
+  console.log("[bot] ensured /track command (global)");
+}
+
+export async function handleTrackAutocomplete(interaction: AutocompleteInteraction) {
+  if (interaction.commandName !== TRACK_COMMAND_NAME) {
+    return false;
+  }
+
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== TRACK_SERVER_OPTION) {
+    await interaction.respond([]);
+    return true;
+  }
+
+  try {
+    const { items } = await getBackend().listTrackedServers(getWorkerID());
+    const query = focused.value.trim().toLocaleLowerCase();
+    const filtered = items
+      .filter((item) =>
+        query.length === 0 ||
+        item.name.toLocaleLowerCase().includes(query) ||
+        item.bmId.includes(query),
+      )
+      .slice(0, 25)
+      .map((item) => ({
+        name: `${item.name} (${item.bmId})`.slice(0, 100),
+        value: item.bmId,
+      }));
+    await interaction.respond(filtered);
+  } catch {
+    await interaction.respond([]);
+  }
+  return true;
+}
+
+export async function handleTrackChatInput(interaction: ChatInputCommandInteraction) {
+  if (interaction.commandName !== TRACK_COMMAND_NAME) {
+    return false;
+  }
+
+  if (!interaction.inGuild() || !interaction.guild) {
+    await interaction.reply({
+      content: "This command can only be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await interaction.reply({
+      embeds: [buildErrorEmbed("Only administrators or the configured admin role can use /track.")],
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  const groupName = (interaction.options.getString(TRACK_GROUP_OPTION, true) ?? "").trim();
+  const serverBmId = (interaction.options.getString(TRACK_SERVER_OPTION, true) ?? "").trim();
+
+  if (groupName.length === 0 || groupName.length > TRACK_TEAM_NAME_MAX) {
+    await interaction.reply({
+      embeds: [buildErrorEmbed(`Team name must be 1-${TRACK_TEAM_NAME_MAX} characters.`)],
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const settings = await fetchGuildSettings(interaction.guildId).catch(() => null);
+  if (!settings?.trackedUsersCategoryId) {
+    await interaction.editReply({
+      embeds: [buildErrorEmbed("Configure the Tracked users category in /settings before using /track.")],
+    });
+    return true;
+  }
+
+  const category = await interaction.guild.channels
+    .fetch(settings.trackedUsersCategoryId)
+    .catch(() => null);
+  if (!category || category.type !== ChannelType.GuildCategory) {
+    await interaction.editReply({
+      embeds: [buildErrorEmbed("The configured Tracked users category is missing. Update /settings.")],
+    });
+    return true;
+  }
+
+  const trackedServers = await getBackend().listTrackedServers(getWorkerID()).catch(() => null);
+  const server = trackedServers?.items.find((item) => item.bmId === serverBmId);
+  if (!server) {
+    await interaction.editReply({
+      embeds: [buildErrorEmbed("That tracked server could not be found.")],
+    });
+    return true;
+  }
+
+  const channel = await interaction.guild.channels.create({
+    name: buildChannelName(groupName, 0),
+    type: ChannelType.GuildText,
+    parent: category.id,
+    reason: `/track group ${groupName}`,
+  });
+
+  let group: TrackGroup;
+  try {
+    group = await getBackend().createTrackGroup(getWorkerID(), interaction.guildId, {
+      name: groupName,
+      serverBmId,
+      channelId: channel.id,
+      messageId: "",
+      sendUpdates: false,
+      onlineCount: 0,
+      createdBy: interaction.user.id,
+    });
+  } catch (error) {
+    await channel.delete("track group create failed").catch(() => null);
+    const message = error instanceof Error ? error.message : String(error);
+    const description = message.includes("409")
+      ? `A track group named **${groupName}** already exists in this guild.`
+      : "RustLens could not create that track group.";
+    await interaction.editReply({ embeds: [buildErrorEmbed(description)] });
+    return true;
+  }
+
+  const embed = buildTrackEmbed({ name: group.name, serverName: server.name }, []);
+  const components = buildTrackButtons(group.id);
+  const message = await channel.send({ embeds: [embed], components });
+  await message.pin().catch(() => null);
+
+  await getBackend().updateTrackGroup(getWorkerID(), interaction.guildId, group.id, {
+    messageId: message.id,
+  });
+
+  await interaction.editReply({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("Track Group Created")
+        .setDescription(`Created <#${channel.id}> for **${group.name}** on **${server.name}**.`)
+        .setColor(RUSTLENS_EMBED_COLOR)
+        .setTimestamp()
+        .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+    ],
+  });
+
+  return true;
+}
+
+export async function handleTrackButtonInteraction(interaction: ButtonInteraction) {
+  if (interaction.customId.startsWith(TRACK_BUTTON_ADD_PREFIX)) {
+    const groupId = Number(interaction.customId.slice(TRACK_BUTTON_ADD_PREFIX.length));
+    if (!Number.isInteger(groupId) || groupId <= 0) {
+      return false;
+    }
+    await interaction.showModal(buildAddRemoveModal(true, groupId).toJSON() as any);
+    return true;
+  }
+
+  if (interaction.customId.startsWith(TRACK_BUTTON_REMOVE_PREFIX)) {
+    const groupId = Number(interaction.customId.slice(TRACK_BUTTON_REMOVE_PREFIX.length));
+    if (!Number.isInteger(groupId) || groupId <= 0) {
+      return false;
+    }
+    await interaction.showModal(buildAddRemoveModal(false, groupId).toJSON() as any);
+    return true;
+  }
+
+  if (interaction.customId.startsWith(TRACK_BUTTON_NOTIFY_PREFIX)) {
+    const groupId = Number(interaction.customId.slice(TRACK_BUTTON_NOTIFY_PREFIX.length));
+    if (!Number.isInteger(groupId) || groupId <= 0 || !interaction.inGuild() || !interaction.guildId) {
+      return false;
+    }
+
+    let group: TrackGroup;
+    try {
+      group = await getBackend().getTrackGroup(getWorkerID(), interaction.guildId, groupId);
+    } catch {
+      await interaction.reply({
+        embeds: [buildErrorEmbed("That track group could not be found.")],
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    await interaction.showModal(buildNotifyModal(group).toJSON() as any);
+    return true;
+  }
+
+  if (interaction.customId.startsWith(TRACK_BUTTON_ANALYTICS_PREFIX)) {
+    await interaction.reply({
+      content: "Analytics for track groups is coming soon.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  return false;
+}
+
+function buildAddRemoveModal(isAdd: boolean, groupId: number) {
+  const customId = `${isAdd ? TRACK_MODAL_ADD_PREFIX : TRACK_MODAL_REMOVE_PREFIX}${groupId}`;
+  const title = isAdd ? "Add tracked users" : "Remove tracked users";
+  const placeholder = "76561198000000000, 918543318";
+  return new ModalV2Builder()
+    .setTitle(title)
+    .setCustomId(customId)
+    .addComponent(
+      "Steam IDs or BattleMetrics IDs",
+      new TextInputBuilder()
+        .setCustomId(TRACK_FIELD_IDS)
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setMaxLength(2000)
+        .setPlaceholder(placeholder),
+    );
+}
+
+function buildNotifyModal(group: TrackGroup) {
+  return new ModalV2Builder()
+    .setTitle("Notification settings")
+    .setCustomId(`${TRACK_MODAL_NOTIFY_PREFIX}${group.id}`)
+    .addComponent(
+      "Notification options",
+      new CheckboxGroupBuilder()
+        .setCustomId(TRACK_FIELD_NOTIFY_OPTIONS)
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(1)
+        .addOptions({
+          label: "Send updates",
+          value: TRACK_NOTIFY_SEND_UPDATES,
+          description: "Post a join/leave embed in this channel when state changes.",
+          default: group.sendUpdates,
+        }),
+    );
+}
+
+export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction) {
+  if (
+    !interaction.customId.startsWith(TRACK_MODAL_ADD_PREFIX) &&
+    !interaction.customId.startsWith(TRACK_MODAL_REMOVE_PREFIX) &&
+    !interaction.customId.startsWith(TRACK_MODAL_NOTIFY_PREFIX)
+  ) {
+    return false;
+  }
+
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) {
+    await interaction.reply({
+      content: "This modal can only be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  if (interaction.customId.startsWith(TRACK_MODAL_NOTIFY_PREFIX)) {
+    const groupId = Number(interaction.customId.slice(TRACK_MODAL_NOTIFY_PREFIX.length));
+    if (!Number.isInteger(groupId) || groupId <= 0) {
+      return true;
+    }
+    const selected = getFieldValues(interaction, TRACK_FIELD_NOTIFY_OPTIONS);
+    const sendUpdates = selected.includes(TRACK_NOTIFY_SEND_UPDATES);
+    await getBackend().updateTrackGroup(getWorkerID(), interaction.guildId, groupId, { sendUpdates });
+    await interaction.reply({
+      content: `Notifications ${sendUpdates ? "enabled" : "disabled"} for this track group.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  const isAdd = interaction.customId.startsWith(TRACK_MODAL_ADD_PREFIX);
+  const groupId = Number(
+    interaction.customId.slice(
+      (isAdd ? TRACK_MODAL_ADD_PREFIX : TRACK_MODAL_REMOVE_PREFIX).length,
+    ),
+  );
+  if (!Number.isInteger(groupId) || groupId <= 0) {
+    return true;
+  }
+
+  const raw = getFieldValues(interaction, TRACK_FIELD_IDS).join(",");
+  const identifiers = parseIdentifiers(raw);
+  if (identifiers.length === 0) {
+    await interaction.reply({
+      embeds: [buildErrorEmbed("Provide at least one Steam ID or BattleMetrics ID.")],
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  if (isAdd) {
+    const { resolved, failed } = await resolveIdentifiersToMembers(identifiers);
+    if (resolved.length > 0) {
+      await getBackend().addTrackGroupMembers(getWorkerID(), interaction.guildId, groupId, resolved);
+    }
+    await interaction.editReply({
+      embeds: [buildStatusEmbed(resolved.length, failed.length, failed)],
+    });
+    return true;
+  }
+
+  const removed = await getBackend()
+    .removeTrackGroupMembers(getWorkerID(), interaction.guildId, groupId, identifiers)
+    .catch(() => ({ count: 0 }));
+
+  await interaction.editReply({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("Tracking Status")
+        .setDescription(`> * Removed: ${removed.count}`)
+        .setColor(RUSTLENS_EMBED_COLOR)
+        .setTimestamp()
+        .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+    ],
+  });
+  return true;
+}
+
+async function resolveIdentifiersToMembers(identifiers: string[]) {
+  const resolved: { steamId: string; bmId: string }[] = [];
+  const failed: string[] = [];
+  const seenSteam = new Set<string>();
+
+  for (const raw of identifiers) {
+    const identifier = raw.trim();
+    if (identifier.length === 0) {
+      continue;
+    }
+
+    try {
+      if (STEAM_ID_PATTERN.test(identifier)) {
+        const member = await resolveSteamID(identifier);
+        if (!member) {
+          failed.push(identifier);
+          continue;
+        }
+        if (seenSteam.has(member.steamId)) continue;
+        seenSteam.add(member.steamId);
+        resolved.push(member);
+      } else if (BM_ID_PATTERN.test(identifier)) {
+        const member = await resolveBmID(identifier);
+        if (!member) {
+          failed.push(identifier);
+          continue;
+        }
+        if (seenSteam.has(member.steamId)) continue;
+        seenSteam.add(member.steamId);
+        resolved.push(member);
+      } else {
+        failed.push(identifier);
+      }
+    } catch {
+      failed.push(identifier);
+    }
+  }
+
+  return { resolved, failed };
+}
+
+async function resolveSteamID(steamId: string): Promise<{ steamId: string; bmId: string } | null> {
+  const backend = getBackend();
+  const workerId = getWorkerID();
+  try {
+    const account = await backend.getSteamAccount(workerId, steamId);
+    if (account.bmId) {
+      return { steamId: account.steamId, bmId: account.bmId };
+    }
+  } catch {
+    // fall through to profile fetch
+  }
+
+  // Trigger the lazy profile/BM lookup like /player does so the steam_account row gets a bm_id.
+  try {
+    await backend.getSteamProfile(workerId, steamId);
+  } catch {
+    // ignore — try once more below
+  }
+
+  try {
+    const account = await backend.getSteamAccount(workerId, steamId);
+    return account.bmId ? { steamId: account.steamId, bmId: account.bmId } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveBmID(bmId: string): Promise<{ steamId: string; bmId: string } | null> {
+  try {
+    const account = await getBackend().getSteamAccountByBmID(getWorkerID(), bmId);
+    if (account.steamId) {
+      return { steamId: account.steamId, bmId: account.bmId ?? bmId };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Polling: keep the pinned embed and channel name in sync, post update embeds.
+// ---------------------------------------------------------------------------
+
+type Snapshot = Map<string, boolean>; // steamId -> isOnline
+
+const previousSnapshots = new Map<number, Snapshot>();
+
+export function startTrackGroupPoller(client: Client) {
+  let running = false;
+
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await pollAllGroups(client);
+    } catch (error) {
+      console.error("[bot] track group poller failed", error);
+    } finally {
+      running = false;
+    }
+  };
+
+  setInterval(tick, POLL_INTERVAL_MS);
+  void tick();
+}
+
+async function pollAllGroups(client: Client) {
+  const guilds = [...client.guilds.cache.values()];
+  for (const guild of guilds) {
+    try {
+      await pollGuildGroups(guild);
+    } catch (error) {
+      console.error(`[bot] track group poll failed for guild ${guild.id}`, error);
+    }
+  }
+}
+
+async function pollGuildGroups(guild: Guild) {
+  const { items: groups } = await getBackend()
+    .listTrackGroups(getWorkerID(), guild.id)
+    .catch(() => ({ items: [] as TrackGroup[] }));
+
+  if (groups.length === 0) {
+    return;
+  }
+
+  const trackedServers = await getBackend()
+    .listTrackedServers(getWorkerID())
+    .catch(() => ({ items: [] as { bmId: string; name: string }[] }));
+  const serverNameByBmId = new Map(trackedServers.items.map((item) => [item.bmId, item.name]));
+
+  for (const group of groups) {
+    try {
+      await refreshTrackGroup(guild, group, serverNameByBmId.get(group.serverBmId) ?? group.serverBmId);
+    } catch (error) {
+      console.error(`[bot] failed to refresh track group ${group.id}`, error);
+    }
+  }
+}
+
+async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: string) {
+  const channel = await guild.channels.fetch(group.channelId).catch(() => null);
+  if (!channel || channel.type !== ChannelType.GuildText) {
+    return;
+  }
+  const textChannel = channel as TextChannel;
+
+  const { items: rows } = await getBackend()
+    .listTrackGroupOnlineState(getWorkerID(), guild.id, group.id)
+    .catch(() => ({ items: [] as TrackGroupOnlineRow[] }));
+
+  const onlineRows = rows.filter((row) => row.isOnline);
+  const onlineCount = onlineRows.length;
+  const embed = buildTrackEmbed({ name: group.name, serverName }, rows);
+  const components = buildTrackButtons(group.id);
+
+  let message = group.messageId
+    ? await textChannel.messages.fetch(group.messageId).catch(() => null)
+    : null;
+
+  if (!message) {
+    const sent = await textChannel.send({ embeds: [embed], components }).catch(() => null);
+    if (!sent) {
+      return;
+    }
+    await sent.pin().catch(() => null);
+    await getBackend().updateTrackGroup(getWorkerID(), guild.id, group.id, {
+      messageId: sent.id,
+    });
+    message = sent;
+  } else {
+    await message.edit({ embeds: [embed], components }).catch(() => null);
+  }
+
+  // Update channel name + persisted online_count if it changed.
+  if (group.onlineCount !== onlineCount) {
+    const desiredName = buildChannelName(group.name, onlineCount);
+    if (textChannel.name !== desiredName) {
+      await textChannel.setName(desiredName).catch(() => null);
+    }
+    await getBackend().updateTrackGroup(getWorkerID(), guild.id, group.id, {
+      onlineCount,
+    });
+  }
+
+  // Post change updates if enabled.
+  const previous = previousSnapshots.get(group.id);
+  const current: Snapshot = new Map(rows.map((row) => [row.steamId, row.isOnline]));
+
+  if (previous && group.sendUpdates) {
+    const changes: { row: TrackGroupOnlineRow; isOnline: boolean }[] = [];
+    for (const row of rows) {
+      const prev = previous.get(row.steamId);
+      if (prev !== undefined && prev !== row.isOnline) {
+        changes.push({ row, isOnline: row.isOnline });
+      }
+    }
+    for (const change of changes) {
+      const updateEmbed = buildJoinLeaveEmbed(change.row, change.isOnline, serverName);
+      await textChannel.send({ embeds: [updateEmbed] }).catch(() => null);
+    }
+  }
+
+  previousSnapshots.set(group.id, current);
+}
+
+function buildJoinLeaveEmbed(row: TrackGroupOnlineRow, isOnline: boolean, serverName: string) {
+  const action = isOnline ? "joined" : "left";
+  const color = isOnline ? JOIN_COLOR : LEAVE_COLOR;
+  const label = row.bmName.trim().length > 0 ? row.bmName : (row.bmId || row.steamId);
+  const lines = [
+    `<:steam:1444016467648581642> [${row.steamId}](https://steamcommunity.com/profiles/${row.steamId})`,
+  ];
+  if (row.bmId) {
+    lines.push(`<:battlemetrics:1444011821529956472> [${row.bmId}](https://www.battlemetrics.com/rcon/players/${row.bmId})`);
+  }
+
+  return new EmbedBuilder()
+    .setTitle(`${label} has ${action} ${serverName}`)
+    .setColor(color)
+    .addFields({ name: "Information", value: lines.join("\n") })
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+export const __testables = {
+  buildChannelName,
+  parseIdentifiers,
+  buildTrackEmbed,
+  sanitizeGroupNameForChannel,
+};

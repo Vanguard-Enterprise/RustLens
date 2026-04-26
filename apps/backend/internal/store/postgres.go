@@ -19,7 +19,7 @@ type GuildSettings struct {
 	WipeReactLogChannelID     string
 	LinkingLogChannelID       string
 	TrackedServerLogChannelID string
-	AlertsChannelID           string
+	TrackedUsersCategoryID    string
 	AdminRoleID               string
 }
 
@@ -27,7 +27,7 @@ type GuildSettingsPatch struct {
 	WipeReactLogChannelID     *string
 	LinkingLogChannelID       *string
 	TrackedServerLogChannelID *string
-	AlertsChannelID           *string
+	TrackedUsersCategoryID    *string
 	AdminRoleID               *string
 }
 
@@ -72,7 +72,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			wipe_react_log_channel_id TEXT NOT NULL DEFAULT '',
 			linking_log_channel_id TEXT NOT NULL DEFAULT '',
 			tracked_server_log_channel_id TEXT NOT NULL DEFAULT '',
-			alerts_channel_id TEXT NOT NULL DEFAULT '',
+			tracked_users_category_id TEXT NOT NULL DEFAULT '',
 			admin_role_id TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -83,9 +83,10 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS wipe_react_log_channel_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS linking_log_channel_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS tracked_server_log_channel_id TEXT NOT NULL DEFAULT '';
-		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS alerts_channel_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS tracked_users_category_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS admin_role_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE guild_settings DROP COLUMN IF EXISTS log_channel_id;
+		ALTER TABLE guild_settings DROP COLUMN IF EXISTS alerts_channel_id;
 
 		CREATE TABLE IF NOT EXISTS wipe_reacts (
 			message_id TEXT PRIMARY KEY,
@@ -394,6 +395,34 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS guild_steam_discord_links_guild_steam_idx
 		ON guild_steam_discord_links (guild_id, steam_id);
 
+		CREATE TABLE IF NOT EXISTS track_groups (
+			id BIGSERIAL PRIMARY KEY,
+			guild_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			server_bm_id TEXT NOT NULL REFERENCES tracked_servers(bm_id) ON DELETE CASCADE,
+			channel_id TEXT NOT NULL DEFAULT '',
+			message_id TEXT NOT NULL DEFAULT '',
+			send_updates BOOLEAN NOT NULL DEFAULT FALSE,
+			online_count INTEGER NOT NULL DEFAULT 0,
+			created_by TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (guild_id, name)
+		);
+
+		CREATE INDEX IF NOT EXISTS track_groups_guild_idx ON track_groups (guild_id);
+
+		CREATE TABLE IF NOT EXISTS track_group_members (
+			track_group_id BIGINT NOT NULL REFERENCES track_groups(id) ON DELETE CASCADE,
+			steam_id TEXT NOT NULL,
+			bm_id TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (track_group_id, steam_id)
+		);
+
+		CREATE INDEX IF NOT EXISTS track_group_members_group_idx ON track_group_members (track_group_id);
+		CREATE INDEX IF NOT EXISTS track_group_members_bm_idx ON track_group_members (bm_id);
+
 		CREATE TABLE IF NOT EXISTS user_bans (
 			discord_id TEXT PRIMARY KEY,
 			categories TEXT[] NOT NULL DEFAULT '{}',
@@ -599,7 +628,7 @@ func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (G
 		SELECT wipe_react_log_channel_id,
 			linking_log_channel_id,
 			tracked_server_log_channel_id,
-			alerts_channel_id,
+			tracked_users_category_id,
 			admin_role_id
 		FROM guild_settings
 		WHERE guild_id = $1
@@ -607,7 +636,7 @@ func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (G
 		&settings.WipeReactLogChannelID,
 		&settings.LinkingLogChannelID,
 		&settings.TrackedServerLogChannelID,
-		&settings.AlertsChannelID,
+		&settings.TrackedUsersCategoryID,
 		&settings.AdminRoleID,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -616,7 +645,7 @@ func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (G
 			WipeReactLogChannelID:     "",
 			LinkingLogChannelID:       "",
 			TrackedServerLogChannelID: "",
-			AlertsChannelID:           "",
+			TrackedUsersCategoryID:    "",
 			AdminRoleID:               "",
 		}, nil
 	}
@@ -643,7 +672,7 @@ func (p *PostgresStore) UpdateGuildSettings(ctx context.Context, guildID string,
 		SET wipe_react_log_channel_id = COALESCE($2, wipe_react_log_channel_id),
 			linking_log_channel_id = COALESCE($3, linking_log_channel_id),
 			tracked_server_log_channel_id = COALESCE($4, tracked_server_log_channel_id),
-			alerts_channel_id = COALESCE($5, alerts_channel_id),
+			tracked_users_category_id = COALESCE($5, tracked_users_category_id),
 			admin_role_id = COALESCE($6, admin_role_id),
 			updated_at = NOW()
 		WHERE guild_id = $1
@@ -652,7 +681,7 @@ func (p *PostgresStore) UpdateGuildSettings(ctx context.Context, guildID string,
 		patch.WipeReactLogChannelID,
 		patch.LinkingLogChannelID,
 		patch.TrackedServerLogChannelID,
-		patch.AlertsChannelID,
+		patch.TrackedUsersCategoryID,
 		patch.AdminRoleID,
 	)
 	if err != nil {

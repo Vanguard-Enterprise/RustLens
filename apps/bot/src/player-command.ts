@@ -173,7 +173,7 @@ function buildPrivateProfileEmbed(steamId: string, bmId: string | null) {
     `${PLAYER_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`,
   ];
   if (bmId) {
-    info.push(`${PLAYER_EMOJIS.battlemetrics} [${bmId}](https://www.battlemetrics.com/players/${bmId})`);
+    info.push(`${PLAYER_EMOJIS.battlemetrics} [${bmId}](https://www.battlemetrics.com/rcon/players/${bmId})`);
   }
 
   embed.addFields({ name: "Information", value: info.join("\n") });
@@ -294,7 +294,7 @@ async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<
     `${PLAYER_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`,
   ];
   if (account?.bmId) {
-    info.push(`${PLAYER_EMOJIS.battlemetrics} [${account.bmId}](https://www.battlemetrics.com/players/${account.bmId})`);
+    info.push(`${PLAYER_EMOJIS.battlemetrics} [${account.bmId}](https://www.battlemetrics.com/rcon/players/${account.bmId})`);
   }
   embed.addFields({ name: "Information", value: info.join("\n") });
 
@@ -448,7 +448,7 @@ function formatSteamAccountList(
       `> *  ${PLAYER_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`,
     ];
     if (account?.bmId) {
-      lines.push(`> *   ${PLAYER_EMOJIS.battlemetrics} [${account.bmId}](https://www.battlemetrics.com/players/${account.bmId})`);
+      lines.push(`> *   ${PLAYER_EMOJIS.battlemetrics} [${account.bmId}](https://www.battlemetrics.com/rcon/players/${account.bmId})`);
     }
     blocks.push(lines.join("\n"));
   }
@@ -476,7 +476,7 @@ export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
   const info: string[] = [];
   info.push(`${PLAYER_EMOJIS.steam} [${analytics.steamId}](https://steamcommunity.com/profiles/${analytics.steamId})`);
   if (analytics.bmId) {
-    info.push(`${PLAYER_EMOJIS.battlemetrics} [${analytics.bmId}](https://www.battlemetrics.com/players/${analytics.bmId})`);
+    info.push(`${PLAYER_EMOJIS.battlemetrics} [${analytics.bmId}](https://www.battlemetrics.com/rcon/players/${analytics.bmId})`);
   }
   embed.addFields({ name: "Information", value: info.join("\n") });
 

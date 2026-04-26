@@ -38,6 +38,7 @@ const COMMAND_CATEGORY_MAP: Record<string, BanCategory> = {
   summon: "coordination",
   announce: "coordination",
   bind: "coordination",
+  track: "activity",
 };
 
 export function resolveCommandCategory(commandName: string, subcommand: string | null): BanCategory {
@@ -57,6 +58,9 @@ export function resolveCustomIdCategory(customId: string): BanCategory | null {
     customId.startsWith("transfer:")
   ) {
     return "setup";
+  }
+  if (customId.startsWith("track:") || customId.startsWith("track_modal:")) {
+    return "activity";
   }
   if (customId.startsWith("wipereact_") || customId.startsWith("bind_")) {
     return "coordination";

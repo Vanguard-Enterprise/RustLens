@@ -31,7 +31,7 @@ describe("BackendClient", () => {
         wipeReactLogChannelId: "456",
         linkingLogChannelId: "",
         trackedServerLogChannelId: "",
-        alertsChannelId: "",
+        trackedUsersCategoryId: "",
         adminRoleId: "",
       }),
     } as Response;

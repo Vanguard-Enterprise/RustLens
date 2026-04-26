@@ -77,6 +77,14 @@ import {
   handleSummonChatInput,
 } from "./summon-command.js";
 import {
+  ensureTrackCommand,
+  handleTrackAutocomplete,
+  handleTrackButtonInteraction,
+  handleTrackChatInput,
+  handleTrackModalSubmit,
+  startTrackGroupPoller,
+} from "./track-command.js";
+import {
   ensureTransferCommand,
   handleTransferButtonInteraction,
   handleTransferChatInput,
@@ -155,6 +163,7 @@ client.once("clientReady", () => {
     ensureBanCommand(client, shardID),
     ensureTransferCommand(client, shardID),
     ensureSearchCommand(client, shardID),
+    ensureTrackCommand(client, shardID),
     rehydratePersistedWipeReacts(client),
   ]).then((results) => {
     for (const result of results) {
@@ -164,6 +173,7 @@ client.once("clientReady", () => {
     }
     startWipeReactScheduler(client);
     startTrackedServerLogPoller(client);
+    startTrackGroupPoller(client);
   });
 });
 
@@ -200,6 +210,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleSearchAutocomplete(interaction)) {
+        return;
+      }
+
+      if (await handleTrackAutocomplete(interaction)) {
         return;
       }
     }
@@ -279,6 +293,10 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleTrackChatInput(interaction)) {
+        return;
+      }
+
       await handleSettingsChatInput(interaction);
       return;
     }
@@ -319,6 +337,10 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleTrackModalSubmit(interaction)) {
+        return;
+      }
+
       await handleSettingsModalSubmit(interaction);
       return;
     }
@@ -342,6 +364,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleTransferButtonInteraction(interaction)) {
+        return;
+      }
+
+      if (await handleTrackButtonInteraction(interaction)) {
         return;
       }
 

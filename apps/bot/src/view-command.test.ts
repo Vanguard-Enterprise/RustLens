@@ -42,7 +42,7 @@ describe("view-command", () => {
     expect(embed.title).toBe("turn it up");
     expect(embed.thumbnail?.url).toBe("https://cdn.example/avatar.png");
     expect(embed.fields?.[0]?.value).toContain("https://steamcommunity.com/profiles/76561198000000000");
-    expect(embed.fields?.[0]?.value).toContain("https://www.battlemetrics.com/players/918543318");
+    expect(embed.fields?.[0]?.value).toContain("https://www.battlemetrics.com/rcon/players/918543318");
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
     expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
     expect(embed.fields).toHaveLength(11);

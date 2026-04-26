@@ -28,6 +28,7 @@ export const SETTINGS_COMMAND_NAME = "settings";
 
 const SETTINGS_SELECT_CUSTOM_ID = "settings:select";
 const SETTINGS_CHANNEL_MODAL_PREFIX = "settings:channel:";
+const SETTINGS_CATEGORY_MODAL_PREFIX = "settings:category:";
 const SETTINGS_ROLE_MODAL_PREFIX = "settings:role:";
 const SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID = "settings:tracked-servers";
 const SETTINGS_SELECT_FIELD_CUSTOM_ID = "settings:value";
@@ -39,7 +40,7 @@ const SETTINGS_OPTION_LINKING_LOGS = "linking_logs";
 const SETTINGS_OPTION_TRACKED_SERVER_LOGS = "tracked_server_logs";
 const SETTINGS_OPTION_TRACKED_SERVERS = "tracked_servers";
 const SETTINGS_OPTION_ADMIN_ROLE = "admin_role";
-const SETTINGS_OPTION_ALERTS = "alerts";
+const SETTINGS_OPTION_TRACKED_USERS = "tracked_users";
 
 const guildSettingsCommand = new SlashCommandBuilder()
   .setName(SETTINGS_COMMAND_NAME)
@@ -90,10 +91,10 @@ const settingsChoices: readonly SettingsChoice[] = [
     emoji: "🗝️",
   },
   {
-    label: "Alerts",
-    value: SETTINGS_OPTION_ALERTS,
-    description: "Set the alerts channel",
-    emoji: "🚨",
+    label: "Tracked users",
+    value: SETTINGS_OPTION_TRACKED_USERS,
+    description: "Category where channels get created for tracked users.",
+    emoji: "📁",
   },
 ] as const;
 
@@ -122,6 +123,10 @@ function getWorkerID() {
 
 function formatChannelValue(channelId: string) {
   return channelId ? `<#${channelId}>` : "`Not set`";
+}
+
+function formatCategoryValue(categoryId: string) {
+  return categoryId ? `<#${categoryId}>` : "`Not set`";
 }
 
 function formatRoleValue(roleId: string) {
@@ -175,8 +180,8 @@ async function buildSettingsPayload(guild: Guild) {
         inline: true,
       },
       {
-        name: "🚨 Alerts",
-        value: `Alerts for low hours or new game bans.\n${formatChannelValue(settings.alertsChannelId)}`,
+        name: "📁 Tracked users",
+        value: `Category where channels get created for tracked users.\n${formatCategoryValue(settings.trackedUsersCategoryId)}`,
         inline: true,
       },
     );
@@ -264,6 +269,23 @@ async function fetchGuildChannelOptions(guild: Guild) {
     });
 }
 
+async function fetchGuildCategoryOptions(guild: Guild) {
+  await guild.channels.fetch();
+
+  return [...guild.channels.cache.values()]
+    .filter((channel): channel is GuildBasedChannel => Boolean(channel))
+    .filter((channel) => channel.type === ChannelType.GuildCategory)
+    .sort((left, right) => {
+      const leftPosition = "rawPosition" in left ? left.rawPosition : 0;
+      const rightPosition = "rawPosition" in right ? right.rawPosition : 0;
+      if (leftPosition !== rightPosition) {
+        return leftPosition - rightPosition;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+}
+
 async function fetchGuildRoleOptions(guild: Guild) {
   await guild.roles.fetch();
 
@@ -300,7 +322,7 @@ function buildTrackedServersModal(
 function buildChannelSettingsModal(
   fieldKey: keyof Pick<
     GuildSettingsPatch,
-    "alertsChannelId" | "linkingLogChannelId" | "trackedServerLogChannelId" | "wipeReactLogChannelId"
+    "linkingLogChannelId" | "trackedServerLogChannelId" | "wipeReactLogChannelId"
   >,
   label: string,
   channels: GuildBasedChannel[],
@@ -333,6 +355,39 @@ function buildChannelSettingsModal(
               }`,
             ),
             ...(channel.id === currentChannelId && { default: true }),
+          })),
+        ),
+    );
+
+  return modal;
+}
+
+function buildCategorySettingsModal(
+  fieldKey: keyof Pick<GuildSettingsPatch, "trackedUsersCategoryId">,
+  label: string,
+  categories: GuildBasedChannel[],
+  currentCategoryId: string,
+) {
+  const modal = new ModalV2Builder()
+    .setTitle("Server Settings")
+    .setCustomId(`${SETTINGS_CATEGORY_MODAL_PREFIX}${fieldKey}`)
+    .addComponent(
+      label,
+      new StringSelectBuilder()
+        .setCustomId(SETTINGS_SELECT_FIELD_CUSTOM_ID)
+        .setRequired(true)
+        .setMinValues(1)
+        .setMaxValues(1)
+        .addOption({
+          label: "Not set",
+          value: SETTINGS_UNSET_VALUE,
+          ...(currentCategoryId.length === 0 && { default: true }),
+        })
+        .addOptions(
+          ...categories.slice(0, 24).map((category) => ({
+            label: trimOptionLabel(category.name),
+            value: category.id,
+            ...(category.id === currentCategoryId && { default: true }),
           })),
         ),
     );
@@ -490,6 +545,19 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
     return true;
   }
 
+  if (selected === SETTINGS_OPTION_TRACKED_USERS) {
+    const categories = await fetchGuildCategoryOptions(interaction.guild);
+    await interaction.showModal(
+      buildCategorySettingsModal(
+        "trackedUsersCategoryId",
+        "Tracked users",
+        categories,
+        settings.trackedUsersCategoryId,
+      ).toJSON() as any,
+    );
+    return true;
+  }
+
   const channels = await fetchGuildChannelOptions(interaction.guild);
 
   if (selected === SETTINGS_OPTION_WIPE_REACT_LOGS) {
@@ -528,18 +596,6 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
     return true;
   }
 
-  if (selected === SETTINGS_OPTION_ALERTS) {
-    await interaction.showModal(
-      buildChannelSettingsModal(
-        "alertsChannelId",
-        "Alerts",
-        channels,
-        settings.alertsChannelId,
-      ).toJSON() as any,
-    );
-    return true;
-  }
-
   await interaction.reply({
     content: "That setting is not supported.",
     flags: MessageFlags.Ephemeral,
@@ -549,6 +605,7 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
 
 export async function handleSettingsModalSubmit(interaction: ModalSubmitInteraction) {
   if (!interaction.customId.startsWith(SETTINGS_CHANNEL_MODAL_PREFIX) &&
+      !interaction.customId.startsWith(SETTINGS_CATEGORY_MODAL_PREFIX) &&
       !interaction.customId.startsWith(SETTINGS_ROLE_MODAL_PREFIX) &&
       interaction.customId !== SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID) {
     return false;
@@ -573,7 +630,7 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
 
   if (interaction.customId.startsWith(SETTINGS_CHANNEL_MODAL_PREFIX)) {
     const field = interaction.customId.slice(SETTINGS_CHANNEL_MODAL_PREFIX.length);
-    const validChannelFields = new Set(["wipeReactLogChannelId", "linkingLogChannelId", "trackedServerLogChannelId", "alertsChannelId"]);
+    const validChannelFields = new Set(["wipeReactLogChannelId", "linkingLogChannelId", "trackedServerLogChannelId"]);
     if (!validChannelFields.has(field)) {
       await interaction.reply({
         content: "That setting is not valid.",
@@ -591,6 +648,36 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
       if (!isValidGuildChannel(channel, selectedValue)) {
         await interaction.reply({
           content: "That channel is no longer available.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return true;
+      }
+    }
+
+    await updateGuildSettings(interaction.guildId, { [field]: selectedValue ?? undefined });
+    await refreshSettingsMessage(interaction, interaction.guild);
+    return true;
+  }
+
+  if (interaction.customId.startsWith(SETTINGS_CATEGORY_MODAL_PREFIX)) {
+    const field = interaction.customId.slice(SETTINGS_CATEGORY_MODAL_PREFIX.length);
+    if (field !== "trackedUsersCategoryId") {
+      await interaction.reply({
+        content: "That setting is not valid.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    let category: GuildBasedChannel | null = null;
+    if (selectedValue) {
+      category =
+        interaction.guild.channels.cache.get(selectedValue) ??
+        (await interaction.guild.channels.fetch(selectedValue).catch(() => null));
+
+      if (!category || category.id !== selectedValue || category.type !== ChannelType.GuildCategory) {
+        await interaction.reply({
+          content: "That category is no longer available.",
           flags: MessageFlags.Ephemeral,
         });
         return true;

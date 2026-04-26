@@ -28,7 +28,7 @@ Append-only log of shard worker lifecycle events.
 
 ### `guild_settings`
 
-Per-guild bot settings for logs, alerts, and command authorization.
+Per-guild bot settings for logs, the tracked-users category, and command authorization.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -36,7 +36,7 @@ Per-guild bot settings for logs, alerts, and command authorization.
 | `wipe_react_log_channel_id` | `TEXT NOT NULL DEFAULT ''` | Channel snowflake |
 | `linking_log_channel_id` | `TEXT NOT NULL DEFAULT ''` | Channel snowflake |
 | `tracked_server_log_channel_id` | `TEXT NOT NULL DEFAULT ''` | Channel snowflake |
-| `alerts_channel_id` | `TEXT NOT NULL DEFAULT ''` | Channel snowflake |
+| `tracked_users_category_id` | `TEXT NOT NULL DEFAULT ''` | Discord category snowflake — parent for /track group channels. Replaces the legacy `alerts_channel_id` column, which is dropped on migration. |
 | `admin_role_id` | `TEXT NOT NULL DEFAULT ''` | Role snowflake |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |

@@ -123,6 +123,17 @@ func NewRouter(
 		r.Get("/guilds/{guildID}/discord/{discordID}/links", handler.ListGuildLinksByDiscord)
 		r.Get("/guilds/{guildID}/steam/{steamID}/links", handler.ListGuildLinksBySteam)
 		r.Delete("/guilds/{guildID}/discord/{discordID}/steam/{steamID}", handler.DeleteGuildSteamDiscordLink)
+
+		// Track groups (admin /track command)
+		r.Get("/guilds/{guildID}/track-groups", handler.ListTrackGroups)
+		r.Post("/guilds/{guildID}/track-groups", handler.CreateTrackGroup)
+		r.Get("/guilds/{guildID}/track-groups/{groupID}", handler.GetTrackGroup)
+		r.Put("/guilds/{guildID}/track-groups/{groupID}", handler.UpdateTrackGroup)
+		r.Delete("/guilds/{guildID}/track-groups/{groupID}", handler.DeleteTrackGroup)
+		r.Get("/guilds/{guildID}/track-groups/{groupID}/members", handler.ListTrackGroupMembers)
+		r.Post("/guilds/{guildID}/track-groups/{groupID}/members", handler.AddTrackGroupMembers)
+		r.Post("/guilds/{guildID}/track-groups/{groupID}/members/remove", handler.RemoveTrackGroupMembers)
+		r.Get("/guilds/{guildID}/track-groups/{groupID}/online-state", handler.ListTrackGroupOnlineState)
 	})
 
 	appAuthRepo := appauth.NewRepo(postgres.Pool())

@@ -34,7 +34,7 @@ describe("online-command", () => {
     });
 
     expect(line).toContain("<@456>");
-    expect(line).toContain("https://www.battlemetrics.com/players/918543318");
+    expect(line).toContain("https://www.battlemetrics.com/rcon/players/918543318");
     expect(line).toContain("<t:1773019298:R>");
   });
 });

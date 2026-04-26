@@ -338,7 +338,7 @@ function buildViewAllPage(items: ReadonlyArray<{ discordId: string; steamId: str
     const acct = accountMap.get(link.steamId);
     let line = `<@${link.discordId}> - [${link.steamId}](https://steamcommunity.com/profiles/${link.steamId})`;
     if (acct?.bmId) {
-      line += ` - [${acct.bmId}](https://www.battlemetrics.com/players/${acct.bmId})`;
+      line += ` - [${acct.bmId}](https://www.battlemetrics.com/rcon/players/${acct.bmId})`;
     }
     return `> * ${line}`;
   }).join("\n");
@@ -391,7 +391,7 @@ export function buildUserEmbed(
 
   let info = `${VIEW_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`;
   if (profile?.bmId) {
-    info += `\n${VIEW_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/players/${profile.bmId})`;
+    info += `\n${VIEW_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/rcon/players/${profile.bmId})`;
   }
   if (discordId) {
     info += `\n${VIEW_EMOJIS.discord} <@${discordId}>`;
