@@ -42,7 +42,7 @@ func main() {
 		log.Fatalf("schema migration failed: %v", err)
 	}
 
-	outboundProvider, err := outboundhttp.NewProvider(cfg.ProxyEnabled, cfg.ProxyEndpoints, 10*time.Second)
+	outboundProvider, err := outboundhttp.NewProvider(cfg.ProxyEnabled, cfg.ProxyEndpoints, 20*time.Second)
 	if err != nil {
 		log.Fatalf("outbound proxy init failed: %v", err)
 	}
@@ -59,10 +59,10 @@ func main() {
 		shardService,
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
-		battlemetrics.NewClient("", outboundProvider),
+		battlemetrics.NewClient(cfg.BattleMetricsAPIKey, outboundProvider),
 		battlemetrics.NewClient(cfg.BattleMetricsAPIKey, directProvider),
 	)
-	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient("", outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
+	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(cfg.BattleMetricsAPIKey, outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
 	wipeReactSchedulePoller := wipereactscheduler.NewPoller(postgresStore)
 	wipeReactSchedulePoller.Start(ctx)
@@ -71,6 +71,10 @@ func main() {
 		Addr:              ":" + cfg.Port,
 		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	go func() {

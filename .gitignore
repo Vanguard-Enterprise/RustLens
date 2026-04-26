@@ -35,3 +35,10 @@ Thumbs.db
 .playwright-mcp/
 
 opencode.json
+
+# Codex Ignore
+.codex*
+.codex-logs
+
+# Agent Fixes
+/ownership-map-out/

@@ -1566,6 +1566,329 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/app/auth/discord/complete": map[string]any{
+				"post": map[string]any{
+					"summary":     "Complete Discord auth",
+					"description": "Upserts a browser app user from a Discord OAuth profile and returns the current user payload.",
+					"security":    []map[string][]string{{"appSecretAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CompleteDiscordAuthRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Discord auth completed",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/app/auth/register": map[string]any{
+				"post": map[string]any{
+					"summary":     "Register a password user",
+					"description": "Creates a new email and password browser account and returns the signed-in user payload.",
+					"security":    []map[string][]string{{"appSecretAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/PasswordRegisterRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "User registered",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"409": map[string]any{"$ref": "#/components/responses/Conflict"},
+					},
+				},
+			},
+			"/api/app/auth/login": map[string]any{
+				"post": map[string]any{
+					"summary":     "Log in with email and password",
+					"description": "Authenticates a browser app user with email and password and returns the current user payload.",
+					"security":    []map[string][]string{{"appSecretAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/PasswordLoginRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "User authenticated",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/app/auth/password/reset/request": map[string]any{
+				"post": map[string]any{
+					"summary":     "Request a password reset",
+					"description": "Creates a password reset token for a linked email address and optionally returns a debug token in local debug mode.",
+					"security":    []map[string][]string{{"appSecretAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/PasswordResetRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Password reset request handled",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/PasswordResetRequestResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/app/auth/password/reset/consume": map[string]any{
+				"post": map[string]any{
+					"summary":     "Consume a password reset token",
+					"description": "Resets a password with a one-time token and returns the current user payload.",
+					"security":    []map[string][]string{{"appSecretAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/ConsumePasswordResetRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Password reset consumed",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/app/auth/email/verify/consume": map[string]any{
+				"post": map[string]any{
+					"summary":     "Consume an email verification token",
+					"description": "Marks the primary email as verified using a one-time token and returns the current user payload.",
+					"security":    []map[string][]string{{"appSecretAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/ConsumeEmailVerificationRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Email verified",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/app/auth/email/verify/request": map[string]any{
+				"post": map[string]any{
+					"summary":     "Request email verification",
+					"description": "Creates an email verification token for the signed-in app user and optionally returns a debug token in local debug mode.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Email verification request handled",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/EmailVerificationRequestResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"409": map[string]any{"$ref": "#/components/responses/Conflict"},
+					},
+				},
+			},
+			"/api/app/me": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get the current app user",
+					"description": "Returns the signed-in browser user's account, email, connection, and guild membership data.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Current user returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/app/me/connections": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get current app user connections",
+					"description": "Returns the signed-in browser user's email, Discord, and Steam connection data.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Connections returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserConnectionsResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/app/me/guilds": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get current app user guild memberships",
+					"description": "Returns the signed-in browser user's guild membership records mirrored from Discord.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Guild memberships returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/UserGuildMembershipListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/app/admin/users": map[string]any{
+				"get": map[string]any{
+					"summary":     "List admin users",
+					"description": "Returns internal admin overview data for browser app users.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Admin users returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/AdminUserListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+					},
+				},
+			},
+			"/api/app/admin/guilds": map[string]any{
+				"get": map[string]any{
+					"summary":     "List admin guilds",
+					"description": "Returns internal admin overview data for guild activity, linked members, and tracked servers.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Admin guilds returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/AdminGuildOverviewListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+					},
+				},
+			},
+			"/api/app/admin/servers": map[string]any{
+				"get": map[string]any{
+					"summary":     "List admin servers",
+					"description": "Returns internal admin overview data for owner-managed tracked BattleMetrics servers.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Admin servers returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/AdminServerOverviewListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+					},
+				},
+			},
+			"/api/app/admin/audit": map[string]any{
+				"get": map[string]any{
+					"summary":     "List admin audit events",
+					"description": "Returns recent browser auth and internal admin audit events.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "limit",
+							"in":          "query",
+							"required":    false,
+							"description": "Optional limit between 1 and 200. Defaults to 50.",
+							"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": 200},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Audit events returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/AuditEventListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"securitySchemes": map[string]any{
@@ -1573,6 +1896,16 @@ func buildOpenAPIDocument() map[string]any {
 					"type":         "http",
 					"scheme":       "bearer",
 					"bearerFormat": "JWT",
+				},
+				"appSecretAuth": map[string]any{
+					"type": "apiKey",
+					"in":   "header",
+					"name": "X-RustLens-App-Secret",
+				},
+				"appSessionAuth": map[string]any{
+					"type": "apiKey",
+					"in":   "header",
+					"name": "X-RustLens-Session",
 				},
 			},
 			"responses": map[string]any{
@@ -1586,6 +1919,22 @@ func buildOpenAPIDocument() map[string]any {
 				},
 				"Unauthorized": map[string]any{
 					"description": "Unauthorized",
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
+						},
+					},
+				},
+				"Forbidden": map[string]any{
+					"description": "Forbidden",
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
+						},
+					},
+				},
+				"Conflict": map[string]any{
+					"description": "Conflict",
 					"content": map[string]any{
 						"application/json": map[string]any{
 							"schema": map[string]any{"$ref": "#/components/schemas/ErrorResponse"},
@@ -2095,6 +2444,276 @@ func buildOpenAPIDocument() map[string]any {
 						"guildId":   map[string]any{"type": "string"},
 					},
 					"required": []string{"discordId", "guildId"},
+				},
+				"AppUser": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":          map[string]any{"type": "string"},
+						"displayName": map[string]any{"type": "string"},
+						"avatarUrl":   map[string]any{"type": "string"},
+						"roles": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
+						"createdAt":   map[string]any{"type": "string", "format": "date-time"},
+						"updatedAt":   map[string]any{"type": "string", "format": "date-time"},
+						"lastLoginAt": map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"id", "displayName", "avatarUrl", "roles", "createdAt", "updatedAt", "lastLoginAt"},
+				},
+				"ConnectedAccount": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"provider":          map[string]any{"type": "string"},
+						"providerAccountId": map[string]any{"type": "string"},
+						"username":          map[string]any{"type": "string"},
+						"displayName":       map[string]any{"type": "string"},
+						"avatarUrl":         map[string]any{"type": "string"},
+						"profileEmail":      map[string]any{"type": "string", "format": "email"},
+						"createdAt":         map[string]any{"type": "string", "format": "date-time"},
+						"updatedAt":         map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"provider", "providerAccountId", "username", "displayName", "avatarUrl", "profileEmail", "createdAt", "updatedAt"},
+				},
+				"UserEmail": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"email":      map[string]any{"type": "string", "format": "email"},
+						"isPrimary":  map[string]any{"type": "boolean"},
+						"isVerified": map[string]any{"type": "boolean"},
+						"createdAt":  map[string]any{"type": "string", "format": "date-time"},
+						"updatedAt":  map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"email", "isPrimary", "isVerified", "createdAt", "updatedAt"},
+				},
+				"LinkedSteamAccount": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steamId":     map[string]any{"type": "string"},
+						"bmId":        map[string]any{"type": "string"},
+						"bmName":      map[string]any{"type": "string"},
+						"avatarImage": map[string]any{"type": "string"},
+						"type":        map[string]any{"type": "string", "enum": []string{"soft", "hard"}},
+						"source":      map[string]any{"type": "string"},
+					},
+					"required": []string{"steamId", "bmId", "bmName", "avatarImage", "type", "source"},
+				},
+				"UserGuildMembership": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId":     map[string]any{"type": "string"},
+						"isActive":    map[string]any{"type": "boolean"},
+						"firstSeenAt": map[string]any{"type": "string", "format": "date-time"},
+						"lastSeenAt":  map[string]any{"type": "string", "format": "date-time"},
+						"leftAt":      map[string]any{"type": "string", "format": "date-time", "nullable": true},
+					},
+					"required": []string{"guildId", "isActive", "firstSeenAt", "lastSeenAt", "leftAt"},
+				},
+				"CurrentUserResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"user": map[string]any{"$ref": "#/components/schemas/AppUser"},
+						"emails": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/UserEmail"},
+						},
+						"steamAccounts": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/LinkedSteamAccount"},
+						},
+						"guilds": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/UserGuildMembership"},
+						},
+						"discordAccount": map[string]any{
+							"allOf":    []map[string]any{{"$ref": "#/components/schemas/ConnectedAccount"}},
+							"nullable": true,
+						},
+						"primaryEmail": map[string]any{
+							"allOf":    []map[string]any{{"$ref": "#/components/schemas/UserEmail"}},
+							"nullable": true,
+						},
+					},
+					"required": []string{"user", "emails", "steamAccounts", "guilds", "discordAccount", "primaryEmail"},
+				},
+				"CompleteDiscordAuthRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"discordId":     map[string]any{"type": "string"},
+						"username":      map[string]any{"type": "string"},
+						"displayName":   map[string]any{"type": "string"},
+						"avatarUrl":     map[string]any{"type": "string"},
+						"email":         map[string]any{"type": "string", "format": "email"},
+						"emailVerified": map[string]any{"type": "boolean"},
+					},
+					"required": []string{"discordId"},
+				},
+				"PasswordRegisterRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"email":       map[string]any{"type": "string", "format": "email"},
+						"password":    map[string]any{"type": "string"},
+						"displayName": map[string]any{"type": "string"},
+					},
+					"required": []string{"email", "password"},
+				},
+				"PasswordLoginRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"email":    map[string]any{"type": "string", "format": "email"},
+						"password": map[string]any{"type": "string"},
+					},
+					"required": []string{"email", "password"},
+				},
+				"PasswordResetRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"email": map[string]any{"type": "string", "format": "email"},
+					},
+					"required": []string{"email"},
+				},
+				"PasswordResetRequestResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"status":     map[string]any{"type": "string", "enum": []string{"sent", "unlinked"}},
+						"linked":     map[string]any{"type": "boolean"},
+						"debugToken": map[string]any{"type": "string"},
+					},
+					"required": []string{"status", "linked"},
+				},
+				"ConsumePasswordResetRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"token":       map[string]any{"type": "string"},
+						"newPassword": map[string]any{"type": "string"},
+					},
+					"required": []string{"token", "newPassword"},
+				},
+				"EmailVerificationRequestResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"status":     map[string]any{"type": "string", "enum": []string{"sent"}},
+						"debugToken": map[string]any{"type": "string"},
+					},
+					"required": []string{"status"},
+				},
+				"ConsumeEmailVerificationRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"token": map[string]any{"type": "string"},
+					},
+					"required": []string{"token"},
+				},
+				"CurrentUserConnectionsResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"emails": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/UserEmail"},
+						},
+						"steamAccounts": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/LinkedSteamAccount"},
+						},
+						"discordAccount": map[string]any{"$ref": "#/components/schemas/ConnectedAccount"},
+					},
+					"required": []string{"emails", "steamAccounts"},
+				},
+				"UserGuildMembershipListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/UserGuildMembership"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"AdminUserListItem": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"user":                 map[string]any{"$ref": "#/components/schemas/AppUser"},
+						"discordId":            map[string]any{"type": "string"},
+						"discordUsername":      map[string]any{"type": "string"},
+						"primaryEmail":         map[string]any{"type": "string", "format": "email"},
+						"guildCount":           map[string]any{"type": "integer"},
+						"steamConnectionCount": map[string]any{"type": "integer"},
+					},
+					"required": []string{"user", "discordId", "discordUsername", "primaryEmail", "guildCount", "steamConnectionCount"},
+				},
+				"AdminUserListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/AdminUserListItem"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"AdminGuildOverview": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId":        map[string]any{"type": "string"},
+						"activeMembers":  map[string]any{"type": "integer"},
+						"linkedMembers":  map[string]any{"type": "integer"},
+						"trackedServers": map[string]any{"type": "integer"},
+						"adminRoleId":    map[string]any{"type": "string"},
+					},
+					"required": []string{"guildId", "activeMembers", "linkedMembers", "trackedServers", "adminRoleId"},
+				},
+				"AdminGuildOverviewListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/AdminGuildOverview"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"AdminServerOverview": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"serverBmId":    map[string]any{"type": "string"},
+						"name":          map[string]any{"type": "string"},
+						"lastPolledAt":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"lastPollError": map[string]any{"type": "string"},
+						"guildCount":    map[string]any{"type": "integer"},
+					},
+					"required": []string{"serverBmId", "name", "lastPolledAt", "lastPollError", "guildCount"},
+				},
+				"AdminServerOverviewListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/AdminServerOverview"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"AuditEvent": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":           map[string]any{"type": "integer"},
+						"actorUserId":  map[string]any{"type": "string"},
+						"targetUserId": map[string]any{"type": "string"},
+						"eventType":    map[string]any{"type": "string"},
+						"payload":      map[string]any{"type": "object", "additionalProperties": true},
+						"createdAt":    map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"id", "actorUserId", "targetUserId", "eventType", "payload", "createdAt"},
+				},
+				"AuditEventListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/AuditEvent"},
+						},
+					},
+					"required": []string{"items"},
 				},
 				"ErrorResponse": map[string]any{
 					"type": "object",

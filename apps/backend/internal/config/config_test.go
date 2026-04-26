@@ -22,6 +22,9 @@ func TestLoad_DiscordOAuth(t *testing.T) {
 }
 
 func TestLoadParsesProxyConfig(t *testing.T) {
+	t.Setenv("APP_API_INTERNAL_SECRET", "test-app-secret")
+	t.Setenv("APP_SESSION_SECRET", "test-session-secret")
+	t.Setenv("BOT_SERVICE_JWT_SECRET", "test-bot-secret")
 	t.Setenv("PROXY_ENABLED", "true")
 	t.Setenv("PROXY_ENDPOINTS", " http://proxy-one:8080,https://proxy-two:8443 ")
 
@@ -38,6 +41,9 @@ func TestLoadParsesProxyConfig(t *testing.T) {
 }
 
 func TestLoadDefaultsProxyDisabled(t *testing.T) {
+	t.Setenv("APP_API_INTERNAL_SECRET", "test-app-secret")
+	t.Setenv("APP_SESSION_SECRET", "test-session-secret")
+	t.Setenv("BOT_SERVICE_JWT_SECRET", "test-bot-secret")
 	t.Setenv("PROXY_ENABLED", "false")
 	t.Setenv("PROXY_ENDPOINTS", "http://proxy-one:8080")
 

@@ -616,6 +616,94 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create app_users_active_idx: %w", err)
 	}
 
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS user_connected_accounts (
+			user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			provider TEXT NOT NULL,
+			provider_account_id TEXT NOT NULL,
+			username TEXT NOT NULL DEFAULT '',
+			display_name TEXT NOT NULL DEFAULT '',
+			avatar_url TEXT NOT NULL DEFAULT '',
+			profile_email TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (provider, provider_account_id),
+			UNIQUE (user_id, provider)
+		);
+
+		CREATE INDEX IF NOT EXISTS user_connected_accounts_user_idx
+		ON user_connected_accounts (user_id);
+
+		CREATE TABLE IF NOT EXISTS user_emails (
+			email TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+			is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS user_emails_user_idx
+		ON user_emails (user_id);
+
+		CREATE TABLE IF NOT EXISTS user_password_credentials (
+			user_id TEXT PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
+			password_hash TEXT NOT NULL,
+			password_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS email_sign_in_tokens (
+			token_hash TEXT PRIMARY KEY,
+			email TEXT NOT NULL REFERENCES user_emails(email) ON DELETE CASCADE,
+			expires_at TIMESTAMPTZ NOT NULL,
+			consumed_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS email_sign_in_tokens_email_idx
+		ON email_sign_in_tokens (email);
+
+		CREATE TABLE IF NOT EXISTS password_reset_tokens (
+			token_hash TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			email TEXT NOT NULL REFERENCES user_emails(email) ON DELETE CASCADE,
+			expires_at TIMESTAMPTZ NOT NULL,
+			consumed_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx
+		ON password_reset_tokens (user_id);
+
+		CREATE TABLE IF NOT EXISTS email_verification_tokens (
+			token_hash TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			email TEXT NOT NULL REFERENCES user_emails(email) ON DELETE CASCADE,
+			expires_at TIMESTAMPTZ NOT NULL,
+			consumed_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS email_verification_tokens_user_idx
+		ON email_verification_tokens (user_id);
+
+		CREATE TABLE IF NOT EXISTS app_audit_events (
+			id BIGSERIAL PRIMARY KEY,
+			actor_user_id TEXT,
+			target_user_id TEXT,
+			event_type TEXT NOT NULL,
+			payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS app_audit_events_created_idx
+		ON app_audit_events (created_at DESC);
+	`); err != nil {
+		return fmt.Errorf("create app auth tables: %w", err)
+	}
+
 	return nil
 }
 
