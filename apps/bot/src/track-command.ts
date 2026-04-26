@@ -475,9 +475,6 @@ async function handleTrackDeleteChatInput(interaction: ChatInputCommandInteracti
   }
 
   const channel = await interaction.guild.channels.fetch(group.channelId).catch(() => null);
-  if (channel) {
-    await channel.delete(`/track delete ${group.name}`).catch(() => null);
-  }
   await getBackend().deleteTrackGroup(getWorkerID(), interaction.guildId, group.id);
   previousSnapshots.delete(group.id);
 
@@ -489,8 +486,12 @@ async function handleTrackDeleteChatInput(interaction: ChatInputCommandInteracti
         .setColor(RUSTLENS_EMBED_COLOR)
         .setTimestamp()
         .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
-    ],
+      ],
   });
+
+  if (channel) {
+    await channel.delete(`/track delete ${group.name}`).catch(() => null);
+  }
   return true;
 }
 

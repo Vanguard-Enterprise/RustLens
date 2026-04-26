@@ -8,6 +8,10 @@ Symlinked as `CLAUDE.md` so it is automatically picked up by Claude Code, Codex,
 > Stale instructions lead to wasted effort and broken assumptions. When in doubt, re-read the
 > codebase and correct anything that has drifted.
 
+## Version Control
+
+- Prefer small, frequent commits when changes are ready and the user has asked for commits, so individual changes are easier to revert.
+
 ## Repository Overview
 
 RustLens is a monorepo with three services:
