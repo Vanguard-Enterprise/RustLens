@@ -8,6 +8,11 @@ import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { type TrackedServer, BackendClient } from "./backend-client.js";
 import { CheckboxGroupBuilder, ModalV2Builder, RadioGroupBuilder, TextInputBuilder } from "./builders/index.js";
 import { loadConfig } from "./config.js";
+import {
+  getOwnerGuildID,
+  isAuthorizedOwner,
+  isOwnerCommandConfigured,
+} from "./owner-guard.js";
 import { getFieldValues, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const SERVER_COMMAND_NAME = "server";
@@ -85,8 +90,6 @@ const serverCommand = new SlashCommandBuilder()
 
 let _backend: BackendClient | undefined;
 let _workerID: string | undefined;
-let _ownerGuildId: string | undefined;
-let _ownerDiscordIds: string[] | undefined;
 
 function getBackend() {
   if (!_backend) {
@@ -98,8 +101,6 @@ function getBackend() {
       config.jwtAudience,
     );
     _workerID = `${config.workerId}-server`;
-    _ownerGuildId = config.ownerGuildId;
-    _ownerDiscordIds = config.ownerDiscordIds;
   }
   return _backend;
 }
@@ -107,24 +108,6 @@ function getBackend() {
 function getWorkerID() {
   getBackend();
   return _workerID!;
-}
-
-function getOwnerGuildID() {
-  getBackend();
-  return _ownerGuildId ?? "";
-}
-
-function getOwnerDiscordIDs() {
-  getBackend();
-  return _ownerDiscordIds ?? [];
-}
-
-function isOwnerCommandConfigured() {
-  return getOwnerGuildID().length > 0 && getOwnerDiscordIDs().length > 0;
-}
-
-function isAuthorizedOwner(interaction: { guildId: string | null; user: { id: string } }) {
-  return interaction.guildId === getOwnerGuildID() && getOwnerDiscordIDs().includes(interaction.user.id);
 }
 
 function normalizeName(name: string) {

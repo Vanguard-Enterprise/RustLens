@@ -2,13 +2,20 @@ import { ChildProcess, fork } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
+type MessageListener = (shardID: number, message: unknown) => void;
+
 export class ShardRuntime {
   private readonly children = new Map<number, ChildProcess>();
+  private messageListener: MessageListener | undefined;
 
   constructor(private readonly token: string) {}
 
   activeShards() {
     return [...this.children.keys()].sort((a, b) => a - b);
+  }
+
+  onChildMessage(listener: MessageListener) {
+    this.messageListener = listener;
   }
 
   start(shardID: number, totalShards: number) {
@@ -29,6 +36,10 @@ export class ShardRuntime {
         SHARD_COUNT: String(totalShards),
         DISCORD_TOKEN: this.token,
       },
+    });
+
+    child.on("message", (message) => {
+      this.messageListener?.(shardID, message);
     });
 
     child.on("exit", () => {

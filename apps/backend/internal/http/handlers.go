@@ -192,8 +192,9 @@ func (h *Handler) RegisterShardWorker(w http.ResponseWriter, r *http.Request) {
 }
 
 type heartbeatRequest struct {
-	WorkerID string `json:"workerId"`
-	ShardIDs []int  `json:"shardIds"`
+	WorkerID string                     `json:"workerId"`
+	ShardIDs []int                      `json:"shardIds"`
+	Stats    *shards.WorkerStatSnapshot `json:"stats,omitempty"`
 }
 
 func (h *Handler) HeartbeatShardWorker(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +215,7 @@ func (h *Handler) HeartbeatShardWorker(w http.ResponseWriter, r *http.Request) {
 		request.WorkerID = claims.WorkerID
 	}
 
-	if err := h.shardService.Heartbeat(r.Context(), request.WorkerID, request.ShardIDs); err != nil {
+	if err := h.shardService.Heartbeat(r.Context(), request.WorkerID, request.ShardIDs, request.Stats); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -275,6 +276,89 @@ func (h *Handler) GetShardAssignments(w http.ResponseWriter, r *http.Request) {
 		"targetShards": targetShards,
 		"shardIds":     shards,
 	})
+}
+
+type ownerStatsWorker struct {
+	WorkerID  string                     `json:"workerId"`
+	UptimeSec int                        `json:"uptimeSec"`
+	RSSBytes  int64                      `json:"rssBytes"`
+	Shards    []shards.ShardStatSnapshot `json:"shards"`
+}
+
+type ownerStatsResponse struct {
+	GuildCount           int                `json:"guildCount"`
+	MemberCount          int64              `json:"memberCount"`
+	ConfiguredGuilds     int64              `json:"configuredGuilds"`
+	SteamAccountCount    int64              `json:"steamAccountCount"`
+	HardLinkCount        int64              `json:"hardLinkCount"`
+	UniqueLinkedUsers    int64              `json:"uniqueLinkedUsers"`
+	TrackedServerCount   int64              `json:"trackedServerCount"`
+	OnlineTrackedPlayers int64              `json:"onlineTrackedPlayers"`
+	ActiveWipeReacts     int64              `json:"activeWipeReacts"`
+	TargetShards         int                `json:"targetShards"`
+	Workers              []ownerStatsWorker `json:"workers"`
+}
+
+func (h *Handler) GetOwnerStats(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromContext(r.Context())
+	if claims == nil {
+		writeError(w, http.StatusUnauthorized, "missing auth claims")
+		return
+	}
+
+	workerStats, err := h.shardService.ActiveWorkerStats(r.Context())
+	if err != nil {
+		log.Printf("[backend] GetOwnerStats worker stats error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load worker stats")
+		return
+	}
+
+	counts, err := h.postgres.OwnerStats(r.Context(), time.Now().Unix())
+	if err != nil {
+		log.Printf("[backend] GetOwnerStats db counts error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load db counts")
+		return
+	}
+
+	workerIDs := make([]string, 0, len(workerStats))
+	for id := range workerStats {
+		workerIDs = append(workerIDs, id)
+	}
+	sort.Strings(workerIDs)
+
+	resp := ownerStatsResponse{
+		ConfiguredGuilds:     counts.ConfiguredGuilds,
+		SteamAccountCount:    counts.SteamAccounts,
+		HardLinkCount:        counts.HardLinks,
+		UniqueLinkedUsers:    counts.UniqueLinkedDiscords,
+		TrackedServerCount:   counts.TrackedServers,
+		OnlineTrackedPlayers: counts.OnlineTrackedPlayers,
+		ActiveWipeReacts:     counts.ActiveWipeReacts,
+		TargetShards:         h.cfg.BotTargetShards,
+		Workers:              make([]ownerStatsWorker, 0, len(workerIDs)),
+	}
+
+	for _, workerID := range workerIDs {
+		snapshot := workerStats[workerID]
+		shardSnapshots := append([]shards.ShardStatSnapshot(nil), snapshot.Shards...)
+		sort.Slice(shardSnapshots, func(i, j int) bool {
+			return shardSnapshots[i].ShardID < shardSnapshots[j].ShardID
+		})
+
+		for _, s := range shardSnapshots {
+			resp.GuildCount += s.Guilds
+			resp.MemberCount += s.Members
+		}
+
+		resp.Workers = append(resp.Workers, ownerStatsWorker{
+			WorkerID:  workerID,
+			UptimeSec: snapshot.UptimeSec,
+			RSSBytes:  snapshot.RSSBytes,
+			Shards:    shardSnapshots,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func validateGuildID(w http.ResponseWriter, r *http.Request) (string, bool) {

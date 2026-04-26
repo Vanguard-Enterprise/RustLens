@@ -16,6 +16,41 @@ type CountResponse = {
   count: number;
 };
 
+export type ShardStatSnapshot = {
+  shardId: number;
+  status: "ready" | "disconnected" | "idle";
+  pingMs: number;
+  guilds: number;
+  members: number;
+};
+
+export type WorkerStatSnapshot = {
+  uptimeSec: number;
+  rssBytes: number;
+  shards: ShardStatSnapshot[];
+};
+
+export type OwnerStatsWorker = {
+  workerId: string;
+  uptimeSec: number;
+  rssBytes: number;
+  shards: ShardStatSnapshot[];
+};
+
+export type OwnerStatsResponse = {
+  guildCount: number;
+  memberCount: number;
+  configuredGuilds: number;
+  steamAccountCount: number;
+  hardLinkCount: number;
+  uniqueLinkedUsers: number;
+  trackedServerCount: number;
+  onlineTrackedPlayers: number;
+  activeWipeReacts: number;
+  targetShards: number;
+  workers: OwnerStatsWorker[];
+};
+
 export type GuildSettings = {
   guildId: string;
   wipeReactLogChannelId: string;
@@ -414,8 +449,16 @@ export class BackendClient {
     return this.call<RegisterResponse>(workerId, "/api/internal/bot/shards/register", "POST", { workerId });
   }
 
-  heartbeat(workerId: string, shardIds: number[]) {
-    return this.call<{ status: string }>(workerId, "/api/internal/bot/shards/heartbeat", "POST", { workerId, shardIds });
+  heartbeat(workerId: string, shardIds: number[], stats?: WorkerStatSnapshot) {
+    const body: Record<string, unknown> = { workerId, shardIds };
+    if (stats) {
+      body.stats = stats;
+    }
+    return this.call<{ status: string }>(workerId, "/api/internal/bot/shards/heartbeat", "POST", body);
+  }
+
+  ownerStats(workerId: string) {
+    return this.call<OwnerStatsResponse>(workerId, "/api/internal/bot/owner/stats", "GET");
   }
 
   release(workerId: string) {

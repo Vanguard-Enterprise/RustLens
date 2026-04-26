@@ -43,6 +43,11 @@ import {
   handleOnlineChatInput,
 } from "./online-command.js";
 import {
+  ensureOwnerCommand,
+  handleOwnerChatInput,
+  OWNER_COMMAND_NAME,
+} from "./owner-command.js";
+import {
   ensurePlayerCommand,
   handlePlayerButtonInteraction,
   handlePlayerChatInput,
@@ -106,6 +111,7 @@ import {
 } from "./wipereact-command.js";
 import { startTrackedServerLogPoller } from "./tracked-server-logs.js";
 import { registerUserGuildSync } from "./user-guilds.js";
+import { startShardStatsPusher } from "./shard-stats.js";
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
 const shardCount = Number(process.env.SHARD_COUNT ?? "1");
@@ -136,6 +142,8 @@ async function updateSteamAccountPresence() {
 client.once("clientReady", () => {
   console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);
 
+  startShardStatsPusher(client, shardID);
+
   updateSteamAccountPresence().catch((error) => {
     console.error("[bot] failed to update steam account presence", error);
   });
@@ -161,6 +169,7 @@ client.once("clientReady", () => {
     ensureViewCommand(client, shardID),
     ensureServerCommand(client, shardID),
     ensureBanCommand(client, shardID),
+    ensureOwnerCommand(client, shardID),
     ensureTransferCommand(client, shardID),
     ensureSearchCommand(client, shardID),
     ensureTrackCommand(client, shardID),
@@ -219,7 +228,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isChatInputCommand()) {
-      if (interaction.commandName !== BAN_COMMAND_NAME) {
+      if (interaction.commandName !== BAN_COMMAND_NAME && interaction.commandName !== OWNER_COMMAND_NAME) {
         const category = resolveCommandCategory(
           interaction.commandName,
           interaction.options.getSubcommand(false),
@@ -230,6 +239,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleBanChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleOwnerChatInput(interaction)) {
         return;
       }
 

@@ -60,6 +60,11 @@ func NewRouter(
 		r.Get("/assignments", handler.GetShardAssignments)
 	})
 
+	r.Route("/api/internal/bot/owner", func(r chi.Router) {
+		r.Use(botJWTMiddleware(handler.jwtValidator))
+		r.Get("/stats", handler.GetOwnerStats)
+	})
+
 	r.Route("/api/internal/bot/setup", func(r chi.Router) {
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Get("/guilds/{guildID}/settings", handler.GetGuildSettings)
