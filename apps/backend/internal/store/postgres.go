@@ -515,6 +515,18 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create app_users_discord_id_idx: %w", err)
 	}
 
+	// Backfill display_name from Discord identity for legacy rows where it was
+	// never populated (the original Discord upsert omitted display_name, so all
+	// pre-fix users have an empty string here).
+	if _, err := p.pool.Exec(ctx, `
+		UPDATE app_users
+		SET display_name = COALESCE(NULLIF(discord_global_name, ''), discord_username)
+		WHERE (display_name IS NULL OR display_name = '')
+		  AND discord_username IS NOT NULL
+	`); err != nil {
+		return fmt.Errorf("backfill app_users.display_name: %w", err)
+	}
+
 	// Drop orphaned legacy users(UUID) table if empty — it's been supplanted by
 	// app_users (TEXT id). CASCADE removes stale FK constraints from audit_events.
 	if _, err := p.pool.Exec(ctx, `

@@ -4,11 +4,24 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DesktopNav } from "@/components/desktop-nav";
 import { MobileNav } from "@/components/mobile-nav";
+import { NavUser } from "@/components/nav-user";
 import { useScroll } from "@/hooks/use-scroll";
 import Image from "next/image";
-import Link from "next/link";
 
-export function Header() {
+type HeaderUser = {
+	displayName: string;
+	discordGlobalName?: string;
+	discordUsername?: string;
+	avatarUrl?: string;
+	isInternalAdmin: boolean;
+};
+
+type HeaderProps = {
+	user?: HeaderUser | null;
+	csrfToken?: string;
+};
+
+export function Header({ csrfToken, user }: HeaderProps = {}) {
 	const scrolled = useScroll(10);
 
 	return (
@@ -22,7 +35,7 @@ export function Header() {
 				<div className="flex items-center gap-5">
 					<a
 						className="flex items-center gap-2 rounded-lg px-3 py-2.5 hover:bg-muted dark:hover:bg-muted/50"
-						href="#"
+						href="/"
 					>
 						<Image
 							alt="RustLens"
@@ -37,10 +50,13 @@ export function Header() {
 					<DesktopNav />
 				</div>
 				<div className="hidden items-center gap-2 md:flex">
-					<Button asChild variant="outline">
-						<Link href="/login">Sign In</Link>
-					</Button>
-					<Button>Get Started</Button>
+					{user && csrfToken ? (
+						<NavUser csrfToken={csrfToken} user={user} />
+					) : (
+						<Button asChild>
+							<a href="/api/auth/discord">Login</a>
+						</Button>
+					)}
 				</div>
 				<MobileNav />
 			</nav>

@@ -207,6 +207,9 @@ func (r *Repo) loadAppUser(ctx context.Context, userID string) (*AppUser, error)
 	if u.Roles == nil {
 		u.Roles = []string{}
 	}
+	if u.AvatarURL == "" && u.DiscordID != "" && u.DiscordAvatar != "" {
+		u.AvatarURL = fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.png", u.DiscordID, u.DiscordAvatar)
+	}
 	return &u, nil
 }
 
@@ -226,12 +229,13 @@ type DiscordProfile struct {
 // concurrent OAuth callbacks for the same Discord account.
 func (r *Repo) FindOrCreateByDiscordID(ctx context.Context, p DiscordProfile) (string, bool, error) {
 	const upsertSQL = `
-		INSERT INTO app_users (id, discord_id, discord_username, discord_global_name, discord_avatar, roles)
-		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), '["user"]'::jsonb)
+		INSERT INTO app_users (id, discord_id, discord_username, discord_global_name, discord_avatar, display_name, roles)
+		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), COALESCE(NULLIF($4, ''), $3), '["user"]'::jsonb)
 		ON CONFLICT (discord_id) DO UPDATE
 			SET discord_username    = EXCLUDED.discord_username,
 			    discord_global_name = EXCLUDED.discord_global_name,
 			    discord_avatar      = EXCLUDED.discord_avatar,
+			    display_name        = COALESCE(NULLIF(app_users.display_name, ''), NULLIF(EXCLUDED.discord_global_name, ''), EXCLUDED.discord_username),
 			    updated_at          = NOW()
 		RETURNING id, (xmax = 0) AS created`
 

@@ -133,17 +133,34 @@ export async function requireInternalAdminSession() {
 export async function requireAdminSession() {
 	const session = await getSession();
 	if (!session) redirect("/login");
-	const adminRoles = session.adminRoles ?? [];
-	const permissions = session.permissions ?? [];
-	// Legacy fallback: honour the old "internal_admin" sentinel string from
-	// app_users.roles so pre-migration sessions still work until their cookie
-	// rotates. New sessions populate adminRoles/permissions from
-	// admin_user_roles.
-	const legacyInternalAdmin = (session.roles ?? []).includes("internal_admin");
-	if (adminRoles.length === 0 && permissions.length === 0 && !legacyInternalAdmin) {
+
+	// Always resolve admin access from live backend state so role grants/revokes
+	// take effect without waiting for the next login. Dynamic import avoids a
+	// static circular dependency with rustlens-api (which imports from here).
+	const { getCurrentUser } = await import("@/lib/rustlens-api");
+	let liveAdminRoles: string[] = [];
+	let livePermissions: string[] = [];
+	let liveRoles: string[] = session.roles ?? [];
+	try {
+		const current = await getCurrentUser();
+		liveAdminRoles = current.adminRoles ?? [];
+		livePermissions = current.permissions ?? [];
+		liveRoles = current.user.roles ?? [];
+	} catch {
+		redirect("/login");
+	}
+
+	const legacyInternalAdmin = liveRoles.includes("internal_admin");
+	if (liveAdminRoles.length === 0 && livePermissions.length === 0 && !legacyInternalAdmin) {
 		redirect("/dashboard");
 	}
-	return session;
+
+	return {
+		...session,
+		roles: liveRoles,
+		adminRoles: liveAdminRoles,
+		permissions: livePermissions,
+	};
 }
 
 export async function requirePermission(key: string) {
