@@ -7,6 +7,7 @@ import { MobileNav } from "@/components/mobile-nav";
 import { NavUser } from "@/components/nav-user";
 import { useScroll } from "@/hooks/use-scroll";
 import Image from "next/image";
+import Link from "next/link";
 
 type HeaderUser = {
 	displayName: string;
@@ -33,7 +34,7 @@ export function Header({ csrfToken, user }: HeaderProps = {}) {
 		>
 			<nav className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4">
 				<div className="flex items-center gap-5">
-					<a
+					<Link
 						className="flex items-center gap-2 rounded-lg px-3 py-2.5 hover:bg-muted dark:hover:bg-muted/50"
 						href="/"
 					>
@@ -46,7 +47,7 @@ export function Header({ csrfToken, user }: HeaderProps = {}) {
 							width={32}
 						/>
 						<span className="text-sm font-semibold tracking-tight">RustLens</span>
-					</a>
+					</Link>
 					<DesktopNav />
 				</div>
 				<div className="hidden items-center gap-2 md:flex">
