@@ -84,7 +84,6 @@ func NewRouter(
 		r.Get("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.GetWipeReactSchedule)
 		r.Put("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.UpdateWipeReactSchedule)
 		r.Delete("/guilds/{guildID}/wipe-react-schedules/{scheduleID}", handler.DeleteWipeReactSchedule)
-		r.Post("/guilds/{guildID}/wipe-react-schedules/{scheduleID}/mark-posted", handler.MarkWipeReactSchedulePosted)
 		r.Post("/guilds/{guildID}/wipe-react-schedule-posts/claim", handler.ClaimNextWipeReactSchedulePost)
 		r.Post("/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/complete", handler.CompleteWipeReactSchedulePost)
 		r.Post("/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/release", handler.ReleaseWipeReactSchedulePost)

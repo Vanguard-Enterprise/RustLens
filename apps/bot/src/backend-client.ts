@@ -602,15 +602,6 @@ export class BackendClient {
     );
   }
 
-  markWipeReactSchedulePosted(workerId: string, guildId: string, scheduleId: number, lastPostedForUnix: number) {
-    return this.call<{ status: string }>(
-      workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules/${scheduleId}/mark-posted`,
-      "POST",
-      { lastPostedForUnix },
-    );
-  }
-
   claimNextWipeReactSchedulePost(workerId: string, guildId: string) {
 	return this.call<{ item: WipeReactSchedulePost | null }>(
 	  workerId,
