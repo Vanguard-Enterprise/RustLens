@@ -75,16 +75,6 @@ type CurrentUser struct {
 	Guilds         []UserGuildMembership
 }
 
-type DiscordAuthInput struct {
-	DiscordID           string
-	Username            string
-	DisplayName         string
-	AvatarURL           string
-	Email               string
-	EmailVerified       bool
-	AssignInternalAdmin bool
-}
-
 type AdminUserListItem struct {
 	User                 AppUser
 	DiscordID            string
@@ -142,24 +132,6 @@ func scanAppUser(scanner rowScanner) (AppUser, error) {
 		return AppUser{}, err
 	}
 
-	return record, nil
-}
-
-func scanConnectedAccount(scanner rowScanner) (ConnectedAccount, error) {
-	var record ConnectedAccount
-	err := scanner.Scan(
-		&record.Provider,
-		&record.ProviderAccountID,
-		&record.Username,
-		&record.DisplayName,
-		&record.AvatarURL,
-		&record.ProfileEmail,
-		&record.CreatedAt,
-		&record.UpdatedAt,
-	)
-	if err != nil {
-		return ConnectedAccount{}, err
-	}
 	return record, nil
 }
 
@@ -356,150 +328,18 @@ func (p *PostgresStore) GetAppUserByID(ctx context.Context, userID string) (AppU
 	return record, err
 }
 
-func (p *PostgresStore) UpsertDiscordAccount(ctx context.Context, input DiscordAuthInput) (CurrentUser, error) {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return CurrentUser{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	normalizedEmail := normalizeEmail(input.Email)
-
-	var userID string
-	err = tx.QueryRow(ctx, `
-		SELECT user_id
-		FROM user_connected_accounts
-		WHERE provider = 'discord' AND provider_account_id = $1
-	`, input.DiscordID).Scan(&userID)
+// GetAppUserDiscordID returns the discord_id stored directly on app_users.
+// The live auth subsystem (internal/appauth) writes the Discord snowflake
+// here on sign-in; user_connected_accounts is unused in the live schema.
+func (p *PostgresStore) GetAppUserDiscordID(ctx context.Context, userID string) (string, error) {
+	var discordID string
+	err := p.pool.QueryRow(ctx, `
+		SELECT discord_id FROM app_users WHERE id = $1
+	`, userID).Scan(&discordID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		userID = ""
-		err = nil
+		return "", ErrAppUserNotFound
 	}
-	if err != nil {
-		return CurrentUser{}, err
-	}
-
-	if userID == "" && normalizedEmail != "" {
-		err = tx.QueryRow(ctx, `
-			SELECT user_id
-			FROM user_emails
-			WHERE email = $1
-		`, normalizedEmail).Scan(&userID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			userID = ""
-			err = nil
-		}
-		if err != nil {
-			return CurrentUser{}, err
-		}
-	}
-
-	var roles []string
-	if userID == "" {
-		userID, err = generateAppUserID()
-		if err != nil {
-			return CurrentUser{}, err
-		}
-		roles = ensureRoleSet(nil, input.AssignInternalAdmin)
-		encodedRoles, err := encodeStringSlice(roles)
-		if err != nil {
-			return CurrentUser{}, err
-		}
-		_, err = tx.Exec(ctx, `
-			INSERT INTO app_users (id, display_name, avatar_url, roles, last_login_at)
-			VALUES ($1, $2, $3, $4::jsonb, NOW())
-		`, userID, input.DisplayName, input.AvatarURL, encodedRoles)
-		if err != nil {
-			return CurrentUser{}, err
-		}
-	} else {
-		existingUser, err := scanAppUser(tx.QueryRow(ctx, `
-			SELECT id, display_name, avatar_url, roles, created_at, updated_at, last_login_at
-			FROM app_users
-			WHERE id = $1
-		`, userID))
-		if err != nil {
-			return CurrentUser{}, err
-		}
-		roles = ensureRoleSet(existingUser.Roles, input.AssignInternalAdmin)
-		encodedRoles, err := encodeStringSlice(roles)
-		if err != nil {
-			return CurrentUser{}, err
-		}
-		_, err = tx.Exec(ctx, `
-			UPDATE app_users
-			SET display_name = $2,
-				avatar_url = $3,
-				roles = $4::jsonb,
-				updated_at = NOW(),
-				last_login_at = NOW()
-			WHERE id = $1
-		`, userID, input.DisplayName, input.AvatarURL, encodedRoles)
-		if err != nil {
-			return CurrentUser{}, err
-		}
-	}
-
-	_, err = tx.Exec(ctx, `
-		INSERT INTO user_connected_accounts (
-			user_id,
-			provider,
-			provider_account_id,
-			username,
-			display_name,
-			avatar_url,
-			profile_email
-		)
-		VALUES ($1, 'discord', $2, $3, $4, $5, $6)
-		ON CONFLICT (provider, provider_account_id) DO UPDATE
-		SET user_id = EXCLUDED.user_id,
-			username = EXCLUDED.username,
-			display_name = EXCLUDED.display_name,
-			avatar_url = EXCLUDED.avatar_url,
-			profile_email = EXCLUDED.profile_email,
-			updated_at = NOW()
-	`, userID, input.DiscordID, input.Username, input.DisplayName, input.AvatarURL, normalizedEmail)
-	if err != nil {
-		return CurrentUser{}, err
-	}
-
-	if normalizedEmail != "" {
-		_, err = tx.Exec(ctx, `
-			UPDATE user_emails
-			SET is_primary = FALSE,
-				updated_at = NOW()
-			WHERE user_id = $1
-		`, userID)
-		if err != nil {
-			return CurrentUser{}, err
-		}
-
-		_, err = tx.Exec(ctx, `
-			INSERT INTO user_emails (user_id, email, is_primary, is_verified)
-			VALUES ($1, $2, TRUE, $3)
-			ON CONFLICT (email) DO UPDATE
-			SET user_id = EXCLUDED.user_id,
-				is_primary = TRUE,
-				is_verified = user_emails.is_verified OR EXCLUDED.is_verified,
-				updated_at = NOW()
-		`, userID, normalizedEmail, input.EmailVerified)
-		if err != nil {
-			return CurrentUser{}, err
-		}
-	}
-
-	if err := p.insertAuditEventTx(ctx, tx, userID, userID, "auth.discord.login", map[string]any{
-		"discordId": input.DiscordID,
-		"email":     normalizedEmail,
-	}); err != nil {
-		return CurrentUser{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return CurrentUser{}, err
-	}
-
-	return p.GetCurrentUserByID(ctx, userID)
+	return discordID, err
 }
 
 func (p *PostgresStore) CreateEmailSignInToken(ctx context.Context, email string, ttl time.Duration) (string, bool, error) {
@@ -609,15 +449,34 @@ func (p *PostgresStore) GetCurrentUserByID(ctx context.Context, userID string) (
 		Guilds:        []UserGuildMembership{},
 	}
 
-	discordAccount, err := scanConnectedAccount(p.pool.QueryRow(ctx, `
-		SELECT provider, provider_account_id, username, display_name, avatar_url, profile_email, created_at, updated_at
-		FROM user_connected_accounts
-		WHERE user_id = $1 AND provider = 'discord'
-	`, userID))
-	if err == nil {
-		current.DiscordAccount = &discordAccount
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+	var (
+		discordID         string
+		discordUsername   string
+		discordGlobalName *string
+		discordAvatar     *string
+	)
+	err = p.pool.QueryRow(ctx, `
+		SELECT discord_id, discord_username, discord_global_name, discord_avatar
+		FROM app_users
+		WHERE id = $1
+	`, userID).Scan(&discordID, &discordUsername, &discordGlobalName, &discordAvatar)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return CurrentUser{}, err
+	}
+	if discordID != "" {
+		account := ConnectedAccount{
+			Provider:          "discord",
+			ProviderAccountID: discordID,
+			Username:          discordUsername,
+			DisplayName:       user.DisplayName,
+			AvatarURL:         user.AvatarURL,
+			CreatedAt:         user.CreatedAt,
+			UpdatedAt:         user.UpdatedAt,
+		}
+		if discordGlobalName != nil && *discordGlobalName != "" {
+			account.DisplayName = *discordGlobalName
+		}
+		current.DiscordAccount = &account
 	}
 
 	emailRows, err := p.pool.Query(ctx, `
@@ -716,14 +575,12 @@ func (p *PostgresStore) ListAdminUsers(ctx context.Context) ([]AdminUserListItem
 			u.created_at,
 			u.updated_at,
 			u.last_login_at,
-			COALESCE(d.provider_account_id, ''),
-			COALESCE(d.username, ''),
+			u.discord_id,
+			u.discord_username,
 			COALESCE(e.email, ''),
 			COALESCE(g.guild_count, 0),
 			COALESCE(s.steam_count, 0)
 		FROM app_users u
-		LEFT JOIN user_connected_accounts d
-			ON d.user_id = u.id AND d.provider = 'discord'
 		LEFT JOIN LATERAL (
 			SELECT email
 			FROM user_emails
@@ -734,13 +591,13 @@ func (p *PostgresStore) ListAdminUsers(ctx context.Context) ([]AdminUserListItem
 		LEFT JOIN LATERAL (
 			SELECT COUNT(*)::int AS guild_count
 			FROM user_guilds ug
-			WHERE ug.discord_id = d.provider_account_id
+			WHERE ug.discord_id = u.discord_id
 				AND ug.is_active = TRUE
 		) g ON TRUE
 		LEFT JOIN LATERAL (
 			SELECT COUNT(DISTINCT steam_id)::int AS steam_count
 			FROM steam_discord_links sdl
-			WHERE sdl.discord_id = d.provider_account_id
+			WHERE sdl.discord_id = u.discord_id
 		) s ON TRUE
 		ORDER BY u.last_login_at DESC, u.created_at DESC
 	`)

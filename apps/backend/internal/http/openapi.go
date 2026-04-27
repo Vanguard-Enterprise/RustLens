@@ -1594,33 +1594,6 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
-			"/api/app/auth/discord/complete": map[string]any{
-				"post": map[string]any{
-					"summary":     "Complete Discord auth",
-					"description": "Upserts a browser app user from a Discord OAuth profile and returns the current user payload.",
-					"security":    []map[string][]string{{"appSecretAuth": {}}},
-					"requestBody": map[string]any{
-						"required": true,
-						"content": map[string]any{
-							"application/json": map[string]any{
-								"schema": map[string]any{"$ref": "#/components/schemas/CompleteDiscordAuthRequest"},
-							},
-						},
-					},
-					"responses": map[string]any{
-						"200": map[string]any{
-							"description": "Discord auth completed",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-					},
-				},
-			},
 			"/api/app/auth/register": map[string]any{
 				"post": map[string]any{
 					"summary":     "Register a password user",
@@ -2601,18 +2574,6 @@ func buildOpenAPIDocument() map[string]any {
 						},
 					},
 					"required": []string{"user", "emails", "steamAccounts", "guilds", "discordAccount", "primaryEmail"},
-				},
-				"CompleteDiscordAuthRequest": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"discordId":     map[string]any{"type": "string"},
-						"username":      map[string]any{"type": "string"},
-						"displayName":   map[string]any{"type": "string"},
-						"avatarUrl":     map[string]any{"type": "string"},
-						"email":         map[string]any{"type": "string", "format": "email"},
-						"emailVerified": map[string]any{"type": "boolean"},
-					},
-					"required": []string{"discordId"},
 				},
 				"PasswordRegisterRequest": map[string]any{
 					"type": "object",

@@ -179,7 +179,6 @@ func NewRouter(
 		r.Use(requireAppSecret)
 
 		r.Post("/auth/logout", appAuthHandler.Logout)
-		r.Post("/auth/discord/complete", handler.CompleteDiscordAuth)
 		r.Post("/auth/register", handler.RegisterPasswordUser)
 		r.Post("/auth/login", handler.LoginPasswordUser)
 		r.Post("/auth/password/reset/request", handler.RequestPasswordReset)

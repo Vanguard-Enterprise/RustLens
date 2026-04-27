@@ -648,23 +648,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 	}
 
 	if _, err := p.pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS user_connected_accounts (
-			user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-			provider TEXT NOT NULL,
-			provider_account_id TEXT NOT NULL,
-			username TEXT NOT NULL DEFAULT '',
-			display_name TEXT NOT NULL DEFAULT '',
-			avatar_url TEXT NOT NULL DEFAULT '',
-			profile_email TEXT NOT NULL DEFAULT '',
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			PRIMARY KEY (provider, provider_account_id),
-			UNIQUE (user_id, provider)
-		);
-
-		CREATE INDEX IF NOT EXISTS user_connected_accounts_user_idx
-		ON user_connected_accounts (user_id);
-
 		CREATE TABLE IF NOT EXISTS user_emails (
 			email TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,

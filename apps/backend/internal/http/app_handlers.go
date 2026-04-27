@@ -134,46 +134,6 @@ func requireInternalAdmin(r *http.Request, postgres *store.PostgresStore) (store
 	return user, true, http.StatusOK, ""
 }
 
-type completeDiscordAuthRequest struct {
-	DiscordID     string `json:"discordId"`
-	Username      string `json:"username"`
-	DisplayName   string `json:"displayName"`
-	AvatarURL     string `json:"avatarUrl"`
-	Email         string `json:"email"`
-	EmailVerified bool   `json:"emailVerified"`
-}
-
-func (h *Handler) CompleteDiscordAuth(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var request completeDiscordAuthRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if !validateSnowflakeValue(request.DiscordID) {
-		writeError(w, http.StatusBadRequest, "discordId must be a valid Discord snowflake")
-		return
-	}
-
-	currentUser, err := h.postgres.UpsertDiscordAccount(r.Context(), store.DiscordAuthInput{
-		DiscordID:           request.DiscordID,
-		Username:            request.Username,
-		DisplayName:         request.DisplayName,
-		AvatarURL:           request.AvatarURL,
-		Email:               request.Email,
-		EmailVerified:       request.EmailVerified,
-		AssignInternalAdmin: slices.Contains(h.cfg.AppAdminDiscordIDs, request.DiscordID),
-	})
-	if err != nil {
-		log.Printf("[backend] CompleteDiscordAuth error for %s: %v", request.DiscordID, err)
-		writeError(w, http.StatusInternalServerError, "failed to complete discord auth")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, currentUserToMap(currentUser))
-}
-
 type passwordRegisterRequest struct {
 	Email       string `json:"email"`
 	Password    string `json:"password"`
@@ -482,24 +442,27 @@ func (h *Handler) GetCurrentAppUserInstalledGuilds(w http.ResponseWriter, r *htt
 		return
 	}
 
-	currentUser, err := h.postgres.GetCurrentUserByID(r.Context(), actor.ID)
+	// Read discord_id directly from app_users — that's where the live auth
+	// subsystem stores it. user_connected_accounts is unused in production.
+	discordID, err := h.postgres.GetAppUserDiscordID(r.Context(), actor.ID)
 	if err != nil {
-		log.Printf("[backend] GetCurrentAppUserInstalledGuilds error for %s: %v", actor.ID, err)
+		log.Printf("[backend] GetAppUserDiscordID error for %s: %v", actor.ID, err)
 		writeError(w, http.StatusInternalServerError, "failed to load installed guilds")
 		return
 	}
-
-	if currentUser.DiscordAccount == nil {
+	if discordID == "" {
+		log.Printf("[backend] /me/guilds/installed: user %s has empty discord_id", actor.ID)
 		writeJSON(w, http.StatusOK, map[string]any{"items": []map[string]any{}})
 		return
 	}
 
-	rows, err := h.postgres.ListInstalledGuildsForUser(r.Context(), currentUser.DiscordAccount.ProviderAccountID)
+	rows, err := h.postgres.ListInstalledGuildsForUser(r.Context(), discordID)
 	if err != nil {
-		log.Printf("[backend] ListInstalledGuildsForUser error for %s: %v", actor.ID, err)
+		log.Printf("[backend] ListInstalledGuildsForUser error for %s (discord=%s): %v", actor.ID, discordID, err)
 		writeError(w, http.StatusInternalServerError, "failed to load installed guilds")
 		return
 	}
+	log.Printf("[backend] /me/guilds/installed: user=%s discord=%s rows=%d", actor.ID, discordID, len(rows))
 
 	items := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
