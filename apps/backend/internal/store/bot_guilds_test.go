@@ -213,5 +213,51 @@ func TestReconcileShardBotGuilds_OnlyTouchesOwnShard(t *testing.T) {
 	checkInstalled(shard1Other, true) // shard 1's row must be untouched
 }
 
+func TestListInstalledGuildsForUser_FiltersAndJoins(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+
+	discordID := "300000000000000099"
+	installed := "100000000000000100"
+	uninstalled := "100000000000000101"
+	notMember := "100000000000000102"
+
+	for _, id := range []string{installed, uninstalled, notMember} {
+		if err := s.UpsertBotGuildMetadata(ctx, UpsertBotGuildInput{
+			GuildID:                id,
+			Name:                   "Guild " + id,
+			ApproximateMemberCount: int32Ptr(7),
+		}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	if err := s.MarkBotGuildLeft(ctx, uninstalled); err != nil {
+		t.Fatalf("seed mark left: %v", err)
+	}
+
+	// User is in `installed` and `uninstalled` (active rows in user_guilds);
+	// not in `notMember`.
+	if err := s.BulkUpsertUserGuilds(ctx, installed, []string{discordID}); err != nil {
+		t.Fatalf("seed user_guilds installed: %v", err)
+	}
+	if err := s.BulkUpsertUserGuilds(ctx, uninstalled, []string{discordID}); err != nil {
+		t.Fatalf("seed user_guilds uninstalled: %v", err)
+	}
+
+	rows, err := s.ListInstalledGuildsForUser(ctx, discordID)
+	if err != nil {
+		t.Fatalf("ListInstalledGuildsForUser: %v", err)
+	}
+	if len(rows) != 1 || rows[0].GuildID != installed {
+		t.Fatalf("got %#v, want exactly the installed guild", rows)
+	}
+	if rows[0].Name != "Guild "+installed {
+		t.Errorf("Name = %q", rows[0].Name)
+	}
+	if rows[0].ApproximateMemberCount == nil || *rows[0].ApproximateMemberCount != 7 {
+		t.Errorf("ApproximateMemberCount = %v, want 7", rows[0].ApproximateMemberCount)
+	}
+}
+
 func strPtr(v string) *string { return &v }
 func int32Ptr(v int32) *int32 { return &v }

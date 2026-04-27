@@ -123,3 +123,55 @@ func (p *PostgresStore) ReconcileShardBotGuilds(ctx context.Context, shardID int
 	`, shardCount, shardID, presentGuildIDs)
 	return err
 }
+
+type DashboardGuildRow struct {
+	GuildID                string
+	Name                   string
+	IconHash               *string
+	BannerHash             *string
+	OwnerDiscordID         *string
+	OwnerUsername          *string
+	OwnerGlobalName        *string
+	OwnerAvatarHash        *string
+	ApproximateMemberCount *int32
+	TrackedServerCount     int32
+}
+
+func (p *PostgresStore) ListInstalledGuildsForUser(ctx context.Context, discordID string) ([]DashboardGuildRow, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT bg.guild_id,
+		       bg.name,
+		       bg.icon_hash,
+		       bg.banner_hash,
+		       bg.owner_discord_id,
+		       bg.owner_username,
+		       bg.owner_global_name,
+		       bg.owner_avatar_hash,
+		       bg.approximate_member_count,
+		       (SELECT COUNT(*) FROM guild_tracked_servers gts WHERE gts.guild_id = bg.guild_id)::int AS tracked_server_count
+		FROM user_guilds ug
+		JOIN bot_guilds bg ON bg.guild_id = ug.guild_id
+		WHERE ug.discord_id = $1
+		  AND ug.is_active = TRUE
+		  AND bg.is_installed = TRUE
+		ORDER BY bg.name ASC, bg.guild_id ASC
+	`, discordID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]DashboardGuildRow, 0)
+	for rows.Next() {
+		var r DashboardGuildRow
+		if err := rows.Scan(
+			&r.GuildID, &r.Name, &r.IconHash, &r.BannerHash,
+			&r.OwnerDiscordID, &r.OwnerUsername, &r.OwnerGlobalName, &r.OwnerAvatarHash,
+			&r.ApproximateMemberCount, &r.TrackedServerCount,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
