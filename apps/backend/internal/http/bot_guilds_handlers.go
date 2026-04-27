@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"rustlens/backend/internal/store"
 )
@@ -98,7 +99,7 @@ func (h *Handler) UpsertBotGuild(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]any{"status": "ok", "membersSyncedAt": nil}
 	if syncedAt != nil {
-		resp["membersSyncedAt"] = syncedAt.UTC().Format("2006-01-02T15:04:05.000Z")
+		resp["membersSyncedAt"] = syncedAt.UTC().Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
