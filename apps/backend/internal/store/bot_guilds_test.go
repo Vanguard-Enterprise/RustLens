@@ -176,5 +176,42 @@ func TestStampMembersSynced_SetsTimestamp(t *testing.T) {
 	}
 }
 
+func TestReconcileShardBotGuilds_OnlyTouchesOwnShard(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+
+	// Pick guild IDs whose shard buckets we know.
+	// Discord shard formula: (guild_id >> 22) % shard_count.
+	// With shard_count=2, guild_id where bit 22 is 0 -> shard 0; bit 22 is 1 -> shard 1.
+	shard0Existing := "1"                 // (1 >> 22) % 2 = 0
+	shard0Stale    := "2"                 // (2 >> 22) % 2 = 0
+	shard1Other    := "4194304"           // (4194304 >> 22) % 2 = 1
+
+	for _, id := range []string{shard0Existing, shard0Stale, shard1Other} {
+		if err := s.UpsertBotGuildMetadata(ctx, UpsertBotGuildInput{GuildID: id, Name: "g"}); err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+
+	// Reconcile shard 0: only shard0Existing is still present.
+	if err := s.ReconcileShardBotGuilds(ctx, 0, 2, []string{shard0Existing}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	checkInstalled := func(id string, want bool) {
+		t.Helper()
+		var installed bool
+		if err := s.pool.QueryRow(ctx, `SELECT is_installed FROM bot_guilds WHERE guild_id = $1`, id).Scan(&installed); err != nil {
+			t.Fatalf("query %s: %v", id, err)
+		}
+		if installed != want {
+			t.Errorf("guild %s: is_installed = %v, want %v", id, installed, want)
+		}
+	}
+	checkInstalled(shard0Existing, true)
+	checkInstalled(shard0Stale, false)
+	checkInstalled(shard1Other, true) // shard 1's row must be untouched
+}
+
 func strPtr(v string) *string { return &v }
 func int32Ptr(v int32) *int32 { return &v }

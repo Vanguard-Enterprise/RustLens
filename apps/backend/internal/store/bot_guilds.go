@@ -103,3 +103,23 @@ func (p *PostgresStore) StampMembersSynced(ctx context.Context, guildID string) 
 	`, guildID)
 	return err
 }
+
+// ReconcileShardBotGuilds marks any currently-installed bot_guilds row in the
+// given shard's range as left, unless its guild_id appears in presentGuildIDs.
+// Shard membership uses Discord's standard formula: (guild_id >> 22) % shard_count.
+func (p *PostgresStore) ReconcileShardBotGuilds(ctx context.Context, shardID int, shardCount int, presentGuildIDs []string) error {
+	if shardCount <= 0 {
+		return errors.New("shardCount must be > 0")
+	}
+	if shardID < 0 || shardID >= shardCount {
+		return errors.New("shardID out of range")
+	}
+	_, err := p.pool.Exec(ctx, `
+		UPDATE bot_guilds
+		SET is_installed = FALSE, left_at = NOW()
+		WHERE is_installed = TRUE
+		  AND ((guild_id::bigint >> 22) % $1::bigint) = $2::bigint
+		  AND guild_id <> ALL($3::text[])
+	`, shardCount, shardID, presentGuildIDs)
+	return err
+}
