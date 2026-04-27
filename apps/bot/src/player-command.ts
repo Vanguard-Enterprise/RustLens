@@ -6,6 +6,7 @@ import {
   type SteamAnalytics,
   type SteamDiscordLink,
 } from "./backend-client.js";
+import { extractBmID } from "./bm-input.js";
 import { loadConfig } from "./config.js";
 import {
   RUSTLENS_EMBED_COLOR,
@@ -27,7 +28,6 @@ const PLAYER_EMOJIS = {
 } as const;
 
 const steamIDPattern = /^\d{17}$/;
-const bmIDPattern = /^\d{1,16}$/;
 
 const playerCommand = new SlashCommandBuilder()
   .setName(PLAYER_COMMAND_NAME)
@@ -37,7 +37,7 @@ const playerCommand = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName("identifier")
-      .setDescription("Steam ID, BattleMetrics ID, or steamcommunity.com profile URL")
+      .setDescription("Steam ID, BattleMetrics ID/URL, or steamcommunity.com profile URL")
       .setRequired(false),
   )
   .addUserOption((opt) =>
@@ -119,7 +119,7 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
   const account = await lookupAccountByIdentifier(lookupIdentifier.identifier);
   if (!account) {
     await interaction.editReply({
-      content: "No record found for that Steam ID, BattleMetrics ID, or Steam profile URL.",
+      content: "No record found for that Steam ID, BattleMetrics ID/URL, or Steam profile URL.",
     });
     return true;
   }
@@ -205,9 +205,10 @@ async function lookupAccountByIdentifier(identifier: string): Promise<SteamAccou
     }
   }
 
-  if (bmIDPattern.test(identifier)) {
+  const bmID = extractBmID(identifier);
+  if (bmID) {
     try {
-      return await backend.getSteamAccountByBmID(workerId, identifier);
+      return await backend.getSteamAccountByBmID(workerId, bmID);
     } catch {
       return null;
     }

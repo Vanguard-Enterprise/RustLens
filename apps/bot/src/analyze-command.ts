@@ -7,6 +7,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { BackendClient, type TrackGroupAnalyticsResponse } from "./backend-client.js";
+import { extractBmID } from "./bm-input.js";
 import { loadConfig } from "./config.js";
 import { buildNextBestOfflineFieldValue, computeNextBestOfflineWindow } from "./next-best-offline.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
@@ -18,7 +19,6 @@ export const ANALYZE_COMMAND_NAME = "analyze";
 const ANALYZE_OFFLINE_SUBCOMMAND = "offline";
 const ANALYZE_IDENTIFIER_OPTION = "identifier";
 const steamIDPattern = /^\d{17}$/;
-const bmIDPattern = /^\d{1,16}$/;
 const shardID = process.env.SHARD_ID ?? "0";
 
 const analyzeCommand = new SlashCommandBuilder()
@@ -33,7 +33,7 @@ const analyzeCommand = new SlashCommandBuilder()
       .addStringOption((option) =>
         option
           .setName(ANALYZE_IDENTIFIER_OPTION)
-          .setDescription("Steam ID, BattleMetrics ID, or steamcommunity.com profile URL")
+          .setDescription("Steam ID, BattleMetrics ID/URL, or steamcommunity.com profile URL")
           .setRequired(true),
       ),
   );
@@ -99,8 +99,9 @@ async function resolveIdentifierToBmID(identifier: string) {
     return account.bmId;
   }
 
-  if (bmIDPattern.test(normalized)) {
-    return normalized;
+  const bmID = extractBmID(normalized);
+  if (bmID) {
+    return bmID;
   }
 
   return null;
@@ -145,7 +146,7 @@ export async function handleAnalyzeChatInput(interaction: ChatInputCommandIntera
   }
 
   if (!bmID) {
-    await interaction.editReply({ embeds: [buildErrorEmbed("Enter a Steam ID, BattleMetrics ID, or supported steamcommunity.com profile URL.")] });
+    await interaction.editReply({ embeds: [buildErrorEmbed("Enter a Steam ID, BattleMetrics ID/URL, or supported steamcommunity.com profile URL.")] });
     return true;
   }
 

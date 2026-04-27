@@ -27,6 +27,7 @@ import {
   type TrackGroupAnalyticsResponse,
   type TrackGroupOnlineRow,
 } from "./backend-client.js";
+import { extractBmID } from "./bm-input.js";
 import { CheckboxGroupBuilder, ModalV2Builder, TextInputBuilder } from "./builders/index.js";
 import { TextInputStyle } from "./builders/types.js";
 import { loadConfig } from "./config.js";
@@ -141,7 +142,6 @@ function getWorkerID() {
 }
 
 const STEAM_ID_PATTERN = /^\d{17}$/;
-const BM_ID_PATTERN = /^\d{1,16}$/;
 const pendingInitialPosts = new Set<number>();
 const trackViewModes = new Map<number, TrackViewMode>();
 
@@ -307,7 +307,7 @@ function buildStatusEmbed(successful: number, unsuccessful: number, failedIds: s
 
 function parseIdentifiers(raw: string) {
   return raw
-    .split(/[,.\n]/)
+    .split(/[,\s]+/)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
 }
@@ -632,7 +632,7 @@ function buildAddRemoveModal(isAdd: boolean, groupId: number) {
     .setTitle(title)
     .setCustomId(customId)
     .addComponent(
-      "Steam IDs or BattleMetrics IDs",
+      "Steam IDs, BattleMetrics IDs, or BM URLs",
       new TextInputBuilder()
         .setCustomId(TRACK_FIELD_IDS)
         .setStyle(TextInputStyle.Paragraph)
@@ -768,8 +768,12 @@ async function resolveIdentifiersToMembers(identifiers: string[]) {
         if (seenSteam.has(member.steamId)) continue;
         seenSteam.add(member.steamId);
         resolved.push(member);
-      } else if (BM_ID_PATTERN.test(identifier)) {
-        const member = await resolveBmID(identifier);
+        continue;
+      }
+
+      const bmID = extractBmID(identifier);
+      if (bmID) {
+        const member = await resolveBmID(bmID);
         if (!member) {
           failed.push(identifier);
           continue;
@@ -777,9 +781,10 @@ async function resolveIdentifiersToMembers(identifiers: string[]) {
         if (seenSteam.has(member.steamId)) continue;
         seenSteam.add(member.steamId);
         resolved.push(member);
-      } else {
-        failed.push(identifier);
+        continue;
       }
+
+      failed.push(identifier);
     } catch {
       failed.push(identifier);
     }
