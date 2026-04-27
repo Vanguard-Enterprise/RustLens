@@ -69,6 +69,7 @@ describe("rate-limit", () => {
 		try {
 			await consumeRateLimit("auth:test", { max: 1, windowMs: 60_000 });
 		} catch (err) {
+			error = err as Error;
 			"RATE_LIMIT_REDIS_URL or REDIS_URL must be configured in production for shared auth rate limiting",
 		);
 	});
