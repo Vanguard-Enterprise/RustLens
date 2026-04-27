@@ -43,6 +43,7 @@ const TRACK_SERVER_OPTION = "server";
 
 const TRACK_BUTTON_ADD_PREFIX = "track:add:";
 const TRACK_BUTTON_REMOVE_PREFIX = "track:remove:";
+const TRACK_BUTTON_VIEW_PREFIX = "track:view:";
 const TRACK_BUTTON_NOTIFY_PREFIX = "track:notify:";
 const TRACK_BUTTON_ANALYTICS_PREFIX = "track:analytics:";
 const TRACK_BUTTON_ANALYTICS_PAGE_PREFIX = "track:analyticspage:";
@@ -66,6 +67,7 @@ const TRACK_REMOVE_EMOJI = { id: "1498006708549587155", name: "user_remove" };
 const TRACK_NOTIFICATION_EMOJI = { id: "1498033713764761852", name: "notification" };
 const TRACK_EMBED_DESCRIPTION_MAX = 3900;
 const TRACK_MESSAGE_TEXT_MAX = 5800;
+type TrackViewMode = "online" | "offline";
 const EMOJIS = {
   steam: "<:steam:1444016467648581642>",
   battlemetrics: "<:battlemetrics:1444011821529956472>",
@@ -164,69 +166,76 @@ function bmLink(row: TrackGroupOnlineRow) {
   return `[${label}](https://www.battlemetrics.com/rcon/players/${row.bmId})`;
 }
 
-function playerLabel(row: TrackGroupOnlineRow) {
-  return row.bmName.trim().length > 0 ? row.bmName.trim() : (row.bmId || row.steamId);
-}
-
 function buildOnlineLine(row: TrackGroupOnlineRow) {
   const stamp = row.onlineUnix > 0 ? ` - <t:${row.onlineUnix}:R>` : "";
-  return `${playerLabel(row)}${stamp}`;
+  return `${bmLink(row)}${stamp}`;
 }
 
 function buildOfflineLine(row: TrackGroupOnlineRow) {
   const stamp = row.onlineUnix > 0 ? ` - <t:${row.onlineUnix}:R>` : "";
-  return `${playerLabel(row)}${stamp}`;
+  return `${bmLink(row)}${stamp}`;
 }
 
 function chunkDescriptionLines(lines: string[]) {
   const chunks: string[] = [];
   let current = "";
+  let totalLength = 0;
+  let included = 0;
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
     const safeLine = line.length > TRACK_EMBED_DESCRIPTION_MAX
       ? `${line.slice(0, TRACK_EMBED_DESCRIPTION_MAX - 3)}...`
       : line;
     const next = current.length === 0 ? safeLine : `${current}\n${safeLine}`;
+    const addedLength = current.length === 0 ? safeLine.length : safeLine.length + 1;
+    const needsMoreLine = index < lines.length - 1;
+    if (totalLength + addedLength + (needsMoreLine ? 32 : 0) > TRACK_MESSAGE_TEXT_MAX) {
+      break;
+    }
     if (next.length > TRACK_EMBED_DESCRIPTION_MAX && current.length > 0) {
       chunks.push(current);
       current = safeLine;
     } else {
       current = next;
     }
+    totalLength += addedLength;
+    included += 1;
+  }
+
+  const hidden = lines.length - included;
+  if (hidden > 0) {
+    const moreLine = `+${hidden} more`;
+    const next = current.length === 0 ? moreLine : `${current}\n${moreLine}`;
+    if (next.length <= TRACK_EMBED_DESCRIPTION_MAX && totalLength + moreLine.length + 1 <= TRACK_MESSAGE_TEXT_MAX) {
+      current = next;
+    } else if (current.length > 0) {
+      chunks.push(current);
+      current = moreLine;
+    }
   }
 
   if (current.length > 0) {
     chunks.push(current);
   }
-  const limited: string[] = [];
-  let totalLength = 0;
-  for (const chunk of chunks) {
-    if (totalLength + chunk.length > TRACK_MESSAGE_TEXT_MAX) {
-      const remaining = TRACK_MESSAGE_TEXT_MAX - totalLength;
-      if (remaining > 20) {
-        limited.push(`${chunk.slice(0, remaining - 13)}\n...and more`);
-      }
-      break;
-    }
-    limited.push(chunk);
-    totalLength += chunk.length;
-  }
-  return limited;
+  return chunks;
 }
 
 export function buildTrackEmbeds(
   group: { name: string; serverName: string },
   rows: TrackGroupOnlineRow[],
+  mode: TrackViewMode = "online",
 ) {
   const online = rows.filter((row) => row.isOnline);
   const offline = rows.filter((row) => !row.isOnline);
+  const visible = mode === "online" ? online : offline;
+  const emoji = mode === "online" ? TRACK_ONLINE_EMOJI : TRACK_OFFLINE_EMOJI;
+  const label = mode === "online" ? "Online" : "Offline";
+  const lineBuilder = mode === "online" ? buildOnlineLine : buildOfflineLine;
 
   const lines = [
-    `${TRACK_ONLINE_EMOJI} **Online ${online.length}**`,
-    ...(online.length > 0 ? online.map(buildOnlineLine) : ["*None*"]),
-    "",
-    `${TRACK_OFFLINE_EMOJI} **Offline ${offline.length}**`,
-    ...(offline.length > 0 ? offline.map(buildOfflineLine) : ["*None*"]),
+    `${emoji} **${label} ${visible.length}**`,
+    ...(visible.length > 0 ? visible.map(lineBuilder) : ["*None*"]),
   ];
 
   return chunkDescriptionLines(lines).map((description, index) =>
@@ -239,7 +248,12 @@ export function buildTrackEmbeds(
   );
 }
 
-export function buildTrackButtons(groupId: number) {
+function oppositeTrackViewMode(mode: TrackViewMode): TrackViewMode {
+  return mode === "online" ? "offline" : "online";
+}
+
+export function buildTrackButtons(groupId: number, mode: TrackViewMode = "online") {
+  const targetMode = oppositeTrackViewMode(mode);
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -252,6 +266,10 @@ export function buildTrackButtons(groupId: number) {
         .setEmoji(TRACK_REMOVE_EMOJI)
         .setLabel("Remove")
         .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(`${TRACK_BUTTON_VIEW_PREFIX}${groupId}:${targetMode}`)
+        .setEmoji(targetMode === "online" ? TRACK_ONLINE_EMOJI : TRACK_OFFLINE_EMOJI)
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_NOTIFY_PREFIX}${groupId}`)
         .setEmoji(TRACK_NOTIFICATION_EMOJI)
@@ -544,6 +562,21 @@ export async function handleTrackButtonInteraction(interaction: ButtonInteractio
       return false;
     }
     await interaction.showModal(buildAddRemoveModal(false, groupId).toJSON() as any);
+    return true;
+  }
+
+  if (interaction.customId.startsWith(TRACK_BUTTON_VIEW_PREFIX)) {
+    const rest = interaction.customId.slice(TRACK_BUTTON_VIEW_PREFIX.length);
+    const [groupRaw, modeRaw] = rest.split(":");
+    const groupId = Number(groupRaw);
+    if (!Number.isInteger(groupId) || groupId <= 0 || !interaction.inGuild() || !interaction.guildId || !interaction.guild) {
+      return false;
+    }
+    const mode: TrackViewMode = modeRaw === "offline" ? "offline" : "online";
+    await interaction.deferUpdate();
+    await refreshTrackGroupById(interaction.guild, interaction.guildId, groupId, mode).catch((error) => {
+      console.error(`[bot] failed to toggle track group ${groupId} view`, error);
+    });
     return true;
   }
 
@@ -854,7 +887,7 @@ async function pollGuildGroups(guild: Guild) {
   }
 }
 
-async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: string) {
+async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: string, requestedMode?: TrackViewMode) {
   if (pendingInitialPosts.has(group.id)) {
     return;
   }
@@ -867,18 +900,20 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   }
   const textChannel = channel as TextChannel;
 
+  let message = group.messageId
+    ? await textChannel.messages.fetch(group.messageId).catch(() => null)
+    : null;
+
+  const mode = requestedMode ?? getTrackViewMode(message) ?? "online";
+
   const { items: rows } = await getBackend()
     .listTrackGroupOnlineState(getWorkerID(), guild.id, group.id)
     .catch(() => ({ items: [] as TrackGroupOnlineRow[] }));
 
   const onlineRows = rows.filter((row) => row.isOnline);
   const onlineCount = onlineRows.length;
-  const embeds = buildTrackEmbeds({ name: group.name, serverName }, rows);
-  const components = buildTrackButtons(group.id);
-
-  let message = group.messageId
-    ? await textChannel.messages.fetch(group.messageId).catch(() => null)
-    : null;
+  const embeds = buildTrackEmbeds({ name: group.name, serverName }, rows, mode);
+  const components = buildTrackButtons(group.id, mode);
 
   if (!message) {
     const existing = await findExistingTrackMessage(textChannel, group, serverName);
@@ -946,13 +981,27 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   previousSnapshots.set(group.id, current);
 }
 
-async function refreshTrackGroupById(guild: Guild, guildId: string, groupId: number) {
+async function refreshTrackGroupById(guild: Guild, guildId: string, groupId: number, mode?: TrackViewMode) {
   const group = await getBackend().getTrackGroup(getWorkerID(), guildId, groupId);
   const trackedServers = await getBackend()
     .listTrackedServers(getWorkerID())
     .catch(() => ({ items: [] as { bmId: string; name: string }[] }));
   const serverName = trackedServers.items.find((item) => item.bmId === group.serverBmId)?.name ?? group.serverBmId;
-  await refreshTrackGroup(guild, group, serverName);
+  await refreshTrackGroup(guild, group, serverName, mode);
+}
+
+function getTrackViewMode(message: { components: readonly any[] } | null) {
+  for (const row of message?.components ?? []) {
+    for (const component of row.components ?? []) {
+      const customId = component.customId;
+      if (!customId?.startsWith(TRACK_BUTTON_VIEW_PREFIX)) {
+        continue;
+      }
+      const targetMode = customId.split(":").at(-1);
+      return targetMode === "offline" ? "online" : "offline";
+    }
+  }
+  return null;
 }
 
 async function findExistingTrackMessage(textChannel: TextChannel, group: TrackGroup, serverName: string) {

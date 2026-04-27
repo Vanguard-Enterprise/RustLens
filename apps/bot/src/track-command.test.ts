@@ -44,7 +44,7 @@ function makeOnlineRow(steamId: string, bmName: string, isOnline: boolean): Trac
 }
 
 describe("buildTrackEmbeds", () => {
-  it("renders online and offline lists in descriptions instead of fields", () => {
+  it("renders only the selected online list with BattleMetrics links", () => {
     const embeds = buildTrackEmbeds(
       { name: "kap", serverName: "Vitality EU 10x" },
       [
@@ -58,17 +58,33 @@ describe("buildTrackEmbeds", () => {
     expect(data.fields).toBeUndefined();
     expect(data.description).toContain("**Online 1**");
     expect(data.description).toContain("Jigsaw");
-    expect(data.description).toContain("**Offline 1**");
-    expect(data.description).toContain("lack");
-    expect(data.description).not.toContain("battlemetrics.com");
+    expect(data.description).toContain("battlemetrics.com");
+    expect(data.description).not.toContain("**Offline 1**");
+    expect(data.description).not.toContain("lack");
   });
 
-  it("splits long track lists across multiple embeds", () => {
+  it("renders the offline list when requested", () => {
+    const embeds = buildTrackEmbeds(
+      { name: "kap", serverName: "Vitality EU 10x" },
+      [
+        makeOnlineRow("76561198127315384", "Jigsaw", true),
+        makeOnlineRow("76561198151846617", "lack", false),
+      ],
+      "offline",
+    );
+    const data = embeds[0].toJSON();
+
+    expect(data.description).toContain("**Offline 1**");
+    expect(data.description).toContain("lack");
+    expect(data.description).not.toContain("Jigsaw");
+  });
+
+  it("splits long track lists across multiple embeds and summarizes hidden rows", () => {
     const rows = Array.from({ length: 250 }, (_value, index) =>
       makeOnlineRow(`7656119${String(index).padStart(10, "0")}`, `player-${index}`, false),
     );
 
-    const embeds = buildTrackEmbeds({ name: "kap", serverName: "Vitality EU 10x" }, rows);
+    const embeds = buildTrackEmbeds({ name: "kap", serverName: "Vitality EU 10x" }, rows, "offline");
 
     expect(embeds.length).toBeGreaterThan(1);
     expect(embeds[1].toJSON().title).toBe("kap - Vitality EU 10x cont.");
@@ -78,6 +94,7 @@ describe("buildTrackEmbeds", () => {
     }
     const totalLength = embeds.reduce((sum, embed) => sum + (embed.toJSON().description?.length ?? 0), 0);
     expect(totalLength).toBeLessThanOrEqual(5800);
+    expect(embeds.at(-1)?.toJSON().description).toMatch(/\+\d+ more/);
   });
 });
 
