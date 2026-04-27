@@ -475,6 +475,63 @@ func (h *Handler) GetCurrentAppUserGuilds(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func (h *Handler) GetCurrentAppUserInstalledGuilds(w http.ResponseWriter, r *http.Request) {
+	actor, ok, status, message := requireAppActor(r, h.postgres)
+	if !ok {
+		writeError(w, status, message)
+		return
+	}
+
+	currentUser, err := h.postgres.GetCurrentUserByID(r.Context(), actor.ID)
+	if err != nil {
+		log.Printf("[backend] GetCurrentAppUserInstalledGuilds error for %s: %v", actor.ID, err)
+		writeError(w, http.StatusInternalServerError, "failed to load installed guilds")
+		return
+	}
+
+	if currentUser.DiscordAccount == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"items": []map[string]any{}})
+		return
+	}
+
+	rows, err := h.postgres.ListInstalledGuildsForUser(r.Context(), currentUser.DiscordAccount.ProviderAccountID)
+	if err != nil {
+		log.Printf("[backend] ListInstalledGuildsForUser error for %s: %v", actor.ID, err)
+		writeError(w, http.StatusInternalServerError, "failed to load installed guilds")
+		return
+	}
+
+	items := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		var owner map[string]any
+		if row.OwnerDiscordID != nil {
+			owner = map[string]any{
+				"id":         *row.OwnerDiscordID,
+				"username":   derefString(row.OwnerUsername),
+				"globalName": row.OwnerGlobalName,
+				"avatarHash": row.OwnerAvatarHash,
+			}
+		}
+		items = append(items, map[string]any{
+			"id":                     row.GuildID,
+			"name":                   row.Name,
+			"iconHash":               row.IconHash,
+			"bannerHash":             row.BannerHash,
+			"approximateMemberCount": row.ApproximateMemberCount,
+			"trackedServerCount":     row.TrackedServerCount,
+			"owner":                  owner,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 func (h *Handler) ListAppAdminUsers(w http.ResponseWriter, r *http.Request) {
 	actor, ok, status, message := requireInternalAdmin(r, h.postgres)
 	if !ok {

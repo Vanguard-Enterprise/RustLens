@@ -432,6 +432,25 @@ export type TrackGroupAnalyticsResponse = {
   days: TrackGroupAnalyticsDay[];
 };
 
+type UpsertBotGuildPayload = {
+  guildId: string;
+  name: string;
+  iconHash: string | null;
+  bannerHash: string | null;
+  ownerDiscordId: string | null;
+  ownerUsername: string | null;
+  ownerGlobalName: string | null;
+  ownerAvatarHash: string | null;
+  approximateMemberCount: number | null;
+  members?: string[];
+  membersSyncComplete?: boolean;
+};
+
+type UpsertBotGuildResponse = {
+  status: "ok";
+  membersSyncedAt: string | null;
+};
+
 export class BackendClient {
   constructor(
     private readonly backendUrl: string,
@@ -865,6 +884,36 @@ export class BackendClient {
     );
   }
 
+  upsertBotGuild(workerId: string, payload: UpsertBotGuildPayload) {
+    return this.call<UpsertBotGuildResponse>(
+      workerId,
+      `/api/internal/bot/setup/bot-guilds/upsert`,
+      "POST",
+      payload,
+    );
+  }
+
+  markBotGuildLeft(workerId: string, guildId: string) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/bot-guilds/leave`,
+      "POST",
+      { guildId },
+    );
+  }
+
+  reconcileBotGuilds(
+    workerId: string,
+    payload: { shardId: number; shardCount: number; guildIds: string[] },
+  ) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/bot-guilds/reconcile`,
+      "POST",
+      payload,
+    );
+  }
+
   createGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
     return this.call<GuildSteamDiscordLink>(
       workerId,
@@ -1103,3 +1152,5 @@ export class BackendClient {
     );
   }
 }
+
+export type { UpsertBotGuildPayload, UpsertBotGuildResponse };

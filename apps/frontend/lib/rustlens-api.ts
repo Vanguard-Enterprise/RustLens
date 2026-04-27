@@ -59,6 +59,23 @@ export type CurrentUser = {
 	permissions: string[];
 };
 
+export type DashboardGuildOwner = {
+	id: string;
+	username: string;
+	globalName: string | null;
+	avatarHash: string | null;
+};
+
+export type DashboardGuild = {
+	id: string;
+	name: string;
+	iconHash: string | null;
+	bannerHash: string | null;
+	approximateMemberCount: number | null;
+	trackedServerCount: number;
+	owner: DashboardGuildOwner | null;
+};
+
 export type AdminUserItem = {
 	user: AppUser;
 	discordId: string;
@@ -286,6 +303,20 @@ export async function getCurrentUserSafe() {
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Returns the guilds the current user is a member of and that have RustLens
+ * installed, with metadata (name, owner, icon, banner, member count) suitable
+ * for rendering on the user dashboard.
+ */
+export async function getMyInstalledGuilds(): Promise<DashboardGuild[]> {
+	const payload = await backendFetch<{ items: DashboardGuild[] }>(
+		"/api/app/me/guilds/installed",
+		undefined,
+		{ requireSession: true },
+	);
+	return payload.items;
 }
 
 export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {

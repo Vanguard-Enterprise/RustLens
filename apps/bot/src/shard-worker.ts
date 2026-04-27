@@ -115,6 +115,7 @@ import {
 } from "./wipereact-command.js";
 import { startTrackedServerLogPoller } from "./tracked-server-logs.js";
 import { registerUserGuildSync } from "./user-guilds.js";
+import { registerBotGuildSync } from "./bot-guilds.js";
 import { startShardStatsPusher } from "./shard-stats.js";
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
@@ -136,6 +137,7 @@ const client = new Client({
 });
 
 registerUserGuildSync(client);
+registerBotGuildSync(client, shardID, shardCount);
 
 async function updateSteamAccountPresence() {
   const response = await backend.steamAccountCount(statusWorkerID);

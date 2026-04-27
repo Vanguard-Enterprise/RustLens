@@ -369,6 +369,26 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS user_guilds_guild_idx
 		ON user_guilds (guild_id);
 
+		CREATE TABLE IF NOT EXISTS bot_guilds (
+			guild_id                 TEXT PRIMARY KEY,
+			name                     TEXT NOT NULL DEFAULT '',
+			icon_hash                TEXT,
+			banner_hash              TEXT,
+			owner_discord_id         TEXT,
+			owner_username           TEXT,
+			owner_global_name        TEXT,
+			owner_avatar_hash        TEXT,
+			approximate_member_count INTEGER,
+			is_installed             BOOLEAN NOT NULL DEFAULT TRUE,
+			installed_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			left_at                  TIMESTAMPTZ,
+			metadata_updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			members_synced_at        TIMESTAMPTZ
+		);
+
+		CREATE INDEX IF NOT EXISTS bot_guilds_installed_idx
+		ON bot_guilds (is_installed) WHERE is_installed = TRUE;
+
 		CREATE TABLE IF NOT EXISTS steam_discord_links (
 			steam_id TEXT NOT NULL REFERENCES steam_accounts(steam_id),
 			discord_id TEXT NOT NULL,
