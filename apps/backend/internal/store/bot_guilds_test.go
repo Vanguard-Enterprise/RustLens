@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestEnsureSchema_CreatesBotGuildsTable(t *testing.T) {
@@ -41,3 +42,86 @@ func TestEnsureSchema_CreatesBotGuildsTable(t *testing.T) {
 		}
 	}
 }
+
+func TestUpsertBotGuildMetadata_InsertsAndUpdates(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+
+	input := UpsertBotGuildInput{
+		GuildID:                "100000000000000001",
+		Name:                   "Test Guild",
+		IconHash:               strPtr("abc"),
+		BannerHash:             nil,
+		OwnerDiscordID:         strPtr("200000000000000002"),
+		OwnerUsername:          strPtr("ownername"),
+		OwnerGlobalName:        strPtr("Owner Display"),
+		OwnerAvatarHash:        strPtr("def"),
+		ApproximateMemberCount: int32Ptr(42),
+	}
+
+	if err := s.UpsertBotGuildMetadata(ctx, input); err != nil {
+		t.Fatalf("first UpsertBotGuildMetadata: %v", err)
+	}
+
+	// Update path
+	input.Name = "Renamed"
+	input.IconHash = strPtr("zzz")
+	if err := s.UpsertBotGuildMetadata(ctx, input); err != nil {
+		t.Fatalf("second UpsertBotGuildMetadata: %v", err)
+	}
+
+	var name, iconHash string
+	var isInstalled bool
+	var leftAt *time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT name, icon_hash, is_installed, left_at FROM bot_guilds WHERE guild_id = $1
+	`, input.GuildID).Scan(&name, &iconHash, &isInstalled, &leftAt)
+	if err != nil {
+		t.Fatalf("query bot_guilds: %v", err)
+	}
+	if name != "Renamed" || iconHash != "zzz" || !isInstalled || leftAt != nil {
+		t.Fatalf("unexpected row: name=%q iconHash=%q isInstalled=%v leftAt=%v", name, iconHash, isInstalled, leftAt)
+	}
+}
+
+func TestMarkBotGuildLeft_SetsFlagAndTimestamp(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+
+	guildID := "100000000000000003"
+	if err := s.UpsertBotGuildMetadata(ctx, UpsertBotGuildInput{GuildID: guildID, Name: "g"}); err != nil {
+		t.Fatalf("seed UpsertBotGuildMetadata: %v", err)
+	}
+	if err := s.MarkBotGuildLeft(ctx, guildID); err != nil {
+		t.Fatalf("MarkBotGuildLeft: %v", err)
+	}
+
+	var isInstalled bool
+	var leftAt *time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT is_installed, left_at FROM bot_guilds WHERE guild_id = $1
+	`, guildID).Scan(&isInstalled, &leftAt)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if isInstalled || leftAt == nil {
+		t.Fatalf("want is_installed=false leftAt non-nil, got %v / %v", isInstalled, leftAt)
+	}
+
+	// Re-upserting must reset the flag (bot rejoined).
+	if err := s.UpsertBotGuildMetadata(ctx, UpsertBotGuildInput{GuildID: guildID, Name: "g"}); err != nil {
+		t.Fatalf("re-upsert: %v", err)
+	}
+	err = s.pool.QueryRow(ctx, `
+		SELECT is_installed, left_at FROM bot_guilds WHERE guild_id = $1
+	`, guildID).Scan(&isInstalled, &leftAt)
+	if err != nil {
+		t.Fatalf("query 2: %v", err)
+	}
+	if !isInstalled || leftAt != nil {
+		t.Fatalf("want is_installed=true leftAt nil, got %v / %v", isInstalled, leftAt)
+	}
+}
+
+func strPtr(v string) *string { return &v }
+func int32Ptr(v int32) *int32 { return &v }
