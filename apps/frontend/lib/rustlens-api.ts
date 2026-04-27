@@ -61,19 +61,19 @@ export type CurrentUser = {
 
 export type DashboardGuildOwner = {
 	id: string;
-	displayName: string;
-	avatarUrl: string | null;
+	username: string;
+	globalName: string | null;
+	avatarHash: string | null;
 };
 
 export type DashboardGuild = {
 	id: string;
 	name: string;
-	iconUrl: string | null;
-	bannerUrl: string | null;
-	memberCount: number | null;
+	iconHash: string | null;
+	bannerHash: string | null;
+	approximateMemberCount: number | null;
 	trackedServerCount: number;
 	owner: DashboardGuildOwner | null;
-	rustlensInstalled: boolean;
 };
 
 export type AdminUserItem = {
@@ -309,23 +309,14 @@ export async function getCurrentUserSafe() {
  * Returns the guilds the current user is a member of and that have RustLens
  * installed, with metadata (name, owner, icon, banner, member count) suitable
  * for rendering on the user dashboard.
- *
- * TODO(backend): no corresponding endpoint exists yet. The planned shape is
- *   GET /api/app/me/guilds/installed -> { items: DashboardGuild[] }
- * It should join the existing user_guild_memberships rows (where is_active and
- * the guild has the bot installed) with cached Discord guild metadata and the
- * tracked-server count from guild_tracked_servers. Until that lands, this
- * stub returns an empty list so the UI renders the empty state.
  */
 export async function getMyInstalledGuilds(): Promise<DashboardGuild[]> {
-	// TODO(backend): swap for the real endpoint once implemented:
-	// const payload = await backendFetch<{ items: DashboardGuild[] }>(
-	// 	"/api/app/me/guilds/installed",
-	// 	undefined,
-	// 	{ requireSession: true },
-	// );
-	// return payload.items;
-	return [];
+	const payload = await backendFetch<{ items: DashboardGuild[] }>(
+		"/api/app/me/guilds/installed",
+		undefined,
+		{ requireSession: true },
+	);
+	return payload.items;
 }
 
 export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
