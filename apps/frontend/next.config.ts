@@ -2,9 +2,12 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+// 'unsafe-inline' is required: Next.js emits inline hydration <script> blocks.
+// The strict alternative is per-request nonces, which would force every page
+// (incl. the static landing) into dynamic rendering.
 const scriptSrc = isDev
 	? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
-	: "script-src 'self'";
+	: "script-src 'self' 'unsafe-inline'";
 
 const connectSrc = isDev
 	? "connect-src 'self' ws: wss:"
