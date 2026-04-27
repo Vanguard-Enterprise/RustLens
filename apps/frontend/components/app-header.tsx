@@ -17,7 +17,8 @@ type AppHeaderProps = {
 	variant: AppShellVariant;
 	user: {
 		displayName: string;
-		email?: string;
+		discordGlobalName?: string;
+		discordUsername?: string;
 		avatarUrl?: string;
 		isInternalAdmin: boolean;
 	};

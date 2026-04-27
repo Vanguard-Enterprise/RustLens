@@ -25,24 +25,28 @@ import { Link2Icon, SearchIcon } from "lucide-react";
 type AppSidebarProps = {
 	pathname: string;
 	variant: AppShellVariant;
+	permissions?: string[];
 };
 
-export function AppSidebar({ pathname, variant }: AppSidebarProps) {
-	const navGroups = getNavGroups(variant, pathname);
+export function AppSidebar({ pathname, permissions = [], variant }: AppSidebarProps) {
+	const navGroups = getNavGroups(variant, pathname, permissions);
 	const footerNavLinks = getFooterNavLinks(variant, pathname);
 
 	return (
 		<Sidebar collapsible="icon" variant="floating">
 			<SidebarHeader className="h-14 justify-center">
-				<SidebarMenuButton asChild>
+				<SidebarMenuButton
+					asChild
+					className="gap-2 p-0! group-data-[collapsible=icon]:p-0!"
+				>
 					<Link href={variant === "admin" ? "/admin" : "/dashboard"}>
 						<Image
 							alt="RustLens"
-							className="h-8 w-auto"
-							height={32}
+							className="size-8 max-w-none shrink-0"
+							height={64}
 							priority
 							src="/RustLens.png"
-							width={144}
+							width={64}
 						/>
 						<span className="font-medium">RustLens</span>
 					</Link>

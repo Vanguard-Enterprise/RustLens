@@ -114,7 +114,7 @@ func (p *PostgresStore) CreateWipeReactSchedule(ctx context.Context, record Wipe
 
 	var count int
 	err = tx.QueryRow(ctx, `
-		SELECT COUNT(*) FROM wipe_react_schedules WHERE guild_id = $1 FOR UPDATE
+		SELECT COUNT(*) FROM wipe_react_schedules WHERE guild_id = $1
 	`, record.GuildID).Scan(&count)
 	if err != nil {
 		return WipeReactSchedule{}, err
@@ -192,21 +192,5 @@ func (p *PostgresStore) DeleteWipeReactSchedule(ctx context.Context, guildID str
 		return ErrWipeReactScheduleNotFound
 	}
 
-	return nil
-}
-
-func (p *PostgresStore) MarkWipeReactSchedulePosted(ctx context.Context, guildID string, scheduleID int64, lastPostedForUnix int64) error {
-	tag, err := p.pool.Exec(ctx, `
-		UPDATE wipe_react_schedules
-		SET last_posted_for_unix = $3,
-			updated_at = NOW()
-		WHERE guild_id = $1 AND id = $2 AND last_posted_for_unix < $3
-	`, guildID, scheduleID, lastPostedForUnix)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrWipeReactScheduleNotFound
-	}
 	return nil
 }

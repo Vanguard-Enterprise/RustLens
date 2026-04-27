@@ -4,7 +4,10 @@ import {
 	BookOpenIcon,
 	ChartNoAxesColumnIcon,
 	GaugeIcon,
+	KeyRoundIcon,
 	Link2Icon,
+	NetworkIcon,
+	ScanEyeIcon,
 	SettingsIcon,
 	ServerIcon,
 	ShieldIcon,
@@ -13,6 +16,33 @@ import {
 } from "lucide-react";
 
 export type AppShellVariant = "dashboard" | "admin";
+
+export type AdminNavItem = {
+	href: string;
+	label: string;
+	icon: LucideIcon;
+	permissions: string[];
+};
+
+export const ADMIN_NAV: AdminNavItem[] = [
+	{ href: "/admin", label: "Overview", icon: ShieldIcon, permissions: [] },
+	{ href: "/admin/users", label: "Users", icon: UsersIcon, permissions: ["users.suspend", "users.force_unlink_steam"] },
+	{ href: "/admin/links", label: "Link Review", icon: ScanEyeIcon, permissions: ["links.review"] },
+	{ href: "/admin/guilds", label: "Guilds", icon: UserRoundIcon, permissions: ["guilds.untrack_server"] },
+	{ href: "/admin/proxies", label: "Proxies", icon: NetworkIcon, permissions: ["proxies.edit"] },
+	{ href: "/admin/audit", label: "Audit", icon: ActivityIcon, permissions: ["audit.read"] },
+	{ href: "/admin/roles", label: "Roles", icon: KeyRoundIcon, permissions: ["admins.grant"] },
+];
+
+export function filterNavByPermissions(
+	nav: AdminNavItem[],
+	perms: string[],
+): AdminNavItem[] {
+	const set = new Set(perms);
+	return nav.filter(
+		(item) => item.permissions.length === 0 || item.permissions.some((p) => set.has(p)),
+	);
+}
 
 export type SidebarNavItem = {
 	title: string;
@@ -33,22 +63,26 @@ function withActive(pathname: string, items: Omit<SidebarNavItem, "isActive">[])
 	}));
 }
 
-export function getNavGroups(variant: AppShellVariant, pathname: string): SidebarNavGroup[] {
+export function getNavGroups(
+	variant: AppShellVariant,
+	pathname: string,
+	permissions: string[] = [],
+): SidebarNavGroup[] {
 	if (variant === "admin") {
+		const filtered = filterNavByPermissions(ADMIN_NAV, permissions);
 		return [
 			{
 				label: "Operations",
-				items: withActive(pathname, [
-					{ title: "Overview", path: "/admin", icon: ShieldIcon },
-					{ title: "Users", path: "/admin/users", icon: UsersIcon },
-					{ title: "Guilds", path: "/admin/guilds", icon: UserRoundIcon },
-					{ title: "Servers", path: "/admin/servers", icon: ServerIcon },
-					{ title: "Audit", path: "/admin/audit", icon: ActivityIcon },
-				]),
+				items: withActive(pathname, filtered.map((item) => ({
+					title: item.label,
+					path: item.href,
+					icon: item.icon,
+				}))),
 			},
 			{
 				label: "Admin",
 				items: withActive(pathname, [
+					{ title: "Servers", path: "/admin/servers", icon: ServerIcon },
 					{ title: "Settings", path: "/admin/settings", icon: SettingsIcon },
 				]),
 			},

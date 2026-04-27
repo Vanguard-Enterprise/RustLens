@@ -5,7 +5,7 @@ import type {
   Client,
   GuildMember,
 } from "discord.js";
-import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import {
   BackendClient,
   type SteamAccount,
@@ -28,6 +28,8 @@ const compareCommand = new SlashCommandBuilder()
   .setDescription("Compare your current voice channel against a wipe react or tracked server")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addStringOption((option) =>
     option
       .setName(COMPARE_SERVER_OPTION_NAME)
@@ -169,6 +171,54 @@ function buildWipeReactComparisonEmbed(
   return embed;
 }
 
+function buildWipeReactServerComparisonEmbed(
+  wipeReact: WipeReact,
+  serverName: string,
+  acceptedNotOnServer: readonly string[],
+  lateNotOnServer: readonly string[],
+  declinedOnServer: readonly string[],
+) {
+  const outOfSyncCount = new Set([
+    ...acceptedNotOnServer,
+    ...lateNotOnServer,
+    ...declinedOnServer,
+  ]).size;
+
+  const embed = buildBaseEmbed(
+    "Wipe React vs Server Comparison",
+    `**Compared Against**\n${wipeReact.name} | ${formatWipeReactDate(wipeReact)} | \`${wipeReact.messageId}\`\n${serverName}\n\n${outOfSyncCount} users found out of sync`,
+  );
+
+  const fields: APIEmbedField[] = [];
+  if (acceptedNotOnServer.length > 0) {
+    fields.push({
+      name: "✅ Accepted - Not on Server",
+      value: formatUserLines(acceptedNotOnServer),
+      inline: false,
+    });
+  }
+  if (lateNotOnServer.length > 0) {
+    fields.push({
+      name: "⏰ Late - Not on Server",
+      value: formatUserLines(lateNotOnServer),
+      inline: false,
+    });
+  }
+  if (declinedOnServer.length > 0) {
+    fields.push({
+      name: "❌ Declined - On Server",
+      value: formatUserLines(declinedOnServer),
+      inline: false,
+    });
+  }
+
+  if (fields.length > 0) {
+    embed.addFields(fields);
+  }
+
+  return embed;
+}
+
 function buildServerComparisonEmbed(
   serverName: string,
   needToJoinServer: readonly string[],
@@ -240,6 +290,21 @@ async function fetchComparisonMembers(interaction: ChatInputCommandInteraction) 
 
   const members = await getGuildMembers(guild);
   return [...members.values()].filter((guildMember) => !guildMember.user.bot);
+}
+
+async function fetchInvokerVoiceMembers(interaction: ChatInputCommandInteraction) {
+  const guild = interaction.guild;
+  if (!guild) {
+    return null;
+  }
+
+  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  const voiceChannel = member?.voice.channel;
+  if (!voiceChannel) {
+    return [] as GuildMember[];
+  }
+
+  return [...voiceChannel.members.values()].filter((voiceMember) => !voiceMember.user.bot);
 }
 
 type GuildMappings = {
@@ -377,6 +442,69 @@ async function handleServerComparison(
   return true;
 }
 
+async function handleWipeReactServerComparison(
+  interaction: ChatInputCommandInteraction,
+  wipeReactMessageId: string,
+  serverId: string,
+) {
+  const backend = getBackend();
+  const workerId = getWorkerID();
+  const [wipeReact, trackedServers, playerStates, mappings] = await Promise.all([
+    resolveSelectedWipeReact(interaction.guildId!, wipeReactMessageId),
+    listTrackedServers(),
+    backend.listOnlinePlayerStatesByServer(workerId, serverId),
+    resolveGuildMappings(interaction.guildId!),
+  ]);
+
+  if (!wipeReact) {
+    await interaction.editReply({
+      content: "No passed wipe react was found for this server.",
+      embeds: [],
+    });
+    return true;
+  }
+
+  const server = trackedServers.find((item) => item.bmId === serverId) ?? null;
+  const serverName = server?.name ?? playerStates.items[0]?.serverName ?? serverId;
+  const onlineBmIds = new Set(playerStates.items.map((item) => item.playerBmId));
+  const onlineDiscordIds = new Set<string>();
+
+  for (const bmId of onlineBmIds) {
+    const discordIds = mappings.bmToDiscordIds.get(bmId);
+    if (!discordIds) {
+      continue;
+    }
+
+    for (const discordId of discordIds) {
+      onlineDiscordIds.add(discordId);
+    }
+  }
+
+  const acceptedNotOnServer = uniqueSorted(
+    wipeReact.acceptedUserIds.filter((userId) => !onlineDiscordIds.has(userId)),
+  );
+  const lateNotOnServer = uniqueSorted(
+    wipeReact.lateUserIds.filter((userId) => !onlineDiscordIds.has(userId)),
+  );
+  const declinedSet = new Set(wipeReact.declinedUserIds);
+  const declinedOnServer = uniqueSorted(
+    [...onlineDiscordIds].filter((userId) => declinedSet.has(userId)),
+  );
+
+  await interaction.editReply({
+    embeds: [
+      buildWipeReactServerComparisonEmbed(
+        wipeReact,
+        serverName,
+        acceptedNotOnServer,
+        lateNotOnServer,
+        declinedOnServer,
+      ),
+    ],
+  });
+  return true;
+}
+
 export async function ensureCompareCommand(client: Client, shardID: number) {
   if (shardID !== 0 || !client.application) {
     return;
@@ -460,26 +588,38 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
   const serverId = interaction.options.getString(COMPARE_SERVER_OPTION_NAME);
   const wipeReactMessageId = interaction.options.getString(COMPARE_WIPEREACT_OPTION_NAME);
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
-  const comparisonMembers = await fetchComparisonMembers(interaction);
-  if (!comparisonMembers) {
+  if (wipeReactMessageId && serverId) {
+    return handleWipeReactServerComparison(interaction, wipeReactMessageId, serverId);
+  }
+
+  if (wipeReactMessageId || !serverId) {
+    const comparisonMembers = await fetchComparisonMembers(interaction);
+    if (!comparisonMembers) {
+      await interaction.editReply({
+        content: "RustLens could not load members for this server.",
+      });
+      return true;
+    }
+    return handleWipeReactComparison(interaction, comparisonMembers, wipeReactMessageId);
+  }
+
+  const voiceMembers = await fetchInvokerVoiceMembers(interaction);
+  if (!voiceMembers) {
     await interaction.editReply({
       content: "RustLens could not load members for this server.",
     });
     return true;
   }
 
-  if (wipeReactMessageId || !serverId) {
-    return handleWipeReactComparison(interaction, comparisonMembers, wipeReactMessageId);
-  }
-
-  return handleServerComparison(interaction, comparisonMembers, serverId);
+  return handleServerComparison(interaction, voiceMembers, serverId);
 }
 
 export const __testables = {
   buildServerComparisonEmbed,
   buildWipeReactComparisonEmbed,
+  buildWipeReactServerComparisonEmbed,
   filterChoices,
   formatWipeReactChoiceName,
 };

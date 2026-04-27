@@ -7,9 +7,11 @@ import type {
 } from "discord.js";
 import {
   ActionRowBuilder,
+  ApplicationIntegrationType,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -118,6 +120,7 @@ const attachmentOptions: readonly CraftableOption[] = [
   { value: "laser", label: "Weapon Lasersight", itemIds: [-132516482] },
   { value: "extended_mag", label: "Extended Magazine", itemIds: [2005491391] },
   { value: "flashlight", label: "Weapon Flashlight", itemIds: [952603248] },
+  { value: "muzzle_boost", label: "Muzzle Boost", itemIds: [-1405508498] },
 ] as const;
 
 const ammoOptions: readonly AmmoOption[] = [
@@ -186,6 +189,8 @@ const bindCommand = new SlashCommandBuilder()
   .setName(BIND_COMMAND_NAME)
   .setDescription("RustLens bind commands")
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
   .addSubcommand((subcommand) =>
     subcommand
       .setName(BIND_FULLKIT_SUBCOMMAND_NAME)
@@ -248,7 +253,7 @@ function buildBindFullkitStartModal() {
         .setCustomId(BIND_FULLKIT_ATTACHMENTS_CUSTOM_ID)
         .setRequired(false)
         .setMinValues(0)
-        .setMaxValues(4)
+        .setMaxValues(5)
         .addOptions(
           ...attachmentOptions.map(({ label, value }) => ({ label, value })),
         ),
@@ -768,22 +773,22 @@ function buildBindEmbed(title: string, command: string) {
 
 
 async function handleMassInvite(interaction: ChatInputCommandInteraction) {
-  if (!(await hasGuildAdminAccess(interaction))) {
-    await replyEphemeral(interaction, "Only the configured admin role or administrators can use this command.");
-    return;
-  }
-
   const guild = interaction.guild;
   if (!guild) {
     await replyEphemeral(interaction, "Could not resolve guild.");
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await replyEphemeral(interaction, "Only the configured admin role or administrators can use this command.");
+    return;
+  }
+
   const key = interaction.options.getString("key", true).trim();
   const role = interaction.options.getRole("scope", true);
   const vcChannel = interaction.options.getChannel("vc", false);
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   let targetMembers = guild.members.cache.filter((member) => member.roles.cache.has(role.id));
 

@@ -46,6 +46,11 @@ async function markLeft(member: UserGuildEventMember) {
     return;
   }
 
+  const links = await getBackend().listGuildLinksByDiscord(getWorkerID(), member.guild.id, member.id);
+  for (const link of links.items) {
+    await getBackend().deleteGuildLink(getWorkerID(), member.guild.id, member.id, link.steamId);
+  }
+
   await getBackend().markUserGuildLeft(getWorkerID(), member.id, member.guild.id);
 }
 

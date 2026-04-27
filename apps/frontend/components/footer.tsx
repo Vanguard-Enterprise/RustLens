@@ -53,7 +53,7 @@ export function Footer() {
 								className="h-8 w-auto"
 								height={32}
 								src="/RustLens.png"
-								width={144}
+								width={32}
 							/>
 							<span className="text-sm font-semibold tracking-tight">RustLens</span>
 						</Link>

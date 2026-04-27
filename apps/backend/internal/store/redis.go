@@ -14,6 +14,7 @@ const (
 	workersKey                 = "rustlens:bot:workers"
 	leaseMapKey                = "rustlens:bot:leases"
 	workerHeartbeatPref        = "rustlens:bot:worker:heartbeat:"
+	workerStatsPref            = "rustlens:bot:worker:stats:"
 	battleMetricsPollerLockKey = "rustlens:battlemetrics:poller:lock"
 )
 
@@ -59,8 +60,44 @@ func (r *RedisStore) RemoveWorker(ctx context.Context, workerID string) error {
 	pipe := r.client.TxPipeline()
 	pipe.SRem(ctx, workersKey, workerID)
 	pipe.Del(ctx, workerHeartbeatPref+workerID)
+	pipe.Del(ctx, workerStatsPref+workerID)
 	_, err := pipe.Exec(ctx)
 	return err
+}
+
+func (r *RedisStore) SetWorkerStats(ctx context.Context, workerID string, payload []byte, ttl time.Duration) error {
+	return r.client.Set(ctx, workerStatsPref+workerID, payload, ttl).Err()
+}
+
+func (r *RedisStore) GetWorkerStats(ctx context.Context, workerIDs []string) (map[string][]byte, error) {
+	result := make(map[string][]byte, len(workerIDs))
+	if len(workerIDs) == 0 {
+		return result, nil
+	}
+
+	keys := make([]string, len(workerIDs))
+	for i, id := range workerIDs {
+		keys[i] = workerStatsPref + id
+	}
+
+	values, err := r.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	for i, value := range values {
+		if value == nil {
+			continue
+		}
+		switch v := value.(type) {
+		case string:
+			result[workerIDs[i]] = []byte(v)
+		case []byte:
+			result[workerIDs[i]] = v
+		}
+	}
+
+	return result, nil
 }
 
 func (r *RedisStore) ActiveWorkers(ctx context.Context) ([]string, error) {

@@ -11,9 +11,11 @@ type AppShellProps = {
 	variant: AppShellVariant;
 	user: {
 		displayName: string;
-		email?: string;
+		discordGlobalName?: string;
+		discordUsername?: string;
 		avatarUrl?: string;
 		isInternalAdmin: boolean;
+		permissions?: string[];
 	};
 	csrfToken: string;
 };
@@ -28,7 +30,11 @@ export function AppShell({
 
 	return (
 		<SidebarProvider>
-			<AppSidebar pathname={pathname} variant={variant} />
+			<AppSidebar
+				pathname={pathname}
+				permissions={variant === "admin" ? (user.permissions ?? []) : undefined}
+				variant={variant}
+			/>
 			<SidebarInset className="p-4 md:p-6">
 				<AppHeader csrfToken={csrfToken} pathname={pathname} user={user} variant={variant} />
 				<div className="flex flex-1 flex-col gap-4 overflow-y-auto">

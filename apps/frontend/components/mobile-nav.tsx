@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { companyLinks, companyLinks2, productLinks } from "@/components/nav-links";
 import { LinkItem } from "@/components/sheard";
 import { XIcon, MenuIcon } from "lucide-react";
-import Link from "next/link";
 
 export function MobileNav() {
 	const [open, setOpen] = React.useState(false);
@@ -76,10 +75,9 @@ export function MobileNav() {
 							))}
 						</div>
 						<div className="mt-5 flex flex-col gap-2">
-							<Button asChild className="w-full" variant="outline">
-								<Link href="/login">Sign In</Link>
+							<Button asChild className="w-full">
+								<a href="/api/auth/discord">Login</a>
 							</Button>
-							<Button className="w-full">Get Started</Button>
 						</div>
 					</div>
 				</Portal>

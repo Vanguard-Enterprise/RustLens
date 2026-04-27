@@ -502,6 +502,130 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/claim": map[string]any{
+				"post": map[string]any{
+					"summary":     "Claim next scheduled wipe react post",
+					"description": "Claims the next due scheduled wipe react post for a guild.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/WipeReactSchedulePostWorkerRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Claim result returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/WipeReactSchedulePostClaimResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/complete": map[string]any{
+				"post": map[string]any{
+					"summary":     "Complete scheduled wipe react post",
+					"description": "Marks a claimed scheduled wipe react post as completed.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "scheduleID",
+							"in":          "path",
+							"required":    true,
+							"description": "Scheduled post ID.",
+							"schema":      map[string]any{"type": "integer"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CompleteWipeReactSchedulePostRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Scheduled post completed",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/release": map[string]any{
+				"post": map[string]any{
+					"summary":     "Release scheduled wipe react post",
+					"description": "Releases a claimed scheduled wipe react post back to the queue.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "scheduleID",
+							"in":          "path",
+							"required":    true,
+							"description": "Scheduled post ID.",
+							"schema":      map[string]any{"type": "integer"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/WipeReactSchedulePostWorkerRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Scheduled post released",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/steam/{steamID}": map[string]any{
 				"get": map[string]any{
 					"summary":     "Get steam account",
@@ -585,6 +709,24 @@ func buildOpenAPIDocument() map[string]any {
 						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
 						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
 						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/steam-accounts/count": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get steam account count",
+					"description": "Returns the number of rows currently stored in steam_accounts.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Steam account count returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/CountResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
 					},
 				},
 			},
@@ -750,6 +892,75 @@ func buildOpenAPIDocument() map[string]any {
 							"content": map[string]any{
 								"application/json": map[string]any{
 									"schema": map[string]any{"$ref": "#/components/schemas/PlayerStateListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/player-states/servers/{serverID}/search": map[string]any{
+				"get": map[string]any{
+					"summary":     "Search player states by name on a server",
+					"description": "Returns matching player states for one tracked BattleMetrics server. By default only online players are returned; setting includeOffline=true also includes players whose offlineSince is within the last 24 hours.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "serverID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics server ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "q",
+							"in":          "query",
+							"required":    true,
+							"description": "Case-insensitive substring to match against steam_account_cache.bm_name.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "limit",
+							"in":          "query",
+							"required":    false,
+							"description": "Maximum number of results to return. Defaults to 20 and is capped at 20.",
+							"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": 20, "default": 20},
+						},
+						{
+							"name":        "includeOffline",
+							"in":          "query",
+							"required":    false,
+							"description": "When true, also includes players whose offlineSince is within the last 24 hours. Defaults to false.",
+							"schema":      map[string]any{"type": "boolean", "default": false},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Matching player states returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type":     "object",
+										"required": []string{"items"},
+										"properties": map[string]any{
+											"items": map[string]any{
+												"type": "array",
+												"items": map[string]any{
+													"type":     "object",
+													"required": []string{"serverBmId", "serverName", "playerBmId", "steamId", "bmName", "isOnline"},
+													"properties": map[string]any{
+														"serverBmId": map[string]any{"type": "string"},
+														"serverName": map[string]any{"type": "string"},
+														"playerBmId": map[string]any{"type": "string"},
+														"steamId":    map[string]any{"type": "string"},
+														"bmName":     map[string]any{"type": "string"},
+														"isOnline":   map[string]any{"type": "boolean"},
+													},
+												},
+											},
+										},
+									},
 								},
 							},
 						},
@@ -1083,6 +1294,34 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}/game-bans": map[string]any{
+				"get": map[string]any{
+					"summary":     "Check guild game bans",
+					"description": "Refreshes stale Steam game-ban cache entries for guild-linked Steam IDs using a 6 hour TTL and returns only game bans from the last 90 days.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "guildID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord guild ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Recent guild game bans returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/GuildRecentGameBanListResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/guilds/{guildID}/links": map[string]any{
 				"get": map[string]any{
 					"summary":     "List all guild steam-discord links",
@@ -1156,7 +1395,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/internal/bot/setup/guilds/{guildID}/nickname-targets": map[string]any{
 				"get": map[string]any{
 					"summary":     "List guild nickname targets",
-					"description": "Returns one guild-scoped steam-discord link per Discord user joined with steam_accounts bm_id and bm_name for nickname updates.",
+					"description": "Returns one guild-scoped steam-discord link per Discord user joined with steam_accounts bm_id and steam_account_cache bm_name for nickname updates.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -1291,6 +1530,39 @@ func buildOpenAPIDocument() map[string]any {
 						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
 						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
 						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/auth/discord": map[string]any{
+				"get": map[string]any{
+					"summary":     "Begin Discord OAuth sign-in",
+					"description": "Sets PKCE/state cookies and 302-redirects to Discord. Refuses with /login?error=discord-already-signed-in if the user already has a session cookie.",
+					"responses": map[string]any{
+						"302": map[string]any{
+							"description": "Redirect to Discord authorize endpoint or back to /login on policy refusal.",
+						},
+					},
+				},
+			},
+			"/api/auth/discord/link": map[string]any{
+				"get": map[string]any{
+					"summary":     "Begin Discord OAuth account-link flow",
+					"description": "Requires an active session (rustlens_session cookie). 302s to /login?error=session when missing.",
+					"responses": map[string]any{
+						"302": map[string]any{"description": "Redirect to Discord authorize endpoint or /login on missing session."},
+					},
+				},
+			},
+			"/api/auth/discord/callback": map[string]any{
+				"get": map[string]any{
+					"summary":     "Discord OAuth callback (sign-in or link)",
+					"description": "Validates state, exchanges code, fetches profile, branches on intent cookie. Sign-in path mints rustlens_session cookie and redirects to /dashboard. Link path redirects to /dashboard/settings with notice or error query string.",
+					"parameters": []any{
+						map[string]any{"name": "code", "in": "query", "required": true, "schema": map[string]any{"type": "string"}},
+						map[string]any{"name": "state", "in": "query", "required": true, "schema": map[string]any{"type": "string"}},
+					},
+					"responses": map[string]any{
+						"302": map[string]any{"description": "Redirect to /dashboard, /dashboard/settings, or /login depending on outcome."},
 					},
 				},
 			},
@@ -1726,6 +1998,13 @@ func buildOpenAPIDocument() map[string]any {
 					},
 					"required": []string{"status"},
 				},
+				"CountResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"count": map[string]any{"type": "integer"},
+					},
+					"required": []string{"count"},
+				},
 				"AssignmentsResponse": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
@@ -1745,7 +2024,7 @@ func buildOpenAPIDocument() map[string]any {
 						"wipeReactLogChannelId":     map[string]any{"type": "string"},
 						"linkingLogChannelId":       map[string]any{"type": "string"},
 						"trackedServerLogChannelId": map[string]any{"type": "string"},
-						"alertsChannelId":           map[string]any{"type": "string"},
+						"trackedUsersCategoryId":    map[string]any{"type": "string"},
 						"adminRoleId":               map[string]any{"type": "string"},
 					},
 					"required": []string{
@@ -1753,7 +2032,7 @@ func buildOpenAPIDocument() map[string]any {
 						"wipeReactLogChannelId",
 						"linkingLogChannelId",
 						"trackedServerLogChannelId",
-						"alertsChannelId",
+						"trackedUsersCategoryId",
 						"adminRoleId",
 					},
 				},
@@ -1763,7 +2042,7 @@ func buildOpenAPIDocument() map[string]any {
 						"wipeReactLogChannelId":     map[string]any{"type": "string"},
 						"linkingLogChannelId":       map[string]any{"type": "string"},
 						"trackedServerLogChannelId": map[string]any{"type": "string"},
-						"alertsChannelId":           map[string]any{"type": "string"},
+						"trackedUsersCategoryId":    map[string]any{"type": "string"},
 						"adminRoleId":               map[string]any{"type": "string"},
 					},
 				},
@@ -1799,12 +2078,13 @@ func buildOpenAPIDocument() map[string]any {
 				"TrackedServer": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"bmId":          map[string]any{"type": "string"},
-						"name":          map[string]any{"type": "string"},
-						"lastPolledAt":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
-						"lastPollError": map[string]any{"type": "string"},
+						"bmId":                   map[string]any{"type": "string"},
+						"name":                   map[string]any{"type": "string"},
+						"includeInGuildSettings": map[string]any{"type": "boolean"},
+						"lastPolledAt":           map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"lastPollError":          map[string]any{"type": "string"},
 					},
-					"required": []string{"bmId", "name", "lastPolledAt", "lastPollError"},
+					"required": []string{"bmId", "name", "includeInGuildSettings", "lastPolledAt", "lastPollError"},
 				},
 				"TrackedServerListResponse": map[string]any{
 					"type": "object",
@@ -1819,8 +2099,9 @@ func buildOpenAPIDocument() map[string]any {
 				"CreateTrackedServerRequest": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"bmId": map[string]any{"type": "string"},
-						"name": map[string]any{"type": "string"},
+						"bmId":                   map[string]any{"type": "string"},
+						"name":                   map[string]any{"type": "string"},
+						"includeInGuildSettings": map[string]any{"type": "boolean"},
 					},
 					"required": []string{"bmId", "name"},
 				},
@@ -1867,6 +2148,27 @@ func buildOpenAPIDocument() map[string]any {
 						"items": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"$ref": "#/components/schemas/GuildOnlineSummaryItem"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"GuildRecentGameBan": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"guildId":        map[string]any{"type": "string"},
+						"discordId":      map[string]any{"type": "string"},
+						"steamId":        map[string]any{"type": "string"},
+						"gameBannedAt":   map[string]any{"type": "string", "format": "date-time"},
+						"gameBannedUnix": map[string]any{"type": "integer"},
+					},
+					"required": []string{"guildId", "discordId", "steamId", "gameBannedAt", "gameBannedUnix"},
+				},
+				"GuildRecentGameBanListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/GuildRecentGameBan"},
 						},
 					},
 					"required": []string{"items"},
@@ -1940,6 +2242,47 @@ func buildOpenAPIDocument() map[string]any {
 					},
 					"required": []string{"changed", "wipeReact"},
 				},
+				"WipeReactSchedulePost": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":                map[string]any{"type": "integer"},
+						"scheduleId":        map[string]any{"type": "integer"},
+						"guildId":           map[string]any{"type": "string"},
+						"channelId":         map[string]any{"type": "string"},
+						"wipeUnix":          map[string]any{"type": "integer"},
+						"postUnix":          map[string]any{"type": "integer"},
+						"timeZone":          map[string]any{"type": "string"},
+						"name":              map[string]any{"type": "string"},
+						"description":       map[string]any{"type": "string"},
+						"askLateReason":     map[string]any{"type": "boolean"},
+						"askDeclinedReason": map[string]any{"type": "boolean"},
+						"createdBy":         map[string]any{"type": "string"},
+					},
+					"required": []string{"id", "scheduleId", "guildId", "channelId", "wipeUnix", "postUnix", "timeZone", "name", "description", "askLateReason", "askDeclinedReason", "createdBy"},
+				},
+				"WipeReactSchedulePostClaimResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"item": map[string]any{"$ref": "#/components/schemas/WipeReactSchedulePost", "nullable": true},
+					},
+					"required": []string{"item"},
+				},
+				"WipeReactSchedulePostWorkerRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"workerId": map[string]any{"type": "string"},
+					},
+					"required": []string{"workerId"},
+				},
+				"CompleteWipeReactSchedulePostRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"workerId":  map[string]any{"type": "string"},
+						"messageId": map[string]any{"type": "string"},
+						"channelId": map[string]any{"type": "string"},
+					},
+					"required": []string{"workerId", "messageId", "channelId"},
+				},
 				"SteamAccount": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
@@ -1947,6 +2290,7 @@ func buildOpenAPIDocument() map[string]any {
 						"bmId":        map[string]any{"type": "string", "nullable": true},
 						"bmName":      map[string]any{"type": "string"},
 						"avatarImage": map[string]any{"type": "string"},
+						"firstSeenAt": map[string]any{"type": "string", "format": "date-time", "nullable": true},
 						"createdAt":   map[string]any{"type": "string", "format": "date-time"},
 					},
 					"required": []string{"steamId", "bmId", "bmName", "avatarImage", "createdAt"},

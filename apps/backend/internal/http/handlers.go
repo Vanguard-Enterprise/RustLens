@@ -4,16 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"rustlens/backend/internal/admin/actions"
+	"rustlens/backend/internal/admin/audit"
+	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/auth"
+	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
@@ -24,27 +31,104 @@ var snowflakePattern = regexp.MustCompile(`^\d{17,20}$`)
 var steamIDPattern = regexp.MustCompile(`^\d{17}$`)
 
 const maxRequestBodyBytes = 1 << 20 // 1 MB
+const steamAccountCacheTTL = 24 * time.Hour
+const steamGameBanCacheTTL = 6 * time.Hour
+const recentGameBanWindow = 90 * 24 * time.Hour
+const steamPlayerBanBatchSize = 100
 
 type Handler struct {
-	cfg          config.Config
-	postgres     *store.PostgresStore
-	redis        *store.RedisStore
-	shardService *shards.Service
-	jwtValidator *auth.Validator
-	appSessions  *auth.AppSessionValidator
-	steamClient  *steamapi.Client
+	cfg                     config.Config
+	postgres                *store.PostgresStore
+	redis                   *store.RedisStore
+	shardService            *shards.Service
+	jwtValidator            *auth.Validator
+	appSessions             *auth.AppSessionValidator
+	steamClient             *steamapi.Client
+	steamSummaryClient      *steamapi.Client
+	battleMetricsClient     *battlemetrics.Client
+	authBattleMetricsClient *battlemetrics.Client
+	rbacStore               *rbac.Store
+	rbacResolver            *rbac.Resolver
+	auditStore              *audit.Store
+	actionRegistry          *actions.Registry
+	actionDispatcher        *actions.Dispatcher
 }
 
-func NewHandler(cfg config.Config, postgres *store.PostgresStore, redis *store.RedisStore, shardService *shards.Service, steamClient *steamapi.Client) *Handler {
-	return &Handler{
-		cfg:          cfg,
-		postgres:     postgres,
-		redis:        redis,
-		shardService: shardService,
-		jwtValidator: auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
-		appSessions:  auth.NewAppSessionValidator(cfg.AppSessionSecret),
-		steamClient:  steamClient,
+func NewHandler(
+	cfg config.Config,
+	postgres *store.PostgresStore,
+	redis *store.RedisStore,
+	shardService *shards.Service,
+	steamClient *steamapi.Client,
+	steamSummaryClient *steamapi.Client,
+	battleMetricsClient *battlemetrics.Client,
+	authBattleMetricsClient *battlemetrics.Client,
+) *Handler {
+	rbacStore := rbac.NewStore(postgres.Pool())
+	if err := rbacStore.SeedPermissionsAndRoles(context.Background()); err != nil {
+		panic(fmt.Errorf("rbac seed: %w", err))
 	}
+	resolver := rbac.NewResolver(rbacStore)
+	auditStore := audit.NewStore(postgres.Pool())
+	registry := actions.NewRegistry(rbac.IsValidPermission)
+	if err := registerAdminActions(registry, postgres.Pool(), resolver, cfg.AppBaseURL); err != nil {
+		panic(fmt.Errorf("register admin actions: %w", err))
+	}
+	dispatcher := actions.NewDispatcher(registry, resolver, auditSinkAdapter{auditStore}, appSessionActor)
+	// The bulk wrapper needs a reference to the dispatcher so it can invoke
+	// registered sub-actions through the shared Dispatch() helper.
+	if err := registry.Register(actions.NewUsersBulkAction(dispatcher)); err != nil {
+		panic(fmt.Errorf("register users.bulk: %w", err))
+	}
+
+	return &Handler{
+		cfg:                     cfg,
+		postgres:                postgres,
+		redis:                   redis,
+		shardService:            shardService,
+		jwtValidator:            auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
+		appSessions:             auth.NewAppSessionValidator(cfg.AppSessionSecret),
+		steamClient:             steamClient,
+		steamSummaryClient:      steamSummaryClient,
+		battleMetricsClient:     battleMetricsClient,
+		authBattleMetricsClient: authBattleMetricsClient,
+		rbacStore:               rbacStore,
+		rbacResolver:            resolver,
+		auditStore:              auditStore,
+		actionRegistry:          registry,
+		actionDispatcher:        dispatcher,
+	}
+}
+
+// auditSinkAdapter bridges *audit.Store to the actions.AuditSink interface.
+type auditSinkAdapter struct{ s *audit.Store }
+
+func (a auditSinkAdapter) RecordEntry(ctx context.Context, e actions.AuditEntryInput) error {
+	return a.s.Record(ctx, audit.Entry{
+		ActionType:        e.ActionType,
+		ActorUserID:       &e.ActorUserID,
+		ActorRoleSnapshot: e.ActorRoleSnapshot,
+		ResourceType:      e.ResourceType,
+		ResourceID:        e.ResourceID,
+		TargetUserID:      e.TargetUserID,
+		Params:            e.Params,
+		Reason:            e.Reason,
+		Result:            e.Result,
+		ErrorMessage:      e.ErrorMessage,
+		IPAddress:         e.IPAddress,
+		UserAgent:         e.UserAgent,
+	})
+}
+
+// appSessionActor resolves the acting user for admin action dispatch.
+// It reads the validated session attached by the appauth.RequireSession
+// middleware. Returns an error if the middleware has not populated the
+// context, which the dispatcher translates to 401.
+func appSessionActor(r *http.Request) (string, []string, error) {
+	if session := appauth.SessionFromContext(r.Context()); session != nil && session.UserID != "" {
+		return session.UserID, session.Roles, nil
+	}
+	return "", nil, fmt.Errorf("no app session")
 }
 
 func (h *Handler) Healthz(w http.ResponseWriter, r *http.Request) {
@@ -110,8 +194,9 @@ func (h *Handler) RegisterShardWorker(w http.ResponseWriter, r *http.Request) {
 }
 
 type heartbeatRequest struct {
-	WorkerID string `json:"workerId"`
-	ShardIDs []int  `json:"shardIds"`
+	WorkerID string                     `json:"workerId"`
+	ShardIDs []int                      `json:"shardIds"`
+	Stats    *shards.WorkerStatSnapshot `json:"stats,omitempty"`
 }
 
 func (h *Handler) HeartbeatShardWorker(w http.ResponseWriter, r *http.Request) {
@@ -132,7 +217,7 @@ func (h *Handler) HeartbeatShardWorker(w http.ResponseWriter, r *http.Request) {
 		request.WorkerID = claims.WorkerID
 	}
 
-	if err := h.shardService.Heartbeat(r.Context(), request.WorkerID, request.ShardIDs); err != nil {
+	if err := h.shardService.Heartbeat(r.Context(), request.WorkerID, request.ShardIDs, request.Stats); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -195,6 +280,89 @@ func (h *Handler) GetShardAssignments(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type ownerStatsWorker struct {
+	WorkerID  string                     `json:"workerId"`
+	UptimeSec int                        `json:"uptimeSec"`
+	RSSBytes  int64                      `json:"rssBytes"`
+	Shards    []shards.ShardStatSnapshot `json:"shards"`
+}
+
+type ownerStatsResponse struct {
+	GuildCount           int                `json:"guildCount"`
+	MemberCount          int64              `json:"memberCount"`
+	ConfiguredGuilds     int64              `json:"configuredGuilds"`
+	SteamAccountCount    int64              `json:"steamAccountCount"`
+	HardLinkCount        int64              `json:"hardLinkCount"`
+	UniqueLinkedUsers    int64              `json:"uniqueLinkedUsers"`
+	TrackedServerCount   int64              `json:"trackedServerCount"`
+	OnlineTrackedPlayers int64              `json:"onlineTrackedPlayers"`
+	ActiveWipeReacts     int64              `json:"activeWipeReacts"`
+	TargetShards         int                `json:"targetShards"`
+	Workers              []ownerStatsWorker `json:"workers"`
+}
+
+func (h *Handler) GetOwnerStats(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromContext(r.Context())
+	if claims == nil {
+		writeError(w, http.StatusUnauthorized, "missing auth claims")
+		return
+	}
+
+	workerStats, err := h.shardService.ActiveWorkerStats(r.Context())
+	if err != nil {
+		log.Printf("[backend] GetOwnerStats worker stats error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load worker stats")
+		return
+	}
+
+	counts, err := h.postgres.OwnerStats(r.Context(), time.Now().Unix())
+	if err != nil {
+		log.Printf("[backend] GetOwnerStats db counts error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load db counts")
+		return
+	}
+
+	workerIDs := make([]string, 0, len(workerStats))
+	for id := range workerStats {
+		workerIDs = append(workerIDs, id)
+	}
+	sort.Strings(workerIDs)
+
+	resp := ownerStatsResponse{
+		ConfiguredGuilds:     counts.ConfiguredGuilds,
+		SteamAccountCount:    counts.SteamAccounts,
+		HardLinkCount:        counts.HardLinks,
+		UniqueLinkedUsers:    counts.UniqueLinkedDiscords,
+		TrackedServerCount:   counts.TrackedServers,
+		OnlineTrackedPlayers: counts.OnlineTrackedPlayers,
+		ActiveWipeReacts:     counts.ActiveWipeReacts,
+		TargetShards:         h.cfg.BotTargetShards,
+		Workers:              make([]ownerStatsWorker, 0, len(workerIDs)),
+	}
+
+	for _, workerID := range workerIDs {
+		snapshot := workerStats[workerID]
+		shardSnapshots := append([]shards.ShardStatSnapshot(nil), snapshot.Shards...)
+		sort.Slice(shardSnapshots, func(i, j int) bool {
+			return shardSnapshots[i].ShardID < shardSnapshots[j].ShardID
+		})
+
+		for _, s := range shardSnapshots {
+			resp.GuildCount += s.Guilds
+			resp.MemberCount += s.Members
+		}
+
+		resp.Workers = append(resp.Workers, ownerStatsWorker{
+			WorkerID:  workerID,
+			UptimeSec: snapshot.UptimeSec,
+			RSSBytes:  snapshot.RSSBytes,
+			Shards:    shardSnapshots,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func validateGuildID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	guildID := chi.URLParam(r, "guildID")
 	if guildID == "" {
@@ -227,15 +395,22 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 		"wipeReactLogChannelId":     settings.WipeReactLogChannelID,
 		"linkingLogChannelId":       settings.LinkingLogChannelID,
 		"trackedServerLogChannelId": settings.TrackedServerLogChannelID,
-		"alertsChannelId":           settings.AlertsChannelID,
+		"trackedUsersCategoryId":    settings.TrackedUsersCategoryID,
 		"adminRoleId":               settings.AdminRoleID,
 	})
 }
 
 func trackedServerToMap(item store.TrackedServer) map[string]any {
 	result := map[string]any{
-		"bmId": item.BmID,
-		"name": item.Name,
+		"bmId":                   item.BmID,
+		"name":                   item.Name,
+		"includeInGuildSettings": item.IncludeInGuildSettings,
+		"isVitality":             item.IsVitality,
+		"isAtlas":                item.IsAtlas,
+		"isVital":                item.IsVital,
+		"isModded":               item.IsModded,
+		"isOfficial":             item.IsOfficial,
+		"isBuild":                item.IsBuild,
 	}
 	if item.LastPolledAt != nil {
 		result["lastPolledAt"] = *item.LastPolledAt
@@ -379,7 +554,7 @@ type updateGuildSettingsRequest struct {
 	WipeReactLogChannelID     *string `json:"wipeReactLogChannelId"`
 	LinkingLogChannelID       *string `json:"linkingLogChannelId"`
 	TrackedServerLogChannelID *string `json:"trackedServerLogChannelId"`
-	AlertsChannelID           *string `json:"alertsChannelId"`
+	TrackedUsersCategoryID    *string `json:"trackedUsersCategoryId"`
 	AdminRoleID               *string `json:"adminRoleId"`
 }
 
@@ -422,7 +597,7 @@ func (h *Handler) UpdateGuildSettings(w http.ResponseWriter, r *http.Request) {
 	if !validateSnowflakeOptionalField(w, request.TrackedServerLogChannelID, "trackedServerLogChannelId") {
 		return
 	}
-	if !validateSnowflakeOptionalField(w, request.AlertsChannelID, "alertsChannelId") {
+	if !validateSnowflakeOptionalField(w, request.TrackedUsersCategoryID, "trackedUsersCategoryId") {
 		return
 	}
 	if !validateSnowflakeOptionalField(w, request.AdminRoleID, "adminRoleId") {
@@ -433,7 +608,7 @@ func (h *Handler) UpdateGuildSettings(w http.ResponseWriter, r *http.Request) {
 		WipeReactLogChannelID:     request.WipeReactLogChannelID,
 		LinkingLogChannelID:       request.LinkingLogChannelID,
 		TrackedServerLogChannelID: request.TrackedServerLogChannelID,
-		AlertsChannelID:           request.AlertsChannelID,
+		TrackedUsersCategoryID:    request.TrackedUsersCategoryID,
 		AdminRoleID:               request.AdminRoleID,
 	})
 	if err != nil {
@@ -878,6 +1053,33 @@ func wipeReactScheduleFromPayload(guildID string, payload wipeReactSchedulePaylo
 	}
 }
 
+func wipeReactSchedulePostToMap(record store.WipeReactSchedulePost) map[string]any {
+	return map[string]any{
+		"id":                record.ID,
+		"scheduleId":        record.ScheduleID,
+		"guildId":           record.GuildID,
+		"channelId":         record.ChannelID,
+		"wipeUnix":          record.WipeUnix,
+		"postUnix":          record.PostUnix,
+		"timeZone":          record.TimeZone,
+		"name":              record.Name,
+		"description":       record.Description,
+		"askLateReason":     record.AskLateReason,
+		"askDeclinedReason": record.AskDeclinedReason,
+		"createdBy":         record.CreatedBy,
+	}
+}
+
+type wipeReactSchedulePostWorkerRequest struct {
+	WorkerID string `json:"workerId"`
+}
+
+type completeWipeReactSchedulePostRequest struct {
+	WorkerID  string `json:"workerId"`
+	MessageID string `json:"messageId"`
+	ChannelID string `json:"channelId"`
+}
+
 func (h *Handler) ListWipeReactSchedules(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateGuildID(w, r)
 	if !ok {
@@ -1008,35 +1210,105 @@ func (h *Handler) DeleteWipeReactSchedule(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-func (h *Handler) MarkWipeReactSchedulePosted(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ClaimNextWipeReactSchedulePost(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateGuildID(w, r)
-	if !ok {
-		return
-	}
-	scheduleID, ok := validateScheduleIDParam(w, r)
 	if !ok {
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var payload struct {
-		LastPostedForUnix int64 `json:"lastPostedForUnix"`
-	}
+	var payload wipeReactSchedulePostWorkerRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if payload.LastPostedForUnix <= 0 {
-		writeError(w, http.StatusBadRequest, "lastPostedForUnix must be a positive integer")
+	if strings.TrimSpace(payload.WorkerID) == "" {
+		writeError(w, http.StatusBadRequest, "workerId is required")
 		return
 	}
 
-	if err := h.postgres.MarkWipeReactSchedulePosted(r.Context(), guildID, scheduleID, payload.LastPostedForUnix); errors.Is(err, store.ErrWipeReactScheduleNotFound) {
-		writeError(w, http.StatusNotFound, "wipe react schedule not found")
+	record, err := h.postgres.ClaimNextWipeReactSchedulePost(r.Context(), guildID, payload.WorkerID, time.Now().Unix(), time.Now().Add(-5*time.Minute))
+	if errors.Is(err, store.ErrWipeReactSchedulePostNotFound) {
+		writeJSON(w, http.StatusOK, map[string]any{"item": nil})
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] ClaimNextWipeReactSchedulePost error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to claim wipe react schedule post")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"item": wipeReactSchedulePostToMap(record)})
+}
+
+func (h *Handler) CompleteWipeReactSchedulePost(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	postID, ok := validateScheduleIDParam(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var payload completeWipeReactSchedulePostRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(payload.WorkerID) == "" {
+		writeError(w, http.StatusBadRequest, "workerId is required")
+		return
+	}
+	if strings.TrimSpace(payload.MessageID) == "" {
+		writeError(w, http.StatusBadRequest, "messageId is required")
+		return
+	}
+	if strings.TrimSpace(payload.ChannelID) == "" {
+		writeError(w, http.StatusBadRequest, "channelId is required")
+		return
+	}
+
+	if err := h.postgres.CompleteWipeReactSchedulePost(r.Context(), guildID, postID, payload.WorkerID, payload.MessageID, payload.ChannelID); errors.Is(err, store.ErrWipeReactSchedulePostNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react schedule post not found")
 		return
 	} else if err != nil {
-		log.Printf("[backend] MarkWipeReactSchedulePosted error for guild %s schedule %d: %v", guildID, scheduleID, err)
-		writeError(w, http.StatusInternalServerError, "failed to mark schedule as posted")
+		log.Printf("[backend] CompleteWipeReactSchedulePost error for guild %s post %d: %v", guildID, postID, err)
+		writeError(w, http.StatusInternalServerError, "failed to complete wipe react schedule post")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) ReleaseWipeReactSchedulePost(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	postID, ok := validateScheduleIDParam(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var payload wipeReactSchedulePostWorkerRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(payload.WorkerID) == "" {
+		writeError(w, http.StatusBadRequest, "workerId is required")
+		return
+	}
+
+	if err := h.postgres.ReleaseWipeReactSchedulePost(r.Context(), guildID, postID, payload.WorkerID); errors.Is(err, store.ErrWipeReactSchedulePostNotFound) {
+		writeError(w, http.StatusNotFound, "wipe react schedule post not found")
+		return
+	} else if err != nil {
+		log.Printf("[backend] ReleaseWipeReactSchedulePost error for guild %s post %d: %v", guildID, postID, err)
+		writeError(w, http.StatusInternalServerError, "failed to release wipe react schedule post")
 		return
 	}
 
@@ -1044,8 +1316,15 @@ func (h *Handler) MarkWipeReactSchedulePosted(w http.ResponseWriter, r *http.Req
 }
 
 type createTrackedServerRequest struct {
-	BmID string `json:"bmId"`
-	Name string `json:"name"`
+	BmID                   string `json:"bmId"`
+	Name                   string `json:"name"`
+	IncludeInGuildSettings bool   `json:"includeInGuildSettings"`
+	IsVitality             bool   `json:"isVitality"`
+	IsAtlas                bool   `json:"isAtlas"`
+	IsVital                bool   `json:"isVital"`
+	IsModded               bool   `json:"isModded"`
+	IsOfficial             bool   `json:"isOfficial"`
+	IsBuild                bool   `json:"isBuild"`
 }
 
 func (h *Handler) ListTrackedServers(w http.ResponseWriter, r *http.Request) {
@@ -1079,7 +1358,18 @@ func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := h.postgres.CreateTrackedServer(r.Context(), request.BmID, request.Name)
+	item, err := h.postgres.CreateTrackedServer(
+		r.Context(),
+		request.BmID,
+		request.Name,
+		request.IncludeInGuildSettings,
+		request.IsVitality,
+		request.IsAtlas,
+		request.IsVital,
+		request.IsModded,
+		request.IsOfficial,
+		request.IsBuild,
+	)
 	if errors.Is(err, store.ErrTrackedServerAlreadyExists) {
 		writeError(w, http.StatusConflict, "tracked server already exists")
 		return
@@ -1091,6 +1381,74 @@ func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, trackedServerToMap(item))
+}
+
+type updateTrackedServerRequest struct {
+	BmID                   string `json:"bmId"`
+	Name                   string `json:"name"`
+	IncludeInGuildSettings bool   `json:"includeInGuildSettings"`
+	IsVitality             bool   `json:"isVitality"`
+	IsAtlas                bool   `json:"isAtlas"`
+	IsVital                bool   `json:"isVital"`
+	IsModded               bool   `json:"isModded"`
+	IsOfficial             bool   `json:"isOfficial"`
+	IsBuild                bool   `json:"isBuild"`
+}
+
+func (h *Handler) UpdateTrackedServer(w http.ResponseWriter, r *http.Request) {
+	currentBmID := strings.TrimSpace(chi.URLParam(r, "bmID"))
+	if currentBmID == "" {
+		writeError(w, http.StatusBadRequest, "bmID is required")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request updateTrackedServerRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	request.BmID = strings.TrimSpace(request.BmID)
+	request.Name = strings.Join(strings.Fields(request.Name), " ")
+
+	if request.BmID == "" {
+		writeError(w, http.StatusBadRequest, "bmId is required")
+		return
+	}
+	if request.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	item, err := h.postgres.UpdateTrackedServer(
+		r.Context(),
+		currentBmID,
+		request.BmID,
+		request.Name,
+		request.IncludeInGuildSettings,
+		request.IsVitality,
+		request.IsAtlas,
+		request.IsVital,
+		request.IsModded,
+		request.IsOfficial,
+		request.IsBuild,
+	)
+	if errors.Is(err, store.ErrTrackedServerNotFound) {
+		writeError(w, http.StatusNotFound, "tracked server not found")
+		return
+	}
+	if errors.Is(err, store.ErrTrackedServerAlreadyExists) {
+		writeError(w, http.StatusConflict, "tracked server already exists")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] UpdateTrackedServer error for %s -> %s: %v", currentBmID, request.BmID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update tracked server")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, trackedServerToMap(item))
 }
 
 func (h *Handler) DeleteTrackedServer(w http.ResponseWriter, r *http.Request) {
@@ -1175,6 +1533,9 @@ func (h *Handler) ReplaceGuildTrackedServers(w http.ResponseWriter, r *http.Requ
 
 		available := make(map[string]struct{}, len(trackedServers))
 		for _, item := range trackedServers {
+			if !item.IncludeInGuildSettings {
+				continue
+			}
 			available[item.BmID] = struct{}{}
 		}
 
@@ -1236,6 +1597,64 @@ func (h *Handler) ListPlayerStatesByPlayer(w http.ResponseWriter, r *http.Reques
 	writePlayerStateList(w, items)
 }
 
+func (h *Handler) SearchPlayerStatesOnServer(w http.ResponseWriter, r *http.Request) {
+	serverID := strings.TrimSpace(chi.URLParam(r, "serverID"))
+	if serverID == "" {
+		writeError(w, http.StatusBadRequest, "serverID is required")
+		return
+	}
+
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "q is required")
+		return
+	}
+
+	limit := 20
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		if parsed > 20 {
+			parsed = 20
+		}
+		limit = parsed
+	}
+
+	includeOffline := false
+	if raw := strings.TrimSpace(r.URL.Query().Get("includeOffline")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "includeOffline must be a boolean")
+			return
+		}
+		includeOffline = parsed
+	}
+
+	items, err := h.postgres.SearchPlayerStatesByName(r.Context(), serverID, query, limit, includeOffline)
+	if err != nil {
+		log.Printf("[backend] SearchPlayerStatesByName error for %s/%q: %v", serverID, query, err)
+		writeError(w, http.StatusInternalServerError, "failed to search player states")
+		return
+	}
+
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, map[string]any{
+			"serverBmId": item.ServerBmID,
+			"serverName": item.ServerName,
+			"playerBmId": item.PlayerBmID,
+			"steamId":    item.SteamID,
+			"bmName":     item.BmName,
+			"isOnline":   item.IsOnline,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
 func (h *Handler) GetPlayerState(w http.ResponseWriter, r *http.Request) {
 	serverID := strings.TrimSpace(chi.URLParam(r, "serverID"))
 	if serverID == "" {
@@ -1268,7 +1687,9 @@ func steamAccountToMap(record store.SteamAccount) map[string]any {
 		"steamId":     record.SteamID,
 		"bmName":      record.BmName,
 		"avatarImage": record.AvatarImage,
+		"firstSeenAt": record.FirstSeenAt,
 		"createdAt":   record.CreatedAt,
+		"updatedAt":   record.UpdatedAt,
 	}
 	if record.BmID != nil {
 		result["bmId"] = *record.BmID
@@ -1276,6 +1697,476 @@ func steamAccountToMap(record store.SteamAccount) map[string]any {
 		result["bmId"] = nil
 	}
 	return result
+}
+
+type steamProfileHours struct {
+	Vitality int64  `json:"vitality"`
+	Atlas    int64  `json:"atlas"`
+	Vital    int64  `json:"vital"`
+	Modded   int64  `json:"modded"`
+	Official int64  `json:"official"`
+	Build    int64  `json:"build"`
+	BM       int64  `json:"bm"`
+	Rust     *int64 `json:"rust"`
+}
+
+type steamProfileResponse struct {
+	SteamID       string              `json:"steamId"`
+	BmID          string              `json:"bmId"`
+	BmName        string              `json:"bmName"`
+	AvatarImage   string              `json:"avatarImage"`
+	FirstSeenUnix *int64              `json:"firstSeenUnix"`
+	Hours         steamProfileHours   `json:"hours"`
+	ServersPlayed int                 `json:"serversPlayed"`
+	NameGaps      []steamAnalyticsGap `json:"nameGaps"`
+}
+
+func toWholeHours(seconds int64) int64 {
+	if seconds <= 0 {
+		return 0
+	}
+	return seconds / 3600
+}
+
+func steamProfileResponseFromCache(account store.SteamAccount, cache store.SteamAccountCache) steamProfileResponse {
+	gaps := make([]steamAnalyticsGap, 0, len(cache.NameGaps))
+	for _, gap := range cache.NameGaps {
+		gaps = append(gaps, steamAnalyticsGap{FromUnix: gap.FromUnix, ToUnix: gap.ToUnix})
+	}
+	response := steamProfileResponse{
+		SteamID:       account.SteamID,
+		BmName:        cache.BmName,
+		AvatarImage:   cache.AvatarImage,
+		ServersPlayed: cache.BmServersPlayed,
+		NameGaps:      gaps,
+		Hours: steamProfileHours{
+			Vitality: cache.VitalityHours,
+			Atlas:    cache.AtlasHours,
+			Vital:    cache.VitalHours,
+			Modded:   cache.ModdedHours,
+			Official: cache.OfficialHours,
+			Build:    cache.BuildHours,
+			BM:       cache.BmHours,
+			Rust:     cache.RustHours,
+		},
+	}
+	if account.BmID != nil {
+		response.BmID = *account.BmID
+	}
+	if cache.FirstSeenAt != nil {
+		firstSeenUnix := cache.FirstSeenAt.Unix()
+		response.FirstSeenUnix = &firstSeenUnix
+	}
+	return response
+}
+
+func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	account, err := h.postgres.GetSteamAccountBySteamID(r.Context(), steamID)
+	if errors.Is(err, store.ErrSteamAccountNotFound) {
+		writeError(w, http.StatusNotFound, "steam account not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetSteamProfile account error for %s: %v", steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+		return
+	}
+	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
+		writeError(w, http.StatusNotFound, "steam account has no linked battlemetrics id")
+		return
+	}
+
+	cachedProfile, cacheErr := h.postgres.GetSteamAccountCache(r.Context(), steamID)
+	if cacheErr != nil && !errors.Is(cacheErr, store.ErrSteamAccountNotFound) {
+		log.Printf("[backend] GetSteamProfile cache error for %s: %v", steamID, cacheErr)
+		writeError(w, http.StatusInternalServerError, "failed to fetch steam account cache")
+		return
+	}
+	if cacheErr == nil && cachedProfile.BmID == *account.BmID && time.Since(cachedProfile.UpdatedAt) < steamAccountCacheTTL {
+		writeJSON(w, http.StatusOK, steamProfileResponseFromCache(account, cachedProfile))
+		return
+	}
+
+	refreshedCache, refreshErr := h.fetchFreshSteamCache(r.Context(), account)
+	canUseCachedProfile := cacheErr == nil && cachedProfile.BmID == *account.BmID
+	if refreshErr != nil {
+		log.Printf("[backend] GetSteamProfile refresh error for %s: %v", steamID, refreshErr)
+		if errors.Is(refreshErr, battlemetrics.ErrPlayerNotFound) {
+			writeError(w, http.StatusNotFound, "battlemetrics profile private")
+			return
+		}
+
+		if canUseCachedProfile {
+			writeJSON(w, http.StatusOK, steamProfileResponseFromCache(account, cachedProfile))
+			return
+		}
+
+		writeError(w, http.StatusInternalServerError, "failed to refresh steam profile")
+		return
+	}
+
+	updatedCache, err := h.postgres.UpsertSteamAccountCache(r.Context(), refreshedCache)
+	if err != nil {
+		log.Printf("[backend] GetSteamProfile cache update error for %s: %v", steamID, err)
+		if canUseCachedProfile {
+			writeJSON(w, http.StatusOK, steamProfileResponseFromCache(account, cachedProfile))
+			return
+		}
+
+		writeError(w, http.StatusInternalServerError, "failed to cache steam profile")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, steamProfileResponseFromCache(account, updatedCache))
+}
+
+func steamAnalyticsResponseFromCache(account store.SteamAccount, cache store.SteamAccountCache) steamAnalyticsResponse {
+	bmID := cache.BmID
+	if bmID == "" && account.BmID != nil {
+		bmID = *account.BmID
+	}
+	bmName := cache.BmName
+	if bmName == "" {
+		bmName = account.BmName
+	}
+	avatarImage := cache.AvatarImage
+	if avatarImage == "" {
+		avatarImage = account.AvatarImage
+	}
+	response := steamAnalyticsResponse{
+		SteamID:      account.SteamID,
+		BmID:         bmID,
+		BmName:       bmName,
+		AvatarImage:  avatarImage,
+		TotalGames:   cache.TotalGames,
+		TopGames:     make([]steamAnalyticsGame, 0, len(cache.TopGames)),
+		TotalServers: cache.BmServersPlayed,
+		TopServers:   make([]steamAnalyticsServer, 0, len(cache.TopServers)),
+		Gaps:         make([]steamAnalyticsGap, 0, len(cache.NameGaps)),
+	}
+	for _, game := range cache.TopGames {
+		response.TopGames = append(response.TopGames, steamAnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.Hours})
+	}
+	for _, server := range cache.TopServers {
+		response.TopServers = append(response.TopServers, steamAnalyticsServer{BmID: server.BmID, Name: server.Name, Hours: server.Hours})
+	}
+	for _, gap := range cache.NameGaps {
+		response.Gaps = append(response.Gaps, steamAnalyticsGap(gap))
+	}
+	return response
+}
+
+func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.SteamAccount, profile battlemetrics.PlayerProfile) (store.SteamAccountCache, error) {
+	avatarImage := account.AvatarImage
+	summary, summaryErr := h.steamSummaryClient.GetPlayerSummary(ctx, account.SteamID)
+	steamProfilePrivate := false
+	if summaryErr != nil {
+		log.Printf("[backend] fetchFreshSteamProfile steam summary error for %s: %v", account.SteamID, summaryErr)
+	} else {
+		steamProfilePrivate = summary.CommunityVisibilityState == 1
+		if summary.AvatarFull != "" {
+			avatarImage = summary.AvatarFull
+		}
+	}
+
+	if profile.BmName == "" {
+		profile.BmName = account.BmName
+	}
+
+	trackedServers, err := h.postgres.ListTrackedServers(ctx)
+	if err != nil {
+		return store.SteamAccountCache{}, fmt.Errorf("load tracked servers: %w", err)
+	}
+
+	trackedByID := make(map[string]store.TrackedServer, len(trackedServers))
+	for _, server := range trackedServers {
+		trackedByID[server.BmID] = server
+	}
+
+	cache := store.SteamAccountCache{SteamID: account.SteamID, BmID: *account.BmID, BmName: profile.BmName, AvatarImage: avatarImage}
+	if profile.CreatedAt != nil {
+		cache.FirstSeenAt = profile.CreatedAt
+	}
+
+	if !steamProfilePrivate {
+		ownedGames, ownedGamesErr := h.steamSummaryClient.GetOwnedGames(ctx, account.SteamID)
+		if ownedGamesErr != nil {
+			return store.SteamAccountCache{}, fmt.Errorf("fetch owned games: %w", ownedGamesErr)
+		}
+		sort.Slice(ownedGames, func(i, j int) bool {
+			return ownedGames[i].PlaytimeForever > ownedGames[j].PlaytimeForever
+		})
+		totalGames := len(ownedGames)
+		cache.TotalGames = &totalGames
+		cache.TopGames = make([]store.AnalyticsGame, 0, min(5, totalGames))
+		for i := range min(5, totalGames) {
+			game := ownedGames[i]
+			cache.TopGames = append(cache.TopGames, store.AnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.PlaytimeForever / 60})
+		}
+		for _, game := range ownedGames {
+			if game.AppID != 252490 {
+				continue
+			}
+
+			rustHours := game.PlaytimeForever / 60
+			cache.RustHours = &rustHours
+			break
+		}
+	}
+
+	var vitalitySeconds int64
+	var atlasSeconds int64
+	var vitalSeconds int64
+	var moddedSeconds int64
+	var officialSeconds int64
+	var buildSeconds int64
+	var bmSeconds int64
+
+	for _, server := range profile.Servers {
+		bmSeconds += server.TimePlayed
+
+		tracked, ok := trackedByID[server.ServerID]
+		if !ok {
+			continue
+		}
+
+		if tracked.IsVitality {
+			vitalitySeconds += server.TimePlayed
+		}
+		if tracked.IsAtlas {
+			atlasSeconds += server.TimePlayed
+		}
+		if tracked.IsVital {
+			vitalSeconds += server.TimePlayed
+		}
+		if tracked.IsModded {
+			moddedSeconds += server.TimePlayed
+		}
+		if tracked.IsOfficial {
+			officialSeconds += server.TimePlayed
+		}
+		if tracked.IsBuild {
+			buildSeconds += server.TimePlayed
+		}
+	}
+
+	cache.VitalityHours = toWholeHours(vitalitySeconds)
+	cache.AtlasHours = toWholeHours(atlasSeconds)
+	cache.VitalHours = toWholeHours(vitalSeconds)
+	cache.ModdedHours = toWholeHours(moddedSeconds)
+	cache.OfficialHours = toWholeHours(officialSeconds)
+	cache.BuildHours = toWholeHours(buildSeconds)
+	cache.BmHours = toWholeHours(bmSeconds)
+	cache.BmServersPlayed = len(profile.Servers)
+	gaps := computeNameGaps(profile.NameIdentifiers)
+	cache.NameGaps = make([]store.NameGap, 0, len(gaps))
+	for _, gap := range gaps {
+		cache.NameGaps = append(cache.NameGaps, store.NameGap(gap))
+	}
+	servers := append([]battlemetrics.PlayerServer(nil), profile.Servers...)
+	sort.Slice(servers, func(i, j int) bool {
+		return servers[i].TimePlayed > servers[j].TimePlayed
+	})
+	cache.TopServers = make([]store.AnalyticsServer, 0, min(5, len(servers)))
+	for i := range min(5, len(servers)) {
+		server := servers[i]
+		cache.TopServers = append(cache.TopServers, store.AnalyticsServer{BmID: server.ServerID, Name: server.ServerName, Hours: toWholeHours(server.TimePlayed)})
+	}
+	return cache, nil
+}
+
+func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamAccount) (store.SteamAccountCache, error) {
+	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
+		return store.SteamAccountCache{}, store.ErrSteamAccountNotFound
+	}
+
+	profile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, *account.BmID)
+	if err != nil {
+		return store.SteamAccountCache{}, fmt.Errorf("fetch battlemetrics profile: %w", err)
+	}
+
+	return h.buildSteamCacheFromProfile(ctx, account, profile)
+}
+
+func (h *Handler) upsertResolvedSteamAccount(ctx context.Context, steamID string, profile battlemetrics.PlayerProfile) (store.SteamAccount, error) {
+	bmID := strings.TrimSpace(profile.BmID)
+	if steamID == "" || bmID == "" {
+		return store.SteamAccount{}, store.ErrSteamAccountNotFound
+	}
+
+	account, err := h.postgres.UpsertSteamAccount(ctx, steamID, &bmID)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	account.BmID = &bmID
+	account.BmName = profile.BmName
+
+	cache, err := h.buildSteamCacheFromProfile(ctx, account, profile)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	if _, err := h.postgres.UpsertSteamAccountCache(ctx, cache); err != nil {
+		return store.SteamAccount{}, err
+	}
+
+	return h.postgres.GetSteamAccountBySteamID(ctx, steamID)
+}
+
+func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID string) (store.SteamAccount, error) {
+	profile, err := h.authBattleMetricsClient.QuickMatchPlayerProfileBySteamID(ctx, steamID)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	bmID := strings.TrimSpace(profile.BmID)
+	if bmID == "" {
+		return store.SteamAccount{}, store.ErrSteamAccountNotFound
+	}
+
+	fullProfile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, bmID)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	if fullProfile.SteamID == "" {
+		fullProfile.SteamID = profile.SteamID
+	}
+	if fullProfile.SteamID == "" {
+		fullProfile.SteamID = steamID
+	}
+	if fullProfile.BmName == "" {
+		fullProfile.BmName = profile.BmName
+	}
+
+	return h.upsertResolvedSteamAccount(ctx, fullProfile.SteamID, fullProfile)
+}
+
+func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (store.SteamAccount, error) {
+	profile, err := h.authBattleMetricsClient.FetchPlayerProfile(ctx, bmID)
+	if err != nil {
+		return store.SteamAccount{}, err
+	}
+	if strings.TrimSpace(profile.SteamID) == "" {
+		return store.SteamAccount{}, store.ErrSteamAccountNotFound
+	}
+
+	return h.upsertResolvedSteamAccount(ctx, profile.SteamID, profile)
+}
+
+type steamAnalyticsGame struct {
+	AppID int    `json:"appId"`
+	Name  string `json:"name"`
+	Hours int64  `json:"hours"`
+}
+
+type steamAnalyticsServer struct {
+	BmID  string `json:"bmId"`
+	Name  string `json:"name"`
+	Hours int64  `json:"hours"`
+}
+
+type steamAnalyticsGap struct {
+	FromUnix int64 `json:"fromUnix"`
+	ToUnix   int64 `json:"toUnix"`
+}
+
+type steamAnalyticsResponse struct {
+	SteamID      string                 `json:"steamId"`
+	BmID         string                 `json:"bmId"`
+	BmName       string                 `json:"bmName"`
+	AvatarImage  string                 `json:"avatarImage"`
+	TotalGames   *int                   `json:"totalGames"`
+	TopGames     []steamAnalyticsGame   `json:"topGames"`
+	TotalServers int                    `json:"totalServers"`
+	TopServers   []steamAnalyticsServer `json:"topServers"`
+	Gaps         []steamAnalyticsGap    `json:"gaps"`
+}
+
+const analyticsGapThreshold = 30 * 24 * time.Hour // ~1 month
+
+func (h *Handler) GetSteamAnalytics(w http.ResponseWriter, r *http.Request) {
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	account, err := h.postgres.GetSteamAccountBySteamID(r.Context(), steamID)
+	if errors.Is(err, store.ErrSteamAccountNotFound) {
+		writeError(w, http.StatusNotFound, "steam account not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetSteamAnalytics account error for %s: %v", steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+		return
+	}
+	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
+		writeError(w, http.StatusNotFound, "steam account has no linked battlemetrics id")
+		return
+	}
+
+	cachedAnalytics, cacheErr := h.postgres.GetSteamAccountCache(r.Context(), steamID)
+	canUseCachedAnalytics := cacheErr == nil && cachedAnalytics.BmID == *account.BmID
+	if canUseCachedAnalytics && time.Since(cachedAnalytics.UpdatedAt) < steamAccountCacheTTL {
+		writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedAnalytics))
+		return
+	}
+
+	refreshedCache, err := h.fetchFreshSteamCache(r.Context(), account)
+	if err != nil {
+		log.Printf("[backend] GetSteamAnalytics refresh error for %s: %v", steamID, err)
+		if canUseCachedAnalytics {
+			writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedAnalytics))
+			return
+		}
+		writeError(w, http.StatusBadGateway, "failed to fetch analytics")
+		return
+	}
+
+	updatedCache, err := h.postgres.UpsertSteamAccountCache(r.Context(), refreshedCache)
+	if err != nil {
+		log.Printf("[backend] GetSteamAnalytics cache update error for %s: %v", steamID, err)
+		if canUseCachedAnalytics {
+			writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedAnalytics))
+			return
+		}
+		writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, refreshedCache))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, updatedCache))
+}
+
+func computeNameGaps(identifiers []battlemetrics.PlayerNameIdentifier) []steamAnalyticsGap {
+	gaps := []steamAnalyticsGap{}
+	filtered := make([]battlemetrics.PlayerNameIdentifier, 0, len(identifiers))
+	for _, id := range identifiers {
+		if id.LastSeen == nil {
+			continue
+		}
+		filtered = append(filtered, id)
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].LastSeen.Before(*filtered[j].LastSeen)
+	})
+
+	for i := 0; i+1 < len(filtered); i++ {
+		current := filtered[i]
+		next := filtered[i+1]
+		if next.LastSeen.Sub(*current.LastSeen) < analyticsGapThreshold {
+			continue
+		}
+		gaps = append(gaps, steamAnalyticsGap{
+			FromUnix: current.LastSeen.Unix(),
+			ToUnix:   next.LastSeen.Unix(),
+		})
+	}
+	return gaps
 }
 
 func steamDiscordLinkToMap(link store.SteamDiscordLink) map[string]any {
@@ -1300,6 +2191,17 @@ func writeSteamDiscordLinkList(w http.ResponseWriter, links []store.SteamDiscord
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func (h *Handler) GetSteamAccountCount(w http.ResponseWriter, r *http.Request) {
+	count, err := h.postgres.CountSteamAccounts(r.Context())
+	if err != nil {
+		log.Printf("[backend] GetSteamAccountCount error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to count steam accounts")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"count": count})
+}
+
 func (h *Handler) GetSteamAccount(w http.ResponseWriter, r *http.Request) {
 	steamID := chi.URLParam(r, "steamID")
 	if steamID == "" || !steamIDPattern.MatchString(steamID) {
@@ -1309,13 +2211,33 @@ func (h *Handler) GetSteamAccount(w http.ResponseWriter, r *http.Request) {
 
 	account, err := h.postgres.GetSteamAccountBySteamID(r.Context(), steamID)
 	if errors.Is(err, store.ErrSteamAccountNotFound) {
-		writeError(w, http.StatusNotFound, "steam account not found")
-		return
+		account, err = h.resolveSteamAccountBySteamID(r.Context(), steamID)
+		if errors.Is(err, store.ErrSteamAccountNotFound) || errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+			writeError(w, http.StatusNotFound, "steam account not found")
+			return
+		}
+		if err != nil {
+			log.Printf("[backend] GetSteamAccount resolve error for %s: %v", steamID, err)
+			writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+			return
+		}
 	}
 	if err != nil {
 		log.Printf("[backend] GetSteamAccount error for %s: %v", steamID, err)
 		writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
 		return
+	}
+	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
+		account, err = h.resolveSteamAccountBySteamID(r.Context(), steamID)
+		if errors.Is(err, store.ErrSteamAccountNotFound) || errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+			writeError(w, http.StatusNotFound, "steam account not found")
+			return
+		}
+		if err != nil {
+			log.Printf("[backend] GetSteamAccount backfill error for %s: %v", steamID, err)
+			writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+			return
+		}
 	}
 
 	writeSteamAccount(w, account)
@@ -1330,8 +2252,16 @@ func (h *Handler) GetSteamAccountByBmID(w http.ResponseWriter, r *http.Request) 
 
 	account, err := h.postgres.GetSteamAccountByBmID(r.Context(), bmID)
 	if errors.Is(err, store.ErrSteamAccountNotFound) {
-		writeError(w, http.StatusNotFound, "steam account not found")
-		return
+		account, err = h.resolveSteamAccountByBmID(r.Context(), bmID)
+		if errors.Is(err, store.ErrSteamAccountNotFound) || errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+			writeError(w, http.StatusNotFound, "steam account not found")
+			return
+		}
+		if err != nil {
+			log.Printf("[backend] GetSteamAccountByBmID resolve error for %s: %v", bmID, err)
+			writeError(w, http.StatusInternalServerError, "failed to fetch steam account")
+			return
+		}
 	}
 	if err != nil {
 		log.Printf("[backend] GetSteamAccountByBmID error for %s: %v", bmID, err)
@@ -1374,6 +2304,23 @@ func (h *Handler) ListLinksByDiscordID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) IsDiscordWebsiteAdmin(w http.ResponseWriter, r *http.Request) {
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	isAdmin, err := h.postgres.IsDiscordWebsiteAdmin(r.Context(), discordID)
+	if err != nil {
+		log.Printf("[backend] IsDiscordWebsiteAdmin error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to check website admin status")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"isAdmin": isAdmin})
 }
 
 type createSoftLinkRequest struct {
@@ -1628,6 +2575,24 @@ func writeGuildOnlineSummaryList(w http.ResponseWriter, items []store.GuildOnlin
 	writeJSON(w, http.StatusOK, map[string]any{"items": response})
 }
 
+func guildRecentGameBanToMap(item store.GuildRecentGameBan) map[string]any {
+	return map[string]any{
+		"guildId":        item.GuildID,
+		"discordId":      item.DiscordID,
+		"steamId":        item.SteamID,
+		"gameBannedAt":   item.GameBannedAt,
+		"gameBannedUnix": item.GameBannedAt.Unix(),
+	}
+}
+
+func writeGuildRecentGameBanList(w http.ResponseWriter, items []store.GuildRecentGameBan) {
+	response := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		response = append(response, guildRecentGameBanToMap(item))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
 type createGuildLinkRequest struct {
 	DiscordID string `json:"discordId"`
 	SteamID   string `json:"steamId"`
@@ -1776,6 +2741,193 @@ func (h *Handler) ListGuildOnlineSummary(w http.ResponseWriter, r *http.Request)
 	writeGuildOnlineSummaryList(w, items)
 }
 
+func (h *Handler) CheckGuildGameBans(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	links, err := h.postgres.ListGuildLinks(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildLinks error for game ban scan %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch guild links")
+		return
+	}
+
+	steamIDs := uniqueGuildSteamIDs(links)
+	if len(steamIDs) == 0 {
+		writeGuildRecentGameBanList(w, []store.GuildRecentGameBan{})
+		return
+	}
+
+	cacheRows, err := h.postgres.ListSteamGameBanCache(r.Context(), steamIDs)
+	if err != nil {
+		log.Printf("[backend] ListSteamGameBanCache error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to load game ban cache")
+		return
+	}
+
+	now := time.Now().UTC()
+	cacheBySteamID := make(map[string]store.SteamGameBanCache, len(cacheRows))
+	for _, row := range cacheRows {
+		cacheBySteamID[row.SteamID] = row
+	}
+
+	staleSteamIDs := make([]string, 0)
+	for _, steamID := range steamIDs {
+		cache, ok := cacheBySteamID[steamID]
+		if !ok || cache.GameBanCheckedAt == nil || now.Sub(*cache.GameBanCheckedAt) >= steamGameBanCacheTTL {
+			staleSteamIDs = append(staleSteamIDs, steamID)
+		}
+	}
+
+	if len(staleSteamIDs) > 0 {
+		refreshed, refreshErr := h.refreshSteamGameBanCache(r.Context(), staleSteamIDs, now)
+		if refreshErr != nil {
+			log.Printf("[backend] refreshSteamGameBanCache error for guild %s: %v", guildID, refreshErr)
+			writeError(w, http.StatusInternalServerError, "failed to refresh game ban cache")
+			return
+		}
+		for steamID, cache := range refreshed {
+			cacheBySteamID[steamID] = cache
+		}
+	}
+
+	recent := make([]store.GuildRecentGameBan, 0)
+	for _, link := range links {
+		cache, ok := cacheBySteamID[link.SteamID]
+		if !ok || !cache.GameBanned || cache.GameBannedAt == nil {
+			continue
+		}
+		if now.Sub(*cache.GameBannedAt) > recentGameBanWindow {
+			continue
+		}
+		recent = append(recent, store.GuildRecentGameBan{
+			GuildID:      link.GuildID,
+			DiscordID:    link.DiscordID,
+			SteamID:      link.SteamID,
+			GameBannedAt: *cache.GameBannedAt,
+		})
+	}
+
+	sort.SliceStable(recent, func(i, j int) bool {
+		return recent[i].GameBannedAt.After(recent[j].GameBannedAt)
+	})
+
+	writeGuildRecentGameBanList(w, recent)
+}
+
+func uniqueGuildSteamIDs(links []store.GuildSteamDiscordLink) []string {
+	seen := make(map[string]struct{}, len(links))
+	steamIDs := make([]string, 0, len(links))
+	for _, link := range links {
+		if _, ok := seen[link.SteamID]; ok {
+			continue
+		}
+		seen[link.SteamID] = struct{}{}
+		steamIDs = append(steamIDs, link.SteamID)
+	}
+	sort.Strings(steamIDs)
+	return steamIDs
+}
+
+func (h *Handler) refreshSteamGameBanCache(
+	ctx context.Context,
+	steamIDs []string,
+	now time.Time,
+) (map[string]store.SteamGameBanCache, error) {
+	refreshed := make(map[string]store.SteamGameBanCache, len(steamIDs))
+	for start := 0; start < len(steamIDs); start += steamPlayerBanBatchSize {
+		end := start + steamPlayerBanBatchSize
+		if end > len(steamIDs) {
+			end = len(steamIDs)
+		}
+
+		batch := steamIDs[start:end]
+		bans, err := h.steamClient.GetPlayerBans(ctx, batch)
+		if err != nil {
+			return nil, err
+		}
+
+		banBySteamID := make(map[string]steamapi.PlayerBan, len(bans))
+		for _, ban := range bans {
+			banBySteamID[ban.SteamID] = ban
+		}
+
+		for _, steamID := range batch {
+			ban, ok := banBySteamID[steamID]
+			gameBannedAt := (*time.Time)(nil)
+			gameBanned := ok && ban.NumberOfGameBans > 0
+			if gameBanned {
+				banTime := now.Add(-time.Duration(ban.DaysSinceLastBan) * 24 * time.Hour)
+				gameBannedAt = &banTime
+			}
+
+			if err := h.postgres.UpsertSteamAccountGameBanCache(ctx, steamID, gameBanned, gameBannedAt, now); err != nil {
+				return nil, err
+			}
+
+			refreshed[steamID] = store.SteamGameBanCache{
+				SteamID:          steamID,
+				GameBanned:       gameBanned,
+				GameBannedAt:     gameBannedAt,
+				GameBanCheckedAt: &now,
+			}
+		}
+	}
+
+	return refreshed, nil
+}
+
+type trackedServerLogEventResponse struct {
+	ServerBmID   string `json:"serverBmId"`
+	ServerName   string `json:"serverName"`
+	PlayerBmID   string `json:"playerBmId"`
+	SteamID      string `json:"steamId"`
+	DiscordID    string `json:"discordId"`
+	BmName       string `json:"bmName"`
+	AvatarImage  string `json:"avatarImage"`
+	IsOnline     bool   `json:"isOnline"`
+	OccurredUnix int64  `json:"occurredUnix"`
+}
+
+type trackedServerLogEventsResponse struct {
+	Items []trackedServerLogEventResponse `json:"items"`
+}
+
+func (h *Handler) ListGuildTrackedServerLogEvents(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	states, err := h.postgres.ListGuildTrackedServerLogStates(r.Context(), guildID)
+	if err != nil {
+		log.Printf("[backend] ListGuildTrackedServerLogStates error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch tracked server log states")
+		return
+	}
+
+	response := trackedServerLogEventsResponse{
+		Items: make([]trackedServerLogEventResponse, 0, len(states)),
+	}
+	for _, state := range states {
+		response.Items = append(response.Items, trackedServerLogEventResponse{
+			ServerBmID:   state.ServerBmID,
+			ServerName:   state.ServerName,
+			PlayerBmID:   state.PlayerBmID,
+			SteamID:      state.SteamID,
+			DiscordID:    state.DiscordID,
+			BmName:       state.BmName,
+			AvatarImage:  state.AvatarImage,
+			IsOnline:     state.IsOnline,
+			OccurredUnix: state.StateChangedAt.Unix(),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
 func (h *Handler) ListGuildLinksByDiscord(w http.ResponseWriter, r *http.Request) {
 	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
 	if !ok {
@@ -1866,6 +3018,147 @@ func (h *Handler) DeleteGuildSteamDiscordLink(w http.ResponseWriter, r *http.Req
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// adminRoleItem is the JSON shape for a single role in the ListAdminRoles response.
+type adminRoleItem struct {
+	ID          string   `json:"id"`
+	Key         string   `json:"key"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	IsSystem    bool     `json:"isSystem"`
+	Permissions []string `json:"permissions"`
+}
+
+// ListAdminRoles handles GET /api/app/admin/roles.
+// For the superadmin role the full permission list is returned in-process
+// (admin_role_permissions has no explicit rows for superadmin). For all other
+// roles the permissions are queried from admin_role_permissions.
+func (h *Handler) ListAdminRoles(w http.ResponseWriter, r *http.Request) {
+	roles, err := h.rbacStore.ListRoles(r.Context())
+	if err != nil {
+		log.Printf("[backend] ListAdminRoles: ListRoles error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to list roles")
+		return
+	}
+
+	items := make([]adminRoleItem, 0, len(roles))
+	for _, rl := range roles {
+		var perms []string
+		if rl.Key == rbac.RoleSuperadmin {
+			all := rbac.AllPermissions()
+			perms = make([]string, len(all))
+			for i, p := range all {
+				perms[i] = p.Key
+			}
+		} else {
+			perms, err = h.rbacStore.PermissionsForRole(r.Context(), rl.ID)
+			if err != nil {
+				log.Printf("[backend] ListAdminRoles: PermissionsForRole(%s) error: %v", rl.Key, err)
+				writeError(w, http.StatusInternalServerError, "failed to load role permissions")
+				return
+			}
+		}
+		if perms == nil {
+			perms = []string{}
+		}
+		items = append(items, adminRoleItem{
+			ID:          rl.ID.String(),
+			Key:         rl.Key,
+			Name:        rl.Name,
+			Description: rl.Description,
+			IsSystem:    rl.IsSystem,
+			Permissions: perms,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+var banCategoryAllowlist = map[string]struct{}{
+	"setup":        {},
+	"linking":      {},
+	"lookup":       {},
+	"activity":     {},
+	"coordination": {},
+	"other":        {},
+}
+
+func validateDiscordIDPathParam(w http.ResponseWriter, r *http.Request) (string, bool) {
+	return validateSnowflakePathParam(w, r, "discordID")
+}
+
+func writeUserBan(w http.ResponseWriter, ban store.UserBan) {
+	categories := ban.Categories
+	if categories == nil {
+		categories = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"discordId":  ban.DiscordID,
+		"categories": categories,
+	})
+}
+
+func (h *Handler) GetUserBan(w http.ResponseWriter, r *http.Request) {
+	discordID, ok := validateDiscordIDPathParam(w, r)
+	if !ok {
+		return
+	}
+
+	ban, err := h.postgres.GetUserBan(r.Context(), discordID)
+	if err != nil {
+		log.Printf("[backend] GetUserBan error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch user ban")
+		return
+	}
+
+	writeUserBan(w, ban)
+}
+
+type updateUserBanRequest struct {
+	Categories []string `json:"categories"`
+	UpdatedBy  string   `json:"updatedBy"`
+}
+
+func (h *Handler) UpdateUserBan(w http.ResponseWriter, r *http.Request) {
+	discordID, ok := validateDiscordIDPathParam(w, r)
+	if !ok {
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request updateUserBanRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	seen := map[string]struct{}{}
+	categories := make([]string, 0, len(request.Categories))
+	for _, raw := range request.Categories {
+		category := strings.ToLower(strings.TrimSpace(raw))
+		if category == "" {
+			continue
+		}
+		if _, ok := banCategoryAllowlist[category]; !ok {
+			writeError(w, http.StatusBadRequest, "invalid ban category: "+category)
+			return
+		}
+		if _, dup := seen[category]; dup {
+			continue
+		}
+		seen[category] = struct{}{}
+		categories = append(categories, category)
+	}
+
+	ban, err := h.postgres.UpsertUserBan(r.Context(), discordID, categories, request.UpdatedBy)
+	if err != nil {
+		log.Printf("[backend] UpdateUserBan error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update user ban")
+		return
+	}
+
+	writeUserBan(w, ban)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

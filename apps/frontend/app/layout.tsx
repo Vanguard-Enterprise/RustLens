@@ -45,6 +45,12 @@ export default function RootLayout({
 					backgroundSize: "36px 36px, 36px 36px",
 				}}
 			>
+				<script
+					// biome-ignore lint/security/noDangerouslySetInnerHtml: inline guard runs before hydration
+					dangerouslySetInnerHTML={{
+						__html: `(()=>{try{var n=performance.getEntriesByType('navigation')[0];if(n&&n.type==='back_forward'&&!sessionStorage.getItem('__bfReloaded')){sessionStorage.setItem('__bfReloaded','1');location.reload();}else{sessionStorage.removeItem('__bfReloaded');}addEventListener('pageshow',function(e){if(e.persisted){location.reload();}});}catch(_){}})();`,
+					}}
+				/>
 				<TooltipProvider>{children}</TooltipProvider>
 			</body>
 		</html>

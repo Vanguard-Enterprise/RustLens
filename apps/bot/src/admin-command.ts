@@ -1,5 +1,5 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
@@ -19,6 +19,8 @@ const adminCommand = new SlashCommandBuilder()
   .setName(ADMIN_COMMAND_NAME)
   .setDescription("Guild administrator commands")
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addSubcommand((subcommand) =>
     subcommand
       .setName(ADMIN_SET_STEAM_SUBCOMMAND_NAME)
@@ -148,6 +150,8 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
     return true;
   }
 
+  await deferEphemeral(interaction);
+
   if (!(await hasGuildAdminAccess(interaction))) {
     await replyEphemeralEmbed(
       interaction,
@@ -170,7 +174,6 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
     }
 
     const steamInput = interaction.options.getString(ADMIN_STEAM_ID_OPTION_NAME, true).trim();
-    await deferEphemeral(interaction);
 
     let steamID: string;
     try {
@@ -217,7 +220,6 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
 
   if (subcommand === ADMIN_REMOVE_STEAM_SUBCOMMAND_NAME) {
     const targetUser = interaction.options.getUser(ADMIN_USER_OPTION_NAME, true);
-    await deferEphemeral(interaction);
 
     let removed: { steamId: string }[] = [];
     try {

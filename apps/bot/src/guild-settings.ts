@@ -49,6 +49,25 @@ export async function updateGuildSettings(guildId: string, patch: GuildSettingsP
   return getBackend().updateGuildSettings(getWorkerID(), guildId, patch);
 }
 
+function interactionMemberHasRole(interaction: GuildAdminInteraction, roleId: string) {
+  const member = interaction.member;
+
+  if (member && "roles" in member) {
+    const roles = member.roles;
+    if (roles && typeof roles === "object") {
+      if ("cache" in roles) {
+        return roles.cache.has(roleId);
+      }
+
+      if (Array.isArray(roles)) {
+        return roles.includes(roleId);
+      }
+    }
+  }
+
+  return null;
+}
+
 export async function hasGuildAdminAccess(interaction: GuildAdminInteraction) {
   if (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
     return true;
@@ -61,6 +80,11 @@ export async function hasGuildAdminAccess(interaction: GuildAdminInteraction) {
   const settings = await fetchGuildSettings(interaction.guildId);
   if (!settings.adminRoleId) {
     return false;
+  }
+
+  const cachedRoleMatch = interactionMemberHasRole(interaction, settings.adminRoleId);
+  if (cachedRoleMatch !== null) {
+    return cachedRoleMatch;
   }
 
   const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);

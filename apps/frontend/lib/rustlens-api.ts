@@ -1,34 +1,28 @@
 import "server-only";
 
-import { getSessionToken } from "@/lib/session";
+import { redirect } from "next/navigation";
+import { clearSession, getSessionToken } from "@/lib/session";
+
+const SESSION_INVALID_ERRORS = new Set([
+	"session_required",
+	"session_revoked",
+	"invalid_session",
+]);
 
 export type AppUser = {
 	id: string;
+	discordId: string;
+	discordUsername: string;
+	discordGlobalName?: string;
+	/** Discord CDN avatar HASH, NOT a URL. */
+	discordAvatar?: string;
 	displayName: string;
 	avatarUrl: string;
 	roles: string[];
 	createdAt: string;
 	updatedAt: string;
 	lastLoginAt: string;
-};
-
-export type ConnectedAccount = {
-	provider: string;
-	providerAccountId: string;
-	username: string;
-	displayName: string;
-	avatarUrl: string;
-	profileEmail: string;
-	createdAt: string;
-	updatedAt: string;
-};
-
-export type UserEmail = {
-	email: string;
-	isPrimary: boolean;
-	isVerified: boolean;
-	createdAt: string;
-	updatedAt: string;
+	sessionEpoch?: number;
 };
 
 export type LinkedSteamAccount = {
@@ -50,20 +44,50 @@ export type UserGuildMembership = {
 
 export type CurrentUser = {
 	user: AppUser;
-	discordAccount: ConnectedAccount | null;
-	primaryEmail: UserEmail | null;
-	emails: UserEmail[];
 	steamAccounts: LinkedSteamAccount[];
 	guilds: UserGuildMembership[];
+	/**
+	 * Admin role keys granted via admin_user_roles (e.g. "superadmin",
+	 * "moderator"). Distinct from `user.roles` which is the legacy
+	 * app_users.roles JSONB column.
+	 */
+	adminRoles: string[];
+	/**
+	 * Flattened permission keys resolved from the user's admin roles.
+	 * Superadmin implies every registered permission.
+	 */
+	permissions: string[];
 };
 
 export type AdminUserItem = {
 	user: AppUser;
 	discordId: string;
 	discordUsername: string;
-	primaryEmail: string;
+	discordGlobalName?: string;
+	discordAvatar?: string;
 	guildCount: number;
 	steamConnectionCount: number;
+	adminRoles: string[];
+	suspendedAt?: string;
+	deletedAt?: string;
+};
+
+export type AdminUsersQuery = {
+	q?: string;
+	role?: string[];
+	status?: "active" | "suspended" | "deleted" | "any";
+	discord?: "any" | "linked" | "unlinked";
+	steam?: "any" | "linked" | "unlinked";
+	sort?: string;
+	page?: number;
+	pageSize?: number;
+};
+
+export type AdminUsersPage = {
+	items: AdminUserItem[];
+	total: number;
+	page: number;
+	pageSize: number;
 };
 
 export type AdminGuildItem = {
@@ -82,19 +106,64 @@ export type AdminServerItem = {
 	guildCount: number;
 };
 
+export type AdminRoleItem = {
+	id: string;
+	key: string;
+	name: string;
+	description: string | null;
+	isSystem: boolean;
+	permissions: string[];
+};
+
 export type AuditEventItem = {
-	id: number;
+	id: string;
 	actorUserId: string;
 	targetUserId: string;
 	eventType: string;
 	payload: Record<string, unknown>;
 	createdAt: string;
+	actorDisplayName?: string | null;
+	actorAvatarUrl?: string | null;
+	targetDisplayName?: string | null;
+	targetAvatarUrl?: string | null;
+	result?: "success" | "error" | null;
+	reason?: string | null;
+};
+
+export type AdminUserGuild = {
+	guildId: string;
+	nick?: string;
+};
+
+export type AdminUserAuditItem = AuditEventItem;
+
+export type AdminUserDetail = {
+	user: AppUser;
+	discordId: string;
+	discordUsername: string;
+	discordGlobalName?: string;
+	discordAvatar?: string;
+	guilds: AdminUserGuild[];
+	adminRoles: string[];
+	suspendedAt?: string;
+	suspendReason?: string;
+	deletedAt?: string;
+	recentAudit: AdminUserAuditItem[];
 };
 
 export type TokenResponse = {
 	status: string;
 	linked?: boolean;
 	debugToken?: string;
+};
+
+/**
+ * Envelope returned by /api/app/admin/actions/{type} on success. `result` is
+ * whatever the action's Execute() put in ActionResult.Payload.
+ */
+export type AdminActionResponse<T = unknown> = {
+	ok: true;
+	result: T;
 };
 
 const API_BASE_URL =
@@ -132,32 +201,29 @@ async function backendFetch<T>(
 
 	if (!response.ok) {
 		let message = `RustLens API request failed: ${response.status}`;
+		let errorCode: string | undefined;
 		try {
 			const payload = (await response.json()) as { error?: string };
 			if (payload.error) {
+				errorCode = payload.error;
 				message = payload.error;
 			}
 		} catch {
 			// Ignore JSON parsing failures and fall back to the status message.
 		}
+		if (
+			response.status === 401 &&
+			options.requireSession &&
+			errorCode &&
+			SESSION_INVALID_ERRORS.has(errorCode)
+		) {
+			await clearSession();
+			redirect("/login?error=session");
+		}
 		throw new Error(message);
 	}
 
 	return (await response.json()) as T;
-}
-
-export function completeDiscordAuth(payload: {
-	discordId: string;
-	username: string;
-	displayName: string;
-	avatarUrl: string;
-	email: string;
-	emailVerified: boolean;
-}) {
-	return backendFetch<CurrentUser>("/api/app/auth/discord/complete", {
-		method: "POST",
-		body: JSON.stringify(payload),
-	});
 }
 
 export function registerWithPassword(payload: {
@@ -222,13 +288,22 @@ export async function getCurrentUserSafe() {
 	}
 }
 
-export async function getAdminUsers() {
-	const payload = await backendFetch<{ items: AdminUserItem[] }>(
-		"/api/app/admin/users",
+export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	for (const r of params.role ?? []) sp.append("role", r);
+	if (params.status) sp.set("status", params.status);
+	if (params.discord) sp.set("discord", params.discord);
+	if (params.steam) sp.set("steam", params.steam);
+	if (params.sort) sp.set("sort", params.sort);
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminUsersPage>(
+		`/api/app/admin/users${qs ? `?${qs}` : ""}`,
 		undefined,
 		{ requireSession: true },
 	);
-	return payload.items;
 }
 
 export async function getAdminGuilds() {
@@ -247,6 +322,38 @@ export async function getAdminServers() {
 		{ requireSession: true },
 	);
 	return payload.items;
+}
+
+export async function getAdminRoles() {
+	const payload = await backendFetch<{ items: AdminRoleItem[] }>(
+		"/api/app/admin/roles",
+		undefined,
+		{ requireSession: true },
+	);
+	return payload.items;
+}
+
+export async function getAdminUser(userId: string): Promise<AdminUserDetail> {
+	return backendFetch<AdminUserDetail>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getAdminUserAudit(
+	userId: string,
+	opts: { limit?: number; before?: string } = {},
+): Promise<{ items: AdminUserAuditItem[] }> {
+	const sp = new URLSearchParams();
+	if (opts.limit) sp.set("limit", String(opts.limit));
+	if (opts.before) sp.set("before", opts.before);
+	const qs = sp.toString();
+	return backendFetch<{ items: AdminUserAuditItem[] }>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}/audit${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
 }
 
 export async function getAuditEvents(limit = 30) {

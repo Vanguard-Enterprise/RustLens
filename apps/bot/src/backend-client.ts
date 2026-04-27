@@ -12,12 +12,51 @@ type AssignmentsResponse = {
   shardIds: number[];
 };
 
+type CountResponse = {
+  count: number;
+};
+
+export type ShardStatSnapshot = {
+  shardId: number;
+  status: "ready" | "disconnected" | "idle";
+  pingMs: number;
+  guilds: number;
+  members: number;
+};
+
+export type WorkerStatSnapshot = {
+  uptimeSec: number;
+  rssBytes: number;
+  shards: ShardStatSnapshot[];
+};
+
+export type OwnerStatsWorker = {
+  workerId: string;
+  uptimeSec: number;
+  rssBytes: number;
+  shards: ShardStatSnapshot[];
+};
+
+export type OwnerStatsResponse = {
+  guildCount: number;
+  memberCount: number;
+  configuredGuilds: number;
+  steamAccountCount: number;
+  hardLinkCount: number;
+  uniqueLinkedUsers: number;
+  trackedServerCount: number;
+  onlineTrackedPlayers: number;
+  activeWipeReacts: number;
+  targetShards: number;
+  workers: OwnerStatsWorker[];
+};
+
 export type GuildSettings = {
   guildId: string;
   wipeReactLogChannelId: string;
   linkingLogChannelId: string;
   trackedServerLogChannelId: string;
-  alertsChannelId: string;
+  trackedUsersCategoryId: string;
   adminRoleId: string;
 };
 
@@ -76,6 +115,21 @@ export type WipeReactSchedule = {
   createdBy: string;
 };
 
+export type WipeReactSchedulePost = {
+	id: number;
+	scheduleId: number;
+	guildId: string;
+	channelId: string;
+	wipeUnix: number;
+	postUnix: number;
+	timeZone: string;
+	name: string;
+	description: string;
+	askLateReason: boolean;
+	askDeclinedReason: boolean;
+	createdBy: string;
+};
+
 export type WipeReactScheduleListResponse = {
   items: WipeReactSchedule[];
 };
@@ -85,7 +139,60 @@ export type SteamAccount = {
   bmId: string | null;
   bmName: string;
   avatarImage: string;
+  firstSeenAt: string | null;
   createdAt: string;
+  updatedAt: string;
+};
+
+export type SteamProfileHours = {
+  vitality: number;
+  atlas: number;
+  vital: number;
+  modded: number;
+  official: number;
+  build: number;
+  bm: number;
+  rust: number | null;
+};
+
+export type SteamProfile = {
+  steamId: string;
+  bmId: string;
+  bmName: string;
+  avatarImage: string;
+  firstSeenUnix: number | null;
+  hours: SteamProfileHours;
+  serversPlayed: number;
+  nameGaps: SteamAnalyticsGap[];
+};
+
+export type SteamAnalyticsGame = {
+  appId: number;
+  name: string;
+  hours: number;
+};
+
+export type SteamAnalyticsServer = {
+  bmId: string;
+  name: string;
+  hours: number;
+};
+
+export type SteamAnalyticsGap = {
+  fromUnix: number;
+  toUnix: number;
+};
+
+export type SteamAnalytics = {
+  steamId: string;
+  bmId: string;
+  bmName: string;
+  avatarImage: string;
+  totalGames: number | null;
+  topGames: SteamAnalyticsGame[];
+  totalServers: number;
+  topServers: SteamAnalyticsServer[];
+  gaps: SteamAnalyticsGap[];
 };
 
 export type SteamDiscordLink = {
@@ -155,9 +262,44 @@ export type GuildOnlineSummaryListResponse = {
   items: GuildOnlineSummaryItem[];
 };
 
+export type GuildRecentGameBan = {
+  guildId: string;
+  discordId: string;
+  steamId: string;
+  gameBannedAt: string;
+  gameBannedUnix: number;
+};
+
+export type GuildRecentGameBanListResponse = {
+  items: GuildRecentGameBan[];
+};
+
+export type TrackedServerLogEvent = {
+  serverBmId: string;
+  serverName: string;
+  playerBmId: string;
+  steamId: string;
+  discordId: string;
+  bmName: string;
+  avatarImage: string;
+  isOnline: boolean;
+  occurredUnix: number;
+};
+
+export type TrackedServerLogEventsResponse = {
+  items: TrackedServerLogEvent[];
+};
+
 export type TrackedServer = {
   bmId: string;
   name: string;
+  includeInGuildSettings: boolean;
+  isVitality: boolean;
+  isAtlas: boolean;
+  isVital: boolean;
+  isModded: boolean;
+  isOfficial: boolean;
+  isBuild: boolean;
   lastPolledAt: string | null;
   lastPollError: string;
 };
@@ -190,11 +332,72 @@ export type PlayerStateListResponse = {
   items: PlayerState[];
 };
 
+export type PlayerSearchResult = {
+  serverBmId: string;
+  serverName: string;
+  playerBmId: string;
+  steamId: string;
+  bmName: string;
+  isOnline: boolean;
+};
+
+export type PlayerSearchListResponse = {
+  items: PlayerSearchResult[];
+};
+
 export type BulkHardLinkEntry = {
   steamId: string;
   bmId?: string | null;
   discordId: string;
   source: string;
+};
+
+export type UserBan = {
+  discordId: string;
+  categories: string[];
+};
+
+export type TrackGroup = {
+  id: number;
+  guildId: string;
+  name: string;
+  serverBmId: string;
+  channelId: string;
+  messageId: string;
+  sendUpdates: boolean;
+  onlineCount: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TrackGroupListResponse = {
+  items: TrackGroup[];
+};
+
+export type TrackGroupMember = {
+  trackGroupId: number;
+  steamId: string;
+  bmId: string;
+  createdAt: string;
+};
+
+export type TrackGroupMemberListResponse = {
+  items: TrackGroupMember[];
+};
+
+export type TrackGroupOnlineRow = {
+  steamId: string;
+  bmId: string;
+  bmName: string;
+  discordId: string;
+  avatarImage: string;
+  isOnline: boolean;
+  onlineUnix: number;
+};
+
+export type TrackGroupOnlineStateResponse = {
+  items: TrackGroupOnlineRow[];
 };
 
 export class BackendClient {
@@ -246,8 +449,16 @@ export class BackendClient {
     return this.call<RegisterResponse>(workerId, "/api/internal/bot/shards/register", "POST", { workerId });
   }
 
-  heartbeat(workerId: string, shardIds: number[]) {
-    return this.call<{ status: string }>(workerId, "/api/internal/bot/shards/heartbeat", "POST", { workerId, shardIds });
+  heartbeat(workerId: string, shardIds: number[], stats?: WorkerStatSnapshot) {
+    const body: Record<string, unknown> = { workerId, shardIds };
+    if (stats) {
+      body.stats = stats;
+    }
+    return this.call<{ status: string }>(workerId, "/api/internal/bot/shards/heartbeat", "POST", body);
+  }
+
+  ownerStats(workerId: string) {
+    return this.call<OwnerStatsResponse>(workerId, "/api/internal/bot/owner/stats", "GET");
   }
 
   release(workerId: string) {
@@ -257,6 +468,10 @@ export class BackendClient {
   assignments(workerId: string) {
     const query = new URLSearchParams({ workerId }).toString();
     return this.call<AssignmentsResponse>(workerId, `/api/internal/bot/shards/assignments?${query}`, "GET");
+  }
+
+  steamAccountCount(workerId: string) {
+    return this.call<CountResponse>(workerId, "/api/internal/bot/setup/steam-accounts/count", "GET");
   }
 
   guildSettings(workerId: string, guildId: string) {
@@ -387,13 +602,37 @@ export class BackendClient {
     );
   }
 
-  markWipeReactSchedulePosted(workerId: string, guildId: string, scheduleId: number, lastPostedForUnix: number) {
-    return this.call<{ status: string }>(
-      workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedules/${scheduleId}/mark-posted`,
-      "POST",
-      { lastPostedForUnix },
-    );
+  claimNextWipeReactSchedulePost(workerId: string, guildId: string) {
+	return this.call<{ item: WipeReactSchedulePost | null }>(
+	  workerId,
+	  `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedule-posts/claim`,
+	  "POST",
+	  { workerId },
+	);
+  }
+
+  completeWipeReactSchedulePost(
+	workerId: string,
+	guildId: string,
+	postId: number,
+	messageId: string,
+	channelId: string,
+  ) {
+	return this.call<{ status: string }>(
+	  workerId,
+	  `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedule-posts/${postId}/complete`,
+	  "POST",
+	  { workerId, messageId, channelId },
+	);
+  }
+
+  releaseWipeReactSchedulePost(workerId: string, guildId: string, postId: number) {
+	return this.call<{ status: string }>(
+	  workerId,
+	  `/api/internal/bot/setup/guilds/${guildId}/wipe-react-schedule-posts/${postId}/release`,
+	  "POST",
+	  { workerId },
+	);
   }
 
   listTrackedServers(workerId: string) {
@@ -404,12 +643,28 @@ export class BackendClient {
     );
   }
 
-  createTrackedServer(workerId: string, bmId: string, name: string) {
+  createTrackedServer(
+    workerId: string,
+    payload: Omit<TrackedServer, "lastPolledAt" | "lastPollError">,
+  ) {
     return this.call<TrackedServer>(
       workerId,
       `/api/internal/bot/setup/tracked-servers`,
       "POST",
-      { bmId, name },
+      payload,
+    );
+  }
+
+  updateTrackedServer(
+    workerId: string,
+    currentBmId: string,
+    payload: Omit<TrackedServer, "lastPolledAt" | "lastPollError">,
+  ) {
+    return this.call<TrackedServer>(
+      workerId,
+      `/api/internal/bot/setup/tracked-servers/${currentBmId}`,
+      "PUT",
+      payload,
     );
   }
 
@@ -446,6 +701,24 @@ export class BackendClient {
     );
   }
 
+  searchPlayerStatesByName(
+    workerId: string,
+    serverId: string,
+    query: string,
+    limit: number,
+    includeOffline = false,
+  ) {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    if (includeOffline) {
+      params.set("includeOffline", "true");
+    }
+    return this.call<PlayerSearchListResponse>(
+      workerId,
+      `/api/internal/bot/setup/player-states/servers/${serverId}/search?${params.toString()}`,
+      "GET",
+    );
+  }
+
   getPlayerState(workerId: string, serverId: string, playerId: string) {
     return this.call<PlayerState>(
       workerId,
@@ -478,6 +751,22 @@ export class BackendClient {
     );
   }
 
+  getSteamProfile(workerId: string, steamId: string) {
+    return this.call<SteamProfile>(
+      workerId,
+      `/api/internal/bot/setup/steam/${steamId}/profile`,
+      "GET",
+    );
+  }
+
+  getSteamAnalytics(workerId: string, steamId: string) {
+    return this.call<SteamAnalytics>(
+      workerId,
+      `/api/internal/bot/setup/steam/${steamId}/analytics`,
+      "GET",
+    );
+  }
+
   getLinksBySteamID(workerId: string, steamId: string) {
     return this.call<SteamDiscordLinkListResponse>(
       workerId,
@@ -490,6 +779,14 @@ export class BackendClient {
     return this.call<SteamDiscordLinkListResponse>(
       workerId,
       `/api/internal/bot/setup/discord/${discordId}/links`,
+      "GET",
+    );
+  }
+
+  isDiscordWebsiteAdmin(workerId: string, discordId: string) {
+    return this.call<{ isAdmin: boolean }>(
+      workerId,
+      `/api/internal/bot/setup/discord/${discordId}/is-website-admin`,
       "GET",
     );
   }
@@ -596,6 +893,22 @@ export class BackendClient {
     );
   }
 
+  listGuildRecentGameBans(workerId: string, guildId: string) {
+    return this.call<GuildRecentGameBanListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/game-bans`,
+      "GET",
+    );
+  }
+
+  listGuildTrackedServerLogEvents(workerId: string, guildId: string) {
+    return this.call<TrackedServerLogEventsResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/tracked-server-log-events`,
+      "GET",
+    );
+  }
+
   listGuildLinksByDiscord(workerId: string, guildId: string, discordId: string) {
     return this.call<GuildSteamDiscordLinkListResponse>(
       workerId,
@@ -608,6 +921,126 @@ export class BackendClient {
     return this.call<GuildSteamDiscordLinkListResponse>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/steam/${steamId}/links`,
+      "GET",
+    );
+  }
+
+  getUserBan(workerId: string, discordId: string) {
+    return this.call<UserBan>(
+      workerId,
+      `/api/internal/bot/setup/bans/${discordId}`,
+      "GET",
+    );
+  }
+
+  setUserBan(workerId: string, discordId: string, categories: string[], updatedBy: string) {
+    return this.call<UserBan>(
+      workerId,
+      `/api/internal/bot/setup/bans/${discordId}`,
+      "PUT",
+      { categories, updatedBy },
+    );
+  }
+
+  listTrackGroups(workerId: string, guildId: string) {
+    return this.call<TrackGroupListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups`,
+      "GET",
+    );
+  }
+
+  createTrackGroup(
+    workerId: string,
+    guildId: string,
+    payload: {
+      name: string;
+      serverBmId: string;
+      channelId: string;
+      messageId: string;
+      sendUpdates: boolean;
+      onlineCount: number;
+      createdBy: string;
+    },
+  ) {
+    return this.call<TrackGroup>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups`,
+      "POST",
+      payload,
+    );
+  }
+
+  getTrackGroup(workerId: string, guildId: string, groupId: number) {
+    return this.call<TrackGroup>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}`,
+      "GET",
+    );
+  }
+
+  updateTrackGroup(
+    workerId: string,
+    guildId: string,
+    groupId: number,
+    patch: {
+      channelId?: string;
+      messageId?: string;
+      sendUpdates?: boolean;
+      onlineCount?: number;
+    },
+  ) {
+    return this.call<TrackGroup>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}`,
+      "PUT",
+      patch,
+    );
+  }
+
+  deleteTrackGroup(workerId: string, guildId: string, groupId: number) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}`,
+      "DELETE",
+    );
+  }
+
+  listTrackGroupMembers(workerId: string, guildId: string, groupId: number) {
+    return this.call<TrackGroupMemberListResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/members`,
+      "GET",
+    );
+  }
+
+  addTrackGroupMembers(
+    workerId: string,
+    guildId: string,
+    groupId: number,
+    members: { steamId: string; bmId: string }[],
+  ) {
+    return this.call<{ added: string[]; count: number }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/members`,
+      "POST",
+      { members },
+    );
+  }
+
+  removeTrackGroupMembers(workerId: string, guildId: string, groupId: number, identifiers: string[]) {
+    return this.call<{ count: number }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/members/remove`,
+      "POST",
+      { identifiers },
+    );
+  }
+
+  listTrackGroupOnlineState(workerId: string, guildId: string, groupId: number) {
+    return this.call<TrackGroupOnlineStateResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/online-state`,
       "GET",
     );
   }

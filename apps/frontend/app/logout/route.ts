@@ -4,13 +4,15 @@ import { clearSession } from "@/lib/session";
 
 export async function POST(request: Request) {
 	const formData = await request.formData();
-	if (!(await validateCsrfRequest(request, formData.get(CSRF_FIELD_NAME)))) {
-		return NextResponse.redirect(new URL("/dashboard/settings?error=csrf", request.url), {
-			status: 303,
-		});
+	const csrfValid = await validateCsrfRequest(
+		request,
+		formData.get(CSRF_FIELD_NAME),
+	);
+	if (!csrfValid) {
+		return NextResponse.json({ error: "invalid_csrf" }, { status: 400 });
 	}
+
 	await clearSession();
-	return NextResponse.redirect(new URL("/", request.url), {
-		status: 303,
-	});
+
+	return NextResponse.redirect(new URL("/", request.url), { status: 303 });
 }

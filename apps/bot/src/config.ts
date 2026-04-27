@@ -11,7 +11,25 @@ export type BotConfig = {
   ownerDiscordIds: string[];
   reconcileIntervalMs: number;
   heartbeatIntervalMs: number;
+  proxiedRequestConcurrency: number;
 };
+
+function parseEnvBool(value: string | undefined) {
+  return value?.trim().toLowerCase() === "true";
+}
+
+function getProxiedRequestConcurrency() {
+  if (!parseEnvBool(process.env.PROXY_ENABLED)) {
+    return 1;
+  }
+
+  const endpoints = (process.env.PROXY_ENDPOINTS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  return Math.max(1, endpoints.length);
+}
 
 export function loadConfig(): BotConfig {
   const workerFallback = `bot-${process.pid}`;
@@ -34,5 +52,6 @@ export function loadConfig(): BotConfig {
       .filter((value) => value.length > 0),
     reconcileIntervalMs: Number(process.env.BOT_RECONCILE_INTERVAL_MS ?? "15000") || 15000,
     heartbeatIntervalMs: Number(process.env.BOT_HEARTBEAT_INTERVAL_MS ?? "8000") || 8000,
+    proxiedRequestConcurrency: getProxiedRequestConcurrency(),
   };
 }

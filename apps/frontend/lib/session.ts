@@ -10,8 +10,14 @@ export type SessionUser = {
 	displayName: string;
 	avatarUrl: string;
 	roles: string[];
+	/**
+	 * Admin role keys from admin_user_roles. Non-admin users have an empty
+	 * array. Used by requireAdminSession to gate /admin access.
+	 */
+	adminRoles?: string[];
+	permissions?: string[];
 	discordId?: string;
-	email?: string;
+	epoch: number;
 	expiresAt: number;
 };
 
@@ -82,8 +88,10 @@ export function toSessionUser(currentUser: CurrentUser): SessionUser {
 		displayName: currentUser.user.displayName,
 		avatarUrl: currentUser.user.avatarUrl,
 		roles: currentUser.user.roles,
-		discordId: currentUser.discordAccount?.providerAccountId,
-		email: currentUser.primaryEmail?.email,
+		adminRoles: currentUser.adminRoles ?? [],
+		permissions: currentUser.permissions ?? [],
+		discordId: currentUser.user.discordId,
+		epoch: currentUser.user.sessionEpoch ?? 0,
 		expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
 	};
 }
@@ -110,11 +118,55 @@ export async function requireSession() {
 	return session;
 }
 
+/**
+ * @deprecated Kept as an alias during migration to RBAC. New code should use
+ * `requireAdminSession` (any admin role) plus route-level `requirePermission`.
+ * This now delegates to `requireAdminSession` so users granted admin roles via
+ * `admin_user_roles` are recognised — previously this only matched the legacy
+ * "internal_admin" string in `app_users.roles`, which the new RBAC system no
+ * longer populates.
+ */
 export async function requireInternalAdminSession() {
-	const session = await requireSession();
-	if (!session.roles.includes("internal_admin")) {
+	return requireAdminSession();
+}
+
+export async function requireAdminSession() {
+	const session = await getSession();
+	if (!session) redirect("/login");
+
+	// Always resolve admin access from live backend state so role grants/revokes
+	// take effect without waiting for the next login. Dynamic import avoids a
+	// static circular dependency with rustlens-api (which imports from here).
+	const { getCurrentUser } = await import("@/lib/rustlens-api");
+	let liveAdminRoles: string[] = [];
+	let livePermissions: string[] = [];
+	let liveRoles: string[] = session.roles ?? [];
+	try {
+		const current = await getCurrentUser();
+		liveAdminRoles = current.adminRoles ?? [];
+		livePermissions = current.permissions ?? [];
+		liveRoles = current.user.roles ?? [];
+	} catch {
+		redirect("/login");
+	}
+
+	const legacyInternalAdmin = liveRoles.includes("internal_admin");
+	if (liveAdminRoles.length === 0 && livePermissions.length === 0 && !legacyInternalAdmin) {
 		redirect("/dashboard");
 	}
+
+	return {
+		...session,
+		roles: liveRoles,
+		adminRoles: liveAdminRoles,
+		permissions: livePermissions,
+	};
+}
+
+export async function requirePermission(key: string) {
+	const session = await requireAdminSession();
+	const perms = session.permissions ?? [];
+	if (!perms.includes(key)) redirect("/admin");
 	return session;
 }
 

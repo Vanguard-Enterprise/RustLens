@@ -1,5 +1,15 @@
 import type { NextConfig } from "next";
 
+const isDev = process.env.NODE_ENV !== "production";
+
+const scriptSrc = isDev
+	? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
+	: "script-src 'self'";
+
+const connectSrc = isDev
+	? "connect-src 'self' ws: wss:"
+	: "connect-src 'self'";
+
 const contentSecurityPolicy = [
 	"default-src 'self'",
 	"base-uri 'self'",
@@ -8,13 +18,21 @@ const contentSecurityPolicy = [
 	"frame-ancestors 'none'",
 	"img-src 'self' data: https:",
 	"object-src 'none'",
-	"script-src 'self'",
+	scriptSrc,
 	"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-	"connect-src 'self'",
+	connectSrc,
 ].join("; ");
 
 const nextConfig: NextConfig = {
 	poweredByHeader: false,
+	async rewrites() {
+		return [
+			{
+				source: "/api/:path*",
+				destination: "http://localhost:8080/api/:path*",
+			},
+		];
+	},
 	async headers() {
 		return [
 			{

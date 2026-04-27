@@ -1,7 +1,16 @@
-import { BackendClient } from "./backend-client.js";
+import { BackendClient, type ShardStatSnapshot, type WorkerStatSnapshot } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { ShardRuntime } from "./shard-runtime.js";
 import { computeShardDelta } from "./shards.js";
+import type { WorkerStatsMessage } from "./shard-stats.js";
+
+function isWorkerStatsMessage(value: unknown): value is WorkerStatsMessage {
+  return (
+    typeof value === "object"
+    && value !== null
+    && (value as { type?: unknown }).type === "shard-stats"
+  );
+}
 
 async function main() {
   const config = loadConfig();
@@ -12,6 +21,21 @@ async function main() {
 
   const backend = new BackendClient(config.backendUrl, config.jwtSecret, config.jwtIssuer, config.jwtAudience);
   const runtime = new ShardRuntime(config.discordToken);
+
+  const shardSnapshots = new Map<number, ShardStatSnapshot>();
+  const workerProcessSnapshot = { uptimeSec: 0, rssBytes: 0 };
+
+  runtime.onChildMessage((shardID, message) => {
+    if (!isWorkerStatsMessage(message)) {
+      return;
+    }
+    shardSnapshots.set(shardID, message.shard);
+    // Track the most recent worker-process metrics from any shard. Each shard
+    // child reports its own process uptime/rss; on a multi-shard worker these
+    // are nearly identical so picking the latest is fine.
+    workerProcessSnapshot.uptimeSec = message.uptimeSec;
+    workerProcessSnapshot.rssBytes = message.rssBytes;
+  });
 
   const register = await backend.register(config.workerId);
   let currentTargetShards = register.targetShards;
@@ -31,11 +55,24 @@ async function main() {
 
     for (const shardID of delta.toStop) {
       runtime.stop(shardID);
+      shardSnapshots.delete(shardID);
     }
   };
 
+  const buildStatsPayload = (): WorkerStatSnapshot | undefined => {
+    if (shardSnapshots.size === 0) {
+      return undefined;
+    }
+    const shards = [...shardSnapshots.values()].sort((a, b) => a.shardId - b.shardId);
+    return {
+      uptimeSec: workerProcessSnapshot.uptimeSec,
+      rssBytes: workerProcessSnapshot.rssBytes,
+      shards,
+    };
+  };
+
   const heartbeat = async () => {
-    await backend.heartbeat(config.workerId, runtime.activeShards());
+    await backend.heartbeat(config.workerId, runtime.activeShards(), buildStatsPayload());
   };
 
   await reconcile();

@@ -12,9 +12,11 @@ import type {
 } from "discord.js";
 import {
   ActionRowBuilder,
+  ApplicationIntegrationType,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -52,7 +54,7 @@ export const WIPEREACT_COMMAND_NAME = "wipereact";
 
 const WIPEREACT_CREATE_SUBCOMMAND_NAME = "create";
 const WIPEREACT_DELETE_SUBCOMMAND_NAME = "delete";
-const WIPEREACT_MISSING_SUBCOMMAND_NAME = "missing";
+const WIPEREACT_NOT_REACTED_SUBCOMMAND_NAME = "notreacted";
 const WIPEREACT_REACT_GROUP_NAME = "react";
 const WIPEREACT_REACT_ADD_SUBCOMMAND_NAME = "add";
 const WIPEREACT_REACT_REMOVE_SUBCOMMAND_NAME = "remove";
@@ -71,6 +73,7 @@ const WIPEREACT_LATE_BUTTON_PREFIX = "wipereact_late:";
 const WIPEREACT_EDIT_BUTTON_CUSTOM_ID = "wipereact_edit";
 const WIPEREACT_EDIT_BUTTON_PREFIX = "wipereact_edit:";
 const WIPEREACT_TARGET_OPTION_NAME = "wipereact";
+const WIPEREACT_MESSAGE_OPTION_NAME = "message";
 const WIPEREACT_SCOPE_OPTION_NAME = "scope";
 const WIPEREACT_USER_OPTION_NAME = "user";
 const WIPEREACT_TYPE_OPTION_NAME = "type";
@@ -212,6 +215,8 @@ const wipeReactCommand = new SlashCommandBuilder()
   .setName(WIPEREACT_COMMAND_NAME)
   .setDescription("RustLens wipe react commands")
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addSubcommand((subcommand) =>
     subcommand
       .setName(WIPEREACT_CREATE_SUBCOMMAND_NAME)
@@ -265,20 +270,26 @@ const wipeReactCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
-      .setName(WIPEREACT_MISSING_SUBCOMMAND_NAME)
-      .setDescription("List role members missing a response for a wipe react")
-      .addRoleOption((option) =>
-        option
-          .setName(WIPEREACT_SCOPE_OPTION_NAME)
-          .setDescription("Role to check")
-          .setRequired(true),
-      )
+      .setName(WIPEREACT_NOT_REACTED_SUBCOMMAND_NAME)
+      .setDescription("List members missing a response for a wipe react")
       .addStringOption((option) =>
         option
           .setName(WIPEREACT_TARGET_OPTION_NAME)
           .setDescription("Select an active wipe react")
-          .setRequired(true)
+          .setRequired(false)
           .setAutocomplete(true),
+      )
+      .addStringOption((option) =>
+        option
+          .setName(WIPEREACT_MESSAGE_OPTION_NAME)
+          .setDescription("DMs everyone who has not reacted")
+          .setRequired(false),
+      )
+      .addRoleOption((option) =>
+        option
+          .setName(WIPEREACT_SCOPE_OPTION_NAME)
+          .setDescription("Role to check")
+          .setRequired(false),
       ),
   )
   .addSubcommandGroup((group) =>
@@ -1057,142 +1068,6 @@ function formatScheduleChoiceName(schedule: WipeReactSchedule) {
   return label.length <= 100 ? label : `${label.slice(0, 97)}...`;
 }
 
-const POST_BEFORE_SECONDS: Record<string, number> = {
-  "1d": 86400,
-  "2d": 172800,
-  "3d": 259200,
-  "4d": 345600,
-  "1w": 604800,
-  "2w": 1209600,
-};
-
-const DAY_NAME_TO_JS_DAY: Record<string, number> = {
-  sunday: 0,
-  monday: 1,
-  tuesday: 2,
-  wednesday: 3,
-  thursday: 4,
-  friday: 5,
-  saturday: 6,
-};
-
-function computeNextWeekdayOccurrence(
-  dayName: string,
-  time: string,
-  timeZone: string,
-  repeat: string,
-  afterUnix: number,
-): number | null {
-  const targetDay = DAY_NAME_TO_JS_DAY[dayName];
-  if (targetDay === undefined) return null;
-
-  const [hoursStr, minutesStr] = time.split(":");
-  const hours = Number(hoursStr);
-  const minutes = Number(minutesStr);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-
-  const afterDate = new Date(afterUnix * 1000);
-  const parts = getTimeZoneParts(afterDate, timeZone);
-
-  const year = parts.year;
-  const month = parts.month;
-  const day = parts.day;
-
-  const minGapSeconds = repeat === "biweekly" ? 13 * 86400 : 0;
-
-  for (let offset = 0; offset <= 62; offset++) {
-    const candidate = zonedDateTimeToUtc(year, month, day + offset, hours, minutes, timeZone);
-    const candidateUnix = Math.floor(candidate.getTime() / 1000);
-    if (candidateUnix <= afterUnix) continue;
-
-    if (minGapSeconds > 0 && candidateUnix - afterUnix < minGapSeconds) continue;
-
-    const candidateParts = getTimeZoneParts(candidate, timeZone);
-    const candidateJsDay = new Date(
-      Date.UTC(candidateParts.year, candidateParts.month - 1, candidateParts.day),
-    ).getUTCDay();
-
-    if (candidateJsDay !== targetDay) continue;
-
-    if (repeat === "monthly" && candidateParts.day > 7) continue;
-
-    return candidateUnix;
-  }
-
-  return null;
-}
-
-function computeNextForceWipeOccurrence(afterUnix: number): number | null {
-  const timeZone = "Europe/London";
-  const afterDate = new Date(afterUnix * 1000);
-  const parts = getTimeZoneParts(afterDate, timeZone);
-
-  for (let monthOffset = 0; monthOffset < 4; monthOffset++) {
-    let year = parts.year;
-    let month = parts.month + monthOffset;
-    if (month > 12) {
-      month -= 12;
-      year += 1;
-    }
-
-    for (let d = 1; d <= 7; d++) {
-      const candidate = zonedDateTimeToUtc(year, month, d, 19, 0, timeZone);
-      const candidateParts = getTimeZoneParts(candidate, timeZone);
-      const jsDay = new Date(
-        Date.UTC(candidateParts.year, candidateParts.month - 1, candidateParts.day),
-      ).getUTCDay();
-
-      if (jsDay === 4) {
-        const candidateUnix = Math.floor(candidate.getTime() / 1000);
-        if (candidateUnix > afterUnix) {
-          return candidateUnix;
-        }
-        break;
-      }
-    }
-  }
-
-  return null;
-}
-
-function computeNextPostTime(schedule: WipeReactSchedule): { wipeUnix: number; postUnix: number } | null {
-  const postBeforeSeconds = POST_BEFORE_SECONDS[schedule.postBefore];
-  if (!postBeforeSeconds) return null;
-
-  const afterUnix = schedule.lastPostedForUnix > 0
-    ? schedule.lastPostedForUnix
-    : Math.floor(Date.now() / 1000) - postBeforeSeconds - 1;
-
-  let earliestWipeUnix: number | null = null;
-
-  for (const dayName of schedule.days) {
-    const nextOccurrence = computeNextWeekdayOccurrence(
-      dayName,
-      schedule.time,
-      schedule.timeZone,
-      schedule.repeat,
-      afterUnix,
-    );
-    if (nextOccurrence !== null && (earliestWipeUnix === null || nextOccurrence < earliestWipeUnix)) {
-      earliestWipeUnix = nextOccurrence;
-    }
-  }
-
-  if (schedule.includesForceWipe) {
-    const nextForceWipe = computeNextForceWipeOccurrence(afterUnix);
-    if (nextForceWipe !== null && (earliestWipeUnix === null || nextForceWipe < earliestWipeUnix)) {
-      earliestWipeUnix = nextForceWipe;
-    }
-  }
-
-  if (earliestWipeUnix === null) return null;
-
-  return {
-    wipeUnix: earliestWipeUnix,
-    postUnix: earliestWipeUnix - postBeforeSeconds,
-  };
-}
-
 function buildWipeReactModal(
   customId: string,
   defaults?: Partial<WipeReactConfig>,
@@ -1522,21 +1397,60 @@ function buildReactionRemovalLogEmbed(
 
 function buildMissingReactantsEmbed(
   state: WipeReactMessageState,
-  role: Role,
   missingUserIds: readonly string[],
+  messageStatus?: { sent: number; failed: number },
 ) {
-  return {
-    title: "Missing reactants",
-    description:
+  const fields: { name: string; value: string }[] = [];
+
+  if (messageStatus) {
+    fields.push({
+      name: "Message status",
+      value:
+        `> * Successfully sent to **${messageStatus.sent}** member${messageStatus.sent === 1 ? "" : "s"}\n` +
+        `> * Failed to send to **${messageStatus.failed}** member${messageStatus.failed === 1 ? "" : "s"}`,
+    });
+  }
+
+  fields.push({
+    name: "Users",
+    value:
       missingUserIds.length > 0
         ? missingUserIds.map((userId) => `> * <@${userId}>`).join("\n")
         : "> * None",
+  });
+
+  return {
+    title: "Missing reactants",
     color: RUSTLENS_EMBED_COLOR,
     footer: {
-      text: `RustLens | ${state.name} | ${role.name}`,
+      text: "RustLens.com",
       icon_url: RUSTLENS_EMBED_ICON_URL,
     },
     timestamp: new Date().toISOString(),
+    thumbnail: {
+      url: "",
+    },
+    fields,
+  };
+}
+
+function buildNotReactedDmEmbed(message: string, wipeReactURL: string) {
+  return {
+    title: "You have not reacted to the wipe react",
+    description: `${message}\n\n${wipeReactURL}`,
+    timestamp: new Date().toISOString(),
+    color: RUSTLENS_EMBED_COLOR,
+    footer: {
+      text: "RustLens.com",
+      icon_url: RUSTLENS_EMBED_ICON_URL,
+    },
+    image: {
+      url: "",
+    },
+    thumbnail: {
+      url: "",
+    },
+    fields: [],
   };
 }
 
@@ -1667,6 +1581,19 @@ function formatWipeReactChoiceName(state: WipeReactMessageState) {
   }).format(new Date(state.scheduledUnix * 1000));
   const label = `${state.name} | ${dateLabel}`;
   return label.length <= 100 ? label : `${label.slice(0, 97)}...`;
+}
+
+function pickDefaultNotReactedWipeReact(records: readonly WipeReact[]) {
+  if (records.length === 0) {
+    return null;
+  }
+
+  const nowUnix = Math.floor(Date.now() / 1000);
+  const nextRecord = [...records]
+    .filter((record) => record.scheduledUnix >= nowUnix)
+    .sort((left, right) => left.scheduledUnix - right.scheduledUnix)[0];
+
+  return nextRecord ?? [...records].sort((left, right) => right.scheduledUnix - left.scheduledUnix)[0] ?? null;
 }
 
 function extractTargetFromCustomId(customId: string, prefix: string) {
@@ -1963,22 +1890,35 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     return true;
   }
 
-  if (subcommand === WIPEREACT_MISSING_SUBCOMMAND_NAME) {
-    const scope = interaction.options.getRole(WIPEREACT_SCOPE_OPTION_NAME, true);
-    if (!("members" in scope)) {
+  if (subcommand === WIPEREACT_NOT_REACTED_SUBCOMMAND_NAME) {
+    const scope = interaction.options.getRole(WIPEREACT_SCOPE_OPTION_NAME, false);
+    if (scope && !("members" in scope)) {
       await replyEphemeral(interaction, "That scope role is not available in this server.");
       return true;
     }
 
-    const messageId = interaction.options.getString(WIPEREACT_TARGET_OPTION_NAME, true);
-    const record = await getPersistedWipeReact(interaction.guildId, messageId).catch(() => null);
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const messageText = interaction.options.getString(WIPEREACT_MESSAGE_OPTION_NAME)?.trim() ?? "";
+    const selectedMessageId = interaction.options.getString(WIPEREACT_TARGET_OPTION_NAME);
+    const record = selectedMessageId
+      ? await getPersistedWipeReact(interaction.guildId, selectedMessageId).catch(() => null)
+      : pickDefaultNotReactedWipeReact(await listActiveWipeReacts(interaction.guildId).catch(() => []));
     if (!record) {
       await replyEphemeral(interaction, "That wipe react could not be found.");
       return true;
     }
 
+    const wipeReactMessage = await fetchWipeReactMessage(guild, record.channelId, record.messageId);
+    if (!wipeReactMessage) {
+      await getBackend().deleteWipeReact(getWipeReactWorkerID(), interaction.guildId, record.messageId).catch(() => undefined);
+      await replyEphemeral(interaction, "That wipe react message no longer exists. RustLens removed its persisted state.");
+      return true;
+    }
+
+    let members;
     try {
-      await getGuildMembers(guild);
+      members = await getGuildMembers(guild);
     } catch {
       await replyEphemeral(
         interaction,
@@ -1992,13 +1932,40 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
       ...record.declinedUserIds,
       ...record.lateUserIds,
     ]);
-    const missingUserIds = [...scope.members.values()]
-      .filter((member) => !member.user.bot && !reactedUserIds.has(member.id))
+    const missingMembers = [...members.values()]
+      .filter((member) => !member.user.bot)
+      .filter((member) => scope ? member.roles.cache.has(scope.id) : true)
+      .filter((member) => !reactedUserIds.has(member.id))
       .sort((left, right) => left.displayName.localeCompare(right.displayName))
-      .map((member) => member.id);
+    const missingUserIds = missingMembers.map((member) => member.id);
 
-    await interaction.reply({
-      embeds: [buildMissingReactantsEmbed(toWipeReactState(record), scope as Role, missingUserIds)],
+    let messageStatus: { sent: number; failed: number } | undefined;
+    if (messageText.length > 0 && missingMembers.length > 0) {
+      let sent = 0;
+      let failed = 0;
+
+      await Promise.all(
+        missingMembers
+          .filter((member) => member.id !== interaction.user.id)
+          .map(async (member) => {
+            try {
+              await member.send({
+                embeds: [buildNotReactedDmEmbed(messageText, wipeReactMessage.url)],
+                components: [],
+              });
+              sent++;
+            } catch {
+              failed++;
+            }
+          }),
+      );
+
+      messageStatus = { sent, failed };
+    }
+
+    await interaction.editReply({
+      embeds: [buildMissingReactantsEmbed(toWipeReactState(record), missingUserIds, messageStatus)],
+      components: [],
     });
     return true;
   }
@@ -2621,28 +2588,30 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
 
 export function startWipeReactScheduler(client: Client) {
   const SCHEDULER_INTERVAL_MS = 60_000;
+  const workerID = getWipeReactWorkerID();
 
   async function tick() {
     const guilds = [...client.guilds.cache.values()];
 
     for (const guild of guilds) {
       try {
-        const response = await getBackend().listWipeReactSchedules(
-          getWipeReactWorkerID(),
-          guild.id,
-        );
+        while (true) {
+          const response = await getBackend().claimNextWipeReactSchedulePost(workerID, guild.id);
+          if (!response.item) {
+            break;
+          }
 
-        for (const schedule of response.items) {
-          await processSchedule(guild, schedule).catch((error) => {
+          await processSchedulePost(guild, response.item).catch((error) => {
             console.error("[bot] schedule tick failed", {
               guildId: guild.id,
-              scheduleId: schedule.id,
+              postId: response.item?.id,
+              scheduleId: response.item?.scheduleId,
               error,
             });
           });
         }
       } catch (error) {
-        console.error("[bot] failed to list schedules for guild", {
+        console.error("[bot] failed to poll scheduled wipe reacts for guild", {
           guildId: guild.id,
           error,
         });
@@ -2650,28 +2619,22 @@ export function startWipeReactScheduler(client: Client) {
     }
   }
 
-  async function processSchedule(guild: Guild, schedule: WipeReactSchedule) {
-    if (!schedule.channelId) return;
-
-    const next = computeNextPostTime(schedule);
-    if (!next) return;
-
-    const nowUnix = Math.floor(Date.now() / 1000);
-    if (nowUnix < next.postUnix) return;
-    if (schedule.lastPostedForUnix >= next.wipeUnix) return;
-
-    const channel = guild.channels.cache.get(schedule.channelId) ??
-      await guild.channels.fetch(schedule.channelId).catch(() => null);
-    if (!channel?.isTextBased() || !("send" in channel)) return;
+  async function processSchedulePost(guild: Guild, post: import("./backend-client.js").WipeReactSchedulePost) {
+    const channel = guild.channels.cache.get(post.channelId) ??
+      await guild.channels.fetch(post.channelId).catch(() => null);
+    if (!channel?.isTextBased() || !("send" in channel)) {
+      await getBackend().releaseWipeReactSchedulePost(workerID, guild.id, post.id).catch(() => undefined);
+      return;
+    }
 
     const state: WipeReactMessageState = {
-      name: schedule.name,
-      description: schedule.description,
-      timeZone: schedule.timeZone,
-      scheduledUnix: next.wipeUnix,
-      creatorId: schedule.createdBy,
-      askLateReason: schedule.askLateReason,
-      askDeclinedReason: schedule.askDeclinedReason,
+      name: post.name,
+      description: post.description,
+      timeZone: post.timeZone,
+      scheduledUnix: post.wipeUnix,
+      creatorId: post.createdBy,
+      askLateReason: post.askLateReason,
+      askDeclinedReason: post.askDeclinedReason,
       acceptedUserIds: [],
       declinedUserIds: [],
       lateUserIds: [],
@@ -2685,39 +2648,44 @@ export function startWipeReactScheduler(client: Client) {
 
     try {
       await getBackend().createWipeReact(
-        getWipeReactWorkerID(),
+        workerID,
         guild.id,
         buildPersistedWipeReact(guild.id, message.channelId, message.id, state),
       );
     } catch (error) {
       console.error("[bot] failed to persist scheduled wipe react", {
         guildId: guild.id,
-        scheduleId: schedule.id,
+        scheduleId: post.scheduleId,
+        postId: post.id,
         error,
       });
       await message.delete().catch(() => undefined);
+      await getBackend().releaseWipeReactSchedulePost(workerID, guild.id, post.id).catch(() => undefined);
       return;
     }
 
-    scheduleWipeReactExpiry(message, next.wipeUnix);
+    scheduleWipeReactExpiry(message, post.wipeUnix);
 
-    await getBackend().markWipeReactSchedulePosted(
-      getWipeReactWorkerID(),
+    await getBackend().completeWipeReactSchedulePost(
+      workerID,
       guild.id,
-      schedule.id,
-      next.wipeUnix,
+      post.id,
+      message.id,
+      message.channelId,
     ).catch((error) => {
-      console.error("[bot] failed to mark schedule as posted", {
+      console.error("[bot] failed to complete scheduled wipe react post", {
         guildId: guild.id,
-        scheduleId: schedule.id,
+        scheduleId: post.scheduleId,
+        postId: post.id,
         error,
       });
     });
 
     console.log("[bot] auto-posted scheduled wipe react", {
       guildId: guild.id,
-      scheduleId: schedule.id,
-      wipeUnix: next.wipeUnix,
+      scheduleId: post.scheduleId,
+      postId: post.id,
+      wipeUnix: post.wipeUnix,
       messageId: message.id,
     });
   }
@@ -2746,9 +2714,6 @@ export const __testables = {
   buildWipeReactEmbed,
   buildMissingReactantsEmbed,
   buildWipeReactModal,
-  computeNextForceWipeOccurrence,
-  computeNextPostTime,
-  computeNextWeekdayOccurrence,
   createScheduleConfirmButtons,
   createWipeReactButtons,
   formatScheduleChoiceName,

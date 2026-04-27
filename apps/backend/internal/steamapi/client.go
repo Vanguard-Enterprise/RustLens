@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"rustlens/backend/internal/outboundhttp"
 )
 
 const defaultBaseURL = "https://api.steampowered.com"
@@ -23,16 +25,47 @@ var (
 )
 
 type Client struct {
-	baseURL string
-	apiKey  string
-	client  *http.Client
+	baseURL  string
+	apiKey   string
+	provider requestPreparer
 }
 
-func NewClient(apiKey string) *Client {
+type PlayerSummary struct {
+	SteamID                   string
+	AvatarFull                string
+	CommunityVisibilityState int
+}
+
+type OwnedGame struct {
+	AppID           int
+	Name            string
+	PlaytimeForever int64
+}
+
+type PlayerBan struct {
+	SteamID          string
+	CommunityBanned  bool
+	VACBanned        bool
+	NumberOfVACBans  int
+	DaysSinceLastBan int
+	NumberOfGameBans int
+	EconomyBan       string
+}
+
+type requestPreparer interface {
+	Prepare() (*http.Client, string, bool)
+}
+
+func NewClient(apiKey string, provider requestPreparer) *Client {
+	if provider == nil {
+		fallbackProvider, _ := outboundhttp.NewProvider(false, nil, 10*time.Second)
+		provider = fallbackProvider
+	}
+
 	return &Client{
-		baseURL: defaultBaseURL,
-		apiKey:  apiKey,
-		client:  &http.Client{Timeout: 20 * time.Second},
+		baseURL:  defaultBaseURL,
+		apiKey:   apiKey,
+		provider: provider,
 	}
 }
 
@@ -103,9 +136,10 @@ func (c *Client) resolveVanityURL(ctx context.Context, vanity string) (string, e
 	}
 	req.Header.Set("Accept", "application/json")
 
-	log.Printf("[steamapi] sending request host=%s proxied=false proxy=%q", endpoint.Host, "")
+	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
+	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
 
-	response, err := c.client.Do(req)
+	response, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -131,4 +165,207 @@ func (c *Client) resolveVanityURL(ctx context.Context, vanity string) (string, e
 	}
 
 	return "", ErrVanityNotFound
+}
+
+func (c *Client) GetPlayerSummary(ctx context.Context, steamID string) (PlayerSummary, error) {
+	if !steamIDPattern.MatchString(strings.TrimSpace(steamID)) {
+		return PlayerSummary{}, ErrUnsupportedProfileInput
+	}
+	if c.apiKey == "" {
+		return PlayerSummary{}, ErrSteamAPIKeyRequired
+	}
+
+	endpoint, err := url.Parse(c.baseURL + "/ISteamUser/GetPlayerSummaries/v2/")
+	if err != nil {
+		return PlayerSummary{}, err
+	}
+
+	query := endpoint.Query()
+	query.Set("key", c.apiKey)
+	query.Set("steamids", steamID)
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return PlayerSummary{}, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
+	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return PlayerSummary{}, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return PlayerSummary{}, fmt.Errorf("steam returned status %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Response struct {
+			Players []struct {
+				SteamID                   string `json:"steamid"`
+				AvatarFull                string `json:"avatarfull"`
+				CommunityVisibilityState int    `json:"communityvisibilitystate"`
+			} `json:"players"`
+		} `json:"response"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return PlayerSummary{}, err
+	}
+
+	if len(payload.Response.Players) == 0 {
+		return PlayerSummary{}, ErrVanityNotFound
+	}
+
+	return PlayerSummary{
+		SteamID:                   payload.Response.Players[0].SteamID,
+		AvatarFull:                payload.Response.Players[0].AvatarFull,
+		CommunityVisibilityState: payload.Response.Players[0].CommunityVisibilityState,
+	}, nil
+}
+
+func (c *Client) GetOwnedGames(ctx context.Context, steamID string) ([]OwnedGame, error) {
+	if !steamIDPattern.MatchString(strings.TrimSpace(steamID)) {
+		return nil, ErrUnsupportedProfileInput
+	}
+	if c.apiKey == "" {
+		return nil, ErrSteamAPIKeyRequired
+	}
+
+	endpoint, err := url.Parse(c.baseURL + "/IPlayerService/GetOwnedGames/v1/")
+	if err != nil {
+		return nil, err
+	}
+
+	query := endpoint.Query()
+	query.Set("key", c.apiKey)
+	query.Set("steamid", steamID)
+	query.Set("include_appinfo", "true")
+	query.Set("include_played_free_games", "true")
+	query.Set("format", "json")
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
+	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("steam returned status %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Response struct {
+			Games []struct {
+				AppID           int    `json:"appid"`
+				Name            string `json:"name"`
+				PlaytimeForever int64  `json:"playtime_forever"`
+			} `json:"games"`
+		} `json:"response"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	games := make([]OwnedGame, 0, len(payload.Response.Games))
+	for _, game := range payload.Response.Games {
+		games = append(games, OwnedGame{
+			AppID:           game.AppID,
+			Name:            game.Name,
+			PlaytimeForever: game.PlaytimeForever,
+		})
+	}
+
+	return games, nil
+}
+
+func (c *Client) GetPlayerBans(ctx context.Context, steamIDs []string) ([]PlayerBan, error) {
+	if len(steamIDs) == 0 {
+		return []PlayerBan{}, nil
+	}
+	if c.apiKey == "" {
+		return nil, ErrSteamAPIKeyRequired
+	}
+
+	normalized := make([]string, 0, len(steamIDs))
+	for _, steamID := range steamIDs {
+		trimmed := strings.TrimSpace(steamID)
+		if !steamIDPattern.MatchString(trimmed) {
+			return nil, ErrUnsupportedProfileInput
+		}
+		normalized = append(normalized, trimmed)
+	}
+
+	endpoint, err := url.Parse(c.baseURL + "/ISteamUser/GetPlayerBans/v1/")
+	if err != nil {
+		return nil, err
+	}
+
+	query := endpoint.Query()
+	query.Set("key", c.apiKey)
+	query.Set("steamids", strings.Join(normalized, ","))
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
+	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("steam returned status %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Players []struct {
+			SteamID          string `json:"SteamId"`
+			CommunityBanned  bool   `json:"CommunityBanned"`
+			VACBanned        bool   `json:"VACBanned"`
+			NumberOfVACBans  int    `json:"NumberOfVACBans"`
+			DaysSinceLastBan int    `json:"DaysSinceLastBan"`
+			NumberOfGameBans int    `json:"NumberOfGameBans"`
+			EconomyBan       string `json:"EconomyBan"`
+		} `json:"players"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	bans := make([]PlayerBan, 0, len(payload.Players))
+	for _, player := range payload.Players {
+		bans = append(bans, PlayerBan{
+			SteamID:          player.SteamID,
+			CommunityBanned:  player.CommunityBanned,
+			VACBanned:        player.VACBanned,
+			NumberOfVACBans:  player.NumberOfVACBans,
+			DaysSinceLastBan: player.DaysSinceLastBan,
+			NumberOfGameBans: player.NumberOfGameBans,
+			EconomyBan:       player.EconomyBan,
+		})
+	}
+
+	return bans, nil
 }

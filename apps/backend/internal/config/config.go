@@ -26,6 +26,10 @@ type Config struct {
 	AppAdminDiscordIDs   []string
 	ProxyEnabled         bool
 	ProxyEndpoints       []string
+	AppBaseURL           string
+	DiscordClientID      string
+	DiscordClientSecret  string
+	AppOrigin            string
 }
 
 func Load() Config {
@@ -54,6 +58,10 @@ func Load() Config {
 		AppAdminDiscordIDs:   getEnvCSV("APP_ADMIN_DISCORD_IDS"),
 		ProxyEnabled:         proxyEnabled,
 		ProxyEndpoints:       getEnvCSV("PROXY_ENDPOINTS"),
+		AppBaseURL:           getEnv("APP_BASE_URL", "http://localhost:3000"),
+		DiscordClientID:      getEnv("DISCORD_CLIENT_ID", ""),
+		DiscordClientSecret:  getEnv("DISCORD_CLIENT_SECRET", ""),
+		AppOrigin:            getEnv("APP_ORIGIN", "http://localhost"),
 	}
 }
 

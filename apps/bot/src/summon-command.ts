@@ -1,5 +1,5 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { MessageFlags, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
 
@@ -9,6 +9,8 @@ const summonCommand = new SlashCommandBuilder()
   .setName(SUMMON_COMMAND_NAME)
   .setDescription("Move all online members of a role into your voice channel")
   .setDMPermission(false)
+  .setContexts(InteractionContextType.Guild)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addRoleOption((option) =>
     option
       .setName("scope")
@@ -56,10 +58,11 @@ export async function handleSummonChatInput(interaction: ChatInputCommandInterac
     return true;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   if (!(await hasGuildAdminAccess(interaction))) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "Only the configured admin role or administrators can use /summon.",
-      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
@@ -68,16 +71,13 @@ export async function handleSummonChatInput(interaction: ChatInputCommandInterac
   const voiceChannel = member?.voice.channel;
 
   if (!voiceChannel) {
-    await interaction.reply({
+    await interaction.editReply({
       content: "You must be in a voice channel to use this command.",
-      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
 
   const role = interaction.options.getRole("scope", true);
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const members = await getGuildMembers(guild);
   const targets = members.filter(
