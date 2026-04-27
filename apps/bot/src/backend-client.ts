@@ -409,6 +409,26 @@ export type TrackGroupOnlineStateResponse = {
   items: TrackGroupOnlineRow[];
 };
 
+export type TrackGroupAnalyticsHour = {
+  hourUnix: number;
+  avg: number;
+};
+
+export type TrackGroupAnalyticsDay = {
+  weekday: string;
+  bestStart: number;
+  bestEnd: number;
+  hours: TrackGroupAnalyticsHour[];
+};
+
+export type TrackGroupAnalyticsResponse = {
+  groupName: string;
+  serverName: string;
+  members: number;
+  analyzed: number;
+  days: TrackGroupAnalyticsDay[];
+};
+
 export class BackendClient {
   constructor(
     private readonly backendUrl: string,
@@ -433,7 +453,13 @@ export class BackendClient {
     );
   }
 
-  private async call<T>(workerId: string, path: string, method: string, body?: unknown): Promise<T> {
+  private async call<T>(
+    workerId: string,
+    path: string,
+    method: string,
+    body?: unknown,
+    timeoutMs = 10_000,
+  ): Promise<T> {
     const response = await fetch(`${this.backendUrl}${path}`, {
       method,
       headers: {
@@ -441,7 +467,7 @@ export class BackendClient {
         authorization: `Bearer ${this.token(workerId)}`,
       },
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!response.ok) {
@@ -1051,6 +1077,16 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/online-state`,
       "GET",
+    );
+  }
+
+  getTrackGroupAnalytics(workerId: string, guildId: string, groupId: number) {
+    return this.call<TrackGroupAnalyticsResponse>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/analytics`,
+      "GET",
+      undefined,
+      60_000,
     );
   }
 }

@@ -220,6 +220,21 @@ Maps Steam accounts to Discord users. A pair can have both soft and hard links.
 - **soft** — user self-reported, unverified. Admins can delete.
 - **hard** — from trusted source (BattleMetrics), authoritatively verified. Cannot be deleted via API.
 
+### `track_analytics_sessions_cache`
+
+Per-(player, server) cache of raw BattleMetrics player session windows used by the track-group analytics endpoint. Entries are refreshed lazily by `GET /api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/analytics` after a 24-hour TTL.
+
+| Column | Type | Notes |
+|---|---|---|
+| `player_bm_id` | `TEXT NOT NULL` | BattleMetrics player ID (composite PK) |
+| `server_bm_id` | `TEXT NOT NULL` | BattleMetrics server ID (composite PK) |
+| `sessions` | `JSONB NOT NULL DEFAULT '[]'::jsonb` | Array of `{start, stop}` unix-second pairs |
+| `fetched_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last refresh time, drives the 24-hour TTL |
+
+**PK**: `(player_bm_id, server_bm_id)`.
+
+**Index**: `track_analytics_sessions_cache_fetched_idx ON (fetched_at)` for future TTL sweeps.
+
 ### `guild_steam_discord_links`
 
 Guild-scoped Steam-Discord associations managed by guild admins.
