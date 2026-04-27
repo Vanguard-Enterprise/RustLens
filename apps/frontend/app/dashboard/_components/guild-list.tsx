@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { guildBannerUrl, guildIconUrl, userAvatarUrl } from "@/lib/discord-cdn";
 import { getMyInstalledGuilds, type DashboardGuild } from "@/lib/rustlens-api";
 
 function initials(name: string): string {
@@ -13,7 +14,9 @@ function initials(name: string): string {
 }
 
 function GuildBanner({ guild }: { guild: DashboardGuild }) {
-  const src = guild.bannerUrl ?? guild.iconUrl;
+  const src =
+    guildBannerUrl(guild.id, guild.bannerHash) ??
+    guildIconUrl(guild.id, guild.iconHash, 1024);
   if (!src) {
     return (
       <div
@@ -23,8 +26,6 @@ function GuildBanner({ guild }: { guild: DashboardGuild }) {
     );
   }
   return (
-    // Plain <img> is intentional: discord CDN is not in next/image
-    // remotePatterns. CSP allows https: img sources.
     <img
       src={src}
       alt=""
@@ -35,33 +36,34 @@ function GuildBanner({ guild }: { guild: DashboardGuild }) {
 }
 
 function GuildCard({ guild }: { guild: DashboardGuild }) {
+  const iconSrc = guildIconUrl(guild.id, guild.iconHash) ?? undefined;
+  const ownerName = guild.owner?.globalName ?? guild.owner?.username ?? null;
+  const ownerAvatarSrc =
+    guild.owner ? userAvatarUrl(guild.owner.id, guild.owner.avatarHash) ?? undefined : undefined;
+
   return (
     <Card className="overflow-hidden">
       <GuildBanner guild={guild} />
       <CardHeader className="flex-row items-center gap-3">
         <Avatar size="lg" className="ring-2 ring-background">
-          {guild.iconUrl ? <AvatarImage src={guild.iconUrl} alt="" /> : null}
+          {iconSrc ? <AvatarImage src={iconSrc} alt="" /> : null}
           <AvatarFallback>{initials(guild.name)}</AvatarFallback>
         </Avatar>
         <CardTitle className="truncate">{guild.name}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {guild.owner ? (
+        {guild.owner && ownerName ? (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Avatar size="sm">
-              {guild.owner.avatarUrl ? (
-                <AvatarImage src={guild.owner.avatarUrl} alt="" />
-              ) : null}
-              <AvatarFallback>{initials(guild.owner.displayName)}</AvatarFallback>
+              {ownerAvatarSrc ? <AvatarImage src={ownerAvatarSrc} alt="" /> : null}
+              <AvatarFallback>{initials(ownerName)}</AvatarFallback>
             </Avatar>
-            <span className="truncate text-xs">
-              Owner: {guild.owner.displayName}
-            </span>
+            <span className="truncate text-xs">Owner: {ownerName}</span>
           </div>
         ) : null}
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          {guild.memberCount != null ? (
-            <span>{guild.memberCount.toLocaleString()} members</span>
+          {guild.approximateMemberCount != null ? (
+            <span>{guild.approximateMemberCount.toLocaleString()} members</span>
           ) : null}
           <span>
             {guild.trackedServerCount} tracked server
