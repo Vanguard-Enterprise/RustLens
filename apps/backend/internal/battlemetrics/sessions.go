@@ -44,6 +44,17 @@ func (c *Client) FetchPlayerSessions(ctx context.Context, playerBmID, serverBmID
 	if !numericPattern.MatchString(serverBmID) {
 		return nil, fmt.Errorf("invalid server ID: %q", serverBmID)
 	}
+	return c.fetchPlayerSessions(ctx, playerBmID, serverBmID, pageSize, maxPages)
+}
+
+func (c *Client) FetchPlayerSessionsAllServers(ctx context.Context, playerBmID string, pageSize int, maxPages int) ([]PlayerSession, error) {
+	if !numericPattern.MatchString(playerBmID) {
+		return nil, fmt.Errorf("invalid player ID: %q", playerBmID)
+	}
+	return c.fetchPlayerSessions(ctx, playerBmID, "", pageSize, maxPages)
+}
+
+func (c *Client) fetchPlayerSessions(ctx context.Context, playerBmID, serverBmID string, pageSize int, maxPages int) ([]PlayerSession, error) {
 	if pageSize <= 0 {
 		pageSize = 100
 	}
@@ -53,7 +64,9 @@ func (c *Client) FetchPlayerSessions(ctx context.Context, playerBmID, serverBmID
 
 	endpoint := fmt.Sprintf("%s/players/%s/relationships/sessions", c.baseURL, playerBmID)
 	params := url.Values{}
-	params.Set("filter[servers]", serverBmID)
+	if serverBmID != "" {
+		params.Set("filter[servers]", serverBmID)
+	}
 	params.Set("page[size]", fmt.Sprintf("%d", pageSize))
 	current := endpoint + "?" + params.Encode()
 

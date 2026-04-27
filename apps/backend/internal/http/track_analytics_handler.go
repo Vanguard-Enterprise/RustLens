@@ -5,8 +5,11 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/store"
@@ -20,6 +23,7 @@ const (
 	trackAnalyticsRefDayUnix  = int64(1767571200) // 2026-01-05 00:00:00 UTC = Monday
 	trackAnalyticsHoursPerDay = 24
 	trackAnalyticsTimeZone    = "Europe/London"
+	trackAnalyticsAllServers  = "__all__"
 )
 
 var trackAnalyticsWeekdayNames = [7]string{
@@ -107,6 +111,35 @@ func (h *Handler) GetTrackGroupAnalytics(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+func (h *Handler) GetPlayerOfflineAnalytics(w http.ResponseWriter, r *http.Request) {
+	bmID := strings.TrimSpace(chi.URLParam(r, "bmID"))
+	if !bmIDPattern.MatchString(bmID) {
+		writeError(w, http.StatusBadRequest, "invalid BattleMetrics player ID")
+		return
+	}
+
+	playerName := "Player " + bmID
+	if account, err := h.postgres.GetSteamAccountByBmID(r.Context(), bmID); err == nil && account.BmName != "" {
+		playerName = account.BmName
+	}
+
+	sessions := h.fetchPlayerOfflineAnalyticsSessions(r.Context(), bmID)
+	days := computeTrackAnalyticsDays(map[string][]store.TrackAnalyticsSession{bmID: sessions})
+	analyzed := 0
+	if len(sessions) > 0 {
+		analyzed = 1
+	}
+
+	writeJSON(w, http.StatusOK, trackAnalyticsResponse{
+		GroupName:  playerName,
+		ServerName: "All BattleMetrics servers",
+		TimeZone:   trackAnalyticsTimeZone,
+		Members:    1,
+		Analyzed:   analyzed,
+		Days:       days,
+	})
+}
+
 // fetchTrackAnalyticsSessions returns one entry per member (with valid sessions
 // data) keyed by player_bm_id. Cache hits within the TTL skip the BattleMetrics
 // fetch; misses are dispatched concurrently with concurrency equal to the number
@@ -180,6 +213,32 @@ func (h *Handler) fetchTrackAnalyticsSessions(ctx context.Context, members []sto
 		results[result.bmID] = result.sessions
 	}
 	return results
+}
+
+func (h *Handler) fetchPlayerOfflineAnalyticsSessions(ctx context.Context, bmID string) []store.TrackAnalyticsSession {
+	now := time.Now()
+	entry, err := h.postgres.GetTrackAnalyticsCache(ctx, bmID, trackAnalyticsAllServers)
+	if err != nil {
+		log.Printf("[backend] offline analytics cache lookup failed for player %s: %v", bmID, err)
+	}
+	if entry != nil && now.Sub(entry.FetchedAt) < trackAnalyticsCacheTTL {
+		return entry.Sessions
+	}
+
+	sessions, err := h.battleMetricsClient.FetchPlayerSessionsAllServers(ctx, bmID, trackAnalyticsPageSize, trackAnalyticsMaxPages)
+	if err != nil {
+		log.Printf("[backend] offline analytics fetch failed for player %s: %v", bmID, err)
+		if entry != nil {
+			return entry.Sessions
+		}
+		return nil
+	}
+
+	converted := convertBmSessions(sessions)
+	if err := h.postgres.UpsertTrackAnalyticsCache(ctx, bmID, trackAnalyticsAllServers, converted); err != nil {
+		log.Printf("[backend] offline analytics cache write failed for player %s: %v", bmID, err)
+	}
+	return converted
 }
 
 func convertBmSessions(input []battlemetrics.PlayerSession) []store.TrackAnalyticsSession {

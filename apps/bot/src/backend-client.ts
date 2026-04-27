@@ -1092,4 +1092,14 @@ export class BackendClient {
       60_000,
     );
   }
+
+  getPlayerOfflineAnalytics(workerId: string, bmId: string) {
+    return this.call<TrackGroupAnalyticsResponse>(
+      workerId,
+      `/api/internal/bot/setup/players/${bmId}/offline-analytics`,
+      "GET",
+      undefined,
+      60_000,
+    );
+  }
 }

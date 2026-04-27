@@ -712,6 +712,34 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/players/{bmID}/offline-analytics": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get player offline analytics",
+					"description": "Returns chart-ready offline timing analytics from the player's last BattleMetrics sessions across all servers.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "bmID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics player ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Offline analytics returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/TrackAnalyticsResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/steam-accounts/count": map[string]any{
 				"get": map[string]any{
 					"summary":     "Get steam account count",
@@ -2127,6 +2155,44 @@ func buildOpenAPIDocument() map[string]any {
 						},
 					},
 					"required": []string{"items"},
+				},
+				"TrackAnalyticsHour": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"hourUnix": map[string]any{"type": "integer"},
+						"hour":     map[string]any{"type": "integer"},
+						"avg":      map[string]any{"type": "number"},
+						"minutes":  map[string]any{"type": "number"},
+					},
+					"required": []string{"hourUnix", "hour", "avg", "minutes"},
+				},
+				"TrackAnalyticsDay": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"weekday":   map[string]any{"type": "string"},
+						"bestStart": map[string]any{"type": "integer"},
+						"bestEnd":   map[string]any{"type": "integer"},
+						"hours": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/TrackAnalyticsHour"},
+						},
+					},
+					"required": []string{"weekday", "bestStart", "bestEnd", "hours"},
+				},
+				"TrackAnalyticsResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"groupName":  map[string]any{"type": "string"},
+						"serverName": map[string]any{"type": "string"},
+						"timeZone":   map[string]any{"type": "string"},
+						"members":    map[string]any{"type": "integer"},
+						"analyzed":   map[string]any{"type": "integer"},
+						"days": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/TrackAnalyticsDay"},
+						},
+					},
+					"required": []string{"groupName", "serverName", "timeZone", "members", "analyzed", "days"},
 				},
 				"GuildOnlineSummaryItem": map[string]any{
 					"type": "object",
