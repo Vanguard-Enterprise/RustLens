@@ -168,12 +168,12 @@ function bmLink(row: TrackGroupOnlineRow) {
 
 function buildOnlineLine(row: TrackGroupOnlineRow) {
   const stamp = row.onlineUnix > 0 ? ` - <t:${row.onlineUnix}:R>` : "";
-  return `${bmLink(row)}${stamp}`;
+  return `> * ${bmLink(row)}${stamp}`;
 }
 
 function buildOfflineLine(row: TrackGroupOnlineRow) {
   const stamp = row.onlineUnix > 0 ? ` - <t:${row.onlineUnix}:R>` : "";
-  return `${bmLink(row)}${stamp}`;
+  return `> * ${bmLink(row)}${stamp}`;
 }
 
 function chunkDescriptionLines(lines: string[]) {
@@ -230,17 +230,13 @@ export function buildTrackEmbeds(
   const offline = rows.filter((row) => !row.isOnline);
   const visible = mode === "online" ? online : offline;
   const emoji = mode === "online" ? TRACK_ONLINE_EMOJI : TRACK_OFFLINE_EMOJI;
-  const label = mode === "online" ? "Online" : "Offline";
   const lineBuilder = mode === "online" ? buildOnlineLine : buildOfflineLine;
 
-  const lines = [
-    `${emoji} **${label} ${visible.length}**`,
-    ...(visible.length > 0 ? visible.map(lineBuilder) : ["*None*"]),
-  ];
+  const lines = visible.length > 0 ? visible.map(lineBuilder) : ["> * None"];
 
   return chunkDescriptionLines(lines).map((description, index) =>
     new EmbedBuilder()
-      .setTitle(index === 0 ? `${group.name} - ${group.serverName}` : `${group.name} - ${group.serverName} cont.`)
+      .setTitle(index === 0 ? `${emoji} ${visible.length} - ${group.name} - ${group.serverName}` : `${emoji} ${visible.length} - ${group.name} - ${group.serverName} cont.`)
       .setDescription(description)
       .setColor(TRACK_EMBED_COLOR)
       .setTimestamp()

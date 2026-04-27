@@ -54,12 +54,12 @@ describe("buildTrackEmbeds", () => {
     );
     const data = embeds[0].toJSON();
 
-    expect(data.title).toBe("kap - Vitality EU 10x");
+    expect(data.title).toBe("<:Online:1497993468981805076> 1 - kap - Vitality EU 10x");
     expect(data.fields).toBeUndefined();
-    expect(data.description).toContain("**Online 1**");
-    expect(data.description).toContain("Jigsaw");
+    expect(data.description).toContain("> * [Jigsaw]");
     expect(data.description).toContain("battlemetrics.com");
-    expect(data.description).not.toContain("**Offline 1**");
+    expect(data.description).not.toContain("Online");
+    expect(data.description).not.toContain("Offline");
     expect(data.description).not.toContain("lack");
   });
 
@@ -74,8 +74,9 @@ describe("buildTrackEmbeds", () => {
     );
     const data = embeds[0].toJSON();
 
-    expect(data.description).toContain("**Offline 1**");
-    expect(data.description).toContain("lack");
+    expect(data.title).toBe("<:Offline:1497993467660599476> 1 - kap - Vitality EU 10x");
+    expect(data.description).toContain("> * [lack]");
+    expect(data.description).not.toContain("Offline");
     expect(data.description).not.toContain("Jigsaw");
   });
 
@@ -87,7 +88,7 @@ describe("buildTrackEmbeds", () => {
     const embeds = buildTrackEmbeds({ name: "kap", serverName: "Vitality EU 10x" }, rows, "offline");
 
     expect(embeds.length).toBeGreaterThan(1);
-    expect(embeds[1].toJSON().title).toBe("kap - Vitality EU 10x cont.");
+    expect(embeds[1].toJSON().title).toBe("<:Offline:1497993467660599476> 250 - kap - Vitality EU 10x cont.");
     for (const embed of embeds) {
       expect(embed.toJSON().description?.length ?? 0).toBeLessThanOrEqual(3900);
       expect(embed.toJSON().fields).toBeUndefined();
