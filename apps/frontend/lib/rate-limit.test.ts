@@ -71,6 +71,7 @@ describe("rate-limit", () => {
 		} catch (err) {
 			error = err as Error;
 		}
+		expect(error?.message).toContain(
 			"RATE_LIMIT_REDIS_URL or REDIS_URL must be configured in production for shared auth rate limiting",
 		);
 	});
