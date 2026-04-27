@@ -123,5 +123,58 @@ func TestMarkBotGuildLeft_SetsFlagAndTimestamp(t *testing.T) {
 	}
 }
 
+func TestBulkUpsertUserGuilds_ActivatesMembers(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+
+	guildID := "100000000000000010"
+	if err := s.UpsertBotGuildMetadata(ctx, UpsertBotGuildInput{GuildID: guildID, Name: "g"}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	discordIDs := []string{"300000000000000001", "300000000000000002", "300000000000000003"}
+	if err := s.BulkUpsertUserGuilds(ctx, guildID, discordIDs); err != nil {
+		t.Fatalf("BulkUpsertUserGuilds: %v", err)
+	}
+
+	for _, id := range discordIDs {
+		var isActive bool
+		err := s.pool.QueryRow(ctx, `SELECT is_active FROM user_guilds WHERE discord_id = $1 AND guild_id = $2`, id, guildID).Scan(&isActive)
+		if err != nil {
+			t.Fatalf("query %s: %v", id, err)
+		}
+		if !isActive {
+			t.Errorf("expected is_active=true for %s", id)
+		}
+	}
+}
+
+func TestStampMembersSynced_SetsTimestamp(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+
+	guildID := "100000000000000011"
+	if err := s.UpsertBotGuildMetadata(ctx, UpsertBotGuildInput{GuildID: guildID, Name: "g"}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	before, _, err := s.MembersSyncedAt(ctx, guildID)
+	if err != nil {
+		t.Fatalf("read before: %v", err)
+	}
+	if before != nil {
+		t.Fatalf("expected nil before stamp, got %v", before)
+	}
+
+	if err := s.StampMembersSynced(ctx, guildID); err != nil {
+		t.Fatalf("StampMembersSynced: %v", err)
+	}
+
+	after, ok, err := s.MembersSyncedAt(ctx, guildID)
+	if err != nil || !ok || after == nil {
+		t.Fatalf("read after: ok=%v err=%v ts=%v", ok, err, after)
+	}
+}
+
 func strPtr(v string) *string { return &v }
 func int32Ptr(v int32) *int32 { return &v }

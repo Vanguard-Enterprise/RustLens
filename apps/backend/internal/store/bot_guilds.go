@@ -76,3 +76,30 @@ func (p *PostgresStore) MembersSyncedAt(ctx context.Context, guildID string) (*t
 	}
 	return ts, true, nil
 }
+
+// BulkUpsertUserGuilds inserts or reactivates user_guilds rows for the given
+// discord IDs in a single statement. Caller is responsible for chunking input
+// to a reasonable size (the HTTP layer caps incoming batches at 1000).
+func (p *PostgresStore) BulkUpsertUserGuilds(ctx context.Context, guildID string, discordIDs []string) error {
+	if len(discordIDs) == 0 {
+		return nil
+	}
+	_, err := p.pool.Exec(ctx, `
+		INSERT INTO user_guilds (discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at)
+		SELECT did, $1, TRUE, NOW(), NOW(), NULL FROM unnest($2::text[]) AS did
+		ON CONFLICT (discord_id, guild_id) DO UPDATE
+		SET is_active = TRUE,
+		    last_seen_at = NOW(),
+		    left_at = NULL
+	`, guildID, discordIDs)
+	return err
+}
+
+// StampMembersSynced marks bot_guilds.members_synced_at = NOW(). Used after a
+// guildCreate / clientReady member sync completes.
+func (p *PostgresStore) StampMembersSynced(ctx context.Context, guildID string) error {
+	_, err := p.pool.Exec(ctx, `
+		UPDATE bot_guilds SET members_synced_at = NOW() WHERE guild_id = $1
+	`, guildID)
+	return err
+}
