@@ -59,12 +59,9 @@ export async function renderTrackAnalyticsChart(analytics: TrackGroupAnalyticsRe
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  ctx.fillStyle = "#f4f7fb";
-  ctx.font = "700 34px Arial";
-  ctx.fillText(`Analytics - ${analytics.groupName}`, PADDING, 56);
   ctx.fillStyle = "#9aa8bd";
   ctx.font = "18px Arial";
-  ctx.fillText(`${analytics.serverName} | Minutes played per qualifying player-day | ${analytics.timeZone || "Europe/London"}`, PADDING + 430, 86);
+  ctx.fillText(`${analytics.serverName} | Minutes played per qualifying player-day | ${analytics.timeZone || "Europe/London"}`, PADDING, 56);
 
   drawHeatmap(ctx, analytics);
   drawBars(ctx, analytics);
