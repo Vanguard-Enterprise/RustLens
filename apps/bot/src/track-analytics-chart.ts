@@ -14,6 +14,7 @@ const BAR_TOP = 615;
 const BAR_WIDTH = 1376;
 const BAR_HEIGHT = 215;
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const FONT_FAMILY = "DejaVu Sans, Arial, sans-serif";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -60,7 +61,7 @@ export async function renderTrackAnalyticsChart(analytics: TrackGroupAnalyticsRe
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
   ctx.fillStyle = "#9aa8bd";
-  ctx.font = "18px Arial";
+  ctx.font = `18px ${FONT_FAMILY}`;
   ctx.fillText(`${analytics.serverName} | Minutes played per qualifying player-day | ${analytics.timeZone || "Europe/London"}`, PADDING, 56);
 
   drawHeatmap(ctx, analytics);
@@ -72,22 +73,22 @@ export async function renderTrackAnalyticsChart(analytics: TrackGroupAnalyticsRe
 
 function drawHeatmap(ctx: any, analytics: TrackGroupAnalyticsResponse) {
   ctx.fillStyle = "#e8eef7";
-  ctx.font = "700 22px Arial";
+  ctx.font = `700 22px ${FONT_FAMILY}`;
   ctx.textAlign = "left";
   ctx.fillText("Weekday / Hour Heatmap", HEATMAP_LEFT, HEATMAP_TOP - 58);
 
   ctx.textAlign = "center";
   ctx.fillStyle = "#bfcbda";
-  ctx.font = "13px Arial";
+  ctx.font = `13px ${FONT_FAMILY}`;
   for (let hour = 0; hour < 24; hour += 2) {
     ctx.fillText(String(hour).padStart(2, "0"), HEATMAP_LEFT + hour * HEATMAP_CELL + HEATMAP_CELL / 2, HEATMAP_TOP - 18);
   }
-  ctx.font = "12px Arial";
+  ctx.font = `12px ${FONT_FAMILY}`;
   ctx.fillText("hour", HEATMAP_LEFT + HEATMAP_WIDTH / 2, HEATMAP_TOP - 38);
 
   ctx.textAlign = "right";
   ctx.fillStyle = "#8795aa";
-  ctx.font = "15px Arial";
+  ctx.font = `15px ${FONT_FAMILY}`;
   for (let day = 0; day < 7; day++) {
     const y = HEATMAP_TOP + day * HEATMAP_CELL;
     ctx.fillText(WEEKDAY_LABELS[day], HEATMAP_LEFT - 16, y + HEATMAP_CELL * 0.62);
@@ -118,7 +119,7 @@ function drawHeatmap(ctx: any, analytics: TrackGroupAnalyticsResponse) {
 
 function drawBars(ctx: any, analytics: TrackGroupAnalyticsResponse) {
   ctx.fillStyle = "#e8eef7";
-  ctx.font = "700 22px Arial";
+  ctx.font = `700 22px ${FONT_FAMILY}`;
   ctx.textAlign = "left";
   ctx.fillText("Average By Hour", BAR_LEFT, BAR_TOP - 38);
 
@@ -130,7 +131,7 @@ function drawBars(ctx: any, analytics: TrackGroupAnalyticsResponse) {
 
   ctx.strokeStyle = "#263143";
   ctx.fillStyle = "#8795aa";
-  ctx.font = "13px Arial";
+  ctx.font = `13px ${FONT_FAMILY}`;
   ctx.textAlign = "right";
   for (let tick = 0; tick <= max; tick += Math.max(5, max / 5)) {
     const y = baseline - (tick / max) * BAR_HEIGHT;
@@ -176,7 +177,7 @@ function drawLegend(ctx: any) {
     ctx.fillRect(x, y + i, w, 1);
   }
   ctx.fillStyle = "#bfcbda";
-  ctx.font = "13px Arial";
+  ctx.font = `13px ${FONT_FAMILY}`;
   ctx.textAlign = "left";
   ctx.fillText("60", x + w + 8, y + 5);
   ctx.fillText("30", x + w + 8, y + h / 2 + 5);
