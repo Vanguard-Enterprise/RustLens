@@ -32,21 +32,20 @@ function makeAnalytics(
 }
 
 describe("buildWeekdayFieldValue", () => {
-  it("includes the best-time line and the top hours sorted by avg", () => {
-    const day = makeDay("Monday", 0, [0, 0, 1.5, 0.2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  it("includes the best-time line and one average for that timeframe", () => {
+    const day = makeDay("Monday", 0, [0, 0, 1.5, 0.2, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     const value = buildWeekdayFieldValue(day);
     expect(value).toContain("Best time to go for an offline:");
     expect(value).toContain(`<t:${day.bestStart}:t> - <t:${day.bestEnd}:t>`);
-    expect(value).toContain("**1.5**");
-    expect(value).toContain("**0.2**");
-    // Hours with avg 0 must be excluded.
-    expect(value).not.toContain("**0**\n");
+    expect(value).toContain("Average people online:");
+    expect(value).toContain("**2**");
+    expect(value).not.toContain(`<t:${day.hours[2].hourUnix}:t> **1.5**`);
   });
 
-  it("renders a no-activity placeholder when every hour is zero", () => {
+  it("renders zero when every hour in the timeframe is zero", () => {
     const day = makeDay("Tuesday", 1, Array(24).fill(0));
     const value = buildWeekdayFieldValue(day);
-    expect(value).toContain("No measurable activity");
+    expect(value).toContain("**0**");
   });
 });
 

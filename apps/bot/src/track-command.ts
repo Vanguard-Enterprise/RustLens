@@ -657,6 +657,9 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
     const { resolved, failed } = await resolveIdentifiersToMembers(identifiers);
     if (resolved.length > 0) {
       await getBackend().addTrackGroupMembers(getWorkerID(), interaction.guildId, groupId, resolved);
+      await refreshTrackGroupById(interaction.guild, interaction.guildId, groupId).catch((error) => {
+        console.error(`[bot] failed to refresh track group ${groupId} after add`, error);
+      });
     }
     await interaction.editReply({
       embeds: [buildStatusEmbed(resolved.length, failed.length, failed)],
@@ -910,6 +913,15 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   previousSnapshots.set(group.id, current);
 }
 
+async function refreshTrackGroupById(guild: Guild, guildId: string, groupId: number) {
+  const group = await getBackend().getTrackGroup(getWorkerID(), guildId, groupId);
+  const trackedServers = await getBackend()
+    .listTrackedServers(getWorkerID())
+    .catch(() => ({ items: [] as { bmId: string; name: string }[] }));
+  const serverName = trackedServers.items.find((item) => item.bmId === group.serverBmId)?.name ?? group.serverBmId;
+  await refreshTrackGroup(guild, group, serverName);
+}
+
 async function findExistingTrackMessage(textChannel: TextChannel, group: TrackGroup, serverName: string) {
   const expectedTitle = `${group.name} - ${serverName}`;
   const messages = await textChannel.messages.fetch({ limit: 25 }).catch(() => null);
@@ -954,7 +966,6 @@ function buildJoinLeaveEmbed(row: TrackGroupOnlineRow, isOnline: boolean, server
 const ANALYTICS_EMBED_COLOR = 14582045;
 const ANALYTICS_FIELD_VALUE_MAX = 1024;
 const ANALYTICS_EMBED_BODY_MAX = 5800;
-const ANALYTICS_HOURS_PER_FIELD_MAX = 12;
 
 async function handleAnalyticsButton(
   interaction: ButtonInteraction,
@@ -1052,26 +1063,20 @@ function formatAvg(value: number) {
   return value.toFixed(2).replace(/\.?0+$/, "");
 }
 
+function averageForBestWindow(day: TrackGroupAnalyticsDay) {
+  const windowHours = day.hours.filter((hour) => hour.hourUnix >= day.bestStart && hour.hourUnix < day.bestEnd);
+  if (windowHours.length === 0) {
+    return 0;
+  }
+  return windowHours.reduce((sum, hour) => sum + hour.avg, 0) / windowHours.length;
+}
+
 function buildWeekdayFieldValue(day: TrackGroupAnalyticsDay) {
   const lines: string[] = [];
   lines.push("Best time to go for an offline:");
   lines.push(`> * <t:${day.bestStart}:t> - <t:${day.bestEnd}:t>`);
   lines.push("Average people online:");
-
-  const significant = day.hours.filter((hour) => hour.avg > 0).slice(0, ANALYTICS_HOURS_PER_FIELD_MAX);
-  if (significant.length === 0) {
-    lines.push("> *No measurable activity.*");
-    return lines.join("\n").slice(0, ANALYTICS_FIELD_VALUE_MAX);
-  }
-
-  for (const hour of significant) {
-    const candidate = `<t:${hour.hourUnix}:t> **${formatAvg(hour.avg)}**`;
-    const probe = `${lines.join("\n")}\n${candidate}`;
-    if (probe.length > ANALYTICS_FIELD_VALUE_MAX) {
-      break;
-    }
-    lines.push(candidate);
-  }
+  lines.push(`> * **${formatAvg(averageForBestWindow(day))}**`);
   return lines.join("\n").slice(0, ANALYTICS_FIELD_VALUE_MAX);
 }
 
