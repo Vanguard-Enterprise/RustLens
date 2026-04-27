@@ -40,3 +40,13 @@ func TestReconcileBotGuilds_RejectsBadShardCount(t *testing.T) {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
 }
+
+func TestGetCurrentAppUserInstalledGuilds_RequiresSession(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest(http.MethodGet, "/api/app/me/guilds/installed", nil)
+	w := httptest.NewRecorder()
+	h.GetCurrentAppUserInstalledGuilds(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
