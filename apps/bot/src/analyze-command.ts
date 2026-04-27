@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { BackendClient, type TrackGroupAnalyticsResponse } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { buildNextBestOfflineFieldValue, computeNextBestOfflineWindow } from "./next-best-offline.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 import { resolveSteamInputErrorMessage, resolveSteamProfileInput } from "./steam-input.js";
 import { renderTrackAnalyticsChart } from "./track-analytics-chart.js";
@@ -64,13 +65,22 @@ function buildErrorEmbed(description: string) {
 }
 
 function buildOfflineAnalyticsEmbed(analytics: TrackGroupAnalyticsResponse) {
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(`Offline Analytics - ${analytics.groupName}`)
-    .setDescription(`**${analytics.serverName}**\nBest offline timing based on the last 200 BattleMetrics sessions in ${analytics.timeZone || "Europe/London"}.`)
+    .setDescription(`**${analytics.serverName}**`)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setImage("attachment://offline-analytics.png")
     .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+
+  const window = computeNextBestOfflineWindow(analytics);
+  if (window) {
+    embed.addFields({
+      name: "Next best offline time",
+      value: buildNextBestOfflineFieldValue(window),
+    });
+  }
+  return embed;
 }
 
 async function resolveIdentifierToBmID(identifier: string) {

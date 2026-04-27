@@ -31,6 +31,7 @@ import { CheckboxGroupBuilder, ModalV2Builder, TextInputBuilder } from "./builde
 import { TextInputStyle } from "./builders/types.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, hasGuildAdminAccess } from "./guild-settings.js";
+import { buildNextBestOfflineFieldValue, computeNextBestOfflineWindow } from "./next-best-offline.js";
 import { getFieldValues, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 import { renderTrackAnalyticsChart } from "./track-analytics-chart.js";
 import { isWebsiteAdmin } from "./website-admin.js";
@@ -1143,13 +1144,22 @@ async function handleAnalyticsPage(
 }
 
 function buildAnalyticsChartEmbed(analytics: TrackGroupAnalyticsResponse) {
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(`Analytics - ${analytics.groupName}`)
-    .setDescription(`**${analytics.serverName}**\nMinutes played per qualifying tracked player-day in ${analytics.timeZone || "Europe/London"}.`)
+    .setDescription(`**${analytics.serverName}**`)
     .setColor(ANALYTICS_EMBED_COLOR)
     .setImage("attachment://track-analytics.png")
     .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+
+  const window = computeNextBestOfflineWindow(analytics);
+  if (window) {
+    embed.addFields({
+      name: "Next best offline time",
+      value: buildNextBestOfflineFieldValue(window),
+    });
+  }
+  return embed;
 }
 
 type AnalyticsField = { name: string; value: string; inline: boolean };
