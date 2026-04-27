@@ -506,4 +506,60 @@ describe("BackendClient", () => {
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ input: "https://steamcommunity.com/id/rustlens" }));
   });
+
+  it("upserts a bot guild with members and sync flag", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({ status: "ok", membersSyncedAt: "2026-04-27T12:00:00.000Z" }),
+    } as Response;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.upsertBotGuild("worker-a", {
+      guildId: "1",
+      name: "G",
+      iconHash: null,
+      bannerHash: null,
+      ownerDiscordId: null,
+      ownerUsername: null,
+      ownerGlobalName: null,
+      ownerAvatarHash: null,
+      approximateMemberCount: null,
+      members: ["10", "11"],
+      membersSyncComplete: true,
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/bot-guilds/upsert");
+    expect(init?.method).toBe("POST");
+    const body = JSON.parse(init?.body as string);
+    expect(body.guildId).toBe("1");
+    expect(body.members).toEqual(["10", "11"]);
+    expect(body.membersSyncComplete).toBe(true);
+  });
+
+  it("marks a bot guild left", async () => {
+    const mockResponse = { ok: true, json: async () => ({ status: "ok" }) } as Response;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.markBotGuildLeft("worker-a", "1");
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/bot-guilds/leave");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({ guildId: "1" });
+  });
+
+  it("reconciles bot guilds with shard info", async () => {
+    const mockResponse = { ok: true, json: async () => ({ status: "ok" }) } as Response;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.reconcileBotGuilds("worker-a", { shardId: 1, shardCount: 4, guildIds: ["1", "2"] });
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/bot-guilds/reconcile");
+    expect(JSON.parse(init?.body as string)).toEqual({ shardId: 1, shardCount: 4, guildIds: ["1", "2"] });
+  });
 });
