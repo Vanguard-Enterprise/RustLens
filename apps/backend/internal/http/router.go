@@ -117,6 +117,9 @@ func NewRouter(
 		r.Get("/steam-accounts/count", handler.GetSteamAccountCount)
 		r.Post("/user-guilds", handler.CreateUserGuildLink)
 		r.Post("/user-guilds/leave", handler.MarkUserGuildLeft)
+		r.Post("/bot-guilds/upsert", handler.UpsertBotGuild)
+		r.Post("/bot-guilds/leave", handler.MarkBotGuildLeft)
+		r.Post("/bot-guilds/reconcile", handler.ReconcileBotGuilds)
 		r.Get("/steam/{steamID}", handler.GetSteamAccount)
 		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
@@ -192,6 +195,7 @@ func NewRouter(
 			r.Post("/auth/email/verify/request", handler.RequestEmailVerification)
 			r.Get("/me/connections", handler.GetCurrentAppUserConnections)
 			r.Get("/me/guilds", handler.GetCurrentAppUserGuilds)
+			r.Get("/me/guilds/installed", handler.GetCurrentAppUserInstalledGuilds)
 		})
 
 		r.Route("/admin", func(r chi.Router) {
