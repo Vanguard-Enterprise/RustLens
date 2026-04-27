@@ -60,10 +60,11 @@ describe("buildTrackEmbeds", () => {
     expect(data.description).toContain("Jigsaw");
     expect(data.description).toContain("**Offline 1**");
     expect(data.description).toContain("lack");
+    expect(data.description).not.toContain("battlemetrics.com");
   });
 
   it("splits long track lists across multiple embeds", () => {
-    const rows = Array.from({ length: 110 }, (_value, index) =>
+    const rows = Array.from({ length: 250 }, (_value, index) =>
       makeOnlineRow(`7656119${String(index).padStart(10, "0")}`, `player-${index}`, false),
     );
 
@@ -75,6 +76,8 @@ describe("buildTrackEmbeds", () => {
       expect(embed.toJSON().description?.length ?? 0).toBeLessThanOrEqual(3900);
       expect(embed.toJSON().fields).toBeUndefined();
     }
+    const totalLength = embeds.reduce((sum, embed) => sum + (embed.toJSON().description?.length ?? 0), 0);
+    expect(totalLength).toBeLessThanOrEqual(5800);
   });
 });
 

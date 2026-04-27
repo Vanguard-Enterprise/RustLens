@@ -65,7 +65,7 @@ const TRACK_ADD_EMOJI = { id: "1498006709866856458", name: "user_add" };
 const TRACK_REMOVE_EMOJI = { id: "1498006708549587155", name: "user_remove" };
 const TRACK_NOTIFICATION_EMOJI = { id: "1498033713764761852", name: "notification" };
 const TRACK_EMBED_DESCRIPTION_MAX = 3900;
-const TRACK_MESSAGE_EMBED_MAX = 10;
+const TRACK_MESSAGE_TEXT_MAX = 5800;
 const EMOJIS = {
   steam: "<:steam:1444016467648581642>",
   battlemetrics: "<:battlemetrics:1444011821529956472>",
@@ -164,14 +164,18 @@ function bmLink(row: TrackGroupOnlineRow) {
   return `[${label}](https://www.battlemetrics.com/rcon/players/${row.bmId})`;
 }
 
+function playerLabel(row: TrackGroupOnlineRow) {
+  return row.bmName.trim().length > 0 ? row.bmName.trim() : (row.bmId || row.steamId);
+}
+
 function buildOnlineLine(row: TrackGroupOnlineRow) {
   const stamp = row.onlineUnix > 0 ? ` - <t:${row.onlineUnix}:R>` : "";
-  return `${bmLink(row)}${stamp}`;
+  return `${playerLabel(row)}${stamp}`;
 }
 
 function buildOfflineLine(row: TrackGroupOnlineRow) {
   const stamp = row.onlineUnix > 0 ? ` - <t:${row.onlineUnix}:R>` : "";
-  return `${bmLink(row)}${stamp}`;
+  return `${playerLabel(row)}${stamp}`;
 }
 
 function chunkDescriptionLines(lines: string[]) {
@@ -194,7 +198,20 @@ function chunkDescriptionLines(lines: string[]) {
   if (current.length > 0) {
     chunks.push(current);
   }
-  return chunks.slice(0, TRACK_MESSAGE_EMBED_MAX);
+  const limited: string[] = [];
+  let totalLength = 0;
+  for (const chunk of chunks) {
+    if (totalLength + chunk.length > TRACK_MESSAGE_TEXT_MAX) {
+      const remaining = TRACK_MESSAGE_TEXT_MAX - totalLength;
+      if (remaining > 20) {
+        limited.push(`${chunk.slice(0, remaining - 13)}\n...and more`);
+      }
+      break;
+    }
+    limited.push(chunk);
+    totalLength += chunk.length;
+  }
+  return limited;
 }
 
 export function buildTrackEmbeds(
@@ -866,7 +883,9 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   if (!message) {
     const existing = await findExistingTrackMessage(textChannel, group, serverName);
     if (existing) {
-      await existing.edit({ embeds, components }).catch(() => null);
+      await existing.edit({ embeds, components }).catch((error) => {
+        console.error(`[bot] failed to edit existing track message ${group.id}`, error);
+      });
       await getBackend().updateTrackGroup(getWorkerID(), guild.id, group.id, {
         messageId: existing.id,
       });
@@ -885,7 +904,9 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
     });
     message = sent;
   } else {
-    await message.edit({ embeds, components }).catch(() => null);
+    await message.edit({ embeds, components }).catch((error) => {
+      console.error(`[bot] failed to edit track message ${group.id}`, error);
+    });
   }
 
   // Update channel name + persisted online_count if it changed.
