@@ -140,6 +140,7 @@ function getWorkerID() {
 const STEAM_ID_PATTERN = /^\d{17}$/;
 const BM_ID_PATTERN = /^\d{1,16}$/;
 const pendingInitialPosts = new Set<number>();
+const trackViewModes = new Map<number, TrackViewMode>();
 
 function sanitizeGroupNameForChannel(name: string) {
   const slug = name
@@ -569,6 +570,7 @@ export async function handleTrackButtonInteraction(interaction: ButtonInteractio
       return false;
     }
     const mode: TrackViewMode = modeRaw === "offline" ? "offline" : "online";
+    trackViewModes.set(groupId, mode);
     await interaction.deferUpdate();
     await refreshTrackGroupById(interaction.guild, interaction.guildId, groupId, mode).catch((error) => {
       console.error(`[bot] failed to toggle track group ${groupId} view`, error);
@@ -900,7 +902,8 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
     ? await textChannel.messages.fetch(group.messageId).catch(() => null)
     : null;
 
-  const mode = requestedMode ?? getTrackViewMode(message) ?? "online";
+  const mode = requestedMode ?? trackViewModes.get(group.id) ?? "online";
+  trackViewModes.set(group.id, mode);
 
   const { items: rows } = await getBackend()
     .listTrackGroupOnlineState(getWorkerID(), guild.id, group.id)
@@ -984,20 +987,6 @@ async function refreshTrackGroupById(guild: Guild, guildId: string, groupId: num
     .catch(() => ({ items: [] as { bmId: string; name: string }[] }));
   const serverName = trackedServers.items.find((item) => item.bmId === group.serverBmId)?.name ?? group.serverBmId;
   await refreshTrackGroup(guild, group, serverName, mode);
-}
-
-function getTrackViewMode(message: { components: readonly any[] } | null) {
-  for (const row of message?.components ?? []) {
-    for (const component of row.components ?? []) {
-      const customId = component.customId;
-      if (!customId?.startsWith(TRACK_BUTTON_VIEW_PREFIX)) {
-        continue;
-      }
-      const targetMode = customId.split(":").at(-1);
-      return targetMode === "offline" ? "online" : "offline";
-    }
-  }
-  return null;
 }
 
 async function findExistingTrackMessage(textChannel: TextChannel, group: TrackGroup, serverName: string) {
