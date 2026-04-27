@@ -48,6 +48,55 @@ describe("view-command", () => {
     expect(embed.fields).toHaveLength(11);
   });
 
+  it("adds online status below information when profile has current player state", () => {
+    const embed = buildUserEmbed("76561198000000000", {
+      steamId: "76561198000000000",
+      bmId: "918543318",
+      bmName: "turn it up",
+      avatarImage: "",
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
+      serversPlayed: 12,
+      nameGaps: [],
+      status: {
+        isOnline: true,
+        serverBmId: "16741517",
+        serverName: "Vital 10x",
+        onlineUnix: 1767225600,
+        offlineUnix: null,
+      },
+      hours: {
+        vitality: 10,
+        atlas: 20,
+        vital: 30,
+        modded: 40,
+        official: 50,
+        build: 60,
+        bm: 210,
+        rust: 7347,
+      },
+    }).toJSON();
+
+    expect(embed.fields?.[1]?.name).toBe("Status");
+    expect(embed.fields?.[1]?.value).toBe("<:online:1497993468981805076> **Online** on [Vital 10x](https://www.battlemetrics.com/servers/rust/16741517) for <t:1767225600:R>");
+  });
+
+  it("adds offline status with the last tracked server", () => {
+    const field = __testables.buildStatusField({
+      status: {
+        isOnline: false,
+        serverBmId: "16741517",
+        serverName: "Vital 10x",
+        onlineUnix: null,
+        offlineUnix: 1767225600,
+      },
+    } as never);
+
+    expect(field).toEqual({
+      name: "Status",
+      value: "<:offline:1497993467660599476> **Offline** for <t:1767225600:R>\nLast online on: [Vital 10x](https://www.battlemetrics.com/servers/rust/16741517)",
+    });
+  });
+
   it("calculates steam to battlemetrics hour risk", () => {
     const field = __testables.buildRiskFactorField({
       steamId: "76561198000000000",

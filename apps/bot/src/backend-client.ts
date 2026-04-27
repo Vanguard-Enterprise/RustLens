@@ -164,6 +164,15 @@ export type SteamProfile = {
   hours: SteamProfileHours;
   serversPlayed: number;
   nameGaps: SteamAnalyticsGap[];
+  status?: SteamProfileStatus;
+};
+
+export type SteamProfileStatus = {
+  isOnline: boolean;
+  serverBmId: string;
+  serverName: string;
+  onlineUnix: number | null;
+  offlineUnix: number | null;
 };
 
 export type SteamAnalyticsGame = {
