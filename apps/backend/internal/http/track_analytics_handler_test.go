@@ -70,12 +70,12 @@ func TestDistributeSessionAcrossDays(t *testing.T) {
 }
 
 func TestComputeTrackAnalyticsDays_DropsShortDays(t *testing.T) {
-	// Player A: 1 hour on Monday hour 14, on a single date — passes the 30 min
-	// threshold and should contribute fraction 1.0 to (Monday, 14).
+	// Player A: 1 hour on Monday hour 14, on a single date — passes the 60 min
+	// threshold and should contribute 60 minutes to (Monday, 14).
 	monHour14Start := time.Date(2026, 1, 5, 14, 0, 0, 0, time.UTC).Unix()
 	monHour14Stop := monHour14Start + 3600
 
-	// Player B: 10 min only on Monday — under the 30 min threshold, must be
+	// Player B: 10 min only on Monday — under the 60 min threshold, must be
 	// dropped entirely.
 	monShortStart := time.Date(2026, 1, 12, 18, 0, 0, 0, time.UTC).Unix()
 	monShortStop := monShortStart + 10*60
@@ -95,7 +95,7 @@ func TestComputeTrackAnalyticsDays_DropsShortDays(t *testing.T) {
 		t.Fatalf("expected Monday, got %s", monday.Weekday)
 	}
 
-	// Find the (Monday, hour 14) entry — its avg should be 1.0 from player A
+	// Find the (Monday, hour 14) entry — its avg should be 60 from player A
 	// (player B was dropped for being under threshold).
 	hour14Unix := trackAnalyticsRefDayUnix + 14*3600
 	var hour14 *trackAnalyticsHourValue
@@ -108,8 +108,8 @@ func TestComputeTrackAnalyticsDays_DropsShortDays(t *testing.T) {
 	if hour14 == nil {
 		t.Fatalf("Monday hour 14 missing from results")
 	}
-	if hour14.Avg != 1.0 {
-		t.Fatalf("Monday hour 14 avg: got %f, want 1.0", hour14.Avg)
+	if hour14.Avg != 60.0 || hour14.Minutes != 60.0 {
+		t.Fatalf("Monday hour 14 minutes: got avg=%f minutes=%f, want 60", hour14.Avg, hour14.Minutes)
 	}
 
 	// Hour 18 should have 0 (only player B was online there, but they were
@@ -119,6 +119,25 @@ func TestComputeTrackAnalyticsDays_DropsShortDays(t *testing.T) {
 		if hv.HourUnix == hour18Unix && hv.Avg != 0 {
 			t.Fatalf("Monday hour 18 avg should be 0 (player B dropped), got %f", hv.Avg)
 		}
+	}
+}
+
+func TestComputeTrackAnalyticsDays_UsesLondonTimezone(t *testing.T) {
+	// 23:00 UTC in June is 00:00 Tuesday in Europe/London, so this session must
+	// be counted on Tuesday hour 0, not Monday hour 23.
+	start := time.Date(2026, 6, 1, 23, 0, 0, 0, time.UTC).Unix()
+	stop := start + 60*60
+	sessions := map[string][]store.TrackAnalyticsSession{
+		"playerA": {{StartUnix: start, StopUnix: stop}},
+	}
+
+	days := computeTrackAnalyticsDays(sessions)
+	tuesday := days[1]
+	if tuesday.Hours[0].Minutes != 60 {
+		t.Fatalf("Tuesday London hour 0 minutes: got %f, want 60", tuesday.Hours[0].Minutes)
+	}
+	if days[0].Hours[23].Minutes != 0 {
+		t.Fatalf("Monday London hour 23 minutes: got %f, want 0", days[0].Hours[23].Minutes)
 	}
 }
 

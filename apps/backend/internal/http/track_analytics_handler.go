@@ -5,9 +5,11 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/store"
@@ -17,9 +19,11 @@ const (
 	trackAnalyticsCacheTTL    = 24 * time.Hour
 	trackAnalyticsPageSize    = 100
 	trackAnalyticsMaxPages    = 2
-	trackAnalyticsMinDayMins  = 30
+	trackAnalyticsMinDayMins  = 60
 	trackAnalyticsRefDayUnix  = int64(1767571200) // 2026-01-05 00:00:00 UTC = Monday
 	trackAnalyticsHoursPerDay = 24
+	trackAnalyticsTimeZone    = "Europe/London"
+	trackAnalyticsAllServers  = "__all__"
 )
 
 var trackAnalyticsWeekdayNames = [7]string{
@@ -34,7 +38,9 @@ var trackAnalyticsWeekdayNames = [7]string{
 
 type trackAnalyticsHourValue struct {
 	HourUnix int64   `json:"hourUnix"`
+	Hour     int     `json:"hour"`
 	Avg      float64 `json:"avg"`
+	Minutes  float64 `json:"minutes"`
 }
 
 type trackAnalyticsDayValue struct {
@@ -47,6 +53,7 @@ type trackAnalyticsDayValue struct {
 type trackAnalyticsResponse struct {
 	GroupName  string                   `json:"groupName"`
 	ServerName string                   `json:"serverName"`
+	TimeZone   string                   `json:"timeZone"`
 	Members    int                      `json:"members"`
 	Analyzed   int                      `json:"analyzed"`
 	Days       []trackAnalyticsDayValue `json:"days"`
@@ -97,8 +104,38 @@ func (h *Handler) GetTrackGroupAnalytics(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, trackAnalyticsResponse{
 		GroupName:  group.Name,
 		ServerName: serverName,
+		TimeZone:   trackAnalyticsTimeZone,
 		Members:    len(members),
 		Analyzed:   len(playerSessions),
+		Days:       days,
+	})
+}
+
+func (h *Handler) GetPlayerOfflineAnalytics(w http.ResponseWriter, r *http.Request) {
+	bmID := strings.TrimSpace(chi.URLParam(r, "bmID"))
+	if !bmIDPattern.MatchString(bmID) {
+		writeError(w, http.StatusBadRequest, "invalid BattleMetrics player ID")
+		return
+	}
+
+	playerName := "Player " + bmID
+	if account, err := h.postgres.GetSteamAccountByBmID(r.Context(), bmID); err == nil && account.BmName != "" {
+		playerName = account.BmName
+	}
+
+	sessions := h.fetchPlayerOfflineAnalyticsSessions(r.Context(), bmID)
+	days := computeTrackAnalyticsDays(map[string][]store.TrackAnalyticsSession{bmID: sessions})
+	analyzed := 0
+	if len(sessions) > 0 {
+		analyzed = 1
+	}
+
+	writeJSON(w, http.StatusOK, trackAnalyticsResponse{
+		GroupName:  playerName,
+		ServerName: "All BattleMetrics servers",
+		TimeZone:   trackAnalyticsTimeZone,
+		Members:    1,
+		Analyzed:   analyzed,
 		Days:       days,
 	})
 }
@@ -178,6 +215,32 @@ func (h *Handler) fetchTrackAnalyticsSessions(ctx context.Context, members []sto
 	return results
 }
 
+func (h *Handler) fetchPlayerOfflineAnalyticsSessions(ctx context.Context, bmID string) []store.TrackAnalyticsSession {
+	now := time.Now()
+	entry, err := h.postgres.GetTrackAnalyticsCache(ctx, bmID, trackAnalyticsAllServers)
+	if err != nil {
+		log.Printf("[backend] offline analytics cache lookup failed for player %s: %v", bmID, err)
+	}
+	if entry != nil && now.Sub(entry.FetchedAt) < trackAnalyticsCacheTTL {
+		return entry.Sessions
+	}
+
+	sessions, err := h.battleMetricsClient.FetchPlayerSessionsAllServers(ctx, bmID, trackAnalyticsPageSize, trackAnalyticsMaxPages)
+	if err != nil {
+		log.Printf("[backend] offline analytics fetch failed for player %s: %v", bmID, err)
+		if entry != nil {
+			return entry.Sessions
+		}
+		return nil
+	}
+
+	converted := convertBmSessions(sessions)
+	if err := h.postgres.UpsertTrackAnalyticsCache(ctx, bmID, trackAnalyticsAllServers, converted); err != nil {
+		log.Printf("[backend] offline analytics cache write failed for player %s: %v", bmID, err)
+	}
+	return converted
+}
+
 func convertBmSessions(input []battlemetrics.PlayerSession) []store.TrackAnalyticsSession {
 	out := make([]store.TrackAnalyticsSession, 0, len(input))
 	for _, s := range input {
@@ -194,30 +257,28 @@ func convertBmSessions(input []battlemetrics.PlayerSession) []store.TrackAnalyti
 	return out
 }
 
-// computeTrackAnalyticsDays produces the per-weekday analytics from the raw
-// session data of every analyzed player. The math:
-//
-//   For each player:
-//     - Group the player's session-time by UTC date.
-//     - Drop any date where the player accumulated < 30 minutes total online.
-//     - For each remaining date, compute the per-hour fraction (0.0-1.0) of that
-//       hour the player was online, then bucket those fractions per weekday.
-//     - Average per (weekday, hour) across the player's distinct dates for that
-//       weekday — this is the player's contribution to that hour.
-//   The (weekday, hour) result is the SUM of every player's contribution: the
-//   "average people online" at that weekday-hour.
-//
-// Best window per weekday: the 2-hour contiguous block (wrapping at midnight)
-// with the lowest summed avg-people-online.
+// computeTrackAnalyticsDays produces chart-ready per-weekday minute averages in
+// Europe/London. Each tracked player/date is included only when that player has
+// at least one hour of total play on that London calendar day.
 func computeTrackAnalyticsDays(sessions map[string][]store.TrackAnalyticsSession) []trackAnalyticsDayValue {
 	totals := [7][trackAnalyticsHoursPerDay]float64{}
+	counts := [7]int{}
 
 	for _, playerSessions := range sessions {
-		perPlayer := buildPlayerWeekdayHourFractions(playerSessions)
+		perPlayer, perWeekdayCounts := buildPlayerWeekdayHourMinutes(playerSessions)
 		for weekday := 0; weekday < 7; weekday++ {
+			counts[weekday] += perWeekdayCounts[weekday]
 			for hour := 0; hour < trackAnalyticsHoursPerDay; hour++ {
 				totals[weekday][hour] += perPlayer[weekday][hour]
 			}
+		}
+	}
+	for weekday := 0; weekday < 7; weekday++ {
+		if counts[weekday] == 0 {
+			continue
+		}
+		for hour := 0; hour < trackAnalyticsHoursPerDay; hour++ {
+			totals[weekday][hour] = totals[weekday][hour] / float64(counts[weekday])
 		}
 	}
 
@@ -226,9 +287,12 @@ func computeTrackAnalyticsDays(sessions map[string][]store.TrackAnalyticsSession
 		dayBaseUnix := trackAnalyticsRefDayUnix + int64(weekday)*86400
 		hourValues := make([]trackAnalyticsHourValue, 0, trackAnalyticsHoursPerDay)
 		for hour := 0; hour < trackAnalyticsHoursPerDay; hour++ {
+			minutes := roundTo2(totals[weekday][hour])
 			hourValues = append(hourValues, trackAnalyticsHourValue{
 				HourUnix: dayBaseUnix + int64(hour)*3600,
-				Avg:      roundTo2(totals[weekday][hour]),
+				Hour:     hour,
+				Avg:      minutes,
+				Minutes:  minutes,
 			})
 		}
 
@@ -238,69 +302,57 @@ func computeTrackAnalyticsDays(sessions map[string][]store.TrackAnalyticsSession
 			Weekday:   trackAnalyticsWeekdayNames[weekday],
 			BestStart: bestStart,
 			BestEnd:   bestEnd,
-			Hours:     sortedHourValues(hourValues),
+			Hours:     hourValues,
 		})
 	}
 	return out
 }
 
-// buildPlayerWeekdayHourFractions returns, for one player, a [7][24]float64
-// matrix where each cell is the average fraction (0..1) of that weekday-hour
-// the player was online — averaged across distinct dates with >= 30 minutes
-// of total play.
-func buildPlayerWeekdayHourFractions(playerSessions []store.TrackAnalyticsSession) [7][trackAnalyticsHoursPerDay]float64 {
+func buildPlayerWeekdayHourMinutes(playerSessions []store.TrackAnalyticsSession) ([7][trackAnalyticsHoursPerDay]float64, [7]int) {
 	type dateBucket struct {
-		totalSeconds  int64
-		hourFractions [trackAnalyticsHoursPerDay]float64
+		totalSeconds int64
+		hourSeconds  [trackAnalyticsHoursPerDay]int64
 	}
 
-	buckets := make(map[int64]*dateBucket)
+	loc, err := time.LoadLocation(trackAnalyticsTimeZone)
+	if err != nil {
+		loc = time.UTC
+	}
+	buckets := make(map[string]*dateBucket)
 	for _, session := range playerSessions {
-		distributeSessionAcrossDays(session.StartUnix, session.StopUnix, func(dayUnix int64, hour int, seconds int64) {
-			bucket, ok := buckets[dayUnix]
+		distributeSessionAcrossLocalDays(session.StartUnix, session.StopUnix, loc, func(dayKey string, hour int, seconds int64) {
+			bucket, ok := buckets[dayKey]
 			if !ok {
 				bucket = &dateBucket{}
-				buckets[dayUnix] = bucket
+				buckets[dayKey] = bucket
 			}
 			bucket.totalSeconds += seconds
-			bucket.hourFractions[hour] += float64(seconds) / 3600.0
+			bucket.hourSeconds[hour] += seconds
 		})
 	}
 
-	type weekdayAccumulator struct {
-		sum  [trackAnalyticsHoursPerDay]float64
-		days int
-	}
-
-	weekdayAcc := [7]weekdayAccumulator{}
+	out := [7][trackAnalyticsHoursPerDay]float64{}
+	counts := [7]int{}
 	threshold := int64(trackAnalyticsMinDayMins) * 60
-	for dayUnix, bucket := range buckets {
+	for dayKey, bucket := range buckets {
 		if bucket.totalSeconds < threshold {
 			continue
 		}
-		weekday := utcWeekdayMondayZero(dayUnix)
-		acc := &weekdayAcc[weekday]
-		acc.days++
-		for h := 0; h < trackAnalyticsHoursPerDay; h++ {
-			fraction := bucket.hourFractions[h]
-			if fraction > 1.0 {
-				fraction = 1.0
-			}
-			acc.sum[h] += fraction
-		}
-	}
-
-	out := [7][trackAnalyticsHoursPerDay]float64{}
-	for weekday := 0; weekday < 7; weekday++ {
-		acc := weekdayAcc[weekday]
-		if acc.days == 0 {
+		day, err := time.ParseInLocation(time.DateOnly, dayKey, loc)
+		if err != nil {
 			continue
 		}
+		weekday := mondayZero(day.Weekday())
+		counts[weekday]++
 		for h := 0; h < trackAnalyticsHoursPerDay; h++ {
-			out[weekday][h] = acc.sum[h] / float64(acc.days)
+			seconds := bucket.hourSeconds[h]
+			if seconds > 3600 {
+				seconds = 3600
+			}
+			out[weekday][h] += float64(seconds) / 60.0
 		}
 	}
-	return out
+	return out, counts
 }
 
 // distributeSessionAcrossDays calls fn for each (UTC day midnight, hour, seconds)
@@ -326,6 +378,27 @@ func distributeSessionAcrossDays(startUnix, stopUnix int64, fn func(dayUnix int6
 	}
 }
 
+func distributeSessionAcrossLocalDays(startUnix, stopUnix int64, loc *time.Location, fn func(dayKey string, hour int, seconds int64)) {
+	if stopUnix <= startUnix {
+		return
+	}
+	cursor := time.Unix(startUnix, 0)
+	stop := time.Unix(stopUnix, 0)
+	for cursor.Before(stop) {
+		local := cursor.In(loc)
+		nextHour := time.Date(local.Year(), local.Month(), local.Day(), local.Hour()+1, 0, 0, 0, loc)
+		segmentEnd := nextHour
+		if segmentEnd.After(stop) {
+			segmentEnd = stop
+		}
+		seconds := int64(segmentEnd.Sub(cursor).Seconds())
+		if seconds > 0 {
+			fn(local.Format(time.DateOnly), local.Hour(), seconds)
+		}
+		cursor = segmentEnd
+	}
+}
+
 func mod(value, divisor int64) int64 {
 	r := value % divisor
 	if r < 0 {
@@ -338,7 +411,11 @@ func mod(value, divisor int64) int64 {
 // (must be a midnight epoch).
 func utcWeekdayMondayZero(dayUnix int64) int {
 	t := time.Unix(dayUnix, 0).UTC()
-	w := int(t.Weekday()) // 0=Sunday..6=Saturday
+	return mondayZero(t.Weekday())
+}
+
+func mondayZero(weekday time.Weekday) int {
+	w := int(weekday) // 0=Sunday..6=Saturday
 	w--
 	if w < 0 {
 		w = 6
@@ -362,16 +439,6 @@ func bestOfflineWindow(hours [trackAnalyticsHoursPerDay]float64, dayBaseUnix int
 	start := dayBaseUnix + int64(bestHour)*3600
 	end := start + 2*3600
 	return start, end
-}
-
-func sortedHourValues(values []trackAnalyticsHourValue) []trackAnalyticsHourValue {
-	sort.SliceStable(values, func(i, j int) bool {
-		if values[i].Avg == values[j].Avg {
-			return values[i].HourUnix < values[j].HourUnix
-		}
-		return values[i].Avg > values[j].Avg
-	})
-	return values
 }
 
 func roundTo2(value float64) float64 {

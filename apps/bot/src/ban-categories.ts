@@ -29,6 +29,7 @@ const COMMAND_CATEGORY_MAP: Record<string, BanCategory> = {
   "admin:setsteam": "linking",
   "admin:removesteam": "linking",
   player: "lookup",
+  analyze: "lookup",
   search: "lookup",
   view: "lookup",
   online: "activity",

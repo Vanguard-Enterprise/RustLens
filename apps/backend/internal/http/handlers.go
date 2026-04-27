@@ -29,6 +29,7 @@ import (
 
 var snowflakePattern = regexp.MustCompile(`^\d{17,20}$`)
 var steamIDPattern = regexp.MustCompile(`^\d{17}$`)
+var bmIDPattern = regexp.MustCompile(`^\d{1,16}$`)
 
 const maxRequestBodyBytes = 1 << 20 // 1 MB
 const steamAccountCacheTTL = 24 * time.Hour

@@ -175,6 +175,48 @@ func TestFetchPlayerProfileParsesSteamIDIdentifier(t *testing.T) {
 	}
 }
 
+func TestFetchPlayerSessionsAllServersDoesNotSendServerFilter(t *testing.T) {
+	var capturedQuery string
+	client := &Client{
+		baseURL: "https://api.battlemetrics.com",
+		provider: staticProvider{client: &http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				capturedQuery = request.URL.RawQuery
+				body := `{
+					"data": [
+						{
+							"type": "session",
+							"attributes": {
+								"start": "2026-04-25T10:00:00Z",
+								"stop": "2026-04-25T11:00:00Z"
+							}
+						}
+					]
+				}`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Header:     make(http.Header),
+				}, nil
+			}),
+		}},
+	}
+
+	sessions, err := client.FetchPlayerSessionsAllServers(context.Background(), "918543318", 100, 2)
+	if err != nil {
+		t.Fatalf("FetchPlayerSessionsAllServers returned error: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+	if strings.Contains(capturedQuery, "filter%5Bservers%5D") || strings.Contains(capturedQuery, "filter[servers]") {
+		t.Fatalf("expected no server filter, got query %q", capturedQuery)
+	}
+	if !strings.Contains(capturedQuery, "page%5Bsize%5D=100") {
+		t.Fatalf("expected page size in query, got %q", capturedQuery)
+	}
+}
+
 func TestQuickMatchPlayerProfileBySteamIDUsesAuthorizedPost(t *testing.T) {
 	var capturedMethod string
 	var capturedAuth string

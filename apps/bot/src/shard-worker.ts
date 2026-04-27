@@ -10,6 +10,10 @@ import {
   handleAnnounceChatInput,
 } from "./announce-command.js";
 import {
+  ensureAnalyzeCommand,
+  handleAnalyzeChatInput,
+} from "./analyze-command.js";
+import {
   BAN_COMMAND_NAME,
   ensureBanCommand,
   handleBanChatInput,
@@ -161,6 +165,7 @@ client.once("clientReady", () => {
     ensureWipeReactCommand(client, shardID),
     ensureSummonCommand(client, shardID),
     ensureAnnounceCommand(client, shardID),
+    ensureAnalyzeCommand(client, shardID),
     ensureOnlineCommand(client, shardID),
     ensurePlayerCommand(client, shardID),
     ensureNicknameCommand(client, shardID),
@@ -255,6 +260,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleAnnounceChatInput(interaction)) {
+        return;
+      }
+
+      if (await handleAnalyzeChatInput(interaction)) {
         return;
       }
 

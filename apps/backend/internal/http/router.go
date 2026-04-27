@@ -109,6 +109,7 @@ func NewRouter(
 
 		// Steam & Discord linking endpoints
 		r.Get("/steam/by-bm/{bmID}", handler.GetSteamAccountByBmID)
+		r.Get("/players/{bmID}/offline-analytics", handler.GetPlayerOfflineAnalytics)
 		r.Get("/steam/{steamID}/profile", handler.GetSteamProfile)
 		r.Get("/steam/{steamID}/analytics", handler.GetSteamAnalytics)
 		r.Post("/steam/resolve", handler.ResolveSteamID)

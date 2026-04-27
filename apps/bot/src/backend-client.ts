@@ -411,7 +411,9 @@ export type TrackGroupOnlineStateResponse = {
 
 export type TrackGroupAnalyticsHour = {
   hourUnix: number;
+  hour: number;
   avg: number;
+  minutes: number;
 };
 
 export type TrackGroupAnalyticsDay = {
@@ -424,6 +426,7 @@ export type TrackGroupAnalyticsDay = {
 export type TrackGroupAnalyticsResponse = {
   groupName: string;
   serverName: string;
+  timeZone: string;
   members: number;
   analyzed: number;
   days: TrackGroupAnalyticsDay[];
@@ -1084,6 +1087,16 @@ export class BackendClient {
     return this.call<TrackGroupAnalyticsResponse>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/analytics`,
+      "GET",
+      undefined,
+      60_000,
+    );
+  }
+
+  getPlayerOfflineAnalytics(workerId: string, bmId: string) {
+    return this.call<TrackGroupAnalyticsResponse>(
+      workerId,
+      `/api/internal/bot/setup/players/${bmId}/offline-analytics`,
       "GET",
       undefined,
       60_000,

@@ -12,6 +12,7 @@ import {
   type GuildMember,
 } from "discord.js";
 import { BackendClient, type SteamAccount, type SteamProfile } from "./backend-client.js";
+import { extractBmID } from "./bm-input.js";
 import { loadConfig } from "./config.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
@@ -76,7 +77,7 @@ const viewCommand = new SlashCommandBuilder()
         opt.setName("discord_user").setDescription("Discord user to look up").setRequired(false),
       )
       .addStringOption((opt) =>
-        opt.setName("identifier").setDescription("Steam ID, BattleMetrics ID, or steamcommunity.com profile URL").setRequired(false),
+        opt.setName("identifier").setDescription("Steam ID, BattleMetrics ID/URL, or steamcommunity.com profile URL").setRequired(false),
       ),
   )
   .addSubcommand((sub) =>
@@ -531,9 +532,12 @@ export async function resolvePlayerProfileForGuild(
     const linkedAccount = await fetchSteamAccount(linkedSteamId);
     return { ok: true, steamId: linkedSteamId, account: linkedAccount, discordId: normalizedIdentifier };
   } else {
-    account = await fetchSteamAccountByBm(normalizedIdentifier);
-    if (account) {
-      steamId = account.steamId;
+    const bmID = extractBmID(normalizedIdentifier);
+    if (bmID) {
+      account = await fetchSteamAccountByBm(bmID);
+      if (account) {
+        steamId = account.steamId;
+      }
     }
   }
 

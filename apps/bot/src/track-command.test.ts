@@ -12,7 +12,7 @@ function makeDay(weekday: string, weekdayIndex: number, hours: number[]): TrackG
     weekday,
     bestStart: dayBase + 4 * 3600,
     bestEnd: dayBase + 6 * 3600,
-    hours: hours.map((avg, h) => ({ hourUnix: dayBase + h * 3600, avg })),
+    hours: hours.map((avg, h) => ({ hourUnix: dayBase + h * 3600, hour: h, avg, minutes: avg })),
   };
 }
 
@@ -25,6 +25,7 @@ function makeAnalytics(
   return {
     groupName,
     serverName,
+    timeZone: "Europe/London",
     members: 5,
     analyzed: 5,
     days: weekdays.map((name, idx) => makeDay(name, idx, hoursPerDay)),
