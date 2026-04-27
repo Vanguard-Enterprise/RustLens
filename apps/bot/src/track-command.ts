@@ -10,6 +10,7 @@ import type {
 import {
   ActionRowBuilder,
   ApplicationIntegrationType,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -31,6 +32,7 @@ import { TextInputStyle } from "./builders/types.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, hasGuildAdminAccess } from "./guild-settings.js";
 import { getFieldValues, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { renderTrackAnalyticsChart } from "./track-analytics-chart.js";
 import { isWebsiteAdmin } from "./website-admin.js";
 
 export const TRACK_COMMAND_NAME = "track";
@@ -1027,7 +1029,7 @@ function buildJoinLeaveEmbed(row: TrackGroupOnlineRow, isOnline: boolean, server
 }
 
 // ---------------------------------------------------------------------------
-// Analytics button: website-admin gated, paginated weekday breakdown.
+// Analytics button: website-admin gated chart image.
 // ---------------------------------------------------------------------------
 
 const ANALYTICS_EMBED_COLOR = 14582045;
@@ -1073,17 +1075,28 @@ async function handleAnalyticsButton(
     return true;
   }
 
-  const pages = buildAnalyticsPages(analytics);
-  if (pages.length === 0) {
+  const hasData = analytics.days.some((day) => day.hours.some((hour) => (hour.minutes ?? hour.avg) > 0));
+  if (!hasData) {
     await interaction.editReply({
       embeds: [buildErrorEmbed("Not enough activity in the last 200 sessions to compute analytics.")],
     });
     return true;
   }
 
-  const safePage = Math.min(Math.max(0, targetPage), pages.length - 1);
-  const components = pages.length > 1 ? buildAnalyticsPagerComponents(groupId, safePage, pages.length) : [];
-  await interaction.editReply({ embeds: [pages[safePage]], components });
+  try {
+    const image = await renderTrackAnalyticsChart(analytics);
+    const file = new AttachmentBuilder(image, { name: "track-analytics.png" });
+    await interaction.editReply({
+      embeds: [buildAnalyticsChartEmbed(analytics)],
+      files: [file],
+      components: [],
+    });
+  } catch (error) {
+    console.error("[bot] failed to render track group analytics chart", error);
+    await interaction.editReply({
+      embeds: [buildErrorEmbed("RustLens could not render the analytics chart.")],
+    });
+  }
   return true;
 }
 
@@ -1114,8 +1127,8 @@ async function handleAnalyticsPage(
     return true;
   }
 
-  const pages = buildAnalyticsPages(analytics);
-  if (pages.length === 0) {
+  const hasData = analytics.days.some((day) => day.hours.some((hour) => (hour.minutes ?? hour.avg) > 0));
+  if (!hasData) {
     await interaction.editReply({
       embeds: [buildErrorEmbed("Not enough activity to compute analytics.")],
       components: [],
@@ -1123,10 +1136,20 @@ async function handleAnalyticsPage(
     return true;
   }
 
-  const safePage = Math.min(Math.max(0, targetPage), pages.length - 1);
-  const components = pages.length > 1 ? buildAnalyticsPagerComponents(groupId, safePage, pages.length) : [];
-  await interaction.editReply({ embeds: [pages[safePage]], components });
+  const image = await renderTrackAnalyticsChart(analytics);
+  const file = new AttachmentBuilder(image, { name: "track-analytics.png" });
+  await interaction.editReply({ embeds: [buildAnalyticsChartEmbed(analytics)], files: [file], components: [] });
   return true;
+}
+
+function buildAnalyticsChartEmbed(analytics: TrackGroupAnalyticsResponse) {
+  return new EmbedBuilder()
+    .setTitle(`Analytics - ${analytics.groupName}`)
+    .setDescription(`**${analytics.serverName}**\nMinutes played per qualifying tracked player-day in ${analytics.timeZone || "Europe/London"}.`)
+    .setColor(ANALYTICS_EMBED_COLOR)
+    .setImage("attachment://track-analytics.png")
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
 }
 
 type AnalyticsField = { name: string; value: string; inline: boolean };
