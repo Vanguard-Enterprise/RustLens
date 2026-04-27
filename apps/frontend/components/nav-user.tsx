@@ -17,7 +17,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { LogOutIcon, ShieldCheckIcon } from "lucide-react";
+import { LayoutDashboardIcon, LogOutIcon, ShieldCheckIcon } from "lucide-react";
 
 type NavUserProps = {
 	user: {
@@ -105,19 +105,23 @@ export function NavUser({ csrfToken, user }: NavUserProps) {
 						</div>
 					</DropdownMenuLabel>
 				</DropdownMenuItem>
-				{user.isInternalAdmin ? (
-					<>
-						<DropdownMenuSeparator />
-						<DropdownMenuGroup>
-							<DropdownMenuItem asChild>
-								<Link href="/admin">
-									<ShieldCheckIcon />
-									Admin panel
-								</Link>
-							</DropdownMenuItem>
-						</DropdownMenuGroup>
-					</>
-				) : null}
+				<DropdownMenuSeparator />
+				<DropdownMenuGroup>
+					<DropdownMenuItem asChild>
+						<Link href="/dashboard">
+							<LayoutDashboardIcon />
+							Open Dashboard
+						</Link>
+					</DropdownMenuItem>
+					{user.isInternalAdmin ? (
+						<DropdownMenuItem asChild>
+							<Link href="/admin">
+								<ShieldCheckIcon />
+								Admin panel
+							</Link>
+						</DropdownMenuItem>
+					) : null}
+				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>
 					<form action="/logout" id={logoutFormId} method="post">

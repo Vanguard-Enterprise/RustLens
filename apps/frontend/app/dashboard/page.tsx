@@ -4,10 +4,28 @@ import { DataTable } from "@/components/data-table"
 import { SectionCards } from "@/components/section-cards"
 import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { getCsrfToken } from "@/lib/csrf"
+import { getCurrentUserSafe } from "@/lib/rustlens-api"
+import { requireSession } from "@/lib/session"
 
 import data from "./data.json"
 
-export default function Page() {
+export default async function Page() {
+  const session = await requireSession()
+  const [csrfToken, currentUser] = await Promise.all([
+    getCsrfToken(),
+    getCurrentUserSafe(),
+  ])
+
+  const user = {
+    displayName: session.displayName,
+    avatarUrl: session.avatarUrl || undefined,
+    discordUsername: currentUser?.user.discordUsername,
+    isInternalAdmin:
+      (session.adminRoles?.length ?? 0) > 0 ||
+      session.roles.includes("internal_admin"),
+  }
+
   return (
     <SidebarProvider
       style={
@@ -17,7 +35,7 @@ export default function Page() {
         } as React.CSSProperties
       }
     >
-      <AppSidebar variant="inset" />
+      <AppSidebar csrfToken={csrfToken} user={user} variant="inset" />
       <SidebarInset>
         <SiteHeader />
         <div className="flex flex-1 flex-col">
