@@ -1025,6 +1025,14 @@ async function handleAnalyticsPage(
   groupId: number,
   targetPage: number,
 ) {
+  if (!(await isWebsiteAdmin(interaction.user.id))) {
+    await interaction.reply({
+      embeds: [buildErrorEmbed("Only website admins can view analytics.")],
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
   await interaction.deferUpdate();
 
   let analytics: TrackGroupAnalyticsResponse;
@@ -1054,7 +1062,7 @@ async function handleAnalyticsPage(
   return true;
 }
 
-type AnalyticsField = { name: string; value: string };
+type AnalyticsField = { name: string; value: string; inline: boolean };
 
 function formatAvg(value: number) {
   if (value >= 10) {
@@ -1084,6 +1092,7 @@ function buildAnalyticsFields(analytics: TrackGroupAnalyticsResponse): Analytics
   return analytics.days.map((day) => ({
     name: day.weekday,
     value: buildWeekdayFieldValue(day),
+    inline: true,
   }));
 }
 

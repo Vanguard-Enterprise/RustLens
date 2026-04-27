@@ -58,6 +58,7 @@ describe("buildAnalyticsPages", () => {
     expect(data.title).toBe("Analytics - Team");
     expect(data.fields).toHaveLength(7);
     expect(data.fields?.[0].name).toBe("Monday");
+    expect(data.fields?.[0].inline).toBe(true);
     expect(data.fields?.[6].name).toBe("Sunday");
   });
 
