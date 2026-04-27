@@ -1719,6 +1719,15 @@ type steamProfileResponse struct {
 	Hours         steamProfileHours   `json:"hours"`
 	ServersPlayed int                 `json:"serversPlayed"`
 	NameGaps      []steamAnalyticsGap `json:"nameGaps"`
+	Status        *steamProfileStatus `json:"status,omitempty"`
+}
+
+type steamProfileStatus struct {
+	IsOnline    bool   `json:"isOnline"`
+	ServerBmID  string `json:"serverBmId"`
+	ServerName  string `json:"serverName"`
+	OnlineUnix  *int64 `json:"onlineUnix"`
+	OfflineUnix *int64 `json:"offlineUnix"`
 }
 
 func toWholeHours(seconds int64) int64 {
@@ -1760,6 +1769,66 @@ func steamProfileResponseFromCache(account store.SteamAccount, cache store.Steam
 	return response
 }
 
+func steamProfileStatusFromStates(states []store.PlayerState) *steamProfileStatus {
+	var selected *store.PlayerState
+	for i := range states {
+		state := &states[i]
+		if state.IsOnline {
+			if selected == nil || !selected.IsOnline || isLaterTime(state.OnlineSince, selected.OnlineSince) {
+				selected = state
+			}
+			continue
+		}
+
+		if selected == nil || (!selected.IsOnline && isLaterTime(state.OfflineSince, selected.OfflineSince)) {
+			selected = state
+		}
+	}
+	if selected == nil {
+		return nil
+	}
+
+	status := &steamProfileStatus{
+		IsOnline:   selected.IsOnline,
+		ServerBmID: selected.ServerBmID,
+		ServerName: selected.ServerName,
+	}
+	if selected.OnlineSince != nil {
+		onlineUnix := selected.OnlineSince.Unix()
+		status.OnlineUnix = &onlineUnix
+	}
+	if selected.OfflineSince != nil {
+		offlineUnix := selected.OfflineSince.Unix()
+		status.OfflineUnix = &offlineUnix
+	}
+	return status
+}
+
+func isLaterTime(candidate *time.Time, current *time.Time) bool {
+	if candidate == nil {
+		return false
+	}
+	if current == nil {
+		return true
+	}
+	return candidate.After(*current)
+}
+
+func (h *Handler) steamProfileResponseWithStatus(ctx context.Context, account store.SteamAccount, cache store.SteamAccountCache) steamProfileResponse {
+	response := steamProfileResponseFromCache(account, cache)
+	if account.BmID == nil {
+		return response
+	}
+
+	states, err := h.postgres.ListPlayerStatesByPlayer(ctx, *account.BmID)
+	if err != nil {
+		log.Printf("[backend] GetSteamProfile status error for %s: %v", account.SteamID, err)
+		return response
+	}
+	response.Status = steamProfileStatusFromStates(states)
+	return response
+}
+
 func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 	steamID := chi.URLParam(r, "steamID")
 	if steamID == "" || !steamIDPattern.MatchString(steamID) {
@@ -1789,7 +1858,7 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cacheErr == nil && cachedProfile.BmID == *account.BmID && time.Since(cachedProfile.UpdatedAt) < steamAccountCacheTTL {
-		writeJSON(w, http.StatusOK, steamProfileResponseFromCache(account, cachedProfile))
+		writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedProfile))
 		return
 	}
 
@@ -1803,7 +1872,7 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if canUseCachedProfile {
-			writeJSON(w, http.StatusOK, steamProfileResponseFromCache(account, cachedProfile))
+			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedProfile))
 			return
 		}
 
@@ -1815,7 +1884,7 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[backend] GetSteamProfile cache update error for %s: %v", steamID, err)
 		if canUseCachedProfile {
-			writeJSON(w, http.StatusOK, steamProfileResponseFromCache(account, cachedProfile))
+			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedProfile))
 			return
 		}
 
@@ -1823,7 +1892,7 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, steamProfileResponseFromCache(account, updatedCache))
+	writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, updatedCache))
 }
 
 func steamAnalyticsResponseFromCache(account store.SteamAccount, cache store.SteamAccountCache) steamAnalyticsResponse {

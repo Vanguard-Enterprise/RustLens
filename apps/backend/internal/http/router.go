@@ -149,6 +149,7 @@ func NewRouter(
 		r.Post("/guilds/{guildID}/track-groups/{groupID}/members", handler.AddTrackGroupMembers)
 		r.Post("/guilds/{guildID}/track-groups/{groupID}/members/remove", handler.RemoveTrackGroupMembers)
 		r.Get("/guilds/{guildID}/track-groups/{groupID}/online-state", handler.ListTrackGroupOnlineState)
+		r.Get("/guilds/{guildID}/track-groups/{groupID}/analytics", handler.GetTrackGroupAnalytics)
 	})
 
 	appAuthRepo := appauth.NewRepo(postgres.Pool())
@@ -174,10 +175,23 @@ func NewRouter(
 		r.Use(requireAppSecret)
 
 		r.Post("/auth/logout", appAuthHandler.Logout)
+		r.Post("/auth/discord/complete", handler.CompleteDiscordAuth)
+		r.Post("/auth/register", handler.RegisterPasswordUser)
+		r.Post("/auth/login", handler.LoginPasswordUser)
+		r.Post("/auth/password/reset/request", handler.RequestPasswordReset)
+		r.Post("/auth/password/reset/consume", handler.ConsumePasswordReset)
+		r.Post("/auth/email/verify/consume", handler.ConsumeEmailVerification)
 
 		r.Group(func(r chi.Router) {
 			r.Use(requireSession)
 			r.Get("/me", appAuthHandler.Me)
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(appSessionMiddleware(handler.appSessions))
+			r.Post("/auth/email/verify/request", handler.RequestEmailVerification)
+			r.Get("/me/connections", handler.GetCurrentAppUserConnections)
+			r.Get("/me/guilds", handler.GetCurrentAppUserGuilds)
 		})
 
 		r.Route("/admin", func(r chi.Router) {
@@ -191,27 +205,6 @@ func NewRouter(
 			r.Get("/guilds", handler.ListAdminGuilds)
 			r.Get("/servers", handler.ListAdminServers)
 			r.Get("/audit", handler.ListAdminAudit)
-		})
-	})
-
-	r.Route("/api/app", func(r chi.Router) {
-		r.Use(appInternalMiddleware(cfg.AppAPIInternalSecret))
-		r.Post("/auth/discord/complete", handler.CompleteDiscordAuth)
-		r.Post("/auth/register", handler.RegisterPasswordUser)
-		r.Post("/auth/login", handler.LoginPasswordUser)
-		r.Post("/auth/password/reset/request", handler.RequestPasswordReset)
-		r.Post("/auth/password/reset/consume", handler.ConsumePasswordReset)
-		r.Post("/auth/email/verify/consume", handler.ConsumeEmailVerification)
-		r.Group(func(r chi.Router) {
-			r.Use(appSessionMiddleware(handler.appSessions))
-			r.Post("/auth/email/verify/request", handler.RequestEmailVerification)
-			r.Get("/me", handler.GetCurrentAppUser)
-			r.Get("/me/connections", handler.GetCurrentAppUserConnections)
-			r.Get("/me/guilds", handler.GetCurrentAppUserGuilds)
-			r.Get("/admin/users", handler.ListAppAdminUsers)
-			r.Get("/admin/guilds", handler.ListAppAdminGuilds)
-			r.Get("/admin/servers", handler.ListAppAdminServers)
-			r.Get("/admin/audit", handler.ListAppAuditEvents)
 		})
 	})
 

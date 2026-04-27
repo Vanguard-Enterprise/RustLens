@@ -220,6 +220,21 @@ Maps Steam accounts to Discord users. A pair can have both soft and hard links.
 - **soft** — user self-reported, unverified. Admins can delete.
 - **hard** — from trusted source (BattleMetrics), authoritatively verified. Cannot be deleted via API.
 
+### `track_analytics_sessions_cache`
+
+Per-(player, server) cache of raw BattleMetrics player session windows used by the track-group analytics endpoint. Entries are refreshed lazily by `GET /api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/analytics` after a 24-hour TTL.
+
+| Column | Type | Notes |
+|---|---|---|
+| `player_bm_id` | `TEXT NOT NULL` | BattleMetrics player ID (composite PK) |
+| `server_bm_id` | `TEXT NOT NULL` | BattleMetrics server ID (composite PK) |
+| `sessions` | `JSONB NOT NULL DEFAULT '[]'::jsonb` | Array of `{start, stop}` unix-second pairs |
+| `fetched_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last refresh time, drives the 24-hour TTL |
+
+**PK**: `(player_bm_id, server_bm_id)`.
+
+**Index**: `track_analytics_sessions_cache_fetched_idx ON (fetched_at)` for future TTL sweeps.
+
 ### `guild_steam_discord_links`
 
 Guild-scoped Steam-Discord associations managed by guild admins.
@@ -255,7 +270,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - Bot-internal `GET /api/internal/bot/setup/steam-accounts/count` returns the current `steam_accounts` row count for bot presence updates.
 - Steam game-ban scans use `GET /api/internal/bot/setup/guilds/{guildID}/game-bans`, which batches guild-linked Steam IDs through `ISteamUser/GetPlayerBans`, refreshes stale cache rows after 6 hours, ignores VAC-only bans, and returns only game bans newer than 90 days.
 - Outbound BattleMetrics HTTP requests can be proxied by setting `PROXY_ENABLED=true` and `PROXY_ENDPOINTS` to a comma-separated list of proxy URLs such as `http://user:pass@proxy-1:8080,http://proxy-2:8080`. Proxy selection is round-robin per request, startup validates URL syntax but does not test reachability, and request logs include the proxy endpoint used with credentials redacted. Steam API requests are always sent directly.
-- The bot-internal steam profile route lazily refreshes `steam_account_cache` after a 24-hour TTL. Fresh cache rows skip Steam/BattleMetrics API calls; stale rows are returned without changing `updated_at` if refresh fails. Steam requests are sent directly.
+- The bot-internal steam profile route lazily refreshes `steam_account_cache` after a 24-hour TTL. Fresh cache rows skip Steam/BattleMetrics API calls; stale rows are returned without changing `updated_at` if refresh fails. Steam requests are sent directly. The response includes optional current/last tracked-server status from `player_states` joined to `tracked_servers`.
 - The bot-internal steam analytics route shares the same `steam_account_cache.updated_at` TTL and refresh path as the bot-internal steam profile route. Fresh cache rows skip Steam/BattleMetrics API calls for both routes; stale cache rows are returned if refresh fails. Name-gap data is shared between the profile risk calculation and analytics gap display. If Steam summary reports `communityvisibilitystate = 1`, RustLens skips `GetOwnedGames` and leaves game totals/playtime private.
 
 ## Commands

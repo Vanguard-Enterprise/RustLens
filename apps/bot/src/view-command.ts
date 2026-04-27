@@ -34,6 +34,8 @@ const VIEW_EMOJIS = {
   steam: "<:steam:1444016467648581642>",
   battlemetrics: "<:battlemetrics:1444011821529956472>",
   discord: "<:discord:1496989877831729284>",
+  online: "<:online:1497993468981805076>",
+  offline: "<:offline:1497993467660599476>",
   vitality: "<:vitality:1444010131728629761>",
   atlas: "<:atlas:1444010442778480700>",
   vital: "<:vital:1444011141587271682>",
@@ -291,6 +293,30 @@ function buildRiskFactorField(profile: SteamProfile | null, now: Date = new Date
   };
 }
 
+function buildStatusField(profile: SteamProfile | null) {
+  const status = profile?.status;
+  if (!status) {
+    return null;
+  }
+
+  const serverLink = `[${status.serverName}](https://www.battlemetrics.com/servers/rust/${status.serverBmId})`;
+  if (status.isOnline && status.onlineUnix) {
+    return {
+      name: "Status",
+      value: `${VIEW_EMOJIS.online} **Online** on ${serverLink} for <t:${status.onlineUnix}:R>`,
+    };
+  }
+
+  if (!status.isOnline && status.offlineUnix) {
+    return {
+      name: "Status",
+      value: `${VIEW_EMOJIS.offline} **Offline** for <t:${status.offlineUnix}:R>\nLast online on: ${serverLink}`,
+    };
+  }
+
+  return null;
+}
+
 export function buildProfileButtons(steamId: string) {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -397,6 +423,11 @@ export function buildUserEmbed(
     info += `\n${VIEW_EMOJIS.discord} <@${discordId}>`;
   }
   embed.addFields({ name: "Information", value: info });
+
+  const statusField = buildStatusField(profile);
+  if (statusField) {
+    embed.addFields(statusField);
+  }
 
   const hourFields = [
     { name: `${VIEW_EMOJIS.vitality} Vitality`, value: formatHours(profile?.hours.vitality), inline: true },
@@ -777,6 +808,7 @@ export const __testables = {
   buildViewAllPage,
   buildViewAllPageButtons,
   buildRiskFactorField,
+  buildStatusField,
   calculateSteamBmHourRisk,
   calculateServersPlayedRisk,
   calculateBmHoursRisk,
