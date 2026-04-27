@@ -66,7 +66,7 @@ describe("rate-limit", () => {
 		const { consumeRateLimit } = await import("./rate-limit");
 
 		let error: Error | undefined;
-			consumeRateLimit("auth:test", { max: 1, windowMs: 60_000 }),
+		try {
 		).rejects.toThrow(
 			"RATE_LIMIT_REDIS_URL or REDIS_URL must be configured in production for shared auth rate limiting",
 		);
