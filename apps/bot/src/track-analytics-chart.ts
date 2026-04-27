@@ -6,7 +6,7 @@ const HEIGHT = 900;
 const PADDING = 64;
 const HEATMAP_LEFT = 112;
 const HEATMAP_TOP = 150;
-const HEATMAP_CELL = 48;
+const HEATMAP_CELL = 52;
 const HEATMAP_WIDTH = HEATMAP_CELL * 24;
 const HEATMAP_HEIGHT = HEATMAP_CELL * 7;
 const BAR_LEFT = 112;
@@ -64,7 +64,7 @@ export async function renderTrackAnalyticsChart(analytics: TrackGroupAnalyticsRe
   ctx.fillText(`Analytics - ${analytics.groupName}`, PADDING, 56);
   ctx.fillStyle = "#9aa8bd";
   ctx.font = "18px Arial";
-  ctx.fillText(`${analytics.serverName} | Minutes played per qualifying player-day | ${analytics.timeZone || "Europe/London"}`, PADDING, 86);
+  ctx.fillText(`${analytics.serverName} | Minutes played per qualifying player-day | ${analytics.timeZone || "Europe/London"}`, PADDING + 430, 86);
 
   drawHeatmap(ctx, analytics);
   drawBars(ctx, analytics);
