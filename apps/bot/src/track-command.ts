@@ -64,6 +64,8 @@ const TRACK_OFFLINE_EMOJI = "<:Offline:1497993467660599476>";
 const TRACK_ADD_EMOJI = { id: "1498006709866856458", name: "user_add" };
 const TRACK_REMOVE_EMOJI = { id: "1498006708549587155", name: "user_remove" };
 const TRACK_NOTIFICATION_EMOJI = { id: "1498033713764761852", name: "notification" };
+const TRACK_EMBED_DESCRIPTION_MAX = 3900;
+const TRACK_MESSAGE_EMBED_MAX = 10;
 const EMOJIS = {
   steam: "<:steam:1444016467648581642>",
   battlemetrics: "<:battlemetrics:1444011821529956472>",
@@ -154,13 +156,6 @@ function buildChannelTopic(groupName: string) {
   return `Channel with information about ${groupName} clan.`.slice(0, 1024);
 }
 
-function trimSummary(value: string, max = 1024) {
-  if (value.length <= max) {
-    return value;
-  }
-  return `${value.slice(0, Math.max(0, max - 3))}...`;
-}
-
 function bmLink(row: TrackGroupOnlineRow) {
   const label = row.bmName.trim().length > 0 ? row.bmName : (row.bmId || row.steamId);
   if (!row.bmId) {
@@ -179,35 +174,52 @@ function buildOfflineLine(row: TrackGroupOnlineRow) {
   return `${bmLink(row)}${stamp}`;
 }
 
-export function buildTrackEmbed(
+function chunkDescriptionLines(lines: string[]) {
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const line of lines) {
+    const safeLine = line.length > TRACK_EMBED_DESCRIPTION_MAX
+      ? `${line.slice(0, TRACK_EMBED_DESCRIPTION_MAX - 3)}...`
+      : line;
+    const next = current.length === 0 ? safeLine : `${current}\n${safeLine}`;
+    if (next.length > TRACK_EMBED_DESCRIPTION_MAX && current.length > 0) {
+      chunks.push(current);
+      current = safeLine;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+  return chunks.slice(0, TRACK_MESSAGE_EMBED_MAX);
+}
+
+export function buildTrackEmbeds(
   group: { name: string; serverName: string },
   rows: TrackGroupOnlineRow[],
 ) {
   const online = rows.filter((row) => row.isOnline);
   const offline = rows.filter((row) => !row.isOnline);
 
-  const onlineLines = online.length > 0
-    ? online.map(buildOnlineLine).join("\n")
-    : "*None*";
-  const offlineLines = offline.length > 0
-    ? offline.map(buildOfflineLine).join("\n")
-    : "*None*";
+  const lines = [
+    `${TRACK_ONLINE_EMOJI} **Online ${online.length}**`,
+    ...(online.length > 0 ? online.map(buildOnlineLine) : ["*None*"]),
+    "",
+    `${TRACK_OFFLINE_EMOJI} **Offline ${offline.length}**`,
+    ...(offline.length > 0 ? offline.map(buildOfflineLine) : ["*None*"]),
+  ];
 
-  return new EmbedBuilder()
-    .setTitle(`${group.name} - ${group.serverName}`)
-    .setColor(TRACK_EMBED_COLOR)
-    .addFields(
-      {
-        name: `${TRACK_ONLINE_EMOJI} Online ${online.length}`,
-        value: trimSummary(onlineLines),
-      },
-      {
-        name: `${TRACK_OFFLINE_EMOJI} Offline ${offline.length}`,
-        value: trimSummary(offlineLines),
-      },
-    )
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+  return chunkDescriptionLines(lines).map((description, index) =>
+    new EmbedBuilder()
+      .setTitle(index === 0 ? `${group.name} - ${group.serverName}` : `${group.name} - ${group.serverName} cont.`)
+      .setDescription(description)
+      .setColor(TRACK_EMBED_COLOR)
+      .setTimestamp()
+      .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+  );
 }
 
 export function buildTrackButtons(groupId: number) {
@@ -426,11 +438,11 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
     return true;
   }
 
-  const embed = buildTrackEmbed({ name: group.name, serverName: server.name }, []);
+  const embeds = buildTrackEmbeds({ name: group.name, serverName: server.name }, []);
   const components = buildTrackButtons(group.id);
   pendingInitialPosts.add(group.id);
   try {
-    const message = await channel.send({ embeds: [embed], components });
+    const message = await channel.send({ embeds, components });
     await message.pin().catch(() => null);
 
     await getBackend().updateTrackGroup(getWorkerID(), interaction.guildId, group.id, {
@@ -844,7 +856,7 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
 
   const onlineRows = rows.filter((row) => row.isOnline);
   const onlineCount = onlineRows.length;
-  const embed = buildTrackEmbed({ name: group.name, serverName }, rows);
+  const embeds = buildTrackEmbeds({ name: group.name, serverName }, rows);
   const components = buildTrackButtons(group.id);
 
   let message = group.messageId
@@ -854,7 +866,7 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   if (!message) {
     const existing = await findExistingTrackMessage(textChannel, group, serverName);
     if (existing) {
-      await existing.edit({ embeds: [embed], components }).catch(() => null);
+      await existing.edit({ embeds, components }).catch(() => null);
       await getBackend().updateTrackGroup(getWorkerID(), guild.id, group.id, {
         messageId: existing.id,
       });
@@ -863,7 +875,7 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   }
 
   if (!message) {
-    const sent = await textChannel.send({ embeds: [embed], components }).catch(() => null);
+    const sent = await textChannel.send({ embeds, components }).catch(() => null);
     if (!sent) {
       return;
     }
@@ -873,7 +885,7 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
     });
     message = sent;
   } else {
-    await message.edit({ embeds: [embed], components }).catch(() => null);
+    await message.edit({ embeds, components }).catch(() => null);
   }
 
   // Update channel name + persisted online_count if it changed.
@@ -1157,7 +1169,7 @@ function buildAnalyticsPagerComponents(groupId: number, currentPage: number, tot
 export const __testables = {
   buildChannelName,
   parseIdentifiers,
-  buildTrackEmbed,
+  buildTrackEmbeds,
   sanitizeGroupNameForChannel,
   buildAnalyticsPages,
   buildWeekdayFieldValue,

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { TrackGroupAnalyticsResponse } from "./backend-client.js";
+import type { TrackGroupAnalyticsResponse, TrackGroupOnlineRow } from "./backend-client.js";
 import { __testables } from "./track-command.js";
 
-const { buildAnalyticsPages, buildWeekdayFieldValue } = __testables;
+const { buildAnalyticsPages, buildTrackEmbeds, buildWeekdayFieldValue } = __testables;
 
 const MONDAY_BASE = 1767571200; // 2026-01-05 00:00 UTC
 
@@ -30,6 +30,53 @@ function makeAnalytics(
     days: weekdays.map((name, idx) => makeDay(name, idx, hoursPerDay)),
   };
 }
+
+function makeOnlineRow(steamId: string, bmName: string, isOnline: boolean): TrackGroupOnlineRow {
+  return {
+    steamId,
+    bmId: steamId.slice(-10),
+    bmName,
+    discordId: "",
+    avatarImage: "",
+    isOnline,
+    onlineUnix: 1767571200,
+  };
+}
+
+describe("buildTrackEmbeds", () => {
+  it("renders online and offline lists in descriptions instead of fields", () => {
+    const embeds = buildTrackEmbeds(
+      { name: "kap", serverName: "Vitality EU 10x" },
+      [
+        makeOnlineRow("76561198127315384", "Jigsaw", true),
+        makeOnlineRow("76561198151846617", "lack", false),
+      ],
+    );
+    const data = embeds[0].toJSON();
+
+    expect(data.title).toBe("kap - Vitality EU 10x");
+    expect(data.fields).toBeUndefined();
+    expect(data.description).toContain("**Online 1**");
+    expect(data.description).toContain("Jigsaw");
+    expect(data.description).toContain("**Offline 1**");
+    expect(data.description).toContain("lack");
+  });
+
+  it("splits long track lists across multiple embeds", () => {
+    const rows = Array.from({ length: 110 }, (_value, index) =>
+      makeOnlineRow(`7656119${String(index).padStart(10, "0")}`, `player-${index}`, false),
+    );
+
+    const embeds = buildTrackEmbeds({ name: "kap", serverName: "Vitality EU 10x" }, rows);
+
+    expect(embeds.length).toBeGreaterThan(1);
+    expect(embeds[1].toJSON().title).toBe("kap - Vitality EU 10x cont.");
+    for (const embed of embeds) {
+      expect(embed.toJSON().description?.length ?? 0).toBeLessThanOrEqual(3900);
+      expect(embed.toJSON().fields).toBeUndefined();
+    }
+  });
+});
 
 describe("buildWeekdayFieldValue", () => {
   it("includes the best-time line and one average for that timeframe", () => {
