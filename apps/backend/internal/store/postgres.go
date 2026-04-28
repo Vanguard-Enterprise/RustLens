@@ -303,6 +303,31 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_polled_at TIMESTAMPTZ;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_poll_error TEXT NOT NULL DEFAULT '';
 
+		CREATE TABLE IF NOT EXISTS outbound_proxies (
+			id BIGSERIAL PRIMARY KEY,
+			redacted_endpoint TEXT NOT NULL,
+			endpoint_ciphertext BYTEA NOT NULL,
+			endpoint_nonce BYTEA NOT NULL,
+			key_id TEXT NOT NULL DEFAULT 'default',
+			enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS redacted_endpoint TEXT NOT NULL DEFAULT '';
+		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS endpoint_ciphertext BYTEA NOT NULL DEFAULT '\\x'::bytea;
+		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS endpoint_nonce BYTEA NOT NULL DEFAULT '\\x'::bytea;
+		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS key_id TEXT NOT NULL DEFAULT 'default';
+		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
+		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+		CREATE INDEX IF NOT EXISTS outbound_proxies_enabled_idx
+		ON outbound_proxies (enabled, id);
+
+		CREATE UNIQUE INDEX IF NOT EXISTS outbound_proxies_redacted_endpoint_idx
+		ON outbound_proxies (redacted_endpoint);
+
 		CREATE TABLE IF NOT EXISTS player_states (
 			server_bm_id TEXT NOT NULL REFERENCES tracked_servers(bm_id) ON DELETE CASCADE,
 			player_bm_id TEXT NOT NULL,

@@ -1,21 +1,51 @@
-import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
-import { BackendClient, type OwnerStatsResponse, type ShardStatSnapshot } from "./backend-client.js";
+import type { AutocompleteInteraction, ChatInputCommandInteraction, Client, ModalSubmitInteraction } from "discord.js";
+import { ActionRowBuilder, EmbedBuilder, MessageFlags, ModalBuilder, SlashCommandBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
+import { BackendClient, type OwnerProxy, type OwnerStatsResponse, type ShardStatSnapshot } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { getOwnerGuildID, isAuthorizedOwner, isOwnerCommandConfigured } from "./owner-guard.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
-export const OWNER_COMMAND_NAME = "owner";
-export const OWNER_STATS_SUBCOMMAND_NAME = "stats";
+export const PROXY_COMMAND_NAME = "proxy";
+export const STATS_COMMAND_NAME = "stats";
+const LEGACY_OWNER_COMMAND_NAME = "owner";
 
-const ownerCommand = new SlashCommandBuilder()
-  .setName(OWNER_COMMAND_NAME)
-  .setDescription("Owner-only RustLens utilities")
+const OWNER_PROXY_ADD_SUBCOMMAND_NAME = "add";
+const OWNER_PROXY_LIST_SUBCOMMAND_NAME = "list";
+const OWNER_PROXY_REMOVE_SUBCOMMAND_NAME = "remove";
+const OWNER_PROXY_OPTION_NAME = "proxy";
+const OWNER_PROXY_ADD_MODAL_CUSTOM_ID = "owner_proxy_add_modal";
+const OWNER_PROXY_ADD_FIELD_CUSTOM_ID = "owner_proxy_add_endpoints";
+
+const statsCommand = new SlashCommandBuilder()
+  .setName(STATS_COMMAND_NAME)
+  .setDescription("Show owner-only RustLens bot statistics")
+  .setDMPermission(false);
+
+const proxyCommand = new SlashCommandBuilder()
+  .setName(PROXY_COMMAND_NAME)
+  .setDescription("Manage owner-only outbound proxies")
   .setDMPermission(false)
   .addSubcommand((subcommand) =>
     subcommand
-      .setName(OWNER_STATS_SUBCOMMAND_NAME)
-      .setDescription("Show aggregated bot statistics"),
+      .setName(OWNER_PROXY_ADD_SUBCOMMAND_NAME)
+      .setDescription("Add encrypted outbound proxies"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(OWNER_PROXY_LIST_SUBCOMMAND_NAME)
+      .setDescription("List configured outbound proxies"),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName(OWNER_PROXY_REMOVE_SUBCOMMAND_NAME)
+      .setDescription("Remove an outbound proxy")
+      .addStringOption((option) =>
+        option
+          .setName(OWNER_PROXY_OPTION_NAME)
+          .setDescription("Proxy to remove")
+          .setRequired(true)
+          .setAutocomplete(true),
+      ),
   );
 
 let _backend: BackendClient | undefined;
@@ -40,35 +70,62 @@ function getWorkerID() {
   return _workerID!;
 }
 
+async function upsertOwnerGuildCommand(client: Client, guildId: string, data: ReturnType<SlashCommandBuilder["toJSON"]>) {
+  const globalCommands = await client.application!.commands.fetch();
+  const existingGlobal = globalCommands.find((command) => command.name === data.name);
+  if (existingGlobal) {
+    await client.application!.commands.delete(existingGlobal.id);
+    console.log(`[bot] removed global /${data.name} command before owner-guild registration`);
+  }
+
+  const commands = await client.application!.commands.fetch({ guildId });
+  const existing = commands.find((command) => command.name === data.name);
+
+  if (existing) {
+    await client.application!.commands.edit(existing.id, data, guildId);
+    console.log(`[bot] updated /${data.name} command in owner guild ${guildId}`);
+  } else {
+    await client.application!.commands.create(data, guildId);
+    console.log(`[bot] created /${data.name} command in owner guild ${guildId}`);
+  }
+}
+
+async function deleteOwnerGuildCommand(client: Client, guildId: string, name: string) {
+  const globalCommands = await client.application!.commands.fetch();
+  const existingGlobal = globalCommands.find((command) => command.name === name);
+  if (existingGlobal) {
+    await client.application!.commands.delete(existingGlobal.id);
+    console.log(`[bot] removed legacy global /${name} command`);
+  }
+
+  const commands = await client.application!.commands.fetch({ guildId });
+  const existing = commands.find((command) => command.name === name);
+  if (existing) {
+    await client.application!.commands.delete(existing.id, guildId);
+    console.log(`[bot] removed legacy /${name} command from owner guild ${guildId}`);
+  }
+}
+
 export async function ensureOwnerCommand(client: Client, shardID: number) {
   if (shardID !== 0 || !client.application) {
     return;
   }
 
   if (!isOwnerCommandConfigured()) {
-    console.warn("[bot] skipping /owner command registration because BOT_OWNER_GUILD_ID or BOT_OWNER_DISCORD_IDS is missing");
+    console.warn("[bot] skipping owner command registration because BOT_OWNER_GUILD_ID or BOT_OWNER_DISCORD_IDS is missing");
     return;
   }
 
   const guildId = getOwnerGuildID();
-  const data = ownerCommand.toJSON();
-
-  const globalCommands = await client.application.commands.fetch();
-  const existingGlobal = globalCommands.find((command) => command.name === data.name);
-  if (existingGlobal) {
-    await client.application.commands.delete(existingGlobal.id);
+  try {
+    await deleteOwnerGuildCommand(client, guildId, LEGACY_OWNER_COMMAND_NAME);
+  } catch (error) {
+    console.warn(`[bot] failed to remove legacy /${LEGACY_OWNER_COMMAND_NAME} command; continuing`, error);
   }
+  await upsertOwnerGuildCommand(client, guildId, statsCommand.toJSON());
+  await upsertOwnerGuildCommand(client, guildId, proxyCommand.toJSON());
 
-  const commands = await client.application.commands.fetch({ guildId });
-  const existing = commands.find((command) => command.name === data.name);
-
-  if (existing) {
-    await client.application.commands.edit(existing.id, data, guildId);
-  } else {
-    await client.application.commands.create(data, guildId);
-  }
-
-  console.log(`[bot] ensured /owner command in guild ${guildId}`);
+  console.log(`[bot] ensured /stats and /proxy commands in guild ${guildId}`);
 }
 
 function formatNumber(value: number) {
@@ -130,6 +187,51 @@ function summarizeShards(shards: ShardStatSnapshot[], targetShards: number) {
   }
 
   return lines.join("\n");
+}
+
+function proxyChoiceLabel(proxy: OwnerProxy) {
+  const host = proxy.endpoint.replace(/^https?:\/\//, "");
+  return host.length <= 100 ? host : `${host.slice(0, 97)}...`;
+}
+
+function buildOwnerProxyListEmbed(proxies: OwnerProxy[]) {
+  const description = proxies.length === 0
+    ? "No outbound proxies configured."
+    : proxies.map((proxy, index) => `${index + 1}. \`${proxyChoiceLabel(proxy)}\``).join("\n");
+
+  return new EmbedBuilder()
+    .setTitle("Outbound Proxies")
+    .setDescription(description.length <= 4096 ? description : `${description.slice(0, 4093)}...`)
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+function buildOwnerProxyAddModal() {
+  return new ModalBuilder()
+    .setCustomId(OWNER_PROXY_ADD_MODAL_CUSTOM_ID)
+    .setTitle("Add Outbound Proxies")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId(OWNER_PROXY_ADD_FIELD_CUSTOM_ID)
+          .setLabel("Proxy URLs")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setPlaceholder("http://username:password@45.127.250.10:5619,http://username:password@82.22.249.124:6961"),
+      ),
+    );
+}
+
+export function parseOwnerProxyInput(input: string) {
+  return Array.from(
+    new Set(
+      input
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
 }
 
 export function buildOwnerStatsEmbed(stats: OwnerStatsResponse) {
@@ -209,8 +311,40 @@ async function replyOwnerOnly(interaction: ChatInputCommandInteraction, content:
   await interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
 
+export async function handleOwnerAutocomplete(interaction: AutocompleteInteraction) {
+  if (interaction.commandName !== PROXY_COMMAND_NAME) {
+    return false;
+  }
+
+  if (!isOwnerCommandConfigured() || !isAuthorizedOwner(interaction)) {
+    await interaction.respond([]);
+    return true;
+  }
+
+  const subcommand = interaction.options.getSubcommand(false);
+  if (subcommand !== OWNER_PROXY_REMOVE_SUBCOMMAND_NAME) {
+    await interaction.respond([]);
+    return true;
+  }
+
+  try {
+    const focused = interaction.options.getFocused().toLowerCase();
+    const { items } = await getBackend().listOwnerProxies(getWorkerID());
+    const choices = items
+      .filter((proxy) => proxyChoiceLabel(proxy).toLowerCase().includes(focused))
+      .slice(0, 25)
+      .map((proxy) => ({ name: proxyChoiceLabel(proxy), value: String(proxy.id) }));
+    await interaction.respond(choices);
+  } catch (error) {
+    console.error("[bot] /proxy autocomplete failed", error);
+    await interaction.respond([]);
+  }
+
+  return true;
+}
+
 export async function handleOwnerChatInput(interaction: ChatInputCommandInteraction) {
-  if (interaction.commandName !== OWNER_COMMAND_NAME) {
+  if (interaction.commandName !== PROXY_COMMAND_NAME && interaction.commandName !== STATS_COMMAND_NAME) {
     return false;
   }
 
@@ -222,20 +356,48 @@ export async function handleOwnerChatInput(interaction: ChatInputCommandInteract
   if (!isOwnerCommandConfigured()) {
     await replyOwnerOnly(
       interaction,
-      "BOT_OWNER_GUILD_ID and BOT_OWNER_DISCORD_IDS must be configured before /owner can be used.",
+      "BOT_OWNER_GUILD_ID and BOT_OWNER_DISCORD_IDS must be configured before owner commands can be used.",
     );
     return true;
   }
 
   if (!isAuthorizedOwner(interaction)) {
-    await replyOwnerOnly(interaction, "Only the bot owners can use /owner commands.");
+    await replyOwnerOnly(interaction, "Only the bot owners can use this command.");
     return true;
   }
 
-  const subcommand = interaction.options.getSubcommand(true);
-  if (subcommand !== OWNER_STATS_SUBCOMMAND_NAME) {
-    await replyOwnerOnly(interaction, `Unknown /owner subcommand: ${subcommand}`);
-    return true;
+  if (interaction.commandName === PROXY_COMMAND_NAME) {
+    const subcommand = interaction.options.getSubcommand(true);
+    if (subcommand === OWNER_PROXY_ADD_SUBCOMMAND_NAME) {
+      await interaction.showModal(buildOwnerProxyAddModal());
+      return true;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      if (subcommand === OWNER_PROXY_LIST_SUBCOMMAND_NAME) {
+        const { items } = await getBackend().listOwnerProxies(getWorkerID());
+        await interaction.editReply({ embeds: [buildOwnerProxyListEmbed(items)] });
+        return true;
+      }
+
+      if (subcommand === OWNER_PROXY_REMOVE_SUBCOMMAND_NAME) {
+        const rawID = interaction.options.getString(OWNER_PROXY_OPTION_NAME, true);
+        const proxyID = Number(rawID);
+        if (!Number.isInteger(proxyID) || proxyID <= 0) {
+          await interaction.editReply({ content: "Select a proxy from autocomplete." });
+          return true;
+        }
+        await getBackend().deleteOwnerProxy(getWorkerID(), proxyID);
+        await interaction.editReply({ content: "Removed proxy." });
+        return true;
+      }
+    } catch (error) {
+      console.error("[bot] /proxy failed", error);
+      await interaction.editReply({ content: "Failed to manage proxies." });
+      return true;
+    }
   }
 
   await interaction.deferReply();
@@ -245,9 +407,63 @@ export async function handleOwnerChatInput(interaction: ChatInputCommandInteract
     const embed = buildOwnerStatsEmbed(stats);
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error("[bot] /owner stats failed", error);
+    console.error("[bot] /stats failed", error);
     await interaction.editReply({ content: "Failed to load bot statistics." });
   }
 
+  return true;
+}
+
+export async function handleOwnerModalSubmit(interaction: ModalSubmitInteraction) {
+  if (interaction.customId !== OWNER_PROXY_ADD_MODAL_CUSTOM_ID) {
+    return false;
+  }
+
+  if (!interaction.inGuild()) {
+    await interaction.reply({ content: "This command can only be used in a server.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  if (!isOwnerCommandConfigured()) {
+    await interaction.reply({ content: "BOT_OWNER_GUILD_ID and BOT_OWNER_DISCORD_IDS must be configured before owner commands can be used.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  if (!isAuthorizedOwner(interaction)) {
+    await interaction.reply({ content: "Only the bot owners can use this command.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  const endpoints = parseOwnerProxyInput(interaction.fields.getTextInputValue(OWNER_PROXY_ADD_FIELD_CUSTOM_ID));
+  if (endpoints.length === 0) {
+    await interaction.reply({ content: "Enter at least one proxy URL.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const added: OwnerProxy[] = [];
+  const failed: string[] = [];
+  for (const endpoint of endpoints) {
+    try {
+      added.push(await getBackend().createOwnerProxy(getWorkerID(), endpoint));
+    } catch (error) {
+      const status = typeof error === "object" && error !== null && "status" in error
+        ? (error as { status?: unknown }).status
+        : undefined;
+      failed.push(status === 409 ? `${endpoint} (already exists)` : endpoint);
+    }
+  }
+
+  const lines = [`Added ${added.length}/${endpoints.length} proxies.`];
+  if (added.length > 0) {
+    lines.push(`Saved: ${added.map((proxy) => `\`${proxyChoiceLabel(proxy)}\``).join(", ")}`);
+  }
+  if (failed.length > 0) {
+    const detail = failed.map((endpoint) => `\`${endpoint.replace(/^https?:\/\//, "")}\``).join(", ");
+    lines.push(`Failed: ${detail.length <= 1500 ? detail : `${detail.slice(0, 1497)}...`}`);
+  }
+
+  await interaction.editReply({ content: lines.join("\n") });
   return true;
 }

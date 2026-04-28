@@ -14,6 +14,8 @@ import (
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/oauth/discord"
+	"rustlens/backend/internal/outboundhttp"
+	"rustlens/backend/internal/proxycrypto"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
@@ -49,8 +51,10 @@ func NewRouter(
 	steamSummaryClient *steamapi.Client,
 	battleMetricsClient *battlemetrics.Client,
 	authBattleMetricsClient *battlemetrics.Client,
+	outboundProvider *outboundhttp.Provider,
+	proxyCrypto *proxycrypto.Crypto,
 ) http.Handler {
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, authBattleMetricsClient)
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, authBattleMetricsClient, outboundProvider, proxyCrypto)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -74,6 +78,9 @@ func NewRouter(
 	r.Route("/api/internal/bot/owner", func(r chi.Router) {
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Get("/stats", handler.GetOwnerStats)
+		r.Get("/proxies", handler.ListOwnerProxies)
+		r.Post("/proxies", handler.CreateOwnerProxy)
+		r.Delete("/proxies/{proxyID}", handler.DeleteOwnerProxy)
 	})
 
 	r.Route("/api/internal/bot/setup", func(r chi.Router) {

@@ -48,8 +48,11 @@ import {
 } from "./online-command.js";
 import {
   ensureOwnerCommand,
+  handleOwnerAutocomplete,
   handleOwnerChatInput,
-  OWNER_COMMAND_NAME,
+  handleOwnerModalSubmit,
+  PROXY_COMMAND_NAME,
+  STATS_COMMAND_NAME,
 } from "./owner-command.js";
 import {
   ensurePlayerCommand,
@@ -205,6 +208,10 @@ function isIgnorableInteractionReplyError(error: unknown) {
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isAutocomplete()) {
+      if (await handleOwnerAutocomplete(interaction)) {
+        return;
+      }
+
       const category = resolveCommandCategory(
         interaction.commandName,
         interaction.options.getSubcommand(false),
@@ -235,7 +242,11 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isChatInputCommand()) {
-      if (interaction.commandName !== BAN_COMMAND_NAME && interaction.commandName !== OWNER_COMMAND_NAME) {
+      if (
+        interaction.commandName !== BAN_COMMAND_NAME &&
+        interaction.commandName !== PROXY_COMMAND_NAME &&
+        interaction.commandName !== STATS_COMMAND_NAME
+      ) {
         const category = resolveCommandCategory(
           interaction.commandName,
           interaction.options.getSubcommand(false),
@@ -337,6 +348,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isModalSubmit()) {
       if (await handleBanModalSubmit(interaction)) {
+        return;
+      }
+
+      if (await handleOwnerModalSubmit(interaction)) {
         return;
       }
 

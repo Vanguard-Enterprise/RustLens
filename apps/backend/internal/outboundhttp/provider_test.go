@@ -58,6 +58,42 @@ func TestPrepareDirectWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestReplaceUpdatesProxySet(t *testing.T) {
+	provider, err := NewProvider(false, nil, 10*time.Second)
+	if err != nil {
+		t.Fatalf("NewProvider returned error: %v", err)
+	}
+
+	if err := provider.Replace(true, []string{"http://proxy-two:8080"}); err != nil {
+		t.Fatalf("Replace returned error: %v", err)
+	}
+
+	_, endpoint, proxied := provider.Prepare()
+	if !proxied {
+		t.Fatal("expected proxied request")
+	}
+	if endpoint != "http://proxy-two:8080" {
+		t.Fatalf("endpoint = %q", endpoint)
+	}
+}
+
+func TestReplaceRejectsInvalidProxyWithoutMutating(t *testing.T) {
+	provider, err := NewProvider(true, []string{"http://proxy-one:8080"}, 10*time.Second)
+	if err != nil {
+		t.Fatalf("NewProvider returned error: %v", err)
+	}
+
+	err = provider.Replace(true, []string{"not-a-url"})
+	if err == nil {
+		t.Fatal("expected Replace error")
+	}
+
+	_, endpoint, proxied := provider.Prepare()
+	if !proxied || endpoint != "http://proxy-one:8080" {
+		t.Fatalf("provider mutated after failed Replace: endpoint=%q proxied=%t", endpoint, proxied)
+	}
+}
+
 func TestPrepareNilProviderFallsBackToDefaultClient(t *testing.T) {
 	var provider *Provider
 
@@ -73,9 +109,9 @@ func TestPrepareNilProviderFallsBackToDefaultClient(t *testing.T) {
 	}
 }
 
-func TestRedactProxyEndpointPreservesUsernameOnly(t *testing.T) {
+func TestRedactProxyEndpointRemovesCredentials(t *testing.T) {
 	got := RedactProxyEndpoint("http://user:secret@proxy-one:8080")
-	if got != "http://user@proxy-one:8080" {
+	if got != "http://proxy-one:8080" {
 		t.Fatalf("RedactProxyEndpoint = %q", got)
 	}
 }

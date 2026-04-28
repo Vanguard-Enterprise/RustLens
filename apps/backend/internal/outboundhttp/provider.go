@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -13,10 +13,12 @@ import (
 var ErrProxyEndpointsRequired = errors.New("proxy endpoints are required when proxying is enabled")
 
 type Provider struct {
+	mu      sync.RWMutex
 	enabled bool
 	direct  *http.Client
 	proxies []proxyClient
 	next    atomic.Uint64
+	timeout time.Duration
 }
 
 type proxyClient struct {
@@ -26,10 +28,22 @@ type proxyClient struct {
 
 func NewProvider(enabled bool, endpoints []string, timeout time.Duration) (*Provider, error) {
 	direct := &http.Client{Timeout: timeout}
+	proxies, err := buildProxyClients(enabled, endpoints, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Provider{
+		enabled: enabled,
+		direct:  direct,
+		proxies: proxies,
+		timeout: timeout,
+	}, nil
+}
+
+func buildProxyClients(enabled bool, endpoints []string, timeout time.Duration) ([]proxyClient, error) {
 	if !enabled {
-		return &Provider{
-			direct: direct,
-		}, nil
+		return nil, nil
 	}
 
 	if len(endpoints) == 0 {
@@ -59,17 +73,45 @@ func NewProvider(enabled bool, endpoints []string, timeout time.Duration) (*Prov
 		})
 	}
 
-	return &Provider{
-		enabled: true,
-		direct:  direct,
-		proxies: proxies,
-	}, nil
+	return proxies, nil
+}
+
+func (p *Provider) Replace(enabled bool, endpoints []string) error {
+	if p == nil {
+		return nil
+	}
+
+	proxies, err := buildProxyClients(enabled, endpoints, p.timeout)
+	if err != nil {
+		return err
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.enabled = enabled
+	p.proxies = proxies
+	p.next.Store(0)
+	return nil
+}
+
+func (p *Provider) ProxyCount() int {
+	if p == nil {
+		return 0
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if !p.enabled {
+		return 0
+	}
+	return len(p.proxies)
 }
 
 func (p *Provider) Prepare() (*http.Client, string, bool) {
 	if p == nil {
 		return http.DefaultClient, "", false
 	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	if !p.enabled || len(p.proxies) == 0 {
 		return p.direct, "", false
@@ -93,10 +135,6 @@ func RedactProxyEndpoint(raw string) string {
 		return parsed.String()
 	}
 
-	username := parsed.User.Username()
-	if username == "" {
-		username = "redacted"
-	}
-	parsed.User = url.User(strings.TrimSpace(username))
+	parsed.User = nil
 	return parsed.String()
 }

@@ -26,6 +26,7 @@ type Config struct {
 	AppAdminDiscordIDs   []string
 	ProxyEnabled         bool
 	ProxyEndpoints       []string
+	ProxyEncryptionKey   string
 	AppBaseURL           string
 	DiscordClientID      string
 	DiscordClientSecret  string
@@ -58,6 +59,7 @@ func Load() Config {
 		AppAdminDiscordIDs:   getEnvCSV("APP_ADMIN_DISCORD_IDS"),
 		ProxyEnabled:         proxyEnabled,
 		ProxyEndpoints:       getEnvCSV("PROXY_ENDPOINTS"),
+		ProxyEncryptionKey:   strings.TrimSpace(getEnv("PROXY_ENCRYPTION_KEY", "")),
 		AppBaseURL:           getEnv("APP_BASE_URL", "http://localhost:3000"),
 		DiscordClientID:      getEnv("DISCORD_CLIENT_ID", ""),
 		DiscordClientSecret:  getEnv("DISCORD_CLIENT_SECRET", ""),

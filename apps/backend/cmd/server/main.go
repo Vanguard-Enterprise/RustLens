@@ -13,6 +13,7 @@ import (
 	"rustlens/backend/internal/config"
 	httpapi "rustlens/backend/internal/http"
 	"rustlens/backend/internal/outboundhttp"
+	"rustlens/backend/internal/proxycrypto"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
@@ -41,8 +42,17 @@ func main() {
 	if err := postgresStore.EnsureSchema(ctx); err != nil {
 		log.Fatalf("schema migration failed: %v", err)
 	}
+	proxyCrypto, err := newProxyCrypto(cfg.ProxyEncryptionKey)
+	if err != nil {
+		log.Fatalf("proxy crypto init failed: %v", err)
+	}
+	proxyEndpoints, err := initialProxyEndpoints(ctx, postgresStore, proxyCrypto, cfg)
+	if err != nil {
+		log.Fatalf("outbound proxy load failed: %v", err)
+	}
+	proxyEnabled := len(proxyEndpoints) > 0
 
-	outboundProvider, err := outboundhttp.NewProvider(cfg.ProxyEnabled, cfg.ProxyEndpoints, 20*time.Second)
+	outboundProvider, err := outboundhttp.NewProvider(proxyEnabled, proxyEndpoints, 20*time.Second)
 	if err != nil {
 		log.Fatalf("outbound proxy init failed: %v", err)
 	}
@@ -61,6 +71,8 @@ func main() {
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
 		battlemetrics.NewClient(cfg.BattleMetricsAPIKey, outboundProvider),
 		battlemetrics.NewClient(cfg.BattleMetricsAPIKey, directProvider),
+		outboundProvider,
+		proxyCrypto,
 	)
 	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(cfg.BattleMetricsAPIKey, outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
@@ -94,4 +106,37 @@ func main() {
 	if err := server.Shutdown(ctxShutdown); err != nil {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
+}
+
+func newProxyCrypto(key string) (*proxycrypto.Crypto, error) {
+	if key == "" {
+		return nil, nil
+	}
+	return proxycrypto.New(key)
+}
+
+func initialProxyEndpoints(ctx context.Context, postgresStore *store.PostgresStore, proxyCrypto *proxycrypto.Crypto, cfg config.Config) ([]string, error) {
+	dbProxies, err := postgresStore.ListEnabledOutboundProxies(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(dbProxies) == 0 {
+		if cfg.ProxyEnabled {
+			return cfg.ProxyEndpoints, nil
+		}
+		return nil, nil
+	}
+	if proxyCrypto == nil {
+		return nil, proxycrypto.ErrKeyRequired
+	}
+
+	endpoints := make([]string, 0, len(dbProxies))
+	for _, proxy := range dbProxies {
+		endpoint, err := proxyCrypto.Decrypt(proxy.Ciphertext, proxy.Nonce)
+		if err != nil {
+			return nil, err
+		}
+		endpoints = append(endpoints, endpoint)
+	}
+	return endpoints, nil
 }

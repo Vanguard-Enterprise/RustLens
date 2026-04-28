@@ -25,7 +25,10 @@ export class ShardRuntime {
 
     const distEntry = resolve(process.cwd(), "dist/shard-worker.js");
     const sourceEntry = resolve(process.cwd(), "src/shard-worker.ts");
-    const useDist = existsSync(distEntry);
+    const isDev = process.env.NODE_ENV !== "production";
+    const useDist = !isDev && existsSync(distEntry);
+
+    console.log(`[bot] starting shard ${shardID}/${totalShards} from ${useDist ? distEntry : sourceEntry}`);
 
     const child = fork(useDist ? distEntry : sourceEntry, [], {
       stdio: "inherit",

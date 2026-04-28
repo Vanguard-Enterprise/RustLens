@@ -151,13 +151,14 @@ apps/backend/
       allocator.go           # Shard assignment algorithm
       heartbeat.go           # Heartbeat/lease management
     store/
-      postgres.go            # pgx pool + schema auto-migration (bot_worker_events, guild_settings, tracked_servers, player_states, wipe_reacts, user_guilds, user_bans, track_groups, track_group_members)
+      postgres.go            # pgx pool + schema auto-migration (bot_worker_events, guild_settings, tracked_servers, outbound_proxies, player_states, wipe_reacts, user_guilds, user_bans, track_groups, track_group_members)
       app_users.go           # App-user, connected-account, aggregate, and admin listing store logic
       app_password_auth.go   # Password credential, reset-token, and email-verification store logic
       wipe_reacts.go         # Persisted wipe react CRUD + reaction mutation helpers
       redis.go               # go-redis client for heartbeats and shard leases
       steam.go               # Steam account & Discord link CRUD (upsert, lookup, profile metadata refresh, bulk hard links, soft link delete, guild nickname target joins)
       tracked_servers.go     # Global tracked BattleMetrics server CRUD
+      outbound_proxies.go    # Encrypted outbound proxy CRUD for owner-managed BattleMetrics proxy rotation
       guild_tracked_servers.go # Guild-specific selection of owner-managed tracked servers
       player_states.go       # Per-server BattleMetrics player presence state sync and lookup
       online_summary.go      # Guild online summary join across guild links, guild tracked servers, steam accounts, and player states
@@ -168,6 +169,7 @@ Key patterns:
 
 - Schema is auto-migrated at startup via `EnsureSchema()` (no migration tool).
 - Bot routes (`/api/internal/bot/shards/*`) are JWT-protected via middleware.
+- Bot owner proxy routes (`/api/internal/bot/owner/proxies*`) are JWT-protected and back owner-guild-only `/proxy add|list|remove`. Proxy URLs are encrypted at rest in `outbound_proxies` with AES-GCM using `PROXY_ENCRYPTION_KEY`; API responses and logs only expose credential-free `scheme://host:port` values. DB proxies are preferred over legacy `PROXY_ENDPOINTS`, and create/delete reloads the in-process outbound provider without a backend restart.
 - Bot guild settings routes (`/api/internal/bot/setup/guilds/*/settings`) are JWT-protected and store per-guild log channels, the tracked-users category (under which `/track` creates per-group channels), and the admin role.
 - Bot track-group routes (`/api/internal/bot/setup/guilds/*/track-groups*`) are JWT-protected and persist `track_groups` (per-guild named tracking groups bound to a tracked server, with `channel_id`, `message_id`, `send_updates`, `online_count`) plus `track_group_members` (steam/bm IDs tracked by the group). The bot polls `/track-groups/{id}/online-state` to refresh the pinned group embed and channel name; online-state rows include optional guild-linked Discord user and avatar data for join/leave notification embeds.
 - Bot track-group analytics route (`/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/analytics`) is JWT-protected and computes per-weekday hourly minute averages for the group's members in `Europe/London`. It fetches up to 200 (2 pages x 100) BattleMetrics sessions per `(player_bm_id, server_bm_id)` using the proxied outbound provider with concurrency equal to the proxy count, caches the raw sessions in `track_analytics_sessions_cache` with a 24-hour TTL per `(player, server)` pair, drops player-days where that player accumulated under 60 minutes, and returns chart-ready 0-60 minute hour buckets plus the per-weekday best-offline window.
@@ -288,6 +290,7 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `STEAM_API_KEY` | `` |
 | `BATTLEMETRICS_API_KEY` | `` |
 | `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS` | `10` |
+| `PROXY_ENCRYPTION_KEY` | `` |
 
 The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY`, `BATTLEMETRICS_API_KEY`, `APP_API_INTERNAL_SECRET`, `APP_SESSION_SECRET`, and `APP_ADMIN_DISCORD_IDS` can be provided there without separate shell export. The frontend expects `APP_SESSION_SECRET`, `APP_API_INTERNAL_SECRET`, and usually `RUSTLENS_API_URL`; `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be set to the canonical external origin for Discord OAuth callbacks and local auth debug preview links. Frontend auth throttling also requires `REDIS_URL` (or `RATE_LIMIT_REDIS_URL`) in production. `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` are optional and only needed when Discord login/linking is enabled; the frontend now uses PKCE plus OAuth `state` for the Discord code flow. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects a dedicated canonical client-IP header configured via `TRUST_PROXY_IP_HEADER` for the frontend auth rate limiter. Local auth debug previews are disabled by default and only appear when backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
 
