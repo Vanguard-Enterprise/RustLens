@@ -312,7 +312,6 @@ export type TrackedServerLogEventsResponse = {
 export type TrackedServer = {
   bmId: string;
   name: string;
-  includeInGuildSettings: boolean;
   isVitality: boolean;
   isAtlas: boolean;
   isVital: boolean;
@@ -783,6 +782,22 @@ export class BackendClient {
       `/api/internal/bot/setup/guilds/${guildId}/tracked-servers`,
       "PUT",
       { bmIds },
+    );
+  }
+
+  addGuildTrackedServer(workerId: string, guildId: string, bmId: string) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/tracked-servers/${bmId}`,
+      "POST",
+    );
+  }
+
+  removeGuildTrackedServer(workerId: string, guildId: string, bmId: string) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/tracked-servers/${bmId}`,
+      "DELETE",
     );
   }
 

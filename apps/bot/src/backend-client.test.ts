@@ -141,7 +141,6 @@ describe("BackendClient", () => {
       json: async () => ({
         bmId: "12345",
         name: "Vital EU Main",
-        includeInGuildSettings: true,
         isVitality: true,
         isAtlas: false,
         isVital: false,
@@ -157,7 +156,6 @@ describe("BackendClient", () => {
     await client.createTrackedServer("worker-a", {
       bmId: "12345",
       name: "Vital EU Main",
-      includeInGuildSettings: true,
       isVitality: true,
       isAtlas: false,
       isVital: false,
@@ -173,7 +171,6 @@ describe("BackendClient", () => {
     expect(init?.body).toBe(JSON.stringify({
       bmId: "12345",
       name: "Vital EU Main",
-      includeInGuildSettings: true,
       isVitality: true,
       isAtlas: false,
       isVital: false,
@@ -223,8 +220,7 @@ describe("BackendClient", () => {
         items: [{
           bmId: "12345",
           name: "Vital EU Main",
-          includeInGuildSettings: true,
-          isVitality: true,
+            isVitality: true,
           isAtlas: false,
           isVital: false,
           isModded: true,
@@ -253,7 +249,6 @@ describe("BackendClient", () => {
       json: async () => ({
         bmId: "98765",
         name: "Atlas EU Main",
-        includeInGuildSettings: false,
         isVitality: false,
         isAtlas: true,
         isVital: false,
@@ -269,7 +264,6 @@ describe("BackendClient", () => {
     await client.updateTrackedServer("worker-a", "12345", {
       bmId: "98765",
       name: "Atlas EU Main",
-      includeInGuildSettings: false,
       isVitality: false,
       isAtlas: true,
       isVital: false,
@@ -285,7 +279,6 @@ describe("BackendClient", () => {
     expect(init?.body).toBe(JSON.stringify({
       bmId: "98765",
       name: "Atlas EU Main",
-      includeInGuildSettings: false,
       isVitality: false,
       isAtlas: true,
       isVital: false,

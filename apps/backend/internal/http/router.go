@@ -92,6 +92,8 @@ func NewRouter(
 		r.Put("/guilds/{guildID}/settings", handler.UpdateGuildSettings)
 		r.Get("/guilds/{guildID}/tracked-servers", handler.ListGuildTrackedServers)
 		r.Put("/guilds/{guildID}/tracked-servers", handler.ReplaceGuildTrackedServers)
+		r.Post("/guilds/{guildID}/tracked-servers/{bmID}", handler.AddGuildTrackedServer)
+		r.Delete("/guilds/{guildID}/tracked-servers/{bmID}", handler.RemoveGuildTrackedServer)
 		r.Get("/guilds/{guildID}/wipe-reacts/active", handler.ListActiveWipeReacts)
 		r.Get("/guilds/{guildID}/wipe-reacts", handler.ListWipeReacts)
 		r.Post("/guilds/{guildID}/wipe-reacts", handler.CreateWipeReact)
