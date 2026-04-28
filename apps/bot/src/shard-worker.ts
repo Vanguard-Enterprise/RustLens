@@ -50,6 +50,7 @@ import {
   ensureOwnerCommand,
   handleOwnerAutocomplete,
   handleOwnerChatInput,
+  handleOwnerModalSubmit,
   OWNER_COMMAND_NAME,
 } from "./owner-command.js";
 import {
@@ -342,6 +343,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isModalSubmit()) {
       if (await handleBanModalSubmit(interaction)) {
+        return;
+      }
+
+      if (await handleOwnerModalSubmit(interaction)) {
         return;
       }
 

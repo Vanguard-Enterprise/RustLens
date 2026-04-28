@@ -1,5 +1,5 @@
-import type { AutocompleteInteraction, ChatInputCommandInteraction, Client } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import type { AutocompleteInteraction, ChatInputCommandInteraction, Client, ModalSubmitInteraction } from "discord.js";
+import { ActionRowBuilder, EmbedBuilder, MessageFlags, ModalBuilder, SlashCommandBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 import { BackendClient, type OwnerProxy, type OwnerStatsResponse, type ShardStatSnapshot } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { getOwnerGuildID, isAuthorizedOwner, isOwnerCommandConfigured } from "./owner-guard.js";
@@ -13,6 +13,8 @@ const OWNER_PROXY_ADD_SUBCOMMAND_NAME = "add";
 const OWNER_PROXY_LIST_SUBCOMMAND_NAME = "list";
 const OWNER_PROXY_REMOVE_SUBCOMMAND_NAME = "remove";
 const OWNER_PROXY_OPTION_NAME = "proxy";
+const OWNER_PROXY_ADD_MODAL_CUSTOM_ID = "owner_proxy_add_modal";
+const OWNER_PROXY_ADD_FIELD_CUSTOM_ID = "owner_proxy_add_endpoints";
 
 const ownerCommand = new SlashCommandBuilder()
   .setName(OWNER_COMMAND_NAME)
@@ -30,13 +32,7 @@ const ownerCommand = new SlashCommandBuilder()
       .addSubcommand((subcommand) =>
         subcommand
           .setName(OWNER_PROXY_ADD_SUBCOMMAND_NAME)
-          .setDescription("Add an encrypted outbound proxy")
-          .addStringOption((option) =>
-            option
-              .setName(OWNER_PROXY_OPTION_NAME)
-              .setDescription("Full proxy URL, e.g. http://user:pass@1.2.3.4:8080")
-              .setRequired(true),
-          ),
+          .setDescription("Add encrypted outbound proxies"),
       )
       .addSubcommand((subcommand) =>
         subcommand
@@ -189,6 +185,33 @@ function buildOwnerProxyListEmbed(proxies: OwnerProxy[]) {
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
 }
 
+function buildOwnerProxyAddModal() {
+  return new ModalBuilder()
+    .setCustomId(OWNER_PROXY_ADD_MODAL_CUSTOM_ID)
+    .setTitle("Add Outbound Proxies")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId(OWNER_PROXY_ADD_FIELD_CUSTOM_ID)
+          .setLabel("Proxy URLs")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setPlaceholder("http://username:password@45.127.250.10:5619,http://username:password@82.22.249.124:6961"),
+      ),
+    );
+}
+
+export function parseOwnerProxyInput(input: string) {
+  return Array.from(
+    new Set(
+      input
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+}
+
 export function buildOwnerStatsEmbed(stats: OwnerStatsResponse) {
   const allShards = stats.workers.flatMap((worker) => worker.shards);
   const totalRSS = stats.workers.reduce((sum, worker) => sum + worker.rssBytes, 0);
@@ -325,16 +348,14 @@ export async function handleOwnerChatInput(interaction: ChatInputCommandInteract
   const group = interaction.options.getSubcommandGroup(false);
   const subcommand = interaction.options.getSubcommand(true);
   if (group === OWNER_PROXY_GROUP_NAME) {
+    if (subcommand === OWNER_PROXY_ADD_SUBCOMMAND_NAME) {
+      await interaction.showModal(buildOwnerProxyAddModal());
+      return true;
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-      if (subcommand === OWNER_PROXY_ADD_SUBCOMMAND_NAME) {
-        const proxy = interaction.options.getString(OWNER_PROXY_OPTION_NAME, true);
-        const saved = await getBackend().createOwnerProxy(getWorkerID(), proxy);
-        await interaction.editReply({ content: `Added proxy \`${proxyChoiceLabel(saved)}\`.` });
-        return true;
-      }
-
       if (subcommand === OWNER_PROXY_LIST_SUBCOMMAND_NAME) {
         const { items } = await getBackend().listOwnerProxies(getWorkerID());
         await interaction.editReply({ embeds: [buildOwnerProxyListEmbed(items)] });
@@ -375,5 +396,59 @@ export async function handleOwnerChatInput(interaction: ChatInputCommandInteract
     await interaction.editReply({ content: "Failed to load bot statistics." });
   }
 
+  return true;
+}
+
+export async function handleOwnerModalSubmit(interaction: ModalSubmitInteraction) {
+  if (interaction.customId !== OWNER_PROXY_ADD_MODAL_CUSTOM_ID) {
+    return false;
+  }
+
+  if (!interaction.inGuild()) {
+    await interaction.reply({ content: "This command can only be used in a server.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  if (!isOwnerCommandConfigured()) {
+    await interaction.reply({ content: "BOT_OWNER_GUILD_ID and BOT_OWNER_DISCORD_IDS must be configured before /owner can be used.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  if (!isAuthorizedOwner(interaction)) {
+    await interaction.reply({ content: "Only the bot owners can use /owner commands.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  const endpoints = parseOwnerProxyInput(interaction.fields.getTextInputValue(OWNER_PROXY_ADD_FIELD_CUSTOM_ID));
+  if (endpoints.length === 0) {
+    await interaction.reply({ content: "Enter at least one proxy URL.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const added: OwnerProxy[] = [];
+  const failed: string[] = [];
+  for (const endpoint of endpoints) {
+    try {
+      added.push(await getBackend().createOwnerProxy(getWorkerID(), endpoint));
+    } catch (error) {
+      const status = typeof error === "object" && error !== null && "status" in error
+        ? (error as { status?: unknown }).status
+        : undefined;
+      failed.push(status === 409 ? `${endpoint} (already exists)` : endpoint);
+    }
+  }
+
+  const lines = [`Added ${added.length}/${endpoints.length} proxies.`];
+  if (added.length > 0) {
+    lines.push(`Saved: ${added.map((proxy) => `\`${proxyChoiceLabel(proxy)}\``).join(", ")}`);
+  }
+  if (failed.length > 0) {
+    const detail = failed.map((endpoint) => `\`${endpoint.replace(/^https?:\/\//, "")}\``).join(", ");
+    lines.push(`Failed: ${detail.length <= 1500 ? detail : `${detail.slice(0, 1497)}...`}`);
+  }
+
+  await interaction.editReply({ content: lines.join("\n") });
   return true;
 }

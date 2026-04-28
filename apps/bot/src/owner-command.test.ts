@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OwnerStatsResponse } from "./backend-client.js";
-import { buildOwnerStatsEmbed } from "./owner-command.js";
+import { buildOwnerStatsEmbed, parseOwnerProxyInput } from "./owner-command.js";
 
 function baseStats(overrides: Partial<OwnerStatsResponse> = {}): OwnerStatsResponse {
   return {
@@ -117,5 +117,23 @@ describe("buildOwnerStatsEmbed", () => {
     expect(workersField).toContain("Shards: 0/4 reporting");
     expect(workersField).toContain("Uptime: —");
     expect(workersField).toContain("Memory: 0 B");
+  });
+});
+
+describe("parseOwnerProxyInput", () => {
+  it("parses comma and whitespace separated proxy URLs", () => {
+    expect(parseOwnerProxyInput(
+      "http://username:password@45.127.250.10:5619,http://username:password@82.22.249.124:6961\nhttp://username:password@199.180.9.165:6185",
+    )).toEqual([
+      "http://username:password@45.127.250.10:5619",
+      "http://username:password@82.22.249.124:6961",
+      "http://username:password@199.180.9.165:6185",
+    ]);
+  });
+
+  it("deduplicates proxy URLs", () => {
+    expect(parseOwnerProxyInput("http://user:pass@1.2.3.4:8080, http://user:pass@1.2.3.4:8080")).toEqual([
+      "http://user:pass@1.2.3.4:8080",
+    ]);
   });
 });
