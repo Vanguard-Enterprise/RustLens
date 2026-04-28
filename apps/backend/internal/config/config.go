@@ -21,6 +21,7 @@ type Config struct {
 	BattleMetricsPoll    time.Duration
 	BMMatchURL           string
 	BMMatchToken         string
+	PlatformSyncToken    string
 	AppEmailTokenTTL     time.Duration
 	AllowedJWTIssuer     string
 	AllowedJWTAudience   string
@@ -55,6 +56,7 @@ func Load() Config {
 		BattleMetricsPoll:    time.Duration(battleMetricsPoll) * time.Second,
 		BMMatchURL:           strings.TrimSpace(getEnv("BM_MATCH_URL", "")),
 		BMMatchToken:         strings.TrimSpace(getEnv("BM_MATCH_TOKEN", "")),
+		PlatformSyncToken:    strings.TrimSpace(getEnv("PLATFORMSYNC_TOKEN", "")),
 		AppEmailTokenTTL:     time.Duration(appEmailTokenTTL) * time.Minute,
 		AllowedJWTIssuer:     getEnv("BOT_JWT_ISSUER", "rustlens-bot"),
 		AllowedJWTAudience:   getEnv("BOT_JWT_AUDIENCE", "rustlens-backend"),

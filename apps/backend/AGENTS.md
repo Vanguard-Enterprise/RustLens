@@ -267,6 +267,18 @@ Per-(player, server) cache of raw BattleMetrics player session windows used by t
 
 **Index**: `track_analytics_sessions_cache_fetched_idx ON (fetched_at)` for future TTL sweeps.
 
+### `platform_sync_state`
+
+Tracks the last time RustLens queried the external `platformsync.io` service for a given Steam or Discord ID. Used to enforce the 14-day cool-down on outbound platformsync calls.
+
+| Column | Type | Notes |
+|---|---|---|
+| `platform` | `TEXT NOT NULL` | `steam` or `discord` (CHECK constraint) |
+| `platform_id` | `TEXT NOT NULL` | Steam ID (17 digits) or Discord snowflake |
+| `last_platform_sync_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last upstream call timestamp |
+
+**PK**: `(platform, platform_id)`. Only the queried side is upserted, so a later sync of a discovered counterpart still reaches the upstream.
+
 ### `guild_steam_discord_links`
 
 Guild-scoped Steam-Discord associations managed by guild admins.
@@ -326,6 +338,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval (unauthenticated, through the proxy pool) and updates `player_states` inside a single store transaction per server.
 - Steam profile resolution lives in `internal/steamapi/`. The bot uses `POST /api/internal/bot/setup/steam/resolve` to turn a raw 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` / `steamcommunity.com/id/...` URL into a canonical Steam ID. Vanity URLs are resolved live through `STEAM_API_KEY`, are not cached separately, and always go direct without using the backend proxy pool.
 - Steam ↔ BattleMetrics matching is delegated to an external service in `internal/bmmatch/` configured via `BM_MATCH_URL` + `BM_MATCH_TOKEN`. It exposes `GET /steam-to-bm/{steam_id}` and `GET /bm-to-steam/{bm_id}`; both return a single-string-value JSON object, are sent **directly** (never proxied), and authenticate with a static Bearer token. When unconfigured, backfill resolvers return `ErrSteamAccountNotFound` instead of failing.
+- Platform-identity sync is delegated to `internal/platformsync/`, a thin client for the external `https://link.platformsync.io/api.php` service (URL is hard-coded; only `PLATFORMSYNC_TOKEN` is configurable). Requests are sent **directly** (never proxied). The handler at `POST /api/internal/bot/setup/platform-sync/{platform}/{id}` enforces a 14-day cool-down via `platform_sync_state` and bulk-upserts every discovered `(steam_id, discord_id)` pair (including `previous_*_ids`) into `steam_discord_links` as hard links with `source='platformsync'`. Only the queried side is recorded in `platform_sync_state` so future syncs of discovered counterparts still hit the upstream.
 - Bot-internal account lookup routes under `/api/internal/bot/setup/steam/` backfill missing `steam_accounts` rows by combining `bmmatch` for the Steam↔BM ID translation with the proxied, unauthenticated BattleMetrics `/players/{id}` for the rest of the profile (BM name, created-at, servers, hours).
 - Bot-internal `GET /api/internal/bot/setup/steam-accounts/count` returns the current `steam_accounts` row count for bot presence updates.
 - Steam game-ban scans use `GET /api/internal/bot/setup/guilds/{guildID}/game-bans`, which batches guild-linked Steam IDs through `ISteamUser/GetPlayerBans`, refreshes stale cache rows after 6 hours, ignores VAC-only bans, and returns only game bans newer than 90 days.

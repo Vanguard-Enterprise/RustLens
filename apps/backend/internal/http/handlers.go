@@ -24,6 +24,7 @@ import (
 	"rustlens/backend/internal/bmmatch"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/outboundhttp"
+	"rustlens/backend/internal/platformsync"
 	"rustlens/backend/internal/proxycrypto"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
@@ -51,6 +52,7 @@ type Handler struct {
 	steamSummaryClient  *steamapi.Client
 	battleMetricsClient *battlemetrics.Client
 	bmMatch             *bmmatch.Client
+	platformSync        *platformsync.Client
 	rbacStore           *rbac.Store
 	rbacResolver        *rbac.Resolver
 	auditStore          *audit.Store
@@ -69,6 +71,7 @@ func NewHandler(
 	steamSummaryClient *steamapi.Client,
 	battleMetricsClient *battlemetrics.Client,
 	bmMatch *bmmatch.Client,
+	platformSync *platformsync.Client,
 	outboundProvider *outboundhttp.Provider,
 	proxyCrypto *proxycrypto.Crypto,
 ) *Handler {
@@ -100,6 +103,7 @@ func NewHandler(
 		steamSummaryClient:      steamSummaryClient,
 		battleMetricsClient: battleMetricsClient,
 		bmMatch:             bmMatch,
+		platformSync:        platformSync,
 		rbacStore:           rbacStore,
 		rbacResolver:        resolver,
 		auditStore:          auditStore,

@@ -509,6 +509,13 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS guild_steam_discord_links_guild_steam_idx
 		ON guild_steam_discord_links (guild_id, steam_id);
 
+		CREATE TABLE IF NOT EXISTS platform_sync_state (
+			platform TEXT NOT NULL CHECK (platform IN ('discord', 'steam')),
+			platform_id TEXT NOT NULL,
+			last_platform_sync_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (platform, platform_id)
+		);
+
 		CREATE TABLE IF NOT EXISTS track_groups (
 			id BIGSERIAL PRIMARY KEY,
 			guild_id TEXT NOT NULL,

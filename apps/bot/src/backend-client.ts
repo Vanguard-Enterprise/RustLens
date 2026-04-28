@@ -371,6 +371,20 @@ export type BulkHardLinkEntry = {
   source: string;
 };
 
+export type PlatformSyncResult = {
+  synced: boolean;
+  reason?: string;
+  lastSyncedAt: string;
+  platform: "steam" | "discord";
+  platformId: string;
+  linked: boolean;
+  steamId?: string;
+  discordId?: string;
+  previousSteamIds?: string[];
+  previousDiscordIds?: string[];
+  hardLinkCount: number;
+};
+
 export type UserBan = {
   discordId: string;
   categories: string[];
@@ -975,6 +989,16 @@ export class BackendClient {
       `/api/internal/bot/setup/steam/bulk-hard-links`,
       "POST",
       { links },
+    );
+  }
+
+  syncPlatformIdentity(workerId: string, platform: "steam" | "discord", id: string) {
+    return this.call<PlatformSyncResult>(
+      workerId,
+      `/api/internal/bot/setup/platform-sync/${platform}/${id}`,
+      "POST",
+      undefined,
+      30_000,
     );
   }
 
