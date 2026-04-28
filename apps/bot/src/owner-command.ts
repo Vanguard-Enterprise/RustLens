@@ -75,6 +75,7 @@ async function upsertOwnerGuildCommand(client: Client, guildId: string, data: Re
   const existingGlobal = globalCommands.find((command) => command.name === data.name);
   if (existingGlobal) {
     await client.application!.commands.delete(existingGlobal.id);
+    console.log(`[bot] removed global /${data.name} command before owner-guild registration`);
   }
 
   const commands = await client.application!.commands.fetch({ guildId });
@@ -82,8 +83,10 @@ async function upsertOwnerGuildCommand(client: Client, guildId: string, data: Re
 
   if (existing) {
     await client.application!.commands.edit(existing.id, data, guildId);
+    console.log(`[bot] updated /${data.name} command in owner guild ${guildId}`);
   } else {
     await client.application!.commands.create(data, guildId);
+    console.log(`[bot] created /${data.name} command in owner guild ${guildId}`);
   }
 }
 
@@ -92,12 +95,14 @@ async function deleteOwnerGuildCommand(client: Client, guildId: string, name: st
   const existingGlobal = globalCommands.find((command) => command.name === name);
   if (existingGlobal) {
     await client.application!.commands.delete(existingGlobal.id);
+    console.log(`[bot] removed legacy global /${name} command`);
   }
 
   const commands = await client.application!.commands.fetch({ guildId });
   const existing = commands.find((command) => command.name === name);
   if (existing) {
     await client.application!.commands.delete(existing.id, guildId);
+    console.log(`[bot] removed legacy /${name} command from owner guild ${guildId}`);
   }
 }
 
@@ -112,7 +117,11 @@ export async function ensureOwnerCommand(client: Client, shardID: number) {
   }
 
   const guildId = getOwnerGuildID();
-  await deleteOwnerGuildCommand(client, guildId, LEGACY_OWNER_COMMAND_NAME);
+  try {
+    await deleteOwnerGuildCommand(client, guildId, LEGACY_OWNER_COMMAND_NAME);
+  } catch (error) {
+    console.warn(`[bot] failed to remove legacy /${LEGACY_OWNER_COMMAND_NAME} command; continuing`, error);
+  }
   await upsertOwnerGuildCommand(client, guildId, statsCommand.toJSON());
   await upsertOwnerGuildCommand(client, guildId, proxyCommand.toJSON());
 
