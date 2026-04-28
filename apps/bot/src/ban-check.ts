@@ -44,13 +44,8 @@ function getWorkerID() {
 }
 
 async function fetchBannedCategories(discordId: string): Promise<Set<BanCategory>> {
-  try {
-    const response = await getBackend().getUserBan(getWorkerID(), discordId);
-    return new Set(response.categories as BanCategory[]);
-  } catch (error) {
-    console.error("[bot] ban lookup failed", { discordId, error });
-    return new Set<BanCategory>();
-  }
+  const response = await getBackend().getUserBan(getWorkerID(), discordId);
+  return new Set(response.categories as BanCategory[]);
 }
 
 async function loadBannedCategories(discordId: string): Promise<Set<BanCategory>> {
@@ -97,6 +92,13 @@ function buildBannedEmbed() {
     .setColor(BANNED_EMBED_COLOR);
 }
 
+function buildBanLookupUnavailableEmbed() {
+  return new EmbedBuilder()
+    .setTitle("Error")
+    .setDescription("Ban service is unavailable. Try again shortly.")
+    .setColor(BANNED_EMBED_COLOR);
+}
+
 export async function replyBannedEphemeral(
   interaction:
     | ChatInputCommandInteraction
@@ -112,11 +114,40 @@ export async function replyBannedEphemeral(
   await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }
 
+async function replyBanUnavailableEphemeral(
+  interaction:
+    | ChatInputCommandInteraction
+    | ButtonInteraction
+    | ModalSubmitInteraction
+    | StringSelectMenuInteraction,
+) {
+  const embed = buildBanLookupUnavailableEmbed();
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply({ embeds: [embed], components: [] });
+    return;
+  }
+  await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+}
+
 export async function enforceBanForAutocomplete(
   interaction: AutocompleteInteraction,
   category: BanCategory,
 ): Promise<boolean> {
-  const banned = await isUserBannedFromCategory(interaction.user.id, category);
+  let banned: boolean;
+  try {
+    banned = await isUserBannedFromCategory(interaction.user.id, category);
+  } catch (error) {
+    console.error("[bot] ban lookup failed (autocomplete; failing closed)", {
+      discordId: interaction.user.id,
+      error,
+    });
+    try {
+      await interaction.respond([]);
+    } catch {
+      // autocomplete can silently fail if Discord already timed out
+    }
+    return true;
+  }
   if (!banned) {
     return false;
   }
@@ -136,7 +167,17 @@ export async function enforceBan(
     | StringSelectMenuInteraction,
   category: BanCategory,
 ): Promise<boolean> {
-  const banned = await isUserBannedFromCategory(interaction.user.id, category);
+  let banned: boolean;
+  try {
+    banned = await isUserBannedFromCategory(interaction.user.id, category);
+  } catch (error) {
+    console.error("[bot] ban lookup failed (failing closed)", {
+      discordId: interaction.user.id,
+      error,
+    });
+    await replyBanUnavailableEphemeral(interaction);
+    return true;
+  }
   if (!banned) {
     return false;
   }

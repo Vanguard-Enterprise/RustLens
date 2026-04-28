@@ -2,6 +2,7 @@ import type { APIEmbedField, ChatInputCommandInteraction, Client } from "discord
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient, type GuildOnlineSummaryItem } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { replyPaginatedEmbeds } from "./embed-paginator.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const ONLINE_COMMAND_NAME = "online";
@@ -220,11 +221,7 @@ export async function handleOnlineChatInput(interaction: ChatInputCommandInterac
   }
   const embeds = buildPagedEmbeds(items);
 
-  await interaction.editReply({ embeds: [embeds[0]] });
-
-  for (const embed of embeds.slice(1)) {
-    await interaction.followUp({ embeds: [embed] });
-  }
+  await replyPaginatedEmbeds(interaction, embeds);
 
   return true;
 }

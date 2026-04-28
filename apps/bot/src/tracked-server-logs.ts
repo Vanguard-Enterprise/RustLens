@@ -28,7 +28,7 @@ function getBackend() {
   return { backend: _backend, workerId: _workerId! };
 }
 
-export function startTrackedServerLogPoller(client: Client) {
+export function startTrackedServerLogPoller(client: Client): NodeJS.Timeout {
   let running = false;
 
   const tick = async () => {
@@ -45,8 +45,9 @@ export function startTrackedServerLogPoller(client: Client) {
     }
   };
 
-  setInterval(tick, POLL_INTERVAL_MS);
+  const timer = setInterval(tick, POLL_INTERVAL_MS);
   void tick();
+  return timer;
 }
 
 async function pollGuilds(client: Client) {

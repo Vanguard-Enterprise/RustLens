@@ -1,6 +1,6 @@
-const BM_ID_PATTERN = /^\d{1,16}$/;
+const BM_ID_PATTERN = /^\d{6,16}$/;
 const BM_PLAYER_URL_PATTERN =
-  /^https?:\/\/(?:www\.)?battlemetrics\.com\/(?:rcon\/)?players\/(\d{1,16})(?:[\/?#].*)?$/i;
+  /^https?:\/\/(?:www\.)?battlemetrics\.com\/(?:rcon\/)?players\/(\d{6,16})(?:[\/?#].*)?$/i;
 
 export function extractBmID(input: string): string | null {
   const trimmed = input.trim();

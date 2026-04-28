@@ -1,5 +1,4 @@
 import type {
-  APIEmbedField,
   AutocompleteInteraction,
   ChatInputCommandInteraction,
   Client,
@@ -13,6 +12,7 @@ import {
   type WipeReact,
 } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { paginateSections, replyPaginatedEmbeds, type PaginatedSection } from "./embed-paginator.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
@@ -77,8 +77,8 @@ function buildBaseEmbed(title: string, description: string) {
     .setFooter({ text: FOOTER_TEXT, iconURL: RUSTLENS_EMBED_ICON_URL });
 }
 
-function formatUserLines(userIds: readonly string[]) {
-  return userIds.map((userId) => `> * <@${userId}>`).join("\n");
+function userLines(userIds: readonly string[]): string[] {
+  return userIds.map((userId) => `> * <@${userId}>`);
 }
 
 function uniqueSorted(values: Iterable<string>) {
@@ -124,133 +124,65 @@ function filterChoices<T>(
     }));
 }
 
-function buildWipeReactComparisonEmbed(
+function buildWipeReactComparisonEmbeds(
   wipeReact: WipeReact,
   acceptedNotInVoice: readonly string[],
   lateNotInVoice: readonly string[],
   declinedInVoice: readonly string[],
-) {
+): EmbedBuilder[] {
   const outOfSyncCount = new Set([
     ...acceptedNotInVoice,
     ...lateNotInVoice,
     ...declinedInVoice,
   ]).size;
+  const description = `**Compared Against**\n${wipeReact.name} | ${formatWipeReactDate(wipeReact)} | \`${wipeReact.messageId}\`\n\n${outOfSyncCount} users found out of sync`;
 
-  const embed = buildBaseEmbed(
-    "Wipe React Comparison",
-    `**Compared Against**\n${wipeReact.name} | ${formatWipeReactDate(wipeReact)} | \`${wipeReact.messageId}\`\n\n${outOfSyncCount} users found out of sync`,
-  );
+  const sections: PaginatedSection[] = [
+    { name: "✅ Accepted - Not in Voice", lines: userLines(acceptedNotInVoice) },
+    { name: "⏰ Late - Not in Voice", lines: userLines(lateNotInVoice) },
+    { name: "❌ Declined - In Voice", lines: userLines(declinedInVoice) },
+  ];
 
-  const fields: APIEmbedField[] = [];
-  if (acceptedNotInVoice.length > 0) {
-    fields.push({
-      name: "✅ Accepted - Not in Voice",
-      value: formatUserLines(acceptedNotInVoice),
-      inline: false,
-    });
-  }
-  if (lateNotInVoice.length > 0) {
-    fields.push({
-      name: "⏰ Late - Not in Voice",
-      value: formatUserLines(lateNotInVoice),
-      inline: false,
-    });
-  }
-  if (declinedInVoice.length > 0) {
-    fields.push({
-      name: "❌ Declined - In Voice",
-      value: formatUserLines(declinedInVoice),
-      inline: false,
-    });
-  }
-
-  if (fields.length > 0) {
-    embed.addFields(fields);
-  }
-
-  return embed;
+  return paginateSections(sections, () => buildBaseEmbed("Wipe React Comparison", description));
 }
 
-function buildWipeReactServerComparisonEmbed(
+function buildWipeReactServerComparisonEmbeds(
   wipeReact: WipeReact,
   serverName: string,
   acceptedNotOnServer: readonly string[],
   lateNotOnServer: readonly string[],
   declinedOnServer: readonly string[],
-) {
+): EmbedBuilder[] {
   const outOfSyncCount = new Set([
     ...acceptedNotOnServer,
     ...lateNotOnServer,
     ...declinedOnServer,
   ]).size;
+  const description = `**Compared Against**\n${wipeReact.name} | ${formatWipeReactDate(wipeReact)} | \`${wipeReact.messageId}\`\n${serverName}\n\n${outOfSyncCount} users found out of sync`;
 
-  const embed = buildBaseEmbed(
-    "Wipe React vs Server Comparison",
-    `**Compared Against**\n${wipeReact.name} | ${formatWipeReactDate(wipeReact)} | \`${wipeReact.messageId}\`\n${serverName}\n\n${outOfSyncCount} users found out of sync`,
-  );
+  const sections: PaginatedSection[] = [
+    { name: "✅ Accepted - Not on Server", lines: userLines(acceptedNotOnServer) },
+    { name: "⏰ Late - Not on Server", lines: userLines(lateNotOnServer) },
+    { name: "❌ Declined - On Server", lines: userLines(declinedOnServer) },
+  ];
 
-  const fields: APIEmbedField[] = [];
-  if (acceptedNotOnServer.length > 0) {
-    fields.push({
-      name: "✅ Accepted - Not on Server",
-      value: formatUserLines(acceptedNotOnServer),
-      inline: false,
-    });
-  }
-  if (lateNotOnServer.length > 0) {
-    fields.push({
-      name: "⏰ Late - Not on Server",
-      value: formatUserLines(lateNotOnServer),
-      inline: false,
-    });
-  }
-  if (declinedOnServer.length > 0) {
-    fields.push({
-      name: "❌ Declined - On Server",
-      value: formatUserLines(declinedOnServer),
-      inline: false,
-    });
-  }
-
-  if (fields.length > 0) {
-    embed.addFields(fields);
-  }
-
-  return embed;
+  return paginateSections(sections, () => buildBaseEmbed("Wipe React vs Server Comparison", description));
 }
 
-function buildServerComparisonEmbed(
+function buildServerComparisonEmbeds(
   serverName: string,
   needToJoinServer: readonly string[],
   needToJoinVoice: readonly string[],
-) {
+): EmbedBuilder[] {
   const outOfSyncCount = new Set([...needToJoinServer, ...needToJoinVoice]).size;
-  const embed = buildBaseEmbed(
-    "Server Comparison ",
-    `**Compared Against**\n${serverName}\n\n${outOfSyncCount} users out of sync`,
-  );
+  const description = `**Compared Against**\n${serverName}\n\n${outOfSyncCount} users out of sync`;
 
-  const fields: APIEmbedField[] = [];
-  if (needToJoinServer.length > 0) {
-    fields.push({
-      name: "🎮 Need to Join Server",
-      value: formatUserLines(needToJoinServer),
-      inline: false,
-    });
-  }
-  if (needToJoinVoice.length > 0) {
-    fields.push({
-      name: "🎙️ Need to Join Voice",
-      value: formatUserLines(needToJoinVoice),
-      inline: false,
-    });
-  }
+  const sections: PaginatedSection[] = [
+    { name: "🎮 Need to Join Server", lines: userLines(needToJoinServer) },
+    { name: "🎙️ Need to Join Voice", lines: userLines(needToJoinVoice) },
+  ];
 
-  if (fields.length > 0) {
-    embed.addFields(fields);
-  }
-
-  return embed;
+  return paginateSections(sections, () => buildBaseEmbed("Server Comparison ", description));
 }
 
 async function listTrackedServers() {
@@ -384,9 +316,8 @@ async function handleWipeReactComparison(
     [...voiceUserIds].filter((userId) => declinedSet.has(userId)),
   );
 
-  await interaction.editReply({
-    embeds: [buildWipeReactComparisonEmbed(wipeReact, acceptedNotInVoice, lateNotInVoice, declinedInVoice)],
-  });
+  const embeds = buildWipeReactComparisonEmbeds(wipeReact, acceptedNotInVoice, lateNotInVoice, declinedInVoice);
+  await replyPaginatedEmbeds(interaction, embeds);
   return true;
 }
 
@@ -436,9 +367,8 @@ async function handleServerComparison(
     [...onlineDiscordIds].filter((discordId) => !voiceSet.has(discordId)),
   );
 
-  await interaction.editReply({
-    embeds: [buildServerComparisonEmbed(serverName, needToJoinServer, needToJoinVoice)],
-  });
+  const embeds = buildServerComparisonEmbeds(serverName, needToJoinServer, needToJoinVoice);
+  await replyPaginatedEmbeds(interaction, embeds);
   return true;
 }
 
@@ -491,17 +421,14 @@ async function handleWipeReactServerComparison(
     [...onlineDiscordIds].filter((userId) => declinedSet.has(userId)),
   );
 
-  await interaction.editReply({
-    embeds: [
-      buildWipeReactServerComparisonEmbed(
-        wipeReact,
-        serverName,
-        acceptedNotOnServer,
-        lateNotOnServer,
-        declinedOnServer,
-      ),
-    ],
-  });
+  const embeds = buildWipeReactServerComparisonEmbeds(
+    wipeReact,
+    serverName,
+    acceptedNotOnServer,
+    lateNotOnServer,
+    declinedOnServer,
+  );
+  await replyPaginatedEmbeds(interaction, embeds);
   return true;
 }
 
@@ -617,9 +544,9 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
 }
 
 export const __testables = {
-  buildServerComparisonEmbed,
-  buildWipeReactComparisonEmbed,
-  buildWipeReactServerComparisonEmbed,
+  buildServerComparisonEmbeds,
+  buildWipeReactComparisonEmbeds,
+  buildWipeReactServerComparisonEmbeds,
   filterChoices,
   formatWipeReactChoiceName,
 };
