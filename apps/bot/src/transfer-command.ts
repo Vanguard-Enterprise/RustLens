@@ -280,18 +280,18 @@ export async function handleTransferModalSubmit(interaction: ModalSubmitInteract
   let success = 0;
   let failed = 0;
 
-  for (const pair of pairs) {
+  const linkOne = async (pair: LinkPair) => {
     try {
       const member = await guild.members.fetch(pair.discordId).catch(() => null);
       if (!member) {
         failed++;
-        continue;
+        return;
       }
 
       try {
         await backend.createSoftLink(workerId, pair.steamId, pair.discordId, "transfer_hexaytron");
       } catch (error) {
-        const status = error instanceof Error ? (error as any).status : undefined;
+        const status = (error as { status?: number }).status;
         if (status !== 409) {
           throw error;
         }
@@ -300,7 +300,7 @@ export async function handleTransferModalSubmit(interaction: ModalSubmitInteract
       try {
         await backend.createGuildLink(workerId, interaction.guildId, pair.discordId, pair.steamId);
       } catch (error) {
-        const status = error instanceof Error ? (error as any).status : undefined;
+        const status = (error as { status?: number }).status;
         if (status !== 409) {
           throw error;
         }
@@ -310,7 +310,26 @@ export async function handleTransferModalSubmit(interaction: ModalSubmitInteract
     } catch {
       failed++;
     }
-  }
+  };
+
+  // Run with bounded concurrency so a long input doesn't race the 15-min
+  // interaction-token lifetime, and so a failure on one pair doesn't abort the
+  // batch.
+  const TRANSFER_CONCURRENCY = 5;
+  let cursor = 0;
+  const runWorker = async () => {
+    while (true) {
+      const idx = cursor;
+      cursor += 1;
+      if (idx >= pairs.length) {
+        return;
+      }
+      await linkOne(pairs[idx]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(TRANSFER_CONCURRENCY, pairs.length) }, () => runWorker()),
+  );
 
   const description = `**${success}** successfully linked\n**${failed}** unsuccessfully linked`;
   await interaction.editReply({

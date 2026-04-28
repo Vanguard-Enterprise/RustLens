@@ -1,5 +1,9 @@
 const steamIDPattern = /^\d{17}$/;
-const steamCommunityProfileURLPattern = /^https?:\/\/(?:www\.)?steamcommunity\.com\//i;
+// Accept only profile-shaped paths: /profiles/<steamid64> or /id/<vanity>.
+// Other steamcommunity.com URLs (groups, market, app, etc.) are rejected here so
+// the backend doesn't have to handle ambiguous inputs.
+const steamCommunityProfileURLPattern =
+  /^https?:\/\/(?:www\.)?steamcommunity\.com\/(?:profiles\/\d{17}|id\/[A-Za-z0-9_-]{1,32})\/?(?:[?#].*)?$/i;
 const fallbackMessage = "Enter a 17-digit Steam ID or a supported steamcommunity.com profile URL.";
 
 export function isSteamProfileInput(input: string) {

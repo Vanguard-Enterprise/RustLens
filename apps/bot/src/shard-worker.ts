@@ -148,19 +148,31 @@ async function updateSteamAccountPresence() {
   await client.user?.setActivity(`${formattedCount} users`, { type: ActivityType.Watching });
 }
 
+const shutdownTimers: (NodeJS.Timeout | undefined)[] = [];
+
 client.once("clientReady", () => {
   console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);
 
-  startShardStatsPusher(client, shardID);
+  shutdownTimers.push(startShardStatsPusher(client, shardID));
 
-  updateSteamAccountPresence().catch((error) => {
-    console.error("[bot] failed to update steam account presence", error);
-  });
-  setInterval(() => {
-    updateSteamAccountPresence().catch((error) => {
-      console.error("[bot] failed to refresh steam account presence", error);
-    });
-  }, statusRefreshIntervalMs);
+  let presenceRunning = false;
+  const presenceTick = () => {
+    if (presenceRunning) {
+      return;
+    }
+    presenceRunning = true;
+    updateSteamAccountPresence()
+      .catch((error) => {
+        console.error("[bot] failed to refresh steam account presence", error);
+      })
+      .finally(() => {
+        presenceRunning = false;
+      });
+  };
+
+  // Stagger initial fetch by shard so N shards don't all hit the backend at once.
+  setTimeout(presenceTick, (shardID % 10) * 1_000);
+  shutdownTimers.push(setInterval(presenceTick, statusRefreshIntervalMs));
 
   Promise.allSettled([
     ensureAdminCommand(client, shardID),
@@ -190,9 +202,9 @@ client.once("clientReady", () => {
         console.error("[bot] command registration failed", result.reason);
       }
     }
-    startWipeReactScheduler(client);
-    startTrackedServerLogPoller(client);
-    startTrackGroupPoller(client);
+    shutdownTimers.push(startWipeReactScheduler(client));
+    shutdownTimers.push(startTrackedServerLogPoller(client));
+    shutdownTimers.push(startTrackGroupPoller(client));
   });
 });
 
@@ -442,12 +454,21 @@ client.login(token).catch((error) => {
   process.exit(1);
 });
 
-process.on("SIGINT", async () => {
+async function shutdown() {
+  for (const timer of shutdownTimers) {
+    if (timer) {
+      clearInterval(timer);
+    }
+  }
+  shutdownTimers.length = 0;
   await client.destroy();
   process.exit(0);
+}
+
+process.on("SIGINT", () => {
+  void shutdown();
 });
 
-process.on("SIGTERM", async () => {
-  await client.destroy();
-  process.exit(0);
+process.on("SIGTERM", () => {
+  void shutdown();
 });

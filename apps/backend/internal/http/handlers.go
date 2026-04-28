@@ -21,6 +21,7 @@ import (
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
+	"rustlens/backend/internal/bmmatch"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/proxycrypto"
@@ -40,23 +41,23 @@ const recentGameBanWindow = 90 * 24 * time.Hour
 const steamPlayerBanBatchSize = 100
 
 type Handler struct {
-	cfg                     config.Config
-	postgres                *store.PostgresStore
-	redis                   *store.RedisStore
-	shardService            *shards.Service
-	jwtValidator            *auth.Validator
-	appSessions             *auth.AppSessionValidator
-	steamClient             *steamapi.Client
-	steamSummaryClient      *steamapi.Client
-	battleMetricsClient     *battlemetrics.Client
-	authBattleMetricsClient *battlemetrics.Client
-	rbacStore               *rbac.Store
-	rbacResolver            *rbac.Resolver
-	auditStore              *audit.Store
-	actionRegistry          *actions.Registry
-	actionDispatcher        *actions.Dispatcher
-	outboundProvider        *outboundhttp.Provider
-	proxyCrypto             *proxycrypto.Crypto
+	cfg                 config.Config
+	postgres            *store.PostgresStore
+	redis               *store.RedisStore
+	shardService        *shards.Service
+	jwtValidator        *auth.Validator
+	appSessions         *auth.AppSessionValidator
+	steamClient         *steamapi.Client
+	steamSummaryClient  *steamapi.Client
+	battleMetricsClient *battlemetrics.Client
+	bmMatch             *bmmatch.Client
+	rbacStore           *rbac.Store
+	rbacResolver        *rbac.Resolver
+	auditStore          *audit.Store
+	actionRegistry      *actions.Registry
+	actionDispatcher    *actions.Dispatcher
+	outboundProvider    *outboundhttp.Provider
+	proxyCrypto         *proxycrypto.Crypto
 }
 
 func NewHandler(
@@ -67,7 +68,7 @@ func NewHandler(
 	steamClient *steamapi.Client,
 	steamSummaryClient *steamapi.Client,
 	battleMetricsClient *battlemetrics.Client,
-	authBattleMetricsClient *battlemetrics.Client,
+	bmMatch *bmmatch.Client,
 	outboundProvider *outboundhttp.Provider,
 	proxyCrypto *proxycrypto.Crypto,
 ) *Handler {
@@ -97,15 +98,15 @@ func NewHandler(
 		appSessions:             auth.NewAppSessionValidator(cfg.AppSessionSecret),
 		steamClient:             steamClient,
 		steamSummaryClient:      steamSummaryClient,
-		battleMetricsClient:     battleMetricsClient,
-		authBattleMetricsClient: authBattleMetricsClient,
-		rbacStore:               rbacStore,
-		rbacResolver:            resolver,
-		auditStore:              auditStore,
-		actionRegistry:          registry,
-		actionDispatcher:        dispatcher,
-		outboundProvider:        outboundProvider,
-		proxyCrypto:             proxyCrypto,
+		battleMetricsClient: battleMetricsClient,
+		bmMatch:             bmMatch,
+		rbacStore:           rbacStore,
+		rbacResolver:        resolver,
+		auditStore:          auditStore,
+		actionRegistry:      registry,
+		actionDispatcher:    dispatcher,
+		outboundProvider:    outboundProvider,
+		proxyCrypto:         proxyCrypto,
 	}
 }
 
@@ -2097,11 +2098,14 @@ func (h *Handler) upsertResolvedSteamAccount(ctx context.Context, steamID string
 }
 
 func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID string) (store.SteamAccount, error) {
-	profile, err := h.authBattleMetricsClient.QuickMatchPlayerProfileBySteamID(ctx, steamID)
+	bmID, err := h.bmMatch.SteamToBM(ctx, steamID)
 	if err != nil {
+		if errors.Is(err, bmmatch.ErrNotFound) || errors.Is(err, bmmatch.ErrNotConfigured) {
+			return store.SteamAccount{}, store.ErrSteamAccountNotFound
+		}
 		return store.SteamAccount{}, err
 	}
-	bmID := strings.TrimSpace(profile.BmID)
+	bmID = strings.TrimSpace(bmID)
 	if bmID == "" {
 		return store.SteamAccount{}, store.ErrSteamAccountNotFound
 	}
@@ -2111,25 +2115,37 @@ func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID stri
 		return store.SteamAccount{}, err
 	}
 	if fullProfile.SteamID == "" {
-		fullProfile.SteamID = profile.SteamID
-	}
-	if fullProfile.SteamID == "" {
 		fullProfile.SteamID = steamID
 	}
-	if fullProfile.BmName == "" {
-		fullProfile.BmName = profile.BmName
+	if fullProfile.BmID == "" {
+		fullProfile.BmID = bmID
 	}
 
 	return h.upsertResolvedSteamAccount(ctx, fullProfile.SteamID, fullProfile)
 }
 
 func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (store.SteamAccount, error) {
-	profile, err := h.authBattleMetricsClient.FetchPlayerProfile(ctx, bmID)
+	profile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, bmID)
 	if err != nil {
 		return store.SteamAccount{}, err
 	}
-	if strings.TrimSpace(profile.SteamID) == "" {
-		return store.SteamAccount{}, store.ErrSteamAccountNotFound
+
+	steamID := strings.TrimSpace(profile.SteamID)
+	if steamID == "" {
+		// The unauthenticated BM /players/{id} response may omit identifiers,
+		// so fall back to the matching service for the Steam ID.
+		resolved, lookupErr := h.bmMatch.BMToSteam(ctx, bmID)
+		if lookupErr != nil {
+			if errors.Is(lookupErr, bmmatch.ErrNotFound) || errors.Is(lookupErr, bmmatch.ErrNotConfigured) {
+				return store.SteamAccount{}, store.ErrSteamAccountNotFound
+			}
+			return store.SteamAccount{}, lookupErr
+		}
+		steamID = strings.TrimSpace(resolved)
+		if steamID == "" {
+			return store.SteamAccount{}, store.ErrSteamAccountNotFound
+		}
+		profile.SteamID = steamID
 	}
 
 	return h.upsertResolvedSteamAccount(ctx, profile.SteamID, profile)
@@ -2348,6 +2364,72 @@ func (h *Handler) GetSteamAccountByBmID(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeSteamAccount(w, account)
+}
+
+type bmPlayerProfileServer struct {
+	ServerID      string `json:"serverId"`
+	ServerName    string `json:"serverName"`
+	TimePlayedSec int64  `json:"timePlayedSec"`
+	FirstSeenAt   string `json:"firstSeenAt,omitempty"`
+	LastSeenAt    string `json:"lastSeenAt,omitempty"`
+}
+
+type bmPlayerProfileResponse struct {
+	BmID      string                  `json:"bmId"`
+	BmName    string                  `json:"bmName"`
+	SteamID   string                  `json:"steamId,omitempty"`
+	CreatedAt string                  `json:"createdAt,omitempty"`
+	Servers   []bmPlayerProfileServer `json:"servers"`
+}
+
+// GetBmPlayerProfile returns the BattleMetrics profile for a player by BM ID,
+// without requiring or persisting a Steam ID. Used by /player when the input
+// is a BM ID and the player has no Steam linkage in our DB or in BM's data.
+func (h *Handler) GetBmPlayerProfile(w http.ResponseWriter, r *http.Request) {
+	bmID := strings.TrimSpace(chi.URLParam(r, "bmID"))
+	if !bmIDPattern.MatchString(bmID) {
+		writeError(w, http.StatusBadRequest, "bmID must be a numeric BattleMetrics player ID")
+		return
+	}
+
+	profile, err := h.battleMetricsClient.FetchPlayerProfile(r.Context(), bmID)
+	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+		writeError(w, http.StatusNotFound, "battlemetrics player not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetBmPlayerProfile error for %s: %v", bmID, err)
+		writeError(w, http.StatusBadGateway, "failed to fetch battlemetrics profile")
+		return
+	}
+
+	servers := make([]bmPlayerProfileServer, 0, len(profile.Servers))
+	for _, server := range profile.Servers {
+		entry := bmPlayerProfileServer{
+			ServerID:      server.ServerID,
+			ServerName:    server.ServerName,
+			TimePlayedSec: server.TimePlayed,
+		}
+		if server.FirstSeenAt != nil {
+			entry.FirstSeenAt = server.FirstSeenAt.UTC().Format(time.RFC3339)
+		}
+		if server.LastSeenAt != nil {
+			entry.LastSeenAt = server.LastSeenAt.UTC().Format(time.RFC3339)
+		}
+		servers = append(servers, entry)
+	}
+
+	resp := bmPlayerProfileResponse{
+		BmID:    profile.BmID,
+		BmName:  profile.BmName,
+		SteamID: profile.SteamID,
+		Servers: servers,
+	}
+	if profile.CreatedAt != nil {
+		resp.CreatedAt = profile.CreatedAt.UTC().Format(time.RFC3339)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) ListLinksBySteamID(w http.ResponseWriter, r *http.Request) {

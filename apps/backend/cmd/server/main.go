@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"rustlens/backend/internal/battlemetrics"
+	"rustlens/backend/internal/bmmatch"
+	"rustlens/backend/internal/cleanup"
 	"rustlens/backend/internal/config"
 	httpapi "rustlens/backend/internal/http"
 	"rustlens/backend/internal/outboundhttp"
@@ -62,6 +64,7 @@ func main() {
 	}
 
 	shardService := shards.NewService(redisStore, postgresStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
+	bmMatchClient := bmmatch.NewClient(cfg.BMMatchURL, cfg.BMMatchToken, 10*time.Second)
 	router := httpapi.NewRouter(
 		cfg,
 		postgresStore,
@@ -69,15 +72,18 @@ func main() {
 		shardService,
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
-		battlemetrics.NewClient(cfg.BattleMetricsAPIKey, outboundProvider),
-		battlemetrics.NewClient(cfg.BattleMetricsAPIKey, directProvider),
+		battlemetrics.NewClient(outboundProvider),
+		bmMatchClient,
 		outboundProvider,
 		proxyCrypto,
 	)
-	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(cfg.BattleMetricsAPIKey, outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
+	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
 	wipeReactSchedulePoller := wipereactscheduler.NewPoller(postgresStore)
 	wipeReactSchedulePoller.Start(ctx)
+
+	cleanupService := cleanup.NewService(postgresStore, cleanup.Config{})
+	cleanupService.Start(ctx)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

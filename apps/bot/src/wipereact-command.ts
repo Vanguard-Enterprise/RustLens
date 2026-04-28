@@ -580,12 +580,32 @@ function parseUserIds(value: string | undefined) {
   return [...new Set([...matches].map((match) => match[1]))];
 }
 
+const WIPE_REACT_FIELD_VALUE_MAX = 1024;
+
 function formatUserMentions(userIds: readonly string[]) {
   if (userIds.length === 0) {
     return WIPE_REACT_EMPTY_FIELD_VALUE;
   }
 
-  return userIds.map((userId) => `<@${userId}>`).join("\n");
+  const mentions = userIds.map((userId) => `<@${userId}>`);
+  const buffer: string[] = [];
+  let length = 0;
+
+  for (let i = 0; i < mentions.length; i += 1) {
+    const mention = mentions[i];
+    const sep = buffer.length > 0 ? 1 : 0;
+    const remaining = mentions.length - i;
+    const overflowSuffix = remaining > 1 ? `\n+${remaining} more` : "";
+    if (length + sep + mention.length + overflowSuffix.length > WIPE_REACT_FIELD_VALUE_MAX) {
+      const omitted = mentions.length - buffer.length;
+      buffer.push(`+${omitted} more`);
+      break;
+    }
+    buffer.push(mention);
+    length += sep + mention.length;
+  }
+
+  return buffer.join("\n");
 }
 
 function buildStatusField(prefix: string, userIds: readonly string[]) {
@@ -1656,12 +1676,22 @@ function scheduleWipeReactExpiry(message: Message, scheduledUnix: number) {
     clearTimeout(existingTimer);
   }
 
-  const delayMs = scheduledUnix * 1000 - Date.now();
-  const timeoutMs = Math.min(Math.max(delayMs, 0), MAX_TIMEOUT_MS);
+  const delayMs = Math.max(scheduledUnix * 1000 - Date.now(), 0);
+  if (delayMs > MAX_TIMEOUT_MS) {
+    // setTimeout caps at ~24.8 days; re-arm at the cap instead of firing the
+    // disable handler early.
+    const rearmTimer = setTimeout(() => {
+      wipeReactExpiryTimers.delete(message.id);
+      scheduleWipeReactExpiry(message, scheduledUnix);
+    }, MAX_TIMEOUT_MS);
+    wipeReactExpiryTimers.set(message.id, rearmTimer);
+    return;
+  }
+
   const timer = setTimeout(() => {
     wipeReactExpiryTimers.delete(message.id);
     void disableScheduledWipeReact(message);
-  }, timeoutMs);
+  }, delayMs);
 
   wipeReactExpiryTimers.set(message.id, timer);
 }
@@ -1943,21 +1973,28 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     if (messageText.length > 0 && missingMembers.length > 0) {
       let sent = 0;
       let failed = 0;
-
+      const recipients = missingMembers.filter((member) => member.id !== interaction.user.id);
+      const dmEmbed = buildNotReactedDmEmbed(messageText, wipeReactMessage.url);
+      // Cap fanout to avoid Discord per-route DM rate limits on large guilds.
+      const DM_CONCURRENCY = 5;
+      let cursor = 0;
+      const sendOne = async () => {
+        while (true) {
+          const idx = cursor;
+          cursor += 1;
+          if (idx >= recipients.length) {
+            return;
+          }
+          try {
+            await recipients[idx].send({ embeds: [dmEmbed], components: [] });
+            sent += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+      };
       await Promise.all(
-        missingMembers
-          .filter((member) => member.id !== interaction.user.id)
-          .map(async (member) => {
-            try {
-              await member.send({
-                embeds: [buildNotReactedDmEmbed(messageText, wipeReactMessage.url)],
-                components: [],
-              });
-              sent++;
-            } catch {
-              failed++;
-            }
-          }),
+        Array.from({ length: Math.min(DM_CONCURRENCY, recipients.length) }, () => sendOne()),
       );
 
       messageStatus = { sent, failed };
@@ -2586,36 +2623,45 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
   return processWipeReactAction(interaction, message, action, reason);
 }
 
-export function startWipeReactScheduler(client: Client) {
+export function startWipeReactScheduler(client: Client): NodeJS.Timeout {
   const SCHEDULER_INTERVAL_MS = 60_000;
   const workerID = getWipeReactWorkerID();
+  let running = false;
 
   async function tick() {
-    const guilds = [...client.guilds.cache.values()];
+    if (running) {
+      return;
+    }
+    running = true;
+    try {
+      const guilds = [...client.guilds.cache.values()];
 
-    for (const guild of guilds) {
-      try {
-        while (true) {
-          const response = await getBackend().claimNextWipeReactSchedulePost(workerID, guild.id);
-          if (!response.item) {
-            break;
-          }
+      for (const guild of guilds) {
+        try {
+          while (true) {
+            const response = await getBackend().claimNextWipeReactSchedulePost(workerID, guild.id);
+            if (!response.item) {
+              break;
+            }
 
-          await processSchedulePost(guild, response.item).catch((error) => {
-            console.error("[bot] schedule tick failed", {
-              guildId: guild.id,
-              postId: response.item?.id,
-              scheduleId: response.item?.scheduleId,
-              error,
+            await processSchedulePost(guild, response.item).catch((error) => {
+              console.error("[bot] schedule tick failed", {
+                guildId: guild.id,
+                postId: response.item?.id,
+                scheduleId: response.item?.scheduleId,
+                error,
+              });
             });
+          }
+        } catch (error) {
+          console.error("[bot] failed to poll scheduled wipe reacts for guild", {
+            guildId: guild.id,
+            error,
           });
         }
-      } catch (error) {
-        console.error("[bot] failed to poll scheduled wipe reacts for guild", {
-          guildId: guild.id,
-          error,
-        });
       }
+    } finally {
+      running = false;
     }
   }
 
@@ -2690,7 +2736,7 @@ export function startWipeReactScheduler(client: Client) {
     });
   }
 
-  setInterval(() => {
+  const timer = setInterval(() => {
     tick().catch((error) => {
       console.error("[bot] scheduler tick error", error);
     });
@@ -2703,6 +2749,7 @@ export function startWipeReactScheduler(client: Client) {
   }, 5000);
 
   console.log("[bot] wipe react scheduler started");
+  return timer;
 }
 
 export const __testables = {

@@ -19,20 +19,6 @@ export function computeNextBestOfflineWindow(
   analytics: TrackGroupAnalyticsResponse,
   now: Date = new Date(),
 ): NextBestOfflineWindow | null {
-  const lookup = Array.from({ length: 7 }, () => new Array<number>(24).fill(Number.POSITIVE_INFINITY));
-  let populated = 0;
-  for (const day of analytics.days) {
-    const wd = WEEKDAY_INDEX[day.weekday];
-    if (wd === undefined) continue;
-    for (const hour of day.hours) {
-      const h = hour.hour ?? new Date(hour.hourUnix * 1000).getUTCHours();
-      if (h < 0 || h > 23) continue;
-      lookup[wd][h] = hour.avg;
-      populated += 1;
-    }
-  }
-  if (populated === 0) return null;
-
   const tz = analytics.timeZone || "Europe/London";
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
@@ -41,13 +27,35 @@ export function computeNextBestOfflineWindow(
     hour12: false,
   });
 
+  const hourInTz = (date: Date): number | null => {
+    const parts = formatter.formatToParts(date);
+    const hourStr = parts.find((part) => part.type === "hour")?.value ?? "";
+    const parsed = Number(hourStr);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed % 24;
+  };
+
+  const lookup = Array.from({ length: 7 }, () => new Array<number>(24).fill(Number.POSITIVE_INFINITY));
+  let populated = 0;
+  for (const day of analytics.days) {
+    const wd = WEEKDAY_INDEX[day.weekday];
+    if (wd === undefined) continue;
+    for (const hour of day.hours) {
+      const h = hour.hour ?? hourInTz(new Date(hour.hourUnix * 1000));
+      if (h === null || h < 0 || h > 23) continue;
+      lookup[wd][h] = hour.avg;
+      populated += 1;
+    }
+  }
+  if (populated === 0) return null;
+
   const localizedAvg = (date: Date): number => {
     const parts = formatter.formatToParts(date);
     const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
     const hourStr = parts.find((part) => part.type === "hour")?.value ?? "0";
     const wd = WEEKDAY_INDEX[weekday];
     const hour = Number(hourStr) % 24;
-    if (wd === undefined) return Number.POSITIVE_INFINITY;
+    if (wd === undefined || !Number.isFinite(hour)) return Number.POSITIVE_INFINITY;
     return lookup[wd][hour];
   };
 

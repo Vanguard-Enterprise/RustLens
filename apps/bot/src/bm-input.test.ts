@@ -26,4 +26,10 @@ describe("extractBmID", () => {
     expect(extractBmID("https://www.battlemetrics.com/servers/rust/16741517")).toBeNull();
     expect(extractBmID("")).toBeNull();
   });
+
+  it("rejects bare-digit inputs that are too short to be a real BM ID", () => {
+    expect(extractBmID("0")).toBeNull();
+    expect(extractBmID("1")).toBeNull();
+    expect(extractBmID("12345")).toBeNull();
+  });
 });

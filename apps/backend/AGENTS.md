@@ -271,6 +271,33 @@ Guild-scoped Steam-Discord associations managed by guild admins.
 - `guild_steam_discord_links_guild_discord_idx ON (guild_id, discord_id)` — lookup by guild + Discord user.
 - `guild_steam_discord_links_guild_steam_idx ON (guild_id, steam_id)` — lookup by guild + Steam account.
 
+## Background services
+
+`cmd/server/main.go` starts three long-running goroutines, each cancelled by the root `ctx` on SIGINT/SIGTERM:
+
+- `battlemetrics.Poller` — refreshes `player_states` from BattleMetrics on a rolling interval.
+- `wipereactscheduler.Poller` — enqueues due wipe-react schedule posts into `wipe_react_schedule_posts` for the bot to claim.
+- `cleanup.Service` — periodic retention sweep (see below).
+
+### `cleanup.Service`
+
+Hourly background sweep that drops stale rows from volatile tables. Conservative by design: long-lived product data (user accounts, links, audit events, tracked servers, schedules, persisted settings) is **never** touched here.
+
+Defaults (overridable via `cleanup.Config`):
+
+| Sweep | Retention | Tables |
+|---|---|---|
+| Wipe reacts | 7 days past `scheduled_unix` | `wipe_reacts` |
+| Track-analytics session cache | 48 hours since `fetched_at` | `track_analytics_sessions_cache` |
+| Auth tokens | consumed, OR expired >24h ago | `email_sign_in_tokens`, `password_reset_tokens`, `email_verification_tokens` |
+| Tick interval | 1 hour | — |
+
+Wipe reacts are kept for a week after they pass so `/compare` and `/wipereact missing` can still operate on recent history. The analytics cache window matches the 24h freshness rule used by the analytics handler with a 24h buffer. Auth-token cleanup is safe because consumed tokens cannot be reused regardless of expiry, and the FK `ON DELETE CASCADE` from the parent tables already ensures we never orphan user records.
+
+Failures of any single step are logged and do not abort the others; the service never crashes the server.
+
+Cleanup SQL lives in `internal/store/cleanup.go`; the goroutine lives in `internal/cleanup/service.go`.
+
 ## OpenAPI
 
 The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go map literal. **When adding, modifying, or removing any HTTP endpoint, always update the OpenAPI document to match.** This includes adding path entries, request/response schemas, and keeping parameter descriptions accurate. The spec is served at `/api/docs/openapi.json` and powers the interactive docs at `/api/docs`.
@@ -283,9 +310,10 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - Sentinel errors (e.g. `ErrWipeReactNotFound`) mapped to HTTP 404 in handlers
 - Reaction mutations use `SELECT ... FOR UPDATE` row locking to prevent races
 - `cmd/server/main.go` imports `github.com/joho/godotenv/autoload`, so local backend runs automatically read `apps/backend/.env` before config loading.
-- The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, and updates `player_states` inside a single store transaction per server.
+- The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval (unauthenticated, through the proxy pool) and updates `player_states` inside a single store transaction per server.
 - Steam profile resolution lives in `internal/steamapi/`. The bot uses `POST /api/internal/bot/setup/steam/resolve` to turn a raw 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` / `steamcommunity.com/id/...` URL into a canonical Steam ID. Vanity URLs are resolved live through `STEAM_API_KEY`, are not cached separately, and always go direct without using the backend proxy pool.
-- Bot-internal account lookup routes under `/api/internal/bot/setup/steam/` can backfill missing `steam_accounts` rows through direct, authorized BattleMetrics requests with `BATTLEMETRICS_API_KEY`. These fallback requests are sent directly and are never proxied.
+- Steam ↔ BattleMetrics matching is delegated to an external service in `internal/bmmatch/` configured via `BM_MATCH_URL` + `BM_MATCH_TOKEN`. It exposes `GET /steam-to-bm/{steam_id}` and `GET /bm-to-steam/{bm_id}`; both return a single-string-value JSON object, are sent **directly** (never proxied), and authenticate with a static Bearer token. When unconfigured, backfill resolvers return `ErrSteamAccountNotFound` instead of failing.
+- Bot-internal account lookup routes under `/api/internal/bot/setup/steam/` backfill missing `steam_accounts` rows by combining `bmmatch` for the Steam↔BM ID translation with the proxied, unauthenticated BattleMetrics `/players/{id}` for the rest of the profile (BM name, created-at, servers, hours).
 - Bot-internal `GET /api/internal/bot/setup/steam-accounts/count` returns the current `steam_accounts` row count for bot presence updates.
 - Steam game-ban scans use `GET /api/internal/bot/setup/guilds/{guildID}/game-bans`, which batches guild-linked Steam IDs through `ISteamUser/GetPlayerBans`, refreshes stale cache rows after 6 hours, ignores VAC-only bans, and returns only game bans newer than 90 days.
 - Outbound BattleMetrics HTTP requests prefer enabled `outbound_proxies` rows managed by owner-guild-only `/proxy add|list|remove`; DB proxy URLs are encrypted at rest with `PROXY_ENCRYPTION_KEY`, are live-reloaded after add/delete, and request logs only include credential-free `scheme://host:port` endpoints. If no DB proxies exist, legacy `PROXY_ENABLED=true` + comma-separated `PROXY_ENDPOINTS` is still used as a fallback. Steam API requests are always sent directly.

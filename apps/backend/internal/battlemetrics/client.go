@@ -1,7 +1,6 @@
 package battlemetrics
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,7 +17,6 @@ import (
 var numericPattern = regexp.MustCompile(`^\d+$`)
 
 var ErrPlayerNotFound = errors.New("battlemetrics player not found")
-var ErrAPIKeyRequired = errors.New("battlemetrics api key is required")
 
 const defaultBaseURL = "https://api.battlemetrics.com"
 
@@ -114,7 +112,6 @@ func parsePlayerProfile(player playerResource, included []includedResource) Play
 
 type Client struct {
 	baseURL  string
-	apiKey   string
 	provider requestPreparer
 }
 
@@ -122,7 +119,10 @@ type requestPreparer interface {
 	Prepare() (*http.Client, string, bool)
 }
 
-func NewClient(apiKey string, provider requestPreparer) *Client {
+// NewClient returns an unauthenticated BattleMetrics client. All requests go
+// through the provided HTTP provider (typically the proxy pool). Authenticated
+// Steam ↔ BM matching now lives in the bmmatch package.
+func NewClient(provider requestPreparer) *Client {
 	if provider == nil {
 		fallbackProvider, _ := outboundhttp.NewProvider(false, nil, 20*time.Second)
 		provider = fallbackProvider
@@ -130,7 +130,6 @@ func NewClient(apiKey string, provider requestPreparer) *Client {
 
 	return &Client{
 		baseURL:  defaultBaseURL,
-		apiKey:   apiKey,
 		provider: provider,
 	}
 }
@@ -148,9 +147,6 @@ func (c *Client) FetchServerPlayers(ctx context.Context, serverID string) ([]Pla
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return nil, err
-	}
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 	req.Header.Set("Accept", "application/json")
 
@@ -204,106 +200,6 @@ func (c *Client) FetchServerPlayers(ctx context.Context, serverID string) ([]Pla
 	return players, nil
 }
 
-func (c *Client) QuickMatchPlayerProfileBySteamID(ctx context.Context, steamID string) (PlayerProfile, error) {
-	if !numericPattern.MatchString(steamID) {
-		return PlayerProfile{}, fmt.Errorf("invalid steam ID: %q", steamID)
-	}
-	if c.apiKey == "" {
-		return PlayerProfile{}, ErrAPIKeyRequired
-	}
-
-	endpoint, err := url.Parse(c.baseURL + "/players/quick-match?include=identifier")
-	if err != nil {
-		return PlayerProfile{}, err
-	}
-
-	body, err := json.Marshal(map[string]any{
-		"data": []map[string]any{
-			{
-				"type": "identifier",
-				"attributes": map[string]any{
-					"type":       "steamID",
-					"identifier": steamID,
-				},
-			},
-		},
-	})
-	if err != nil {
-		return PlayerProfile{}, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
-	if err != nil {
-		return PlayerProfile{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-
-	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
-	log.Printf("[battlemetrics] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
-
-	response, err := httpClient.Do(req)
-	if err != nil {
-		return PlayerProfile{}, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode == http.StatusNotFound {
-		return PlayerProfile{}, ErrPlayerNotFound
-	}
-	if response.StatusCode != http.StatusOK {
-		return PlayerProfile{}, fmt.Errorf("battlemetrics returned status %d", response.StatusCode)
-	}
-
-	var payload struct {
-		Data []struct {
-			Attributes struct {
-				Type       string `json:"type"`
-				Identifier string `json:"identifier"`
-			} `json:"attributes"`
-			Relationships struct {
-				Player struct {
-					Data struct {
-						ID string `json:"id"`
-					} `json:"data"`
-				} `json:"player"`
-			} `json:"relationships"`
-		} `json:"data"`
-		Included []includedResource `json:"included"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		return PlayerProfile{}, err
-	}
-	if len(payload.Data) == 0 {
-		return PlayerProfile{}, ErrPlayerNotFound
-	}
-
-	playerID := payload.Data[0].Relationships.Player.Data.ID
-	if playerID == "" {
-		return PlayerProfile{}, ErrPlayerNotFound
-	}
-
-	player := playerResource{ID: playerID}
-	for _, item := range payload.Included {
-		if item.Type != "player" || item.ID != playerID {
-			continue
-		}
-		player.Attributes.Name = item.Attributes.Name
-		break
-	}
-
-	profile := parsePlayerProfile(player, payload.Included)
-	if profile.SteamID == "" && payload.Data[0].Attributes.Type == "steamID" {
-		profile.SteamID = payload.Data[0].Attributes.Identifier
-	}
-	if profile.SteamID == "" {
-		profile.SteamID = steamID
-	}
-
-	return profile, nil
-}
-
 func (c *Client) FetchPlayerProfile(ctx context.Context, playerID string) (PlayerProfile, error) {
 	if !numericPattern.MatchString(playerID) {
 		return PlayerProfile{}, fmt.Errorf("invalid player ID: %q", playerID)
@@ -317,9 +213,6 @@ func (c *Client) FetchPlayerProfile(ctx context.Context, playerID string) (Playe
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return PlayerProfile{}, err
-	}
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 	req.Header.Set("Accept", "application/json")
 

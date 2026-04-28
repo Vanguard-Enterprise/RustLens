@@ -465,8 +465,8 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
     });
   } catch (error) {
     await channel.delete("track group create failed").catch(() => null);
-    const message = error instanceof Error ? error.message : String(error);
-    const description = message.includes("409")
+    const status = (error as { status?: number }).status;
+    const description = status === 409
       ? `A track group named **${groupName}** already exists in this guild.`
       : "RustLens could not create that track group.";
     await interaction.editReply({ embeds: [buildErrorEmbed(description)] });
@@ -730,9 +730,21 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
     return true;
   }
 
-  const removed = await getBackend()
-    .removeTrackGroupMembers(getWorkerID(), interaction.guildId, groupId, identifiers)
-    .catch(() => ({ count: 0 }));
+  let removed: { count: number };
+  try {
+    removed = await getBackend().removeTrackGroupMembers(
+      getWorkerID(),
+      interaction.guildId,
+      groupId,
+      identifiers,
+    );
+  } catch (error) {
+    console.error(`[bot] failed to remove track group members for group ${groupId}`, error);
+    await interaction.editReply({
+      embeds: [buildErrorEmbed("RustLens could not remove those members. Try again shortly.")],
+    });
+    return true;
+  }
 
   await interaction.editReply({
     embeds: [
@@ -840,7 +852,7 @@ type Snapshot = Map<string, boolean>; // steamId -> isOnline
 
 const previousSnapshots = new Map<number, Snapshot>();
 
-export function startTrackGroupPoller(client: Client) {
+export function startTrackGroupPoller(client: Client): NodeJS.Timeout {
   let running = false;
 
   const tick = async () => {
@@ -855,8 +867,9 @@ export function startTrackGroupPoller(client: Client) {
     }
   };
 
-  setInterval(tick, POLL_INTERVAL_MS);
+  const timer = setInterval(tick, POLL_INTERVAL_MS);
   void tick();
+  return timer;
 }
 
 async function pollAllGroups(client: Client) {
