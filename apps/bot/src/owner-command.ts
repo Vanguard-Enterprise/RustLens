@@ -93,6 +93,7 @@ export async function ensureOwnerCommand(client: Client, shardID: number) {
 
   const guildId = getOwnerGuildID();
   const data = ownerCommand.toJSON();
+  const guild = await client.guilds.fetch(guildId);
 
   const globalCommands = await client.application.commands.fetch();
   const existingGlobal = globalCommands.find((command) => command.name === data.name);
@@ -100,14 +101,12 @@ export async function ensureOwnerCommand(client: Client, shardID: number) {
     await client.application.commands.delete(existingGlobal.id);
   }
 
-  const commands = await client.application.commands.fetch({ guildId });
+  const commands = await guild.commands.fetch();
   const existing = commands.find((command) => command.name === data.name);
-
   if (existing) {
-    await client.application.commands.edit(existing.id, data, guildId);
-  } else {
-    await client.application.commands.create(data, guildId);
+    await guild.commands.delete(existing.id);
   }
+  await guild.commands.create(data);
 
   console.log(`[bot] ensured /owner command in guild ${guildId}`);
 }
