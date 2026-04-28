@@ -22,7 +22,7 @@ describe("player-command", () => {
     expect(__testables.isBmPrivateProfileError(new Error("backend call failed (500): boom"))).toBe(false);
   });
 
-  it("builds the BM-only player embed without Steam fields or buttons", () => {
+  it("builds the BM-only player embed in the normal player-card shape", () => {
     const embed = __testables.buildBmOnlyPlayerEmbed({
       bmId: "918543318",
       bmName: "TestPlayer",
@@ -33,14 +33,18 @@ describe("player-command", () => {
       ],
     }).toJSON();
 
-    expect(embed.title).toBe("Player - TestPlayer");
+    expect(embed.title).toBe("TestPlayer");
     const info = embed.fields?.[0];
     expect(info?.name).toBe("Information");
     expect(info?.value).toContain("918543318");
     expect(info?.value).not.toContain("steamcommunity.com");
-    expect(info?.value).toContain("First seen");
 
-    const servers = embed.fields?.[1];
+    expect(embed.fields?.some((field) => field.name.includes("Vitality"))).toBe(true);
+    expect(embed.fields?.some((field) => field.name.includes("First seen"))).toBe(true);
+    expect(embed.fields?.some((field) => field.name.includes("BM") && field.value === "**3** hours")).toBe(true);
+    expect(embed.fields?.some((field) => field.name.startsWith("Risk Factor"))).toBe(true);
+
+    const servers = embed.fields?.find((field) => field.name === "Servers played: 2");
     expect(servers?.name).toBe("Servers played: 2");
     expect(servers?.value).toContain("Vitality 10x");
     expect(servers?.value).toContain("**2** hours");
@@ -52,6 +56,6 @@ describe("player-command", () => {
       bmName: "",
       servers: [],
     }).toJSON();
-    expect(embed.title).toBe("Player - 918543318");
+    expect(embed.title).toBe("918543318");
   });
 });

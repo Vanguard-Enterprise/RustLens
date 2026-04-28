@@ -26,6 +26,15 @@ export const PLAYER_COMMAND_NAME = "player";
 const PLAYER_EMOJIS = {
   steam: "<:steam:1444016467648581642>",
   battlemetrics: "<:battlemetrics:1444011821529956472>",
+  vitality: "<:vitality:1444010131728629761>",
+  atlas: "<:atlas:1444010442778480700>",
+  vital: "<:vital:1444011141587271682>",
+  modded: "<:modded:1487586362600456333>",
+  official: "<:official:1487583814271242461>",
+  build: "<:build:1487584253775450225>",
+  rust: "<:rust:1444010153803382957>",
+  risk0: "<:risk_0:1487595959809609758>",
+  risk10: "<:risk_10:1487595719790432447>",
 } as const;
 
 const steamIDPattern = /^\d{17}$/;
@@ -292,7 +301,7 @@ async function fetchBmOnlyPlayerProfile(
 }
 
 function buildBmOnlyPlayerEmbed(profile: BmPlayerProfile) {
-  const title = profile.bmName?.trim() ? `Player - ${profile.bmName}` : `Player - ${profile.bmId}`;
+  const title = profile.bmName?.trim() ? profile.bmName : profile.bmId;
   const embed = new EmbedBuilder()
     .setTitle(title)
     .setColor(RUSTLENS_EMBED_COLOR)
@@ -302,13 +311,39 @@ function buildBmOnlyPlayerEmbed(profile: BmPlayerProfile) {
   const info: string[] = [
     `${PLAYER_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/rcon/players/${profile.bmId})`,
   ];
-  if (profile.createdAt) {
-    const createdUnix = Math.floor(new Date(profile.createdAt).getTime() / 1000);
-    if (Number.isFinite(createdUnix)) {
-      info.push(`First seen <t:${createdUnix}:R> (<t:${createdUnix}:D>)`);
-    }
-  }
   embed.addFields({ name: "Information", value: info.join("\n") });
+
+  const firstSeenUnix = parseUnixTimestamp(profile.createdAt);
+  const bmHours = Math.round(profile.servers.reduce((total, server) => total + server.timePlayedSec, 0) / 3600);
+
+  embed.addFields(
+    { name: `${PLAYER_EMOJIS.vitality} Vitality`, value: "**—** hours", inline: true },
+    { name: `${PLAYER_EMOJIS.atlas} Atlas`, value: "**—** hours", inline: true },
+    { name: `${PLAYER_EMOJIS.vital} Vital`, value: "**—** hours", inline: true },
+    { name: `${PLAYER_EMOJIS.modded} Modded`, value: "**—** hours", inline: true },
+    { name: `${PLAYER_EMOJIS.official} Official`, value: "**—** hours", inline: true },
+    { name: `${PLAYER_EMOJIS.build} Build`, value: "**—** hours", inline: true },
+    {
+      name: "🔍 First seen",
+      value: firstSeenUnix ? `<t:${firstSeenUnix}:R>` : "—",
+      inline: true,
+    },
+    { name: `${PLAYER_EMOJIS.battlemetrics} BM`, value: `**${bmHours}** hours`, inline: true },
+    { name: `${PLAYER_EMOJIS.rust} Rust`, value: "**private**", inline: true },
+  );
+
+  embed.addFields({
+    name: `Risk Factor ${bmHours > 0 ? PLAYER_EMOJIS.risk0 : PLAYER_EMOJIS.risk10}`,
+    value: [
+      `${PLAYER_EMOJIS.risk0} Steam → BM hour difference: **private**`,
+      `${PLAYER_EMOJIS.risk0} Recent breaks > 2 months: **unknown**`,
+      firstSeenUnix
+        ? `${PLAYER_EMOJIS.risk0} Account created: <t:${firstSeenUnix}:R>`
+        : `${PLAYER_EMOJIS.risk0} Account created: **unknown**`,
+      `${PLAYER_EMOJIS.risk0} Servers played: **${profile.servers.length}**`,
+      `${bmHours > 0 ? PLAYER_EMOJIS.risk0 : PLAYER_EMOJIS.risk10} BM hours: **${bmHours}**`,
+    ].join("\n"),
+  });
 
   const servers = [...profile.servers]
     .filter((server) => server.serverName && server.serverName.length > 0)
@@ -327,6 +362,15 @@ function buildBmOnlyPlayerEmbed(profile: BmPlayerProfile) {
   }
 
   return embed;
+}
+
+function parseUnixTimestamp(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const unix = Math.floor(new Date(value).getTime() / 1000);
+  return Number.isFinite(unix) ? unix : null;
 }
 
 export async function handlePlayerButtonInteraction(interaction: ButtonInteraction) {
