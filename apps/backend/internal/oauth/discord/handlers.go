@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"net/url"
@@ -12,6 +13,12 @@ import (
 	"rustlens/backend/internal/appauth"
 )
 
+// GuildSyncer reconciles the caller's user_guilds rows against an authoritative
+// list of guild IDs (typically from Discord's /users/@me/guilds endpoint).
+type GuildSyncer interface {
+	SyncUserGuildsForUser(ctx context.Context, discordID string, guildIDs []string) error
+}
+
 // HandlerConfig wires runtime dependencies into the OAuth handlers.
 type HandlerConfig struct {
 	ClientID      string
@@ -20,7 +27,8 @@ type HandlerConfig struct {
 	SessionSecret string
 	Repo          *appauth.Repo
 	Pool          *pgxpool.Pool
-	Client        *Client // optional — when nil, NewHandler builds one from ClientID/ClientSecret
+	GuildSyncer   GuildSyncer // optional — when nil, callback skips the user-guild sync
+	Client        *Client     // optional — when nil, NewHandler builds one from ClientID/ClientSecret
 }
 
 type Handler struct {
@@ -42,9 +50,10 @@ func (h *Handler) frontendURL(path string) string {
 
 // Initiate handles GET /api/auth/discord (sign-in).
 func (h *Handler) Initiate(w http.ResponseWriter, r *http.Request) {
-	// Refuse if a valid session cookie is already present.
+	// Already signed in — send to dashboard rather than back to /login,
+	// which would loop if /login auto-redirects here.
 	if _, err := appauth.SessionFromCookie(r, h.cfg.SessionSecret); err == nil {
-		http.Redirect(w, r, h.frontendURL("/login?error=discord-already-signed-in"), http.StatusFound)
+		http.Redirect(w, r, h.frontendURL("/dashboard"), http.StatusFound)
 		return
 	}
 	h.beginFlow(w, r)
@@ -74,7 +83,7 @@ func (h *Handler) beginFlow(w http.ResponseWriter, r *http.Request) {
 	q.Set("client_id", h.cfg.ClientID)
 	q.Set("response_type", "code")
 	q.Set("redirect_uri", RedirectURI(h.cfg.AppOrigin))
-	q.Set("scope", "identify")
+	q.Set("scope", "identify guilds")
 	q.Set("prompt", "consent")
 	q.Set("state", state)
 	q.Set("code_challenge", PkceChallenge(verifier))
@@ -142,6 +151,21 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	if err := h.cfg.Repo.TouchLastLogin(ctx, userID); err != nil {
 		// Log-and-continue: failing to touch last_login_at must not block sign-in.
 		log.Printf("discord callback: TouchLastLogin(%s): %v", userID, err)
+	}
+	if h.cfg.GuildSyncer != nil {
+		guilds, err := h.client.FetchUserGuilds(ctx, accessToken)
+		if err != nil {
+			// Log-and-continue: a stale user_guilds list must not block sign-in.
+			log.Printf("discord callback: FetchUserGuilds(%s): %v", profile.ID, err)
+		} else {
+			ids := make([]string, 0, len(guilds))
+			for _, g := range guilds {
+				ids = append(ids, g.ID)
+			}
+			if err := h.cfg.GuildSyncer.SyncUserGuildsForUser(ctx, profile.ID, ids); err != nil {
+				log.Printf("discord callback: SyncUserGuildsForUser(%s): %v", profile.ID, err)
+			}
+		}
 	}
 	h.mintAndRedirect(w, r, userID, "/dashboard")
 }

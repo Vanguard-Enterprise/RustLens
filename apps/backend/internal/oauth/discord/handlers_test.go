@@ -49,7 +49,7 @@ func TestInitiate_RedirectsToDiscord_SetsCookies(t *testing.T) {
 	if q.Get("redirect_uri") != "http://localhost/api/auth/discord/callback" {
 		t.Errorf("redirect_uri = %q", q.Get("redirect_uri"))
 	}
-	if q.Get("scope") != "identify" {
+	if q.Get("scope") != "identify guilds" {
 		t.Errorf("scope = %q", q.Get("scope"))
 	}
 	if q.Get("code_challenge_method") != "S256" {

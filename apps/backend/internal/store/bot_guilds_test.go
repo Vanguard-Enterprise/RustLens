@@ -149,6 +149,70 @@ func TestBulkUpsertUserGuilds_ActivatesMembers(t *testing.T) {
 	}
 }
 
+func TestSyncUserGuildsForUser_UpsertsAndMarksLeft(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+
+	const discordID = "300000000000000099"
+	guildA := "100000000000000020"
+	guildB := "100000000000000021"
+	guildC := "100000000000000022"
+
+	for _, gid := range []string{guildA, guildB, guildC} {
+		if err := s.UpsertBotGuildMetadata(ctx, UpsertBotGuildInput{GuildID: gid, Name: "g"}); err != nil {
+			t.Fatalf("seed bot_guilds %s: %v", gid, err)
+		}
+	}
+
+	if err := s.SyncUserGuildsForUser(ctx, discordID, []string{guildA, guildB}); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	for _, gid := range []string{guildA, guildB} {
+		var isActive bool
+		var leftAt *time.Time
+		if err := s.pool.QueryRow(ctx,
+			`SELECT is_active, left_at FROM user_guilds WHERE discord_id=$1 AND guild_id=$2`,
+			discordID, gid).Scan(&isActive, &leftAt); err != nil {
+			t.Fatalf("read %s: %v", gid, err)
+		}
+		if !isActive || leftAt != nil {
+			t.Errorf("after first sync %s: is_active=%v left_at=%v, want true / nil", gid, isActive, leftAt)
+		}
+	}
+
+	// Second sync: user dropped guildB, joined guildC. guildB should be marked left.
+	if err := s.SyncUserGuildsForUser(ctx, discordID, []string{guildA, guildC}); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	var aActive, bActive, cActive bool
+	var bLeftAt *time.Time
+	if err := s.pool.QueryRow(ctx,
+		`SELECT is_active FROM user_guilds WHERE discord_id=$1 AND guild_id=$2`,
+		discordID, guildA).Scan(&aActive); err != nil {
+		t.Fatalf("read A: %v", err)
+	}
+	if err := s.pool.QueryRow(ctx,
+		`SELECT is_active, left_at FROM user_guilds WHERE discord_id=$1 AND guild_id=$2`,
+		discordID, guildB).Scan(&bActive, &bLeftAt); err != nil {
+		t.Fatalf("read B: %v", err)
+	}
+	if err := s.pool.QueryRow(ctx,
+		`SELECT is_active FROM user_guilds WHERE discord_id=$1 AND guild_id=$2`,
+		discordID, guildC).Scan(&cActive); err != nil {
+		t.Fatalf("read C: %v", err)
+	}
+	if !aActive {
+		t.Errorf("guildA should remain active")
+	}
+	if bActive || bLeftAt == nil {
+		t.Errorf("guildB should be inactive with left_at set; got active=%v left_at=%v", bActive, bLeftAt)
+	}
+	if !cActive {
+		t.Errorf("guildC should be active after second sync")
+	}
+}
+
 func TestStampMembersSynced_SetsTimestamp(t *testing.T) {
 	ctx := context.Background()
 	s := newTestPostgres(t)

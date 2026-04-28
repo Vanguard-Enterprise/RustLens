@@ -185,6 +185,7 @@ func NewRouter(
 		SessionSecret: cfg.AppSessionSecret,
 		Repo:          appAuthRepo,
 		Pool:          postgres.Pool(),
+		GuildSyncer:   postgres,
 	})
 
 	r.Route("/api/auth/discord", func(r chi.Router) {

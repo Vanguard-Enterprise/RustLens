@@ -109,6 +109,52 @@ func (c *Client) ExchangeCode(ctx context.Context, code, codeVerifier string) (s
 	return out.AccessToken, nil
 }
 
+// UserGuild is the subset of fields returned by GET /users/@me/guilds we use.
+type UserGuild struct {
+	ID       string
+	Name     string
+	IconHash string
+}
+
+// FetchUserGuilds retrieves the authenticated user's guild list from
+// /users/@me/guilds. Requires the "guilds" OAuth scope.
+func (c *Client) FetchUserGuilds(ctx context.Context, accessToken string) ([]UserGuild, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/api/users/@me/guilds?with_counts=true", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Cache-Control", "no-store")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("discord guilds fetch: %d %s", resp.StatusCode, string(body))
+	}
+	var raw []struct {
+		ID   string  `json:"id"`
+		Name string  `json:"name"`
+		Icon *string `json:"icon"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]UserGuild, 0, len(raw))
+	for _, g := range raw {
+		ug := UserGuild{ID: g.ID, Name: g.Name}
+		if g.Icon != nil {
+			ug.IconHash = *g.Icon
+		}
+		out = append(out, ug)
+	}
+	return out, nil
+}
+
 // FetchProfile retrieves the authenticated user's profile from /users/@me.
 func (c *Client) FetchProfile(ctx context.Context, accessToken string) (Profile, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/users/@me", nil)
