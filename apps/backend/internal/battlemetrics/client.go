@@ -31,6 +31,8 @@ type PlayerServer struct {
 	TimePlayed  int64
 	FirstSeenAt *time.Time
 	LastSeenAt  *time.Time
+	Game        string
+	RustType    string
 }
 
 type PlayerNameIdentifier struct {
@@ -63,7 +65,17 @@ type includedResource struct {
 		Type       string     `json:"type"`
 		Identifier string     `json:"identifier"`
 		LastSeen   *time.Time `json:"lastSeen"`
+		Details    struct {
+			RustType string `json:"rust_type"`
+		} `json:"details"`
 	} `json:"attributes"`
+	Relationships struct {
+		Game struct {
+			Data struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		} `json:"game"`
+	} `json:"relationships"`
 	Meta struct {
 		TimePlayed int64      `json:"timePlayed"`
 		FirstSeen  *time.Time `json:"firstSeen"`
@@ -87,6 +99,8 @@ func parsePlayerProfile(player playerResource, included []includedResource) Play
 				TimePlayed:  item.Meta.TimePlayed,
 				FirstSeenAt: item.Meta.FirstSeen,
 				LastSeenAt:  item.Meta.LastSeen,
+				Game:        item.Relationships.Game.Data.ID,
+				RustType:    item.Attributes.Details.RustType,
 			})
 		case "identifier":
 			switch item.Attributes.Type {

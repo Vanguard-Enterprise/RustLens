@@ -2038,9 +2038,21 @@ func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.
 // and name-gap data on a BmProfileCache from a fetched BattleMetrics profile.
 func applyBmProfileToCache(bmCache store.BmProfileCache, profile battlemetrics.PlayerProfile, trackedByID map[string]store.TrackedServer) store.BmProfileCache {
 	var vitalitySeconds, atlasSeconds, vitalSeconds, moddedSeconds, officialSeconds, buildSeconds, bmSeconds int64
+	rustServers := make([]battlemetrics.PlayerServer, 0, len(profile.Servers))
 
 	for _, server := range profile.Servers {
+		if server.Game != "" && server.Game != "rust" {
+			continue
+		}
+		rustServers = append(rustServers, server)
 		bmSeconds += server.TimePlayed
+
+		switch server.RustType {
+		case "modded":
+			moddedSeconds += server.TimePlayed
+		case "official":
+			officialSeconds += server.TimePlayed
+		}
 
 		tracked, ok := trackedByID[server.ServerID]
 		if !ok {
@@ -2055,12 +2067,6 @@ func applyBmProfileToCache(bmCache store.BmProfileCache, profile battlemetrics.P
 		if tracked.IsVital {
 			vitalSeconds += server.TimePlayed
 		}
-		if tracked.IsModded {
-			moddedSeconds += server.TimePlayed
-		}
-		if tracked.IsOfficial {
-			officialSeconds += server.TimePlayed
-		}
 		if tracked.IsBuild {
 			buildSeconds += server.TimePlayed
 		}
@@ -2073,19 +2079,18 @@ func applyBmProfileToCache(bmCache store.BmProfileCache, profile battlemetrics.P
 	bmCache.OfficialHours = toWholeHours(officialSeconds)
 	bmCache.BuildHours = toWholeHours(buildSeconds)
 	bmCache.BmHours = toWholeHours(bmSeconds)
-	bmCache.BmServersPlayed = len(profile.Servers)
+	bmCache.BmServersPlayed = len(rustServers)
 	gaps := computeNameGaps(profile.NameIdentifiers)
 	bmCache.NameGaps = make([]store.NameGap, 0, len(gaps))
 	for _, gap := range gaps {
 		bmCache.NameGaps = append(bmCache.NameGaps, store.NameGap(gap))
 	}
-	servers := append([]battlemetrics.PlayerServer(nil), profile.Servers...)
-	sort.Slice(servers, func(i, j int) bool {
-		return servers[i].TimePlayed > servers[j].TimePlayed
+	sort.Slice(rustServers, func(i, j int) bool {
+		return rustServers[i].TimePlayed > rustServers[j].TimePlayed
 	})
-	bmCache.TopServers = make([]store.AnalyticsServer, 0, min(5, len(servers)))
-	for i := range min(5, len(servers)) {
-		server := servers[i]
+	bmCache.TopServers = make([]store.AnalyticsServer, 0, min(5, len(rustServers)))
+	for i := range min(5, len(rustServers)) {
+		server := rustServers[i]
 		bmCache.TopServers = append(bmCache.TopServers, store.AnalyticsServer{BmID: server.ServerID, Name: server.ServerName, Hours: toWholeHours(server.TimePlayed)})
 	}
 	return bmCache
