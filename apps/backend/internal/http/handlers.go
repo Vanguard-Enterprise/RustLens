@@ -2350,6 +2350,72 @@ func (h *Handler) GetSteamAccountByBmID(w http.ResponseWriter, r *http.Request) 
 	writeSteamAccount(w, account)
 }
 
+type bmPlayerProfileServer struct {
+	ServerID      string `json:"serverId"`
+	ServerName    string `json:"serverName"`
+	TimePlayedSec int64  `json:"timePlayedSec"`
+	FirstSeenAt   string `json:"firstSeenAt,omitempty"`
+	LastSeenAt    string `json:"lastSeenAt,omitempty"`
+}
+
+type bmPlayerProfileResponse struct {
+	BmID      string                  `json:"bmId"`
+	BmName    string                  `json:"bmName"`
+	SteamID   string                  `json:"steamId,omitempty"`
+	CreatedAt string                  `json:"createdAt,omitempty"`
+	Servers   []bmPlayerProfileServer `json:"servers"`
+}
+
+// GetBmPlayerProfile returns the BattleMetrics profile for a player by BM ID,
+// without requiring or persisting a Steam ID. Used by /player when the input
+// is a BM ID and the player has no Steam linkage in our DB or in BM's data.
+func (h *Handler) GetBmPlayerProfile(w http.ResponseWriter, r *http.Request) {
+	bmID := strings.TrimSpace(chi.URLParam(r, "bmID"))
+	if !bmIDPattern.MatchString(bmID) {
+		writeError(w, http.StatusBadRequest, "bmID must be a numeric BattleMetrics player ID")
+		return
+	}
+
+	profile, err := h.authBattleMetricsClient.FetchPlayerProfile(r.Context(), bmID)
+	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+		writeError(w, http.StatusNotFound, "battlemetrics player not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetBmPlayerProfile error for %s: %v", bmID, err)
+		writeError(w, http.StatusBadGateway, "failed to fetch battlemetrics profile")
+		return
+	}
+
+	servers := make([]bmPlayerProfileServer, 0, len(profile.Servers))
+	for _, server := range profile.Servers {
+		entry := bmPlayerProfileServer{
+			ServerID:      server.ServerID,
+			ServerName:    server.ServerName,
+			TimePlayedSec: server.TimePlayed,
+		}
+		if server.FirstSeenAt != nil {
+			entry.FirstSeenAt = server.FirstSeenAt.UTC().Format(time.RFC3339)
+		}
+		if server.LastSeenAt != nil {
+			entry.LastSeenAt = server.LastSeenAt.UTC().Format(time.RFC3339)
+		}
+		servers = append(servers, entry)
+	}
+
+	resp := bmPlayerProfileResponse{
+		BmID:    profile.BmID,
+		BmName:  profile.BmName,
+		SteamID: profile.SteamID,
+		Servers: servers,
+	}
+	if profile.CreatedAt != nil {
+		resp.CreatedAt = profile.CreatedAt.UTC().Format(time.RFC3339)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (h *Handler) ListLinksBySteamID(w http.ResponseWriter, r *http.Request) {
 	steamID := chi.URLParam(r, "steamID")
 	if steamID == "" || !steamIDPattern.MatchString(steamID) {

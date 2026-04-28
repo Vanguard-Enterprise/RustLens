@@ -778,6 +778,59 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/players/{bmID}/bm-profile": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get BattleMetrics-only player profile",
+					"description": "Returns the BattleMetrics profile (BM ID, BM name, optional Steam ID, created-at, servers with hours) for a player by BM ID. Used by /player when the player has no Steam linkage.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "bmID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics player ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "BattleMetrics profile returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"required": []string{"bmId", "bmName", "servers"},
+										"properties": map[string]any{
+											"bmId":      map[string]any{"type": "string"},
+											"bmName":    map[string]any{"type": "string"},
+											"steamId":   map[string]any{"type": "string"},
+											"createdAt": map[string]any{"type": "string", "format": "date-time"},
+											"servers": map[string]any{
+												"type": "array",
+												"items": map[string]any{
+													"type": "object",
+													"required": []string{"serverId", "serverName", "timePlayedSec"},
+													"properties": map[string]any{
+														"serverId":      map[string]any{"type": "string"},
+														"serverName":    map[string]any{"type": "string"},
+														"timePlayedSec": map[string]any{"type": "integer", "format": "int64"},
+														"firstSeenAt":   map[string]any{"type": "string", "format": "date-time"},
+														"lastSeenAt":    map[string]any{"type": "string", "format": "date-time"},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+						"502": map[string]any{"description": "BattleMetrics upstream failure"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/players/{bmID}/offline-analytics": map[string]any{
 				"get": map[string]any{
 					"summary":     "Get player offline analytics",

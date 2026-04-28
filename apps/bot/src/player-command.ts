@@ -2,6 +2,7 @@ import type { ButtonInteraction, ChatInputCommandInteraction, Client, User } fro
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import {
   BackendClient,
+  type BmPlayerProfile,
   type SteamAccount,
   type SteamAnalytics,
   type SteamDiscordLink,
@@ -116,14 +117,39 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     return true;
   }
 
-  const account = await lookupAccountByIdentifier(lookupIdentifier.identifier);
-  if (!account) {
+  const lookup = await lookupAccountByIdentifier(lookupIdentifier.identifier);
+  if (lookup.kind === "error") {
+    await interaction.editReply({
+      content: "RustLens could not look up that player right now. Try again shortly.",
+    });
+    return true;
+  }
+  if (lookup.kind === "not-found") {
     await interaction.editReply({
       content: "No record found for that Steam ID, BattleMetrics ID/URL, or Steam profile URL.",
     });
     return true;
   }
 
+  if (lookup.kind === "bm-only") {
+    const bmResult = await fetchBmOnlyPlayerProfile(lookup.bmId);
+    if (bmResult.kind === "not-found") {
+      await interaction.editReply({
+        content: "No BattleMetrics profile found for that ID.",
+      });
+      return true;
+    }
+    if (bmResult.kind === "error") {
+      await interaction.editReply({
+        content: "BattleMetrics is unavailable right now. Try again shortly.",
+      });
+      return true;
+    }
+    await interaction.editReply({ embeds: [buildBmOnlyPlayerEmbed(bmResult.profile)] });
+    return true;
+  }
+
+  const account = lookup.account;
   const profileResult = await fetchPlayerProfile(account.steamId);
   if (profileResult.privateProfile) {
     await interaction.editReply({ embeds: [buildPrivateProfileEmbed(account.steamId, account.bmId)] });
@@ -194,27 +220,113 @@ async function resolveLookupIdentifier(identifier: string) {
   }
 }
 
-async function lookupAccountByIdentifier(identifier: string): Promise<SteamAccount | null> {
+type LookupResult =
+  | { kind: "steam"; account: SteamAccount }
+  | { kind: "bm-only"; bmId: string }
+  | { kind: "not-found" }
+  | { kind: "error" };
+
+function getErrorStatus(error: unknown): number | undefined {
+  if (error && typeof error === "object" && "status" in error) {
+    const value = (error as { status?: unknown }).status;
+    return typeof value === "number" ? value : undefined;
+  }
+  return undefined;
+}
+
+async function lookupAccountByIdentifier(identifier: string): Promise<LookupResult> {
   const { backend, workerId } = getBackend();
 
   if (steamIDPattern.test(identifier)) {
     try {
-      return await backend.getSteamAccount(workerId, identifier);
-    } catch {
-      return null;
+      const account = await backend.getSteamAccount(workerId, identifier);
+      return { kind: "steam", account };
+    } catch (error) {
+      const status = getErrorStatus(error);
+      if (status === 404) {
+        return { kind: "not-found" };
+      }
+      console.error("[bot] /player getSteamAccount failed", { steamId: identifier, error });
+      return { kind: "error" };
     }
   }
 
   const bmID = extractBmID(identifier);
   if (bmID) {
     try {
-      return await backend.getSteamAccountByBmID(workerId, bmID);
-    } catch {
-      return null;
+      const account = await backend.getSteamAccountByBmID(workerId, bmID);
+      return { kind: "steam", account };
+    } catch (error) {
+      const status = getErrorStatus(error);
+      if (status === 404) {
+        // No Steam linkage on file or returned by BM — fall back to BM-only.
+        return { kind: "bm-only", bmId: bmID };
+      }
+      console.error("[bot] /player getSteamAccountByBmID failed", { bmId: bmID, error });
+      return { kind: "error" };
     }
   }
 
-  return null;
+  return { kind: "not-found" };
+}
+
+async function fetchBmOnlyPlayerProfile(
+  bmId: string,
+): Promise<
+  | { kind: "ok"; profile: BmPlayerProfile }
+  | { kind: "not-found" }
+  | { kind: "error" }
+> {
+  const { backend, workerId } = getBackend();
+  try {
+    const profile = await backend.getBmPlayerProfile(workerId, bmId);
+    return { kind: "ok", profile };
+  } catch (error) {
+    const status = getErrorStatus(error);
+    if (status === 404) {
+      return { kind: "not-found" };
+    }
+    console.error("[bot] /player getBmPlayerProfile failed", { bmId, error });
+    return { kind: "error" };
+  }
+}
+
+function buildBmOnlyPlayerEmbed(profile: BmPlayerProfile) {
+  const title = profile.bmName?.trim() ? `Player - ${profile.bmName}` : `Player - ${profile.bmId}`;
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+
+  const info: string[] = [
+    `${PLAYER_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/rcon/players/${profile.bmId})`,
+  ];
+  if (profile.createdAt) {
+    const createdUnix = Math.floor(new Date(profile.createdAt).getTime() / 1000);
+    if (Number.isFinite(createdUnix)) {
+      info.push(`First seen <t:${createdUnix}:R> (<t:${createdUnix}:D>)`);
+    }
+  }
+  embed.addFields({ name: "Information", value: info.join("\n") });
+
+  const servers = [...profile.servers]
+    .filter((server) => server.serverName && server.serverName.length > 0)
+    .sort((a, b) => b.timePlayedSec - a.timePlayedSec);
+
+  if (servers.length > 0) {
+    const top = servers.slice(0, 10);
+    const lines = top.map((server) => {
+      const hours = Math.round(server.timePlayedSec / 3600);
+      return `> * [${server.serverName}](https://www.battlemetrics.com/servers/rust/${server.serverId}) **${hours}** hours`;
+    });
+    embed.addFields({
+      name: `Servers played: ${servers.length}`,
+      value: lines.join("\n"),
+    });
+  }
+
+  return embed;
 }
 
 export async function handlePlayerButtonInteraction(interaction: ButtonInteraction) {
@@ -516,5 +628,6 @@ export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
 export const __testables = {
   buildPrivateProfileEmbed,
   buildAnalyticsEmbed,
+  buildBmOnlyPlayerEmbed,
   isBmPrivateProfileError,
 };
