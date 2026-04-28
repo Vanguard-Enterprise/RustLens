@@ -22,7 +22,7 @@ func (p *PostgresStore) ListGuildOnlineSummary(ctx context.Context, guildID stri
 				gsl.discord_id,
 				gsl.steam_id,
 				sa.bm_id,
-				COALESCE(sac.bm_name, '') AS bm_name,
+				COALESCE(bpc.bm_name, '') AS bm_name,
 				ps.server_bm_id,
 				ts.name AS server_name,
 				EXTRACT(EPOCH FROM ps.online_since)::BIGINT AS online_unix,
@@ -32,7 +32,7 @@ func (p *PostgresStore) ListGuildOnlineSummary(ctx context.Context, guildID stri
 				) AS summary_rank
 			FROM guild_steam_discord_links gsl
 			JOIN steam_accounts sa ON sa.steam_id = gsl.steam_id
-			LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
+			LEFT JOIN bm_profile_cache bpc ON bpc.bm_id = sa.bm_id
 			JOIN player_states ps ON ps.player_bm_id = sa.bm_id
 			JOIN guild_tracked_servers gts
 				ON gts.guild_id = gsl.guild_id

@@ -780,8 +780,8 @@ func buildOpenAPIDocument() map[string]any {
 			},
 			"/api/internal/bot/setup/players/{bmID}/bm-profile": map[string]any{
 				"get": map[string]any{
-					"summary":     "Get BattleMetrics-only player profile",
-					"description": "Returns the BattleMetrics profile (BM ID, BM name, optional Steam ID, created-at, servers with hours) for a player by BM ID. Used by /player when the player has no Steam linkage.",
+					"summary":     "Get BattleMetrics-keyed player profile",
+					"description": "Returns the player profile by BM ID using the BM-keyed cache, falling back to a fresh BattleMetrics fetch when the cache is missing or stale. The response uses the same shape as the steam-linked profile endpoint so /player can render a single profile card; Steam-only fields (rust hours, avatar, steamId) are populated only when a Steam linkage exists.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -794,33 +794,40 @@ func buildOpenAPIDocument() map[string]any {
 					},
 					"responses": map[string]any{
 						"200": map[string]any{
-							"description": "BattleMetrics profile returned",
+							"description": "Player profile returned",
 							"content": map[string]any{
 								"application/json": map[string]any{
-									"schema": map[string]any{
-										"type": "object",
-										"required": []string{"bmId", "bmName", "servers"},
-										"properties": map[string]any{
-											"bmId":      map[string]any{"type": "string"},
-											"bmName":    map[string]any{"type": "string"},
-											"steamId":   map[string]any{"type": "string"},
-											"createdAt": map[string]any{"type": "string", "format": "date-time"},
-											"servers": map[string]any{
-												"type": "array",
-												"items": map[string]any{
-													"type": "object",
-													"required": []string{"serverId", "serverName", "timePlayedSec"},
-													"properties": map[string]any{
-														"serverId":      map[string]any{"type": "string"},
-														"serverName":    map[string]any{"type": "string"},
-														"timePlayedSec": map[string]any{"type": "integer", "format": "int64"},
-														"firstSeenAt":   map[string]any{"type": "string", "format": "date-time"},
-														"lastSeenAt":    map[string]any{"type": "string", "format": "date-time"},
-													},
-												},
-											},
-										},
-									},
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamProfile"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+						"502": map[string]any{"description": "BattleMetrics upstream failure"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/players/{bmID}/bm-analytics": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get BattleMetrics-keyed player analytics",
+					"description": "Returns analytics for a player by BM ID using the BM-keyed cache, with Steam-only enrichment (top games, total games) sourced from steam_account_cache when a Steam linkage exists.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "bmID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics player ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Player analytics returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SteamAnalytics"},
 								},
 							},
 						},

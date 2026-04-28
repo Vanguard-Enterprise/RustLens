@@ -167,35 +167,18 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE TABLE IF NOT EXISTS steam_account_cache (
 			steam_id TEXT PRIMARY KEY REFERENCES steam_accounts(steam_id) ON DELETE CASCADE,
-			bm_id TEXT NOT NULL DEFAULT '',
-			bm_name TEXT NOT NULL DEFAULT '',
 			avatar_image TEXT NOT NULL DEFAULT '',
-			first_seen_at TIMESTAMPTZ,
-			vitality_hours BIGINT NOT NULL DEFAULT 0,
-			atlas_hours BIGINT NOT NULL DEFAULT 0,
-			vital_hours BIGINT NOT NULL DEFAULT 0,
-			modded_hours BIGINT NOT NULL DEFAULT 0,
-			official_hours BIGINT NOT NULL DEFAULT 0,
-			build_hours BIGINT NOT NULL DEFAULT 0,
-			bm_hours BIGINT NOT NULL DEFAULT 0,
-			bm_servers_played INTEGER NOT NULL DEFAULT 0,
-			name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb,
 			rust_hours BIGINT,
 			total_games INTEGER,
 			top_games JSONB NOT NULL DEFAULT '[]'::jsonb,
-			top_servers JSONB NOT NULL DEFAULT '[]'::jsonb,
 			game_banned BOOLEAN NOT NULL DEFAULT FALSE,
 			game_banned_at TIMESTAMPTZ,
 			game_ban_checked_at TIMESTAMPTZ,
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
-		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_id TEXT NOT NULL DEFAULT '';
-		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS bm_servers_played INTEGER NOT NULL DEFAULT 0;
-		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS total_games INTEGER;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS top_games JSONB NOT NULL DEFAULT '[]'::jsonb;
-		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS top_servers JSONB NOT NULL DEFAULT '[]'::jsonb;
 		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_total_games;
 		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_top_games;
 		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_total_servers;
@@ -208,6 +191,92 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE INDEX IF NOT EXISTS steam_account_cache_updated_idx
 		ON steam_account_cache (updated_at);
+
+		CREATE TABLE IF NOT EXISTS bm_profile_cache (
+			bm_id TEXT PRIMARY KEY,
+			bm_name TEXT NOT NULL DEFAULT '',
+			first_seen_at TIMESTAMPTZ,
+			vitality_hours BIGINT NOT NULL DEFAULT 0,
+			atlas_hours BIGINT NOT NULL DEFAULT 0,
+			vital_hours BIGINT NOT NULL DEFAULT 0,
+			modded_hours BIGINT NOT NULL DEFAULT 0,
+			official_hours BIGINT NOT NULL DEFAULT 0,
+			build_hours BIGINT NOT NULL DEFAULT 0,
+			bm_hours BIGINT NOT NULL DEFAULT 0,
+			bm_servers_played INTEGER NOT NULL DEFAULT 0,
+			name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb,
+			top_servers JSONB NOT NULL DEFAULT '[]'::jsonb,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS bm_profile_cache_updated_idx
+		ON bm_profile_cache (updated_at);
+
+		DO $$
+		DECLARE
+			has_legacy_bm_id BOOLEAN;
+		BEGIN
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'steam_account_cache' AND column_name = 'bm_id'
+			) INTO has_legacy_bm_id;
+
+			IF has_legacy_bm_id THEN
+				EXECUTE '
+					INSERT INTO bm_profile_cache (
+						bm_id, bm_name, first_seen_at, vitality_hours, atlas_hours, vital_hours,
+						modded_hours, official_hours, build_hours, bm_hours, bm_servers_played,
+						name_gaps, top_servers, updated_at
+					)
+					SELECT
+						sac.bm_id,
+						sac.bm_name,
+						sac.first_seen_at,
+						sac.vitality_hours,
+						sac.atlas_hours,
+						sac.vital_hours,
+						sac.modded_hours,
+						sac.official_hours,
+						sac.build_hours,
+						sac.bm_hours,
+						sac.bm_servers_played,
+						sac.name_gaps,
+						sac.top_servers,
+						sac.updated_at
+					FROM steam_account_cache sac
+					WHERE COALESCE(sac.bm_id, '''') <> ''''
+					ON CONFLICT (bm_id) DO UPDATE
+					SET bm_name = EXCLUDED.bm_name,
+						first_seen_at = EXCLUDED.first_seen_at,
+						vitality_hours = EXCLUDED.vitality_hours,
+						atlas_hours = EXCLUDED.atlas_hours,
+						vital_hours = EXCLUDED.vital_hours,
+						modded_hours = EXCLUDED.modded_hours,
+						official_hours = EXCLUDED.official_hours,
+						build_hours = EXCLUDED.build_hours,
+						bm_hours = EXCLUDED.bm_hours,
+						bm_servers_played = EXCLUDED.bm_servers_played,
+						name_gaps = EXCLUDED.name_gaps,
+						top_servers = EXCLUDED.top_servers,
+						updated_at = EXCLUDED.updated_at
+					WHERE bm_profile_cache.updated_at < EXCLUDED.updated_at
+				';
+			END IF;
+		END $$;
+
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS bm_id;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS bm_name;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS first_seen_at;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS vitality_hours;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS atlas_hours;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS vital_hours;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS modded_hours;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS official_hours;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS build_hours;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS bm_hours;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS bm_servers_played;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS name_gaps;
+		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS top_servers;
 
 		DO $$
 		DECLARE

@@ -2,10 +2,10 @@ import type { ButtonInteraction, ChatInputCommandInteraction, Client, User } fro
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import {
   BackendClient,
-  type BmPlayerProfile,
   type SteamAccount,
   type SteamAnalytics,
   type SteamDiscordLink,
+  type SteamProfile,
 } from "./backend-client.js";
 import { extractBmID } from "./bm-input.js";
 import { loadConfig } from "./config.js";
@@ -145,7 +145,11 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
       });
       return true;
     }
-    await interaction.editReply({ embeds: [buildBmOnlyPlayerEmbed(bmResult.profile)] });
+    const bmProfile = bmResult.profile;
+    await interaction.editReply({
+      embeds: [buildUserEmbed(bmProfile.steamId ?? "", bmProfile)],
+      components: buildProfileButtons(bmProfile.steamId ?? "", bmProfile.bmId ?? lookup.bmId),
+    });
     return true;
   }
 
@@ -273,7 +277,7 @@ async function lookupAccountByIdentifier(identifier: string): Promise<LookupResu
 async function fetchBmOnlyPlayerProfile(
   bmId: string,
 ): Promise<
-  | { kind: "ok"; profile: BmPlayerProfile }
+  | { kind: "ok"; profile: SteamProfile }
   | { kind: "not-found" }
   | { kind: "error" }
 > {
@@ -291,45 +295,31 @@ async function fetchBmOnlyPlayerProfile(
   }
 }
 
-function buildBmOnlyPlayerEmbed(profile: BmPlayerProfile) {
-  const title = profile.bmName?.trim() ? `Player - ${profile.bmName}` : `Player - ${profile.bmId}`;
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
-
-  const info: string[] = [
-    `${PLAYER_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/rcon/players/${profile.bmId})`,
-  ];
-  if (profile.createdAt) {
-    const createdUnix = Math.floor(new Date(profile.createdAt).getTime() / 1000);
-    if (Number.isFinite(createdUnix)) {
-      info.push(`First seen <t:${createdUnix}:R> (<t:${createdUnix}:D>)`);
-    }
-  }
-  embed.addFields({ name: "Information", value: info.join("\n") });
-
-  const servers = [...profile.servers]
-    .filter((server) => server.serverName && server.serverName.length > 0)
-    .sort((a, b) => b.timePlayedSec - a.timePlayedSec);
-
-  if (servers.length > 0) {
-    const top = servers.slice(0, 10);
-    const lines = top.map((server) => {
-      const hours = Math.round(server.timePlayedSec / 3600);
-      return `> * [${server.serverName}](https://www.battlemetrics.com/servers/rust/${server.serverId}) **${hours}** hours`;
-    });
-    embed.addFields({
-      name: `Servers played: ${servers.length}`,
-      value: lines.join("\n"),
-    });
-  }
-
-  return embed;
-}
-
 export async function handlePlayerButtonInteraction(interaction: ButtonInteraction) {
+  if (interaction.customId.startsWith("player:analytics-bm:")) {
+    const bmId = interaction.customId.slice("player:analytics-bm:".length);
+    if (!/^\d+$/.test(bmId)) {
+      await interaction.reply({
+        content: "Invalid analytics button.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      const { backend, workerId } = getBackend();
+      const analytics = await backend.getBmPlayerAnalytics(workerId, bmId);
+      await interaction.editReply({ embeds: [buildAnalyticsEmbed(analytics)] });
+    } catch (error) {
+      console.error("[bot] failed to load player analytics (bm)", error);
+      await interaction.editReply({ content: "Failed to load analytics for this player." });
+    }
+
+    return true;
+  }
+
   if (interaction.customId.startsWith("player:analytics:")) {
     const steamId = interaction.customId.slice("player:analytics:".length);
     if (!/^\d{17}$/.test(steamId)) {
@@ -349,6 +339,30 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
     } catch (error) {
       console.error("[bot] failed to load player analytics", error);
       await interaction.editReply({ content: "Failed to load analytics for this player." });
+    }
+
+    return true;
+  }
+
+  if (interaction.customId.startsWith("player:links-bm:")) {
+    const bmId = interaction.customId.slice("player:links-bm:".length);
+    if (!/^\d+$/.test(bmId)) {
+      await interaction.reply({
+        content: "Invalid links button.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const isAdmin = await isWebsiteAdmin(interaction.user.id);
+    try {
+      const embed = await buildBmOnlyLinksEmbed(bmId, isAdmin);
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      console.error("[bot] failed to load bm links", error);
+      await interaction.editReply({ content: "Failed to load links for this player." });
     }
 
     return true;
@@ -379,6 +393,38 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
   }
 
   return false;
+}
+
+async function buildBmOnlyLinksEmbed(bmId: string, isAdmin: boolean): Promise<EmbedBuilder> {
+  const { backend, workerId } = getBackend();
+  // Try to resolve a Steam linkage from the BM ID. If found, render the
+  // standard links embed; otherwise return a graceful "no links" embed.
+  let account: SteamAccount | null = null;
+  try {
+    account = await backend.getSteamAccountByBmID(workerId, bmId);
+  } catch {
+    account = null;
+  }
+  if (account?.steamId) {
+    return buildSteamLinksEmbed(account.steamId, isAdmin);
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle(account?.bmName ? `Links - ${account.bmName}` : "Links")
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+
+  embed.addFields({
+    name: "Information",
+    value: `${PLAYER_EMOJIS.battlemetrics} [${bmId}](https://www.battlemetrics.com/rcon/players/${bmId})`,
+  });
+  embed.addFields({ name: "Strong links", value: "> * None" });
+  embed.addFields({
+    name: "What do these mean?",
+    value: "> * No Steam linkage on file for this BattleMetrics player, so no Discord links could be found.",
+  });
+  return embed;
 }
 
 async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<EmbedBuilder> {
@@ -628,6 +674,5 @@ export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
 export const __testables = {
   buildPrivateProfileEmbed,
   buildAnalyticsEmbed,
-  buildBmOnlyPlayerEmbed,
   isBmPrivateProfileError,
 };
