@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"rustlens/backend/internal/battlemetrics"
+	"rustlens/backend/internal/cleanup"
 	"rustlens/backend/internal/config"
 	httpapi "rustlens/backend/internal/http"
 	"rustlens/backend/internal/outboundhttp"
@@ -78,6 +79,9 @@ func main() {
 	battleMetricsPoller.Start(ctx)
 	wipeReactSchedulePoller := wipereactscheduler.NewPoller(postgresStore)
 	wipeReactSchedulePoller.Start(ctx)
+
+	cleanupService := cleanup.NewService(postgresStore, cleanup.Config{})
+	cleanupService.Start(ctx)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

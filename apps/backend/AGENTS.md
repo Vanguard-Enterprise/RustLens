@@ -271,6 +271,33 @@ Guild-scoped Steam-Discord associations managed by guild admins.
 - `guild_steam_discord_links_guild_discord_idx ON (guild_id, discord_id)` — lookup by guild + Discord user.
 - `guild_steam_discord_links_guild_steam_idx ON (guild_id, steam_id)` — lookup by guild + Steam account.
 
+## Background services
+
+`cmd/server/main.go` starts three long-running goroutines, each cancelled by the root `ctx` on SIGINT/SIGTERM:
+
+- `battlemetrics.Poller` — refreshes `player_states` from BattleMetrics on a rolling interval.
+- `wipereactscheduler.Poller` — enqueues due wipe-react schedule posts into `wipe_react_schedule_posts` for the bot to claim.
+- `cleanup.Service` — periodic retention sweep (see below).
+
+### `cleanup.Service`
+
+Hourly background sweep that drops stale rows from volatile tables. Conservative by design: long-lived product data (user accounts, links, audit events, tracked servers, schedules, persisted settings) is **never** touched here.
+
+Defaults (overridable via `cleanup.Config`):
+
+| Sweep | Retention | Tables |
+|---|---|---|
+| Wipe reacts | 7 days past `scheduled_unix` | `wipe_reacts` |
+| Track-analytics session cache | 48 hours since `fetched_at` | `track_analytics_sessions_cache` |
+| Auth tokens | consumed, OR expired >24h ago | `email_sign_in_tokens`, `password_reset_tokens`, `email_verification_tokens` |
+| Tick interval | 1 hour | — |
+
+Wipe reacts are kept for a week after they pass so `/compare` and `/wipereact missing` can still operate on recent history. The analytics cache window matches the 24h freshness rule used by the analytics handler with a 24h buffer. Auth-token cleanup is safe because consumed tokens cannot be reused regardless of expiry, and the FK `ON DELETE CASCADE` from the parent tables already ensures we never orphan user records.
+
+Failures of any single step are logged and do not abort the others; the service never crashes the server.
+
+Cleanup SQL lives in `internal/store/cleanup.go`; the goroutine lives in `internal/cleanup/service.go`.
+
 ## OpenAPI
 
 The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go map literal. **When adding, modifying, or removing any HTTP endpoint, always update the OpenAPI document to match.** This includes adding path entries, request/response schemas, and keeping parameter descriptions accurate. The spec is served at `/api/docs/openapi.json` and powers the interactive docs at `/api/docs`.
