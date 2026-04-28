@@ -80,7 +80,10 @@ export function proxyChoiceLabel(proxy: OwnerProxy) {
 export function buildOwnerProxyListEmbed(proxies: OwnerProxy[]) {
   const description = proxies.length === 0
     ? "No outbound proxies configured."
-    : proxies.map((proxy, index) => `${index + 1}. \`${proxyChoiceLabel(proxy)}\``).join("\n");
+    : proxies.map((proxy, index) => {
+      const status = proxy.enabled ? "Enabled" : "Disabled";
+      return `${index + 1}. **${status}** · \`${proxyChoiceLabel(proxy)}\``;
+    }).join("\n");
 
   return new EmbedBuilder()
     .setTitle("Outbound Proxies")

@@ -169,7 +169,7 @@ Key patterns:
 
 - Schema is auto-migrated at startup via `EnsureSchema()` (no migration tool).
 - Bot routes (`/api/internal/bot/shards/*`) are JWT-protected via middleware.
-- Bot owner proxy routes (`/api/internal/bot/owner/proxies*`) are JWT-protected and back owner-guild-only `/proxy add|list|remove`. Proxy URLs are encrypted at rest in `outbound_proxies` with AES-GCM using `PROXY_ENCRYPTION_KEY`; API responses and logs only expose credential-free `scheme://host:port` values. DB proxies are preferred over legacy `PROXY_ENDPOINTS`, and create/delete reloads the in-process outbound provider without a backend restart.
+- Bot owner proxy routes (`/api/internal/bot/owner/proxies*`) are JWT-protected and back owner-guild-only `/manage proxy add|edit|list|remove`. Proxy URLs are encrypted at rest in `outbound_proxies` with AES-GCM using `PROXY_ENCRYPTION_KEY`; API responses and logs only expose credential-free `scheme://host:port` values. DB proxies are preferred over legacy `PROXY_ENDPOINTS`, and create/update/delete reloads the in-process outbound provider without a backend restart. The outbound provider tracks each proxy's request results over a 10-minute window and auto-disables DB proxies whose error rate reaches at least 50% after 10 or more requests.
 - Bot guild settings routes (`/api/internal/bot/setup/guilds/*/settings`) are JWT-protected and store per-guild log channels, the tracked-users category (under which `/track` creates per-group channels), and the admin role.
 - Bot track-group routes (`/api/internal/bot/setup/guilds/*/track-groups*`) are JWT-protected and persist `track_groups` (per-guild named tracking groups bound to a tracked server, with `channel_id`, `message_id`, `send_updates`, `online_count`) plus `track_group_members` (steam/bm IDs tracked by the group). The bot polls `/track-groups/{id}/online-state` to refresh the pinned group embed and channel name; online-state rows include optional guild-linked Discord user and avatar data for join/leave notification embeds.
 - Bot track-group analytics route (`/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/analytics`) is JWT-protected and computes per-weekday hourly minute averages for the group's members in `Europe/London`. It fetches up to 200 (2 pages x 100) BattleMetrics sessions per `(player_bm_id, server_bm_id)` using the proxied outbound provider with concurrency equal to the proxy count, caches the raw sessions in `track_analytics_sessions_cache` with a 24-hour TTL per `(player, server)` pair, drops player-days where that player accumulated under 60 minutes, and returns chart-ready 0-60 minute hour buckets plus the per-weekday best-offline window.
@@ -194,7 +194,7 @@ Key patterns:
 - Bot platform-sync route (`POST /api/internal/bot/setup/platform-sync/{platform}/{id}` with `platform` of `steam` or `discord`) is JWT-protected and runs an external `platformsync.io` lookup if the last sync for that `(platform, id)` pair in `platform_sync_state` is older than 14 days. The upstream URL is hard-coded to `https://link.platformsync.io/api.php`; the bearer-style token comes from `PLATFORMSYNC_TOKEN`. Requests are sent **directly** (never proxied). Every `(steam_id, discord_id)` tuple discovered — including all `previous_*_ids` — is upserted as a hard link in `steam_discord_links` with `source='platformsync'`. Only the queried side is recorded in `platform_sync_state`, so a later sync of one of the discovered IDs still hits the upstream.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
 - App-facing routes under `/api/app/*` are protected by an internal shared-secret header used only by Next.js server-side code. Session-authenticated `/api/app/*` routes also validate the signed frontend session token with `APP_SESSION_SECRET` and derive the actor from that session before resolving current-user/admin authorization through `app_users` roles. The backend no longer exposes an email-status lookup route for browser auth.
-- The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, authenticates with `Authorization: Bearer <BATTLEMETRICS_API_KEY>`, updates `tracked_servers.last_polled_at` / `last_poll_error`, and syncs per-server player presence into `player_states`.
+- The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, polling three `tracked_servers.high_frequency=true` servers followed by one non-high-frequency server when both subsets exist. It updates `tracked_servers.last_polled_at` / `last_poll_error` and syncs per-server player presence into `player_states`.
 
 **App users & browser auth**
 
@@ -293,7 +293,7 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
 | `STEAM_API_KEY` | `` |
 | `BATTLEMETRICS_API_KEY` | `` |
-| `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS` | `10` |
+| `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS` | `30` |
 | `PROXY_ENCRYPTION_KEY` | `` |
 | `PLATFORMSYNC_TOKEN` | `` |
 

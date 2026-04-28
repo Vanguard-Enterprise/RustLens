@@ -147,6 +147,7 @@ describe("BackendClient", () => {
         isModded: true,
         isOfficial: false,
         isBuild: false,
+        highFrequency: true,
       }),
     } as Response;
 
@@ -162,6 +163,7 @@ describe("BackendClient", () => {
       isModded: true,
       isOfficial: false,
       isBuild: false,
+      highFrequency: true,
     });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
@@ -177,6 +179,7 @@ describe("BackendClient", () => {
       isModded: true,
       isOfficial: false,
       isBuild: false,
+      highFrequency: true,
     }));
   });
 
@@ -226,6 +229,7 @@ describe("BackendClient", () => {
           isModded: true,
           isOfficial: false,
           isBuild: false,
+          highFrequency: true,
           lastPolledAt: null,
           lastPollError: "",
         }],
@@ -255,6 +259,7 @@ describe("BackendClient", () => {
         isModded: true,
         isOfficial: false,
         isBuild: false,
+        highFrequency: false,
       }),
     } as Response;
 
@@ -270,6 +275,7 @@ describe("BackendClient", () => {
       isModded: true,
       isOfficial: false,
       isBuild: false,
+      highFrequency: false,
     });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
@@ -285,6 +291,7 @@ describe("BackendClient", () => {
       isModded: true,
       isOfficial: false,
       isBuild: false,
+      highFrequency: false,
     }));
   });
 

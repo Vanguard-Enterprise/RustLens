@@ -15,8 +15,8 @@ import {
   parseTargetFromModalCustomId,
 } from "./ban-command.js";
 import { invalidateBanCache } from "./ban-check.js";
-import { BackendClient, type TrackedServer } from "./backend-client.js";
-import { CheckboxGroupBuilder, ModalV2Builder, TextInputBuilder } from "./builders/index.js";
+import { BackendClient, type OwnerProxy, type TrackedServer } from "./backend-client.js";
+import { CheckboxGroupBuilder, ModalV2Builder, RadioGroupBuilder, TextInputBuilder } from "./builders/index.js";
 import { loadConfig } from "./config.js";
 import {
   getOwnerGuildID,
@@ -48,6 +48,7 @@ const SERVER_LIST_SUB = "list";
 const SERVER_TARGET_OPTION = "server";
 
 const PROXY_ADD_SUB = "add";
+const PROXY_EDIT_SUB = "edit";
 const PROXY_LIST_SUB = "list";
 const PROXY_REMOVE_SUB = "remove";
 const PROXY_TARGET_OPTION = "proxy";
@@ -62,6 +63,10 @@ const SERVER_MODAL_EDIT_PREFIX = `${SERVER_MODAL_PREFIX}edit:`;
 const SERVER_NAME_FIELD = "server_name";
 const SERVER_BM_ID_FIELD = "server_bm_id";
 const SERVER_CATEGORIES_FIELD = "server_categories";
+const SERVER_FREQUENCY_FIELD = "server_frequency";
+
+const PROXY_MODAL_EDIT_PREFIX = "manage_proxy_modal:edit:";
+const PROXY_ENABLED_FIELD = "proxy_enabled";
 
 const TRACKED_SERVER_CATEGORY_DEFINITIONS = [
   { key: "isVitality", value: "vitality", label: "Vitality" },
@@ -118,6 +123,18 @@ const manageCommand = new SlashCommandBuilder()
       .setName(PROXY_GROUP)
       .setDescription("Manage outbound proxies")
       .addSubcommand((sub) => sub.setName(PROXY_ADD_SUB).setDescription("Add encrypted outbound proxies"))
+      .addSubcommand((sub) =>
+        sub
+          .setName(PROXY_EDIT_SUB)
+          .setDescription("Enable or disable an outbound proxy")
+          .addStringOption((opt) =>
+            opt
+              .setName(PROXY_TARGET_OPTION)
+              .setDescription("Proxy to edit")
+              .setRequired(true)
+              .setAutocomplete(true),
+          ),
+      )
       .addSubcommand((sub) => sub.setName(PROXY_LIST_SUB).setDescription("List outbound proxies"))
       .addSubcommand((sub) =>
         sub
@@ -215,6 +232,45 @@ function buildTrackedServerModal(server?: TrackedServer) {
             default: server ? Boolean(server[category.key]) : false,
           })),
         ),
+    )
+    .addComponent(
+      "Poll Frequency",
+      new CheckboxGroupBuilder()
+        .setCustomId(SERVER_FREQUENCY_FIELD)
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(1)
+        .addOptions({
+          label: "High Frequency",
+          value: "high_frequency",
+          description: "Poll this server in the 3 high-frequency slots.",
+          default: server?.highFrequency ?? false,
+        }),
+    );
+}
+
+function buildProxyEditModal(proxy: OwnerProxy) {
+  return new ModalV2Builder()
+    .setTitle("Edit Outbound Proxy")
+    .setCustomId(`${PROXY_MODAL_EDIT_PREFIX}${proxy.id}`)
+    .addComponent(
+      proxyChoiceLabel(proxy),
+      new RadioGroupBuilder()
+        .setCustomId(PROXY_ENABLED_FIELD)
+        .addOptions(
+          {
+            label: "Enabled",
+            value: "enabled",
+            description: "Use this proxy for outbound BattleMetrics requests.",
+            default: proxy.enabled,
+          },
+          {
+            label: "Disabled",
+            value: "disabled",
+            description: "Keep this proxy saved but out of rotation.",
+            default: !proxy.enabled,
+          },
+        ),
     );
 }
 
@@ -223,6 +279,10 @@ function formatTrackedServerCategories(server: Pick<TrackedServer, "isVitality" 
     .filter((category) => server[category.key])
     .map((category) => category.label);
   return labels.length > 0 ? labels.join(", ") : "None";
+}
+
+function formatTrackedServerFrequency(server: Pick<TrackedServer, "highFrequency">) {
+  return server.highFrequency ? "High" : "Low";
 }
 
 function formatTrackedServerPollStatus(server: Pick<TrackedServer, "lastPolledAt" | "lastPollError">) {
@@ -246,6 +306,7 @@ function buildTrackedServerListDescription(items: TrackedServer[]) {
   let description = items.map((item, index) =>
     `${index + 1}. **${item.name}**\n` +
     `BM: \`${item.bmId}\` | Categories: ${formatTrackedServerCategories(item)}\n` +
+    `Frequency: ${formatTrackedServerFrequency(item)}\n` +
     `${formatTrackedServerPollStatus(item)}`
   ).join("\n\n");
 
@@ -256,7 +317,7 @@ function buildTrackedServerListDescription(items: TrackedServer[]) {
   return description;
 }
 
-function buildTrackedServerDraft(name: string, bmId: string, selectedCategories: readonly string[]): TrackedServerDraft {
+function buildTrackedServerDraft(name: string, bmId: string, selectedCategories: readonly string[], selectedFrequency: readonly string[]): TrackedServerDraft {
   const categories = new Set(selectedCategories);
   return {
     name: name.trim().split(/\s+/).filter((part) => part.length > 0).join(" "),
@@ -267,6 +328,7 @@ function buildTrackedServerDraft(name: string, bmId: string, selectedCategories:
     isModded: categories.has("modded"),
     isOfficial: categories.has("official"),
     isBuild: categories.has("build"),
+    highFrequency: selectedFrequency.includes("high_frequency"),
   };
 }
 
@@ -278,6 +340,11 @@ function validateTrackedServerDraft(draft: TrackedServerDraft) {
 
 async function fetchTrackedServers() {
   return getBackend().listTrackedServers(getWorkerID());
+}
+
+async function findOwnerProxyById(id: number) {
+  const { items } = await getBackend().listOwnerProxies(getWorkerID());
+  return items.find((item) => item.id === id) ?? null;
 }
 
 async function findTrackedServerByBmId(bmId: string) {
@@ -389,13 +456,16 @@ export async function handleManageAutocomplete(interaction: AutocompleteInteract
       return true;
     }
 
-    if (group === PROXY_GROUP && subcommand === PROXY_REMOVE_SUB && focused.name === PROXY_TARGET_OPTION) {
+    if (group === PROXY_GROUP && (subcommand === PROXY_EDIT_SUB || subcommand === PROXY_REMOVE_SUB) && focused.name === PROXY_TARGET_OPTION) {
       const { items } = await getBackend().listOwnerProxies(getWorkerID());
       const focusedValue = focused.value.toLowerCase();
       const choices = items
         .filter((proxy) => proxyChoiceLabel(proxy).toLowerCase().includes(focusedValue))
         .slice(0, 25)
-        .map((proxy) => ({ name: proxyChoiceLabel(proxy), value: String(proxy.id) }));
+        .map((proxy) => ({
+          name: trimChoiceLabel(`${proxy.enabled ? "Enabled" : "Disabled"} · ${proxyChoiceLabel(proxy)}`),
+          value: String(proxy.id),
+        }));
       await interaction.respond(choices);
       return true;
     }
@@ -472,6 +542,22 @@ async function handleManageServer(interaction: ChatInputCommandInteraction, subc
 async function handleManageProxy(interaction: ChatInputCommandInteraction, subcommand: string) {
   if (subcommand === PROXY_ADD_SUB) {
     await interaction.showModal(buildOwnerProxyAddModal());
+    return;
+  }
+
+  if (subcommand === PROXY_EDIT_SUB) {
+    const rawID = interaction.options.getString(PROXY_TARGET_OPTION, true);
+    const proxyID = Number(rawID);
+    if (!Number.isInteger(proxyID) || proxyID <= 0) {
+      await replyText(interaction, "Select a proxy from autocomplete.");
+      return;
+    }
+    const proxy = await findOwnerProxyById(proxyID);
+    if (!proxy) {
+      await replyText(interaction, "That proxy could not be found.");
+      return;
+    }
+    await interaction.showModal(buildProxyEditModal(proxy).toJSON() as any);
     return;
   }
 
@@ -593,7 +679,8 @@ async function handleTrackedServerModalSubmit(interaction: ModalSubmitInteractio
   const name = getFieldValues(interaction, SERVER_NAME_FIELD)[0] ?? "";
   const bmId = getFieldValues(interaction, SERVER_BM_ID_FIELD)[0] ?? "";
   const categories = getFieldValues(interaction, SERVER_CATEGORIES_FIELD);
-  const draft = buildTrackedServerDraft(name, bmId, categories);
+  const frequency = getFieldValues(interaction, SERVER_FREQUENCY_FIELD);
+  const draft = buildTrackedServerDraft(name, bmId, categories, frequency);
 
   const validationError = validateTrackedServerDraft(draft);
   if (validationError) {
@@ -614,7 +701,7 @@ async function handleTrackedServerModalSubmit(interaction: ModalSubmitInteractio
       interaction,
       buildEmbed(
         currentBmId ? "Tracked Server Updated" : "Tracked Server Added",
-        `**${saved.name}**\nBattleMetrics ID: \`${saved.bmId}\`\nCategories: ${formatTrackedServerCategories(saved)}`,
+        `**${saved.name}**\nBattleMetrics ID: \`${saved.bmId}\`\nCategories: ${formatTrackedServerCategories(saved)}\nFrequency: ${formatTrackedServerFrequency(saved)}`,
       ),
     );
   } catch (error) {
@@ -666,6 +753,30 @@ async function handleProxyAddModalSubmit(interaction: ModalSubmitInteraction) {
   await interaction.editReply({ content: lines.join("\n") });
 }
 
+async function handleProxyEditModalSubmit(interaction: ModalSubmitInteraction) {
+  const rawID = interaction.customId.slice(PROXY_MODAL_EDIT_PREFIX.length);
+  const proxyID = Number(rawID);
+  if (!Number.isInteger(proxyID) || proxyID <= 0) {
+    await replyText(interaction, "Invalid proxy edit modal target.");
+    return;
+  }
+
+  const selected = getFieldValues(interaction, PROXY_ENABLED_FIELD)[0];
+  if (selected !== "enabled" && selected !== "disabled") {
+    await replyText(interaction, "Choose whether the proxy should be enabled or disabled.");
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const proxy = await getBackend().updateOwnerProxy(getWorkerID(), proxyID, selected === "enabled");
+    await interaction.editReply({ content: `Proxy \`${proxyChoiceLabel(proxy)}\` is now ${proxy.enabled ? "enabled" : "disabled"}.` });
+  } catch (error) {
+    console.error("[bot] /manage proxy edit failed", error);
+    await interaction.editReply({ content: "Failed to update proxy." });
+  }
+}
+
 async function handleBanModalSubmitInternal(interaction: ModalSubmitInteraction) {
   const targetID = parseTargetFromModalCustomId(interaction.customId);
   if (!targetID) {
@@ -712,9 +823,10 @@ export async function handleManageModalSubmit(interaction: ModalSubmitInteractio
   const isManageServerModal =
     customId === SERVER_MODAL_ADD_CUSTOM_ID || customId.startsWith(SERVER_MODAL_EDIT_PREFIX);
   const isProxyAddModal = customId === OWNER_PROXY_ADD_MODAL_CUSTOM_ID;
+  const isProxyEditModal = customId.startsWith(PROXY_MODAL_EDIT_PREFIX);
   const isBanModal = customId.startsWith(BAN_MODAL_PREFIX);
 
-  if (!isManageServerModal && !isProxyAddModal && !isBanModal) {
+  if (!isManageServerModal && !isProxyAddModal && !isProxyEditModal && !isBanModal) {
     return false;
   }
 
@@ -735,6 +847,11 @@ export async function handleManageModalSubmit(interaction: ModalSubmitInteractio
 
   if (isProxyAddModal) {
     await handleProxyAddModalSubmit(interaction);
+    return true;
+  }
+
+  if (isProxyEditModal) {
+    await handleProxyEditModalSubmit(interaction);
     return true;
   }
 

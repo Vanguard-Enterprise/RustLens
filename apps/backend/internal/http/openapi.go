@@ -201,6 +201,41 @@ func buildOpenAPIDocument() map[string]any {
 				},
 			},
 			"/api/internal/bot/owner/proxies/{proxyID}": map[string]any{
+				"patch": map[string]any{
+					"summary":     "Update outbound proxy",
+					"description": "Enables or disables an owner-managed outbound proxy and reloads the runtime proxy provider.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "proxyID",
+							"in":          "path",
+							"required":    true,
+							"description": "Outbound proxy ID.",
+							"schema":      map[string]any{"type": "integer"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/UpdateOutboundProxyRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Proxy updated",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/OutboundProxy"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
 				"delete": map[string]any{
 					"summary":     "Delete outbound proxy",
 					"description": "Deletes an owner-managed outbound proxy and reloads the runtime proxy provider.",
@@ -2271,6 +2306,13 @@ func buildOpenAPIDocument() map[string]any {
 					},
 					"required": []string{"endpoint"},
 				},
+				"UpdateOutboundProxyRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"enabled": map[string]any{"type": "boolean"},
+					},
+					"required": []string{"enabled"},
+				},
 				"GuildSettings": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
@@ -2334,10 +2376,11 @@ func buildOpenAPIDocument() map[string]any {
 					"properties": map[string]any{
 						"bmId":          map[string]any{"type": "string"},
 						"name":          map[string]any{"type": "string"},
+						"highFrequency": map[string]any{"type": "boolean"},
 						"lastPolledAt":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
 						"lastPollError": map[string]any{"type": "string"},
 					},
-					"required": []string{"bmId", "name", "lastPolledAt", "lastPollError"},
+					"required": []string{"bmId", "name", "highFrequency", "lastPolledAt", "lastPollError"},
 				},
 				"TrackedServerListResponse": map[string]any{
 					"type": "object",
@@ -2352,8 +2395,9 @@ func buildOpenAPIDocument() map[string]any {
 				"CreateTrackedServerRequest": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"bmId": map[string]any{"type": "string"},
-						"name": map[string]any{"type": "string"},
+						"bmId":          map[string]any{"type": "string"},
+						"name":          map[string]any{"type": "string"},
+						"highFrequency": map[string]any{"type": "boolean"},
 					},
 					"required": []string{"bmId", "name"},
 				},

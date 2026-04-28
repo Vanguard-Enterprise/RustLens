@@ -416,14 +416,15 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 
 func trackedServerToMap(item store.TrackedServer) map[string]any {
 	result := map[string]any{
-		"bmId":       item.BmID,
-		"name":       item.Name,
-		"isVitality": item.IsVitality,
-		"isAtlas":    item.IsAtlas,
-		"isVital":    item.IsVital,
-		"isModded":   item.IsModded,
-		"isOfficial": item.IsOfficial,
-		"isBuild":    item.IsBuild,
+		"bmId":          item.BmID,
+		"name":          item.Name,
+		"isVitality":    item.IsVitality,
+		"isAtlas":       item.IsAtlas,
+		"isVital":       item.IsVital,
+		"isModded":      item.IsModded,
+		"isOfficial":    item.IsOfficial,
+		"isBuild":       item.IsBuild,
+		"highFrequency": item.HighFrequency,
 	}
 	if item.LastPolledAt != nil {
 		result["lastPolledAt"] = *item.LastPolledAt
@@ -1329,14 +1330,15 @@ func (h *Handler) ReleaseWipeReactSchedulePost(w http.ResponseWriter, r *http.Re
 }
 
 type createTrackedServerRequest struct {
-	BmID       string `json:"bmId"`
-	Name       string `json:"name"`
-	IsVitality bool   `json:"isVitality"`
-	IsAtlas    bool   `json:"isAtlas"`
-	IsVital    bool   `json:"isVital"`
-	IsModded   bool   `json:"isModded"`
-	IsOfficial bool   `json:"isOfficial"`
-	IsBuild    bool   `json:"isBuild"`
+	BmID          string `json:"bmId"`
+	Name          string `json:"name"`
+	IsVitality    bool   `json:"isVitality"`
+	IsAtlas       bool   `json:"isAtlas"`
+	IsVital       bool   `json:"isVital"`
+	IsModded      bool   `json:"isModded"`
+	IsOfficial    bool   `json:"isOfficial"`
+	IsBuild       bool   `json:"isBuild"`
+	HighFrequency bool   `json:"highFrequency"`
 }
 
 func (h *Handler) ListTrackedServers(w http.ResponseWriter, r *http.Request) {
@@ -1380,6 +1382,7 @@ func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
 		request.IsModded,
 		request.IsOfficial,
 		request.IsBuild,
+		request.HighFrequency,
 	)
 	if errors.Is(err, store.ErrTrackedServerAlreadyExists) {
 		writeError(w, http.StatusConflict, "tracked server already exists")
@@ -1395,14 +1398,15 @@ func (h *Handler) CreateTrackedServer(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateTrackedServerRequest struct {
-	BmID       string `json:"bmId"`
-	Name       string `json:"name"`
-	IsVitality bool   `json:"isVitality"`
-	IsAtlas    bool   `json:"isAtlas"`
-	IsVital    bool   `json:"isVital"`
-	IsModded   bool   `json:"isModded"`
-	IsOfficial bool   `json:"isOfficial"`
-	IsBuild    bool   `json:"isBuild"`
+	BmID          string `json:"bmId"`
+	Name          string `json:"name"`
+	IsVitality    bool   `json:"isVitality"`
+	IsAtlas       bool   `json:"isAtlas"`
+	IsVital       bool   `json:"isVital"`
+	IsModded      bool   `json:"isModded"`
+	IsOfficial    bool   `json:"isOfficial"`
+	IsBuild       bool   `json:"isBuild"`
+	HighFrequency bool   `json:"highFrequency"`
 }
 
 func (h *Handler) UpdateTrackedServer(w http.ResponseWriter, r *http.Request) {
@@ -1442,6 +1446,7 @@ func (h *Handler) UpdateTrackedServer(w http.ResponseWriter, r *http.Request) {
 		request.IsModded,
 		request.IsOfficial,
 		request.IsBuild,
+		request.HighFrequency,
 	)
 	if errors.Is(err, store.ErrTrackedServerNotFound) {
 		writeError(w, http.StatusNotFound, "tracked server not found")

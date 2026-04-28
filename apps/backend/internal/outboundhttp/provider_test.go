@@ -2,6 +2,7 @@ package outboundhttp
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -106,6 +107,49 @@ func TestPrepareNilProviderFallsBackToDefaultClient(t *testing.T) {
 	}
 	if endpoint != "" {
 		t.Fatalf("endpoint = %q, want empty", endpoint)
+	}
+}
+
+func TestProviderAutoDisablesProxyAfterErrorThreshold(t *testing.T) {
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer proxyServer.Close()
+
+	provider, err := NewProvider(true, []string{proxyServer.URL}, 2*time.Second)
+	if err != nil {
+		t.Fatalf("NewProvider returned error: %v", err)
+	}
+
+	disabled := make(chan string, 1)
+	provider.SetAutoDisableCallback(func(redactedEndpoint string) {
+		disabled <- redactedEndpoint
+	})
+
+	for i := 0; i < proxyHealthMinRequests; i++ {
+		client, _, proxied := provider.Prepare()
+		if !proxied {
+			t.Fatalf("request %d was not proxied", i+1)
+		}
+
+		response, err := client.Get("http://example.invalid/test")
+		if err != nil {
+			t.Fatalf("proxied request %d failed before response: %v", i+1, err)
+		}
+		response.Body.Close()
+	}
+
+	select {
+	case got := <-disabled:
+		if got != proxyServer.URL {
+			t.Fatalf("disabled endpoint = %q, want %q", got, proxyServer.URL)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected proxy auto-disable callback")
+	}
+
+	if count := provider.ProxyCount(); count != 0 {
+		t.Fatalf("ProxyCount after auto-disable = %d, want 0", count)
 	}
 }
 

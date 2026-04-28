@@ -318,6 +318,7 @@ export type TrackedServer = {
   isModded: boolean;
   isOfficial: boolean;
   isBuild: boolean;
+  highFrequency: boolean;
   lastPolledAt: string | null;
   lastPollError: string;
 };
@@ -547,6 +548,10 @@ export class BackendClient {
 
   createOwnerProxy(workerId: string, endpoint: string) {
     return this.call<OwnerProxy>(workerId, "/api/internal/bot/owner/proxies", "POST", { endpoint });
+  }
+
+  updateOwnerProxy(workerId: string, proxyId: number, enabled: boolean) {
+    return this.call<OwnerProxy>(workerId, `/api/internal/bot/owner/proxies/${proxyId}`, "PATCH", { enabled });
   }
 
   deleteOwnerProxy(workerId: string, proxyId: number) {

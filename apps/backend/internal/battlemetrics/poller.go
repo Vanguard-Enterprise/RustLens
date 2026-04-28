@@ -11,12 +11,15 @@ import (
 )
 
 type Poller struct {
-	client   *Client
-	postgres *store.PostgresStore
-	redis    *store.RedisStore
-	interval time.Duration
-	lockID   string
+	client             *Client
+	postgres           *store.PostgresStore
+	redis              *store.RedisStore
+	interval           time.Duration
+	lockID             string
+	highFrequencyPolls int
 }
+
+const highFrequencyPollsBeforeLowFrequency = 3
 
 func NewPoller(client *Client, postgres *store.PostgresStore, redis *store.RedisStore, interval time.Duration) *Poller {
 	host, err := os.Hostname()
@@ -82,7 +85,7 @@ func (p *Poller) runCycle(ctx context.Context) {
 	}()
 
 	dbCtx, dbCancel := context.WithTimeout(ctx, 5*time.Second)
-	server, err := p.postgres.NextTrackedServerToPoll(dbCtx)
+	server, err := p.nextTrackedServerToPoll(dbCtx)
 	dbCancel()
 	if err != nil {
 		log.Printf("[battlemetrics] failed to select next tracked server: %v", err)
@@ -127,4 +130,28 @@ func (p *Poller) runCycle(ctx context.Context) {
 	}
 
 	log.Printf("[battlemetrics] polled server %s (%s): %d players", server.BmID, server.Name, len(players))
+}
+
+func (p *Poller) nextTrackedServerToPoll(ctx context.Context) (*store.TrackedServer, error) {
+	targetHighFrequency := p.highFrequencyPolls < highFrequencyPollsBeforeLowFrequency
+	server, err := p.postgres.NextTrackedServerToPoll(ctx, targetHighFrequency)
+	if err != nil {
+		return nil, err
+	}
+	if server == nil {
+		server, err = p.postgres.NextTrackedServerToPoll(ctx, !targetHighFrequency)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if server == nil {
+		return nil, nil
+	}
+
+	if targetHighFrequency {
+		p.highFrequencyPolls++
+	} else {
+		p.highFrequencyPolls = 0
+	}
+	return server, nil
 }

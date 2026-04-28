@@ -26,7 +26,7 @@ func (p *PostgresStore) ListOutboundProxies(ctx context.Context) ([]OutboundProx
 	rows, err := p.pool.Query(ctx, `
 		SELECT id, redacted_endpoint, endpoint_ciphertext, endpoint_nonce, key_id, enabled, created_at, updated_at
 		FROM outbound_proxies
-		ORDER BY id ASC
+		ORDER BY enabled ASC, id ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -135,4 +135,46 @@ func (p *PostgresStore) DeleteOutboundProxy(ctx context.Context, id int64) error
 	}
 
 	return nil
+}
+
+func (p *PostgresStore) SetOutboundProxyEnabled(ctx context.Context, id int64, enabled bool) (OutboundProxy, error) {
+	row := p.pool.QueryRow(ctx, `
+		UPDATE outbound_proxies
+		SET enabled = $2, updated_at = NOW()
+		WHERE id = $1
+		RETURNING id, redacted_endpoint, endpoint_ciphertext, endpoint_nonce, key_id, enabled, created_at, updated_at
+	`, id, enabled)
+
+	var item OutboundProxy
+	err := row.Scan(
+		&item.ID,
+		&item.RedactedEndpoint,
+		&item.Ciphertext,
+		&item.Nonce,
+		&item.KeyID,
+		&item.Enabled,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return OutboundProxy{}, ErrOutboundProxyNotFound
+	}
+	if err != nil {
+		return OutboundProxy{}, err
+	}
+
+	return item, nil
+}
+
+func (p *PostgresStore) DisableOutboundProxyByRedactedEndpoint(ctx context.Context, redactedEndpoint string) (bool, error) {
+	tag, err := p.pool.Exec(ctx, `
+		UPDATE outbound_proxies
+		SET enabled = FALSE, updated_at = NOW()
+		WHERE redacted_endpoint = $1 AND enabled = TRUE
+	`, redactedEndpoint)
+	if err != nil {
+		return false, err
+	}
+
+	return tag.RowsAffected() > 0, nil
 }

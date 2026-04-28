@@ -38,7 +38,7 @@ type Config struct {
 func Load() Config {
 	targetShards := getEnvInt("BOT_TARGET_SHARDS", 4)
 	heartbeatTTL := getEnvInt("BOT_HEARTBEAT_TTL_SECONDS", 45)
-	battleMetricsPoll := getEnvInt("BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS", 10)
+	battleMetricsPoll := getEnvInt("BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS", 30)
 	appEmailTokenTTL := getEnvInt("APP_EMAIL_TOKEN_TTL_MINUTES", 20)
 	proxyEnabled := getEnvBool("PROXY_ENABLED", false)
 

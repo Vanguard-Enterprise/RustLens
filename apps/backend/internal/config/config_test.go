@@ -3,6 +3,7 @@ package config
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestLoad_DiscordOAuth(t *testing.T) {
@@ -40,6 +41,18 @@ func TestLoadParsesProxyConfig(t *testing.T) {
 	want := []string{"http://proxy-one:8080", "https://proxy-two:8443"}
 	if !reflect.DeepEqual(cfg.ProxyEndpoints, want) {
 		t.Fatalf("ProxyEndpoints = %#v, want %#v", cfg.ProxyEndpoints, want)
+	}
+}
+
+func TestLoadDefaultsBattleMetricsPollInterval(t *testing.T) {
+	t.Setenv("APP_API_INTERNAL_SECRET", "test-app-secret")
+	t.Setenv("APP_SESSION_SECRET", "test-session-secret")
+	t.Setenv("BOT_SERVICE_JWT_SECRET", "test-bot-secret")
+
+	cfg := Load()
+
+	if cfg.BattleMetricsPoll != 30*time.Second {
+		t.Fatalf("BattleMetricsPoll = %s, want 30s", cfg.BattleMetricsPoll)
 	}
 }
 

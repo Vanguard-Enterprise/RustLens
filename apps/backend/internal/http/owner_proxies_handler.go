@@ -20,6 +20,10 @@ type ownerProxyRequest struct {
 	Endpoint string `json:"endpoint"`
 }
 
+type ownerProxyUpdateRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 func ownerProxyToMap(proxy store.OutboundProxy) map[string]any {
 	return map[string]any{
 		"id":       proxy.ID,
@@ -171,4 +175,37 @@ func (h *Handler) DeleteOwnerProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (h *Handler) UpdateOwnerProxy(w http.ResponseWriter, r *http.Request) {
+	proxyID, err := strconv.ParseInt(chi.URLParam(r, "proxyID"), 10, 64)
+	if err != nil || proxyID <= 0 {
+		writeError(w, http.StatusBadRequest, "proxyID must be a positive integer")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request ownerProxyUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	proxy, err := h.postgres.SetOutboundProxyEnabled(r.Context(), proxyID, request.Enabled)
+	if errors.Is(err, store.ErrOutboundProxyNotFound) {
+		writeError(w, http.StatusNotFound, "proxy not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] UpdateOwnerProxy store error for %d: %v", proxyID, err)
+		writeError(w, http.StatusInternalServerError, "failed to update proxy")
+		return
+	}
+	if err := h.reloadOutboundProvider(r.Context()); err != nil {
+		log.Printf("[backend] UpdateOwnerProxy reload error: %v", err)
+		writeError(w, http.StatusInternalServerError, "proxy updated but reload failed")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, ownerProxyToMap(proxy))
 }

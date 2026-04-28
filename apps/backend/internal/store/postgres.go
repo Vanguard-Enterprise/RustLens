@@ -357,6 +357,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			is_modded BOOLEAN NOT NULL DEFAULT FALSE,
 			is_official BOOLEAN NOT NULL DEFAULT FALSE,
 			is_build BOOLEAN NOT NULL DEFAULT FALSE,
+			high_frequency BOOLEAN NOT NULL DEFAULT FALSE,
 			last_polled_at TIMESTAMPTZ,
 			last_poll_error TEXT NOT NULL DEFAULT ''
 		);
@@ -368,6 +369,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_modded BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_official BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS is_build BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS high_frequency BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_polled_at TIMESTAMPTZ;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_poll_error TEXT NOT NULL DEFAULT '';
 

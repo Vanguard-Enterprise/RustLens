@@ -21,13 +21,14 @@ type TrackedServer struct {
 	IsModded      bool
 	IsOfficial    bool
 	IsBuild       bool
+	HighFrequency bool
 	LastPolledAt  *time.Time
 	LastPollError string
 }
 
 func (p *PostgresStore) ListTrackedServers(ctx context.Context) ([]TrackedServer, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
+		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, high_frequency, last_polled_at, last_poll_error
 		FROM tracked_servers
 		ORDER BY name ASC, bm_id ASC
 	`)
@@ -48,6 +49,7 @@ func (p *PostgresStore) ListTrackedServers(ctx context.Context) ([]TrackedServer
 			&item.IsModded,
 			&item.IsOfficial,
 			&item.IsBuild,
+			&item.HighFrequency,
 			&item.LastPolledAt,
 			&item.LastPollError,
 		); err != nil {
@@ -63,7 +65,7 @@ func (p *PostgresStore) ListTrackedServers(ctx context.Context) ([]TrackedServer
 	return items, nil
 }
 
-func (p *PostgresStore) CreateTrackedServer(ctx context.Context, bmID string, name string, isVitality bool, isAtlas bool, isVital bool, isModded bool, isOfficial bool, isBuild bool) (TrackedServer, error) {
+func (p *PostgresStore) CreateTrackedServer(ctx context.Context, bmID string, name string, isVitality bool, isAtlas bool, isVital bool, isModded bool, isOfficial bool, isBuild bool, highFrequency bool) (TrackedServer, error) {
 	row := p.pool.QueryRow(ctx, `
 		INSERT INTO tracked_servers (
 			bm_id,
@@ -73,12 +75,13 @@ func (p *PostgresStore) CreateTrackedServer(ctx context.Context, bmID string, na
 			is_vital,
 			is_modded,
 			is_official,
-			is_build
+			is_build,
+			high_frequency
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (bm_id) DO NOTHING
-		RETURNING bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
-	`, bmID, name, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild)
+		RETURNING bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, high_frequency, last_polled_at, last_poll_error
+	`, bmID, name, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild, highFrequency)
 
 	var item TrackedServer
 	err := row.Scan(
@@ -90,6 +93,7 @@ func (p *PostgresStore) CreateTrackedServer(ctx context.Context, bmID string, na
 		&item.IsModded,
 		&item.IsOfficial,
 		&item.IsBuild,
+		&item.HighFrequency,
 		&item.LastPolledAt,
 		&item.LastPollError,
 	)
@@ -114,6 +118,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 	isModded bool,
 	isOfficial bool,
 	isBuild bool,
+	highFrequency bool,
 ) (TrackedServer, error) {
 	if currentBmID == nextBmID {
 		row := p.pool.QueryRow(ctx, `
@@ -124,10 +129,11 @@ func (p *PostgresStore) UpdateTrackedServer(
 				is_vital = $5,
 				is_modded = $6,
 				is_official = $7,
-				is_build = $8
+				is_build = $8,
+				high_frequency = $9
 			WHERE bm_id = $1
-			RETURNING bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
-		`, currentBmID, name, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild)
+			RETURNING bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, high_frequency, last_polled_at, last_poll_error
+		`, currentBmID, name, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild, highFrequency)
 
 		var item TrackedServer
 		err := row.Scan(
@@ -139,6 +145,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 			&item.IsModded,
 			&item.IsOfficial,
 			&item.IsBuild,
+			&item.HighFrequency,
 			&item.LastPolledAt,
 			&item.LastPollError,
 		)
@@ -162,7 +169,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 
 	var existing TrackedServer
 	row := p.pool.QueryRow(ctx, `
-		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
+		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, high_frequency, last_polled_at, last_poll_error
 		FROM tracked_servers
 		WHERE bm_id = $1
 	`, currentBmID)
@@ -175,6 +182,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 		&existing.IsModded,
 		&existing.IsOfficial,
 		&existing.IsBuild,
+		&existing.HighFrequency,
 		&existing.LastPolledAt,
 		&existing.LastPollError,
 	)
@@ -195,11 +203,12 @@ func (p *PostgresStore) UpdateTrackedServer(
 			is_modded,
 			is_official,
 			is_build,
+			high_frequency,
 			last_polled_at,
 			last_poll_error
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, nextBmID, name, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild, existing.LastPolledAt, existing.LastPollError)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`, nextBmID, name, isVitality, isAtlas, isVital, isModded, isOfficial, isBuild, highFrequency, existing.LastPolledAt, existing.LastPollError)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -244,6 +253,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 		IsModded:      isModded,
 		IsOfficial:    isOfficial,
 		IsBuild:       isBuild,
+		HighFrequency: highFrequency,
 		LastPolledAt:  existing.LastPolledAt,
 		LastPollError: existing.LastPollError,
 	}, nil
@@ -251,7 +261,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 
 func (p *PostgresStore) GetTrackedServer(ctx context.Context, bmID string) (TrackedServer, error) {
 	row := p.pool.QueryRow(ctx, `
-		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
+		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, high_frequency, last_polled_at, last_poll_error
 		FROM tracked_servers
 		WHERE bm_id = $1
 	`, bmID)
@@ -266,6 +276,7 @@ func (p *PostgresStore) GetTrackedServer(ctx context.Context, bmID string) (Trac
 		&item.IsModded,
 		&item.IsOfficial,
 		&item.IsBuild,
+		&item.HighFrequency,
 		&item.LastPolledAt,
 		&item.LastPollError,
 	)
@@ -294,13 +305,14 @@ func (p *PostgresStore) DeleteTrackedServer(ctx context.Context, bmID string) er
 	return nil
 }
 
-func (p *PostgresStore) NextTrackedServerToPoll(ctx context.Context) (*TrackedServer, error) {
+func (p *PostgresStore) NextTrackedServerToPoll(ctx context.Context, highFrequency bool) (*TrackedServer, error) {
 	row := p.pool.QueryRow(ctx, `
-		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, last_polled_at, last_poll_error
+		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, high_frequency, last_polled_at, last_poll_error
 		FROM tracked_servers
+		WHERE high_frequency = $1
 		ORDER BY last_polled_at NULLS FIRST, bm_id ASC
 		LIMIT 1
-	`)
+	`, highFrequency)
 
 	var item TrackedServer
 	err := row.Scan(
@@ -312,6 +324,7 @@ func (p *PostgresStore) NextTrackedServerToPoll(ctx context.Context) (*TrackedSe
 		&item.IsModded,
 		&item.IsOfficial,
 		&item.IsBuild,
+		&item.HighFrequency,
 		&item.LastPolledAt,
 		&item.LastPollError,
 	)

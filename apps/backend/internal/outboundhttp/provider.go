@@ -12,36 +12,67 @@ import (
 
 var ErrProxyEndpointsRequired = errors.New("proxy endpoints are required when proxying is enabled")
 
+const (
+	proxyHealthWindow      = 10 * time.Minute
+	proxyHealthMinRequests = 10
+)
+
 type Provider struct {
-	mu      sync.RWMutex
-	enabled bool
-	direct  *http.Client
-	proxies []proxyClient
-	next    atomic.Uint64
-	timeout time.Duration
+	mu                  sync.RWMutex
+	enabled             bool
+	direct              *http.Client
+	proxies             []proxyClient
+	next                atomic.Uint64
+	timeout             time.Duration
+	results             map[string][]proxyRequestResult
+	autoDisabled        map[string]bool
+	autoDisableCallback func(string)
 }
 
 type proxyClient struct {
-	endpoint string
-	client   *http.Client
+	endpoint         string
+	redactedEndpoint string
+	client           *http.Client
+}
+
+type proxyRequestResult struct {
+	at      time.Time
+	success bool
+}
+
+type proxyStatsTransport struct {
+	base             http.RoundTripper
+	redactedEndpoint string
+	record           func(string, bool)
+}
+
+func (t proxyStatsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(req)
+	success := err == nil && response != nil && response.StatusCode < http.StatusInternalServerError && response.StatusCode != http.StatusTooManyRequests
+	t.record(t.redactedEndpoint, success)
+	return response, err
 }
 
 func NewProvider(enabled bool, endpoints []string, timeout time.Duration) (*Provider, error) {
 	direct := &http.Client{Timeout: timeout}
-	proxies, err := buildProxyClients(enabled, endpoints, timeout)
+	provider := &Provider{
+		enabled:      enabled,
+		direct:       direct,
+		timeout:      timeout,
+		results:      make(map[string][]proxyRequestResult),
+		autoDisabled: make(map[string]bool),
+	}
+
+	proxies, err := provider.buildProxyClients(enabled, endpoints)
 	if err != nil {
 		return nil, err
 	}
+	provider.proxies = proxies
 
-	return &Provider{
-		enabled: enabled,
-		direct:  direct,
-		proxies: proxies,
-		timeout: timeout,
-	}, nil
+	return provider, nil
 }
 
-func buildProxyClients(enabled bool, endpoints []string, timeout time.Duration) ([]proxyClient, error) {
+func (p *Provider) buildProxyClients(enabled bool, endpoints []string) ([]proxyClient, error) {
 	if !enabled {
 		return nil, nil
 	}
@@ -63,12 +94,18 @@ func buildProxyClients(enabled bool, endpoints []string, timeout time.Duration) 
 		proxyURL := parsed
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.Proxy = http.ProxyURL(proxyURL)
+		redactedEndpoint := RedactProxyEndpoint(proxyURL.String())
 
 		proxies = append(proxies, proxyClient{
-			endpoint: proxyURL.String(),
+			endpoint:         proxyURL.String(),
+			redactedEndpoint: redactedEndpoint,
 			client: &http.Client{
-				Timeout:   timeout,
-				Transport: transport,
+				Timeout: p.timeout,
+				Transport: proxyStatsTransport{
+					base:             transport,
+					redactedEndpoint: redactedEndpoint,
+					record:           p.recordProxyResult,
+				},
 			},
 		})
 	}
@@ -81,7 +118,7 @@ func (p *Provider) Replace(enabled bool, endpoints []string) error {
 		return nil
 	}
 
-	proxies, err := buildProxyClients(enabled, endpoints, p.timeout)
+	proxies, err := p.buildProxyClients(enabled, endpoints)
 	if err != nil {
 		return err
 	}
@@ -90,8 +127,69 @@ func (p *Provider) Replace(enabled bool, endpoints []string) error {
 	defer p.mu.Unlock()
 	p.enabled = enabled
 	p.proxies = proxies
+	p.results = make(map[string][]proxyRequestResult)
+	p.autoDisabled = make(map[string]bool)
 	p.next.Store(0)
 	return nil
+}
+
+func (p *Provider) SetAutoDisableCallback(callback func(string)) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.autoDisableCallback = callback
+}
+
+func (p *Provider) recordProxyResult(redactedEndpoint string, success bool) {
+	if p == nil || redactedEndpoint == "" {
+		return
+	}
+
+	now := time.Now()
+	cutoff := now.Add(-proxyHealthWindow)
+	var callback func(string)
+	shouldDisable := false
+
+	p.mu.Lock()
+	results := append(p.results[redactedEndpoint], proxyRequestResult{at: now, success: success})
+	kept := results[:0]
+	failures := 0
+	for _, result := range results {
+		if result.at.Before(cutoff) {
+			continue
+		}
+		if !result.success {
+			failures++
+		}
+		kept = append(kept, result)
+	}
+	p.results[redactedEndpoint] = kept
+
+	if len(kept) >= proxyHealthMinRequests && failures*2 >= len(kept) && !p.autoDisabled[redactedEndpoint] {
+		p.autoDisabled[redactedEndpoint] = true
+		p.removeProxyLocked(redactedEndpoint)
+		callback = p.autoDisableCallback
+		shouldDisable = true
+	}
+	p.mu.Unlock()
+
+	if shouldDisable && callback != nil {
+		go callback(redactedEndpoint)
+	}
+}
+
+func (p *Provider) removeProxyLocked(redactedEndpoint string) {
+	kept := p.proxies[:0]
+	for _, proxy := range p.proxies {
+		if proxy.redactedEndpoint == redactedEndpoint {
+			continue
+		}
+		kept = append(kept, proxy)
+	}
+	p.proxies = kept
+	p.next.Store(0)
 }
 
 func (p *Provider) ProxyCount() int {

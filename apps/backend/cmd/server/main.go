@@ -59,6 +59,30 @@ func main() {
 	if err != nil {
 		log.Fatalf("outbound proxy init failed: %v", err)
 	}
+	outboundProvider.SetAutoDisableCallback(func(redactedEndpoint string) {
+		ctxDisable, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		disabled, err := postgresStore.DisableOutboundProxyByRedactedEndpoint(ctxDisable, redactedEndpoint)
+		if err != nil {
+			log.Printf("[backend] auto-disable proxy %q failed: %v", redactedEndpoint, err)
+			return
+		}
+		if !disabled {
+			return
+		}
+
+		endpoints, err := initialProxyEndpoints(ctxDisable, postgresStore, proxyCrypto, cfg)
+		if err != nil {
+			log.Printf("[backend] reload proxies after auto-disable %q failed: %v", redactedEndpoint, err)
+			return
+		}
+		if err := outboundProvider.Replace(len(endpoints) > 0, endpoints); err != nil {
+			log.Printf("[backend] apply proxies after auto-disable %q failed: %v", redactedEndpoint, err)
+			return
+		}
+		log.Printf("[backend] auto-disabled outbound proxy %q after >=50%% errors in 10m", redactedEndpoint)
+	})
 	directProvider, err := outboundhttp.NewProvider(false, nil, 10*time.Second)
 	if err != nil {
 		log.Fatalf("direct outbound init failed: %v", err)

@@ -83,6 +83,7 @@ func NewRouter(
 		r.Get("/stats", handler.GetOwnerStats)
 		r.Get("/proxies", handler.ListOwnerProxies)
 		r.Post("/proxies", handler.CreateOwnerProxy)
+		r.Patch("/proxies/{proxyID}", handler.UpdateOwnerProxy)
 		r.Delete("/proxies/{proxyID}", handler.DeleteOwnerProxy)
 	})
 
