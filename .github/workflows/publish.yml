@@ -19,7 +19,7 @@ jobs:
       matrix:
         service: [backend, frontend, bot]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Normalize image owner
         id: image_owner
