@@ -20,7 +20,6 @@ func TestFetchServerPlayersFiltersIncludedPlayers(t *testing.T) {
 	var capturedAccept string
 	client := &Client{
 		baseURL: "https://api.battlemetrics.com",
-		apiKey:  "test-api-key",
 		provider: staticProvider{client: &http.Client{
 			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 				capturedAuth = request.Header.Get("Authorization")
@@ -74,8 +73,8 @@ func TestFetchServerPlayersFiltersIncludedPlayers(t *testing.T) {
 		t.Fatalf("unexpected player name: %s", players[0].Name)
 	}
 
-	if capturedAuth != "Bearer test-api-key" {
-		t.Fatalf("unexpected auth header: %s", capturedAuth)
+	if capturedAuth != "" {
+		t.Fatalf("expected no auth header on unauthenticated client, got %q", capturedAuth)
 	}
 
 	if capturedAccept != "application/json" {
@@ -214,105 +213,6 @@ func TestFetchPlayerSessionsAllServersDoesNotSendServerFilter(t *testing.T) {
 	}
 	if !strings.Contains(capturedQuery, "page%5Bsize%5D=100") {
 		t.Fatalf("expected page size in query, got %q", capturedQuery)
-	}
-}
-
-func TestQuickMatchPlayerProfileBySteamIDUsesAuthorizedPost(t *testing.T) {
-	var capturedMethod string
-	var capturedAuth string
-	var capturedAccept string
-	var capturedContentType string
-	var capturedQuery string
-	var capturedBody string
-
-	client := &Client{
-		baseURL: "https://api.battlemetrics.com",
-		apiKey:  "test-api-key",
-		provider: staticProvider{client: &http.Client{
-			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-				capturedMethod = request.Method
-				capturedAuth = request.Header.Get("Authorization")
-				capturedAccept = request.Header.Get("Accept")
-				capturedContentType = request.Header.Get("Content-Type")
-				capturedQuery = request.URL.RawQuery
-				body, err := io.ReadAll(request.Body)
-				if err != nil {
-					return nil, err
-				}
-				capturedBody = string(body)
-
-				responseBody := `{
-					"data": [
-						{
-							"type": "identifier",
-							"attributes": {
-								"type": "steamID",
-								"identifier": "76561198888013469"
-							},
-							"relationships": {
-								"player": {
-									"data": {
-										"type": "player",
-										"id": "918543318"
-									}
-								}
-							}
-						}
-					],
-					"included": [
-						{
-							"type": "identifier",
-							"id": "272422868",
-							"attributes": {
-								"type": "name",
-								"identifier": "Kappu"
-							}
-						}
-					]
-				}`
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(strings.NewReader(responseBody)),
-					Header:     make(http.Header),
-				}, nil
-			}),
-		}},
-	}
-
-	profile, err := client.QuickMatchPlayerProfileBySteamID(context.Background(), "76561198888013469")
-	if err != nil {
-		t.Fatalf("QuickMatchPlayerProfileBySteamID returned error: %v", err)
-	}
-
-	if capturedMethod != http.MethodPost {
-		t.Fatalf("unexpected method: %s", capturedMethod)
-	}
-	if capturedAuth != "Bearer test-api-key" {
-		t.Fatalf("unexpected auth header: %s", capturedAuth)
-	}
-	if capturedAccept != "application/json" {
-		t.Fatalf("unexpected accept header: %s", capturedAccept)
-	}
-	if capturedContentType != "application/json" {
-		t.Fatalf("unexpected content-type header: %s", capturedContentType)
-	}
-	if capturedQuery != "include=identifier" {
-		t.Fatalf("unexpected query string: %s", capturedQuery)
-	}
-	if !strings.Contains(capturedBody, `"identifier":"76561198888013469"`) {
-		t.Fatalf("unexpected request body: %s", capturedBody)
-	}
-	if profile.BmID != "918543318" {
-		t.Fatalf("unexpected bm id: %s", profile.BmID)
-	}
-	if profile.SteamID != "76561198888013469" {
-		t.Fatalf("unexpected steam id: %s", profile.SteamID)
-	}
-	if profile.BmName != "" {
-		t.Fatalf("unexpected bm name: %s", profile.BmName)
-	}
-	if len(profile.Servers) != 0 {
-		t.Fatalf("unexpected servers: %#v", profile.Servers)
 	}
 }
 

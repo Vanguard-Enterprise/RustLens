@@ -12,6 +12,7 @@ import (
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
+	"rustlens/backend/internal/bmmatch"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/oauth/discord"
 	"rustlens/backend/internal/outboundhttp"
@@ -50,11 +51,11 @@ func NewRouter(
 	steamClient *steamapi.Client,
 	steamSummaryClient *steamapi.Client,
 	battleMetricsClient *battlemetrics.Client,
-	authBattleMetricsClient *battlemetrics.Client,
+	bmMatch *bmmatch.Client,
 	outboundProvider *outboundhttp.Provider,
 	proxyCrypto *proxycrypto.Crypto,
 ) http.Handler {
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, authBattleMetricsClient, outboundProvider, proxyCrypto)
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, outboundProvider, proxyCrypto)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)

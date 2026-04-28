@@ -18,8 +18,9 @@ type Config struct {
 	BotTargetShards      int
 	BotHeartbeatTTL      time.Duration
 	SteamAPIKey          string
-	BattleMetricsAPIKey  string
 	BattleMetricsPoll    time.Duration
+	BMMatchURL           string
+	BMMatchToken         string
 	AppEmailTokenTTL     time.Duration
 	AllowedJWTIssuer     string
 	AllowedJWTAudience   string
@@ -51,8 +52,9 @@ func Load() Config {
 		BotTargetShards:      targetShards,
 		BotHeartbeatTTL:      time.Duration(heartbeatTTL) * time.Second,
 		SteamAPIKey:          getEnv("STEAM_API_KEY", ""),
-		BattleMetricsAPIKey:  getEnv("BATTLEMETRICS_API_KEY", ""),
 		BattleMetricsPoll:    time.Duration(battleMetricsPoll) * time.Second,
+		BMMatchURL:           strings.TrimSpace(getEnv("BM_MATCH_URL", "")),
+		BMMatchToken:         strings.TrimSpace(getEnv("BM_MATCH_TOKEN", "")),
 		AppEmailTokenTTL:     time.Duration(appEmailTokenTTL) * time.Minute,
 		AllowedJWTIssuer:     getEnv("BOT_JWT_ISSUER", "rustlens-bot"),
 		AllowedJWTAudience:   getEnv("BOT_JWT_AUDIENCE", "rustlens-backend"),
