@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch: 
 
 permissions:
   contents: read
@@ -14,7 +15,7 @@ env:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         service: [backend, frontend, bot]
