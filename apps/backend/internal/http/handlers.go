@@ -2376,7 +2376,7 @@ func (h *Handler) GetBmPlayerProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, err := h.authBattleMetricsClient.FetchPlayerProfile(r.Context(), bmID)
+	profile, err := h.battleMetricsClient.FetchPlayerProfile(r.Context(), bmID)
 	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
 		writeError(w, http.StatusNotFound, "battlemetrics player not found")
 		return
