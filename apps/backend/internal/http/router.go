@@ -16,6 +16,7 @@ import (
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/oauth/discord"
 	"rustlens/backend/internal/outboundhttp"
+	"rustlens/backend/internal/platformsync"
 	"rustlens/backend/internal/proxycrypto"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
@@ -52,10 +53,11 @@ func NewRouter(
 	steamSummaryClient *steamapi.Client,
 	battleMetricsClient *battlemetrics.Client,
 	bmMatch *bmmatch.Client,
+	platformSync *platformsync.Client,
 	outboundProvider *outboundhttp.Provider,
 	proxyCrypto *proxycrypto.Crypto,
 ) http.Handler {
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, outboundProvider, proxyCrypto)
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -125,6 +127,7 @@ func NewRouter(
 		r.Post("/steam/resolve", handler.ResolveSteamID)
 		r.Post("/steam/links", handler.CreateSoftLink)
 		r.Post("/steam/bulk-hard-links", handler.BulkUpsertHardLinks)
+		r.Post("/platform-sync/{platform}/{id}", handler.SyncPlatformIdentity)
 		r.Get("/steam-accounts/count", handler.GetSteamAccountCount)
 		r.Post("/user-guilds", handler.CreateUserGuildLink)
 		r.Post("/user-guilds/leave", handler.MarkUserGuildLeft)
@@ -135,6 +138,8 @@ func NewRouter(
 		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
 		r.Get("/discord/{discordID}/links", handler.ListLinksByDiscordID)
+		r.Put("/discord/{discordID}/link-visibility-hidden", handler.HideDiscordLinkIdentity)
+		r.Delete("/discord/{discordID}/link-visibility-hidden", handler.UnhideDiscordLinkIdentity)
 		r.Get("/discord/{discordID}/guilds", handler.ListUserGuildLinksByDiscord)
 		r.Get("/discord/{discordID}/is-website-admin", handler.IsDiscordWebsiteAdmin)
 

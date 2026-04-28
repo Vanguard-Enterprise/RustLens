@@ -15,6 +15,7 @@ import (
 	"rustlens/backend/internal/config"
 	httpapi "rustlens/backend/internal/http"
 	"rustlens/backend/internal/outboundhttp"
+	"rustlens/backend/internal/platformsync"
 	"rustlens/backend/internal/proxycrypto"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
@@ -65,6 +66,7 @@ func main() {
 
 	shardService := shards.NewService(redisStore, postgresStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
 	bmMatchClient := bmmatch.NewClient(cfg.BMMatchURL, cfg.BMMatchToken, 10*time.Second)
+	platformSyncClient := platformsync.NewClient(cfg.PlatformSyncToken, 10*time.Second)
 	router := httpapi.NewRouter(
 		cfg,
 		postgresStore,
@@ -74,6 +76,7 @@ func main() {
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
 		battlemetrics.NewClient(outboundProvider),
 		bmMatchClient,
+		platformSyncClient,
 		outboundProvider,
 		proxyCrypto,
 	)

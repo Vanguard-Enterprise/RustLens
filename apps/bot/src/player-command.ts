@@ -104,6 +104,7 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await runPlatformSyncSafely("discord", discordUser.id);
     const embed = await buildDiscordLinksEmbed(discordUser);
     await interaction.editReply({ embeds: [embed] });
     return true;
@@ -358,6 +359,10 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
 
     const isAdmin = await isWebsiteAdmin(interaction.user.id);
     try {
+      const account = await ensureSteamAccountByBmIDSafely(bmId);
+      if (account?.steamId) {
+        await runPlatformSyncSafely("steam", account.steamId);
+      }
       const embed = await buildBmOnlyLinksEmbed(bmId, isAdmin);
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
@@ -382,6 +387,7 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
 
     const isAdmin = await isWebsiteAdmin(interaction.user.id);
     try {
+      await runPlatformSyncSafely("steam", steamId);
       const embed = await buildSteamLinksEmbed(steamId, isAdmin);
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
@@ -393,6 +399,24 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
   }
 
   return false;
+}
+
+async function runPlatformSyncSafely(platform: "steam" | "discord", id: string): Promise<void> {
+  const { backend, workerId } = getBackend();
+  try {
+    await backend.syncPlatformIdentity(workerId, platform, id);
+  } catch (error) {
+    console.error("[bot] platformsync sync failed", { platform, id, error });
+  }
+}
+
+async function ensureSteamAccountByBmIDSafely(bmId: string): Promise<SteamAccount | null> {
+  const { backend, workerId } = getBackend();
+  try {
+    return await backend.getSteamAccountByBmID(workerId, bmId);
+  } catch {
+    return null;
+  }
 }
 
 async function buildBmOnlyLinksEmbed(bmId: string, isAdmin: boolean): Promise<EmbedBuilder> {

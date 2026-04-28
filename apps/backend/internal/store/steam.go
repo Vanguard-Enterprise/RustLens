@@ -86,6 +86,14 @@ type SteamDiscordLink struct {
 	CreatedAt time.Time
 }
 
+type HiddenDiscordLinkIdentity struct {
+	DiscordID string
+	Reason    string
+	CreatedBy string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type GuildRecentGameBan struct {
 	GuildID      string
 	DiscordID    string
@@ -458,9 +466,14 @@ func (p *PostgresStore) CreateSteamDiscordLink(ctx context.Context, link SteamDi
 
 func (p *PostgresStore) ListLinksBySteamID(ctx context.Context, steamID string) ([]SteamDiscordLink, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT steam_id, discord_id, type, source, created_at
-		FROM steam_discord_links
-		WHERE steam_id = $1
+		SELECT l.steam_id, l.discord_id, l.type, l.source, l.created_at
+		FROM steam_discord_links l
+		WHERE l.steam_id = $1
+			AND NOT EXISTS (
+				SELECT 1
+				FROM hidden_discord_link_identities hidden
+				WHERE hidden.discord_id = l.discord_id
+			)
 		ORDER BY created_at ASC
 	`, steamID)
 	if err != nil {
@@ -481,9 +494,14 @@ func (p *PostgresStore) ListLinksBySteamID(ctx context.Context, steamID string) 
 
 func (p *PostgresStore) ListLinksByDiscordID(ctx context.Context, discordID string) ([]SteamDiscordLink, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT steam_id, discord_id, type, source, created_at
-		FROM steam_discord_links
-		WHERE discord_id = $1
+		SELECT l.steam_id, l.discord_id, l.type, l.source, l.created_at
+		FROM steam_discord_links l
+		WHERE l.discord_id = $1
+			AND NOT EXISTS (
+				SELECT 1
+				FROM hidden_discord_link_identities hidden
+				WHERE hidden.discord_id = l.discord_id
+			)
 		ORDER BY created_at ASC
 	`, discordID)
 	if err != nil {
@@ -500,6 +518,37 @@ func (p *PostgresStore) ListLinksByDiscordID(ctx context.Context, discordID stri
 		records = append(records, record)
 	}
 	return records, rows.Err()
+}
+
+func (p *PostgresStore) HideDiscordLinkIdentity(ctx context.Context, discordID, reason, createdBy string) (HiddenDiscordLinkIdentity, error) {
+	var record HiddenDiscordLinkIdentity
+	err := p.pool.QueryRow(ctx, `
+		INSERT INTO hidden_discord_link_identities (discord_id, reason, created_by)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (discord_id) DO UPDATE
+		SET reason = EXCLUDED.reason,
+			created_by = EXCLUDED.created_by,
+			updated_at = NOW()
+		RETURNING discord_id, reason, created_by, created_at, updated_at
+	`, discordID, reason, createdBy).Scan(
+		&record.DiscordID,
+		&record.Reason,
+		&record.CreatedBy,
+		&record.CreatedAt,
+		&record.UpdatedAt,
+	)
+	if err != nil {
+		return HiddenDiscordLinkIdentity{}, err
+	}
+	return record, nil
+}
+
+func (p *PostgresStore) UnhideDiscordLinkIdentity(ctx context.Context, discordID string) error {
+	_, err := p.pool.Exec(ctx, `
+		DELETE FROM hidden_discord_link_identities
+		WHERE discord_id = $1
+	`, discordID)
+	return err
 }
 
 func (p *PostgresStore) DeleteSoftLink(ctx context.Context, steamID string, discordID string) error {
@@ -626,9 +675,14 @@ func (p *PostgresStore) CreateGuildSteamDiscordLink(ctx context.Context, guildID
 
 func (p *PostgresStore) ListGuildLinksByGuildAndDiscord(ctx context.Context, guildID, discordID string) ([]GuildSteamDiscordLink, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT guild_id, discord_id, steam_id, created_at
-		FROM guild_steam_discord_links
-		WHERE guild_id = $1 AND discord_id = $2
+		SELECT gsl.guild_id, gsl.discord_id, gsl.steam_id, gsl.created_at
+		FROM guild_steam_discord_links gsl
+		WHERE gsl.guild_id = $1 AND gsl.discord_id = $2
+			AND NOT EXISTS (
+				SELECT 1
+				FROM hidden_discord_link_identities hidden
+				WHERE hidden.discord_id = gsl.discord_id
+			)
 		ORDER BY created_at ASC
 	`, guildID, discordID)
 	if err != nil {
@@ -649,9 +703,14 @@ func (p *PostgresStore) ListGuildLinksByGuildAndDiscord(ctx context.Context, gui
 
 func (p *PostgresStore) ListGuildLinksByGuildAndSteam(ctx context.Context, guildID, steamID string) ([]GuildSteamDiscordLink, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT guild_id, discord_id, steam_id, created_at
-		FROM guild_steam_discord_links
-		WHERE guild_id = $1 AND steam_id = $2
+		SELECT gsl.guild_id, gsl.discord_id, gsl.steam_id, gsl.created_at
+		FROM guild_steam_discord_links gsl
+		WHERE gsl.guild_id = $1 AND gsl.steam_id = $2
+			AND NOT EXISTS (
+				SELECT 1
+				FROM hidden_discord_link_identities hidden
+				WHERE hidden.discord_id = gsl.discord_id
+			)
 		ORDER BY created_at ASC
 	`, guildID, steamID)
 	if err != nil {
@@ -672,9 +731,14 @@ func (p *PostgresStore) ListGuildLinksByGuildAndSteam(ctx context.Context, guild
 
 func (p *PostgresStore) ListGuildLinks(ctx context.Context, guildID string) ([]GuildSteamDiscordLink, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT guild_id, discord_id, steam_id, created_at
-		FROM guild_steam_discord_links
-		WHERE guild_id = $1
+		SELECT gsl.guild_id, gsl.discord_id, gsl.steam_id, gsl.created_at
+		FROM guild_steam_discord_links gsl
+		WHERE gsl.guild_id = $1
+			AND NOT EXISTS (
+				SELECT 1
+				FROM hidden_discord_link_identities hidden
+				WHERE hidden.discord_id = gsl.discord_id
+			)
 		ORDER BY created_at ASC
 	`, guildID)
 	if err != nil {
