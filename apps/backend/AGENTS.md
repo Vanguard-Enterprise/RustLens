@@ -162,6 +162,25 @@ Global BattleMetrics servers the bot should track.
 | `last_polled_at` | `TIMESTAMPTZ` | Nullable, last successful or failed poll attempt time |
 | `last_poll_error` | `TEXT NOT NULL DEFAULT ''` | Most recent poll error, empty on success |
 
+### `outbound_proxies`
+
+Owner-managed outbound proxy endpoints for proxied BattleMetrics requests. Full URLs are encrypted with AES-GCM using `PROXY_ENCRYPTION_KEY`; only credential-free endpoints are returned or logged.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `BIGSERIAL` | PK |
+| `redacted_endpoint` | `TEXT NOT NULL` | `scheme://host:port`, unique display/removal value |
+| `endpoint_ciphertext` | `BYTEA NOT NULL` | Encrypted full proxy URL including username/password |
+| `endpoint_nonce` | `BYTEA NOT NULL` | AES-GCM nonce |
+| `key_id` | `TEXT NOT NULL DEFAULT 'default'` | Key identifier for future rotation |
+| `enabled` | `BOOLEAN NOT NULL DEFAULT TRUE` | Included in runtime proxy pool when true |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**Indexes**:
+- `outbound_proxies_enabled_idx ON (enabled, id)`
+- `outbound_proxies_redacted_endpoint_idx ON (redacted_endpoint)` unique
+
 ### `guild_tracked_servers`
 
 Guild-specific selection of servers from the global `tracked_servers` list.
@@ -269,7 +288,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - Bot-internal account lookup routes under `/api/internal/bot/setup/steam/` can backfill missing `steam_accounts` rows through direct, authorized BattleMetrics requests with `BATTLEMETRICS_API_KEY`. These fallback requests are sent directly and are never proxied.
 - Bot-internal `GET /api/internal/bot/setup/steam-accounts/count` returns the current `steam_accounts` row count for bot presence updates.
 - Steam game-ban scans use `GET /api/internal/bot/setup/guilds/{guildID}/game-bans`, which batches guild-linked Steam IDs through `ISteamUser/GetPlayerBans`, refreshes stale cache rows after 6 hours, ignores VAC-only bans, and returns only game bans newer than 90 days.
-- Outbound BattleMetrics HTTP requests can be proxied by setting `PROXY_ENABLED=true` and `PROXY_ENDPOINTS` to a comma-separated list of proxy URLs such as `http://user:pass@proxy-1:8080,http://proxy-2:8080`. Proxy selection is round-robin per request, startup validates URL syntax but does not test reachability, and request logs include the proxy endpoint used with credentials redacted. Steam API requests are always sent directly.
+- Outbound BattleMetrics HTTP requests prefer enabled `outbound_proxies` rows managed by `/owner proxy add|list|remove`; DB proxy URLs are encrypted at rest with `PROXY_ENCRYPTION_KEY`, are live-reloaded after add/delete, and request logs only include credential-free `scheme://host:port` endpoints. If no DB proxies exist, legacy `PROXY_ENABLED=true` + comma-separated `PROXY_ENDPOINTS` is still used as a fallback. Steam API requests are always sent directly.
 - The bot-internal steam profile route lazily refreshes `steam_account_cache` after a 24-hour TTL. Fresh cache rows skip Steam/BattleMetrics API calls; stale rows are returned without changing `updated_at` if refresh fails. Steam requests are sent directly. The response includes optional current/last tracked-server status from `player_states` joined to `tracked_servers`.
 - The bot-internal steam analytics route shares the same `steam_account_cache.updated_at` TTL and refresh path as the bot-internal steam profile route. Fresh cache rows skip Steam/BattleMetrics API calls for both routes; stale cache rows are returned if refresh fails. Name-gap data is shared between the profile risk calculation and analytics gap display. If Steam summary reports `communityvisibilitystate = 1`, RustLens skips `GetOwnedGames` and leaves game totals/playtime private.
 

@@ -100,7 +100,7 @@ func TestResolveSteamIDLogsSelectedProxy(t *testing.T) {
 	if !strings.Contains(logged, `proxied=true`) {
 		t.Fatalf("expected proxied log entry, got %q", logged)
 	}
-	if !strings.Contains(logged, `proxy="http://user@proxy-one:8080"`) {
+	if !strings.Contains(logged, `proxy="http://proxy-one:8080"`) {
 		t.Fatalf("expected redacted proxy endpoint in log, got %q", logged)
 	}
 }

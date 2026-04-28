@@ -59,3 +59,16 @@ func TestLoadDefaultsProxyDisabled(t *testing.T) {
 		t.Fatalf("expected proxy endpoints to still parse for config visibility, got %d", len(cfg.ProxyEndpoints))
 	}
 }
+
+func TestLoadParsesProxyEncryptionKey(t *testing.T) {
+	t.Setenv("APP_API_INTERNAL_SECRET", "test-app-secret")
+	t.Setenv("APP_SESSION_SECRET", "test-session-secret")
+	t.Setenv("BOT_SERVICE_JWT_SECRET", "test-bot-secret")
+	t.Setenv("PROXY_ENCRYPTION_KEY", " test-key ")
+
+	cfg := Load()
+
+	if cfg.ProxyEncryptionKey != "test-key" {
+		t.Fatalf("ProxyEncryptionKey = %q, want test-key", cfg.ProxyEncryptionKey)
+	}
+}

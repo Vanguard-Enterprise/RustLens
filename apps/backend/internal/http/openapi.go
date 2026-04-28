@@ -156,6 +156,72 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/owner/proxies": map[string]any{
+				"get": map[string]any{
+					"summary":     "List outbound proxies",
+					"description": "Returns owner-managed outbound proxies with credentials removed from endpoints.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Proxies returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/OutboundProxyListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"post": map[string]any{
+					"summary":     "Create outbound proxy",
+					"description": "Stores a full proxy URL encrypted at rest and returns only a credential-free endpoint.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateOutboundProxyRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Proxy created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/OutboundProxy"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"409": map[string]any{"$ref": "#/components/responses/Conflict"},
+					},
+				},
+			},
+			"/api/internal/bot/owner/proxies/{proxyID}": map[string]any{
+				"delete": map[string]any{
+					"summary":     "Delete outbound proxy",
+					"description": "Deletes an owner-managed outbound proxy and reloads the runtime proxy provider.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "proxyID",
+							"in":          "path",
+							"required":    true,
+							"description": "Outbound proxy ID.",
+							"schema":      map[string]any{"type": "integer"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{"$ref": "#/components/responses/OKStatus"},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/guilds/{guildID}/settings": map[string]any{
 				"get": map[string]any{
 					"summary":     "Get guild settings",
@@ -1942,6 +2008,14 @@ func buildOpenAPIDocument() map[string]any {
 						},
 					},
 				},
+				"OKStatus": map[string]any{
+					"description": "Status response",
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
+						},
+					},
+				},
 				"NotFound": map[string]any{
 					"description": "Not found",
 					"content": map[string]any{
@@ -2017,6 +2091,32 @@ func buildOpenAPIDocument() map[string]any {
 						},
 					},
 					"required": []string{"workerId", "targetShards", "shardIds"},
+				},
+				"OutboundProxy": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":       map[string]any{"type": "integer"},
+						"endpoint": map[string]any{"type": "string", "description": "Credential-free endpoint, e.g. http://1.2.3.4:8080."},
+						"enabled":  map[string]any{"type": "boolean"},
+					},
+					"required": []string{"id", "endpoint", "enabled"},
+				},
+				"OutboundProxyListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/OutboundProxy"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"CreateOutboundProxyRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"endpoint": map[string]any{"type": "string", "description": "Full proxy URL including username and password."},
+					},
+					"required": []string{"endpoint"},
 				},
 				"GuildSettings": map[string]any{
 					"type": "object",

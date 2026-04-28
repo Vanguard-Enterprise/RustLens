@@ -1,12 +1,18 @@
-import type { ChatInputCommandInteraction, Client } from "discord.js";
+import type { AutocompleteInteraction, ChatInputCommandInteraction, Client } from "discord.js";
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
-import { BackendClient, type OwnerStatsResponse, type ShardStatSnapshot } from "./backend-client.js";
+import { BackendClient, type OwnerProxy, type OwnerStatsResponse, type ShardStatSnapshot } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { getOwnerGuildID, isAuthorizedOwner, isOwnerCommandConfigured } from "./owner-guard.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const OWNER_COMMAND_NAME = "owner";
 export const OWNER_STATS_SUBCOMMAND_NAME = "stats";
+
+const OWNER_PROXY_GROUP_NAME = "proxy";
+const OWNER_PROXY_ADD_SUBCOMMAND_NAME = "add";
+const OWNER_PROXY_LIST_SUBCOMMAND_NAME = "list";
+const OWNER_PROXY_REMOVE_SUBCOMMAND_NAME = "remove";
+const OWNER_PROXY_OPTION_NAME = "proxy";
 
 const ownerCommand = new SlashCommandBuilder()
   .setName(OWNER_COMMAND_NAME)
@@ -16,6 +22,39 @@ const ownerCommand = new SlashCommandBuilder()
     subcommand
       .setName(OWNER_STATS_SUBCOMMAND_NAME)
       .setDescription("Show aggregated bot statistics"),
+  )
+  .addSubcommandGroup((group) =>
+    group
+      .setName(OWNER_PROXY_GROUP_NAME)
+      .setDescription("Manage outbound proxies")
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(OWNER_PROXY_ADD_SUBCOMMAND_NAME)
+          .setDescription("Add an encrypted outbound proxy")
+          .addStringOption((option) =>
+            option
+              .setName(OWNER_PROXY_OPTION_NAME)
+              .setDescription("Full proxy URL, e.g. http://user:pass@1.2.3.4:8080")
+              .setRequired(true),
+          ),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(OWNER_PROXY_LIST_SUBCOMMAND_NAME)
+          .setDescription("List configured outbound proxies"),
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(OWNER_PROXY_REMOVE_SUBCOMMAND_NAME)
+          .setDescription("Remove an outbound proxy")
+          .addStringOption((option) =>
+            option
+              .setName(OWNER_PROXY_OPTION_NAME)
+              .setDescription("Proxy to remove")
+              .setRequired(true)
+              .setAutocomplete(true),
+          ),
+      ),
   );
 
 let _backend: BackendClient | undefined;
@@ -132,6 +171,24 @@ function summarizeShards(shards: ShardStatSnapshot[], targetShards: number) {
   return lines.join("\n");
 }
 
+function proxyChoiceLabel(proxy: OwnerProxy) {
+  const host = proxy.endpoint.replace(/^https?:\/\//, "");
+  return host.length <= 100 ? host : `${host.slice(0, 97)}...`;
+}
+
+function buildOwnerProxyListEmbed(proxies: OwnerProxy[]) {
+  const description = proxies.length === 0
+    ? "No outbound proxies configured."
+    : proxies.map((proxy, index) => `${index + 1}. \`${proxyChoiceLabel(proxy)}\``).join("\n");
+
+  return new EmbedBuilder()
+    .setTitle("Outbound Proxies")
+    .setDescription(description.length <= 4096 ? description : `${description.slice(0, 4093)}...`)
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
 export function buildOwnerStatsEmbed(stats: OwnerStatsResponse) {
   const allShards = stats.workers.flatMap((worker) => worker.shards);
   const totalRSS = stats.workers.reduce((sum, worker) => sum + worker.rssBytes, 0);
@@ -209,6 +266,39 @@ async function replyOwnerOnly(interaction: ChatInputCommandInteraction, content:
   await interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
 
+export async function handleOwnerAutocomplete(interaction: AutocompleteInteraction) {
+  if (interaction.commandName !== OWNER_COMMAND_NAME) {
+    return false;
+  }
+
+  if (!isOwnerCommandConfigured() || !isAuthorizedOwner(interaction)) {
+    await interaction.respond([]);
+    return true;
+  }
+
+  const group = interaction.options.getSubcommandGroup(false);
+  const subcommand = interaction.options.getSubcommand(false);
+  if (group !== OWNER_PROXY_GROUP_NAME || subcommand !== OWNER_PROXY_REMOVE_SUBCOMMAND_NAME) {
+    await interaction.respond([]);
+    return true;
+  }
+
+  try {
+    const focused = interaction.options.getFocused().toLowerCase();
+    const { items } = await getBackend().listOwnerProxies(getWorkerID());
+    const choices = items
+      .filter((proxy) => proxyChoiceLabel(proxy).toLowerCase().includes(focused))
+      .slice(0, 25)
+      .map((proxy) => ({ name: proxyChoiceLabel(proxy), value: String(proxy.id) }));
+    await interaction.respond(choices);
+  } catch (error) {
+    console.error("[bot] /owner proxy autocomplete failed", error);
+    await interaction.respond([]);
+  }
+
+  return true;
+}
+
 export async function handleOwnerChatInput(interaction: ChatInputCommandInteraction) {
   if (interaction.commandName !== OWNER_COMMAND_NAME) {
     return false;
@@ -232,7 +322,43 @@ export async function handleOwnerChatInput(interaction: ChatInputCommandInteract
     return true;
   }
 
+  const group = interaction.options.getSubcommandGroup(false);
   const subcommand = interaction.options.getSubcommand(true);
+  if (group === OWNER_PROXY_GROUP_NAME) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      if (subcommand === OWNER_PROXY_ADD_SUBCOMMAND_NAME) {
+        const proxy = interaction.options.getString(OWNER_PROXY_OPTION_NAME, true);
+        const saved = await getBackend().createOwnerProxy(getWorkerID(), proxy);
+        await interaction.editReply({ content: `Added proxy \`${proxyChoiceLabel(saved)}\`.` });
+        return true;
+      }
+
+      if (subcommand === OWNER_PROXY_LIST_SUBCOMMAND_NAME) {
+        const { items } = await getBackend().listOwnerProxies(getWorkerID());
+        await interaction.editReply({ embeds: [buildOwnerProxyListEmbed(items)] });
+        return true;
+      }
+
+      if (subcommand === OWNER_PROXY_REMOVE_SUBCOMMAND_NAME) {
+        const rawID = interaction.options.getString(OWNER_PROXY_OPTION_NAME, true);
+        const proxyID = Number(rawID);
+        if (!Number.isInteger(proxyID) || proxyID <= 0) {
+          await interaction.editReply({ content: "Select a proxy from autocomplete." });
+          return true;
+        }
+        await getBackend().deleteOwnerProxy(getWorkerID(), proxyID);
+        await interaction.editReply({ content: "Removed proxy." });
+        return true;
+      }
+    } catch (error) {
+      console.error("[bot] /owner proxy failed", error);
+      await interaction.editReply({ content: "Failed to manage proxies." });
+      return true;
+    }
+  }
+
   if (subcommand !== OWNER_STATS_SUBCOMMAND_NAME) {
     await replyOwnerOnly(interaction, `Unknown /owner subcommand: ${subcommand}`);
     return true;

@@ -22,6 +22,8 @@ import (
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/config"
+	"rustlens/backend/internal/outboundhttp"
+	"rustlens/backend/internal/proxycrypto"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
@@ -53,6 +55,8 @@ type Handler struct {
 	auditStore              *audit.Store
 	actionRegistry          *actions.Registry
 	actionDispatcher        *actions.Dispatcher
+	outboundProvider        *outboundhttp.Provider
+	proxyCrypto             *proxycrypto.Crypto
 }
 
 func NewHandler(
@@ -64,6 +68,8 @@ func NewHandler(
 	steamSummaryClient *steamapi.Client,
 	battleMetricsClient *battlemetrics.Client,
 	authBattleMetricsClient *battlemetrics.Client,
+	outboundProvider *outboundhttp.Provider,
+	proxyCrypto *proxycrypto.Crypto,
 ) *Handler {
 	rbacStore := rbac.NewStore(postgres.Pool())
 	if err := rbacStore.SeedPermissionsAndRoles(context.Background()); err != nil {
@@ -98,6 +104,8 @@ func NewHandler(
 		auditStore:              auditStore,
 		actionRegistry:          registry,
 		actionDispatcher:        dispatcher,
+		outboundProvider:        outboundProvider,
+		proxyCrypto:             proxyCrypto,
 	}
 }
 

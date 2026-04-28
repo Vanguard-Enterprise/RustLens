@@ -48,6 +48,7 @@ import {
 } from "./online-command.js";
 import {
   ensureOwnerCommand,
+  handleOwnerAutocomplete,
   handleOwnerChatInput,
   OWNER_COMMAND_NAME,
 } from "./owner-command.js";
@@ -205,6 +206,10 @@ function isIgnorableInteractionReplyError(error: unknown) {
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isAutocomplete()) {
+      if (await handleOwnerAutocomplete(interaction)) {
+        return;
+      }
+
       const category = resolveCommandCategory(
         interaction.commandName,
         interaction.options.getSubcommand(false),

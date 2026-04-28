@@ -166,8 +166,8 @@ func (h *Handler) fetchTrackAnalyticsSessions(ctx context.Context, members []sto
 	}
 
 	concurrency := 1
-	if h.cfg.ProxyEnabled && len(h.cfg.ProxyEndpoints) > 0 {
-		concurrency = len(h.cfg.ProxyEndpoints)
+	if h.outboundProvider != nil && h.outboundProvider.ProxyCount() > 0 {
+		concurrency = h.outboundProvider.ProxyCount()
 	}
 	if concurrency > len(toFetch) {
 		concurrency = len(toFetch)

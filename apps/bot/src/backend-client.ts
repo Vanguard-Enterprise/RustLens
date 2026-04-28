@@ -51,6 +51,16 @@ export type OwnerStatsResponse = {
   workers: OwnerStatsWorker[];
 };
 
+export type OwnerProxy = {
+  id: number;
+  endpoint: string;
+  enabled: boolean;
+};
+
+export type OwnerProxyListResponse = {
+  items: OwnerProxy[];
+};
+
 export type GuildSettings = {
   guildId: string;
   wipeReactLogChannelId: string;
@@ -516,6 +526,18 @@ export class BackendClient {
 
   ownerStats(workerId: string) {
     return this.call<OwnerStatsResponse>(workerId, "/api/internal/bot/owner/stats", "GET");
+  }
+
+  listOwnerProxies(workerId: string) {
+    return this.call<OwnerProxyListResponse>(workerId, "/api/internal/bot/owner/proxies", "GET");
+  }
+
+  createOwnerProxy(workerId: string, endpoint: string) {
+    return this.call<OwnerProxy>(workerId, "/api/internal/bot/owner/proxies", "POST", { endpoint });
+  }
+
+  deleteOwnerProxy(workerId: string, proxyId: number) {
+    return this.call<{ status: string }>(workerId, `/api/internal/bot/owner/proxies/${proxyId}`, "DELETE");
   }
 
   release(workerId: string) {
