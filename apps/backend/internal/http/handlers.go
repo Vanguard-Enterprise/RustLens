@@ -93,14 +93,14 @@ func NewHandler(
 	}
 
 	return &Handler{
-		cfg:                     cfg,
-		postgres:                postgres,
-		redis:                   redis,
-		shardService:            shardService,
-		jwtValidator:            auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
-		appSessions:             auth.NewAppSessionValidator(cfg.AppSessionSecret),
-		steamClient:             steamClient,
-		steamSummaryClient:      steamSummaryClient,
+		cfg:                 cfg,
+		postgres:            postgres,
+		redis:               redis,
+		shardService:        shardService,
+		jwtValidator:        auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
+		appSessions:         auth.NewAppSessionValidator(cfg.AppSessionSecret),
+		steamClient:         steamClient,
+		steamSummaryClient:  steamSummaryClient,
 		battleMetricsClient: battleMetricsClient,
 		bmMatch:             bmMatch,
 		platformSync:        platformSync,
@@ -2318,6 +2318,16 @@ func steamDiscordLinkToMap(link store.SteamDiscordLink) map[string]any {
 	}
 }
 
+func hiddenDiscordLinkIdentityToMap(record store.HiddenDiscordLinkIdentity) map[string]any {
+	return map[string]any{
+		"discordId": record.DiscordID,
+		"reason":    record.Reason,
+		"createdBy": record.CreatedBy,
+		"createdAt": record.CreatedAt,
+		"updatedAt": record.UpdatedAt,
+	}
+}
+
 func writeSteamAccount(w http.ResponseWriter, record store.SteamAccount) {
 	writeJSON(w, http.StatusOK, steamAccountToMap(record))
 }
@@ -2328,6 +2338,11 @@ func writeSteamDiscordLinkList(w http.ResponseWriter, links []store.SteamDiscord
 		items = append(items, steamDiscordLinkToMap(link))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+type hideDiscordLinkIdentityRequest struct {
+	Reason    string `json:"reason"`
+	CreatedBy string `json:"createdBy"`
 }
 
 func (h *Handler) GetSteamAccountCount(w http.ResponseWriter, r *http.Request) {
@@ -2607,6 +2622,51 @@ func (h *Handler) ListLinksByDiscordID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSteamDiscordLinkList(w, links)
+}
+
+func (h *Handler) HideDiscordLinkIdentity(w http.ResponseWriter, r *http.Request) {
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var request hideDiscordLinkIdentityRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	record, err := h.postgres.HideDiscordLinkIdentity(
+		r.Context(),
+		discordID,
+		strings.TrimSpace(request.Reason),
+		strings.TrimSpace(request.CreatedBy),
+	)
+	if err != nil {
+		log.Printf("[backend] HideDiscordLinkIdentity error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to hide discord link identity")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, hiddenDiscordLinkIdentityToMap(record))
+}
+
+func (h *Handler) UnhideDiscordLinkIdentity(w http.ResponseWriter, r *http.Request) {
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	if err := h.postgres.UnhideDiscordLinkIdentity(r.Context(), discordID); err != nil {
+		log.Printf("[backend] UnhideDiscordLinkIdentity error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to unhide discord link identity")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func (h *Handler) IsDiscordWebsiteAdmin(w http.ResponseWriter, r *http.Request) {

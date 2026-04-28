@@ -724,7 +724,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/internal/bot/setup/steam/{steamID}/links": map[string]any{
 				"get": map[string]any{
 					"summary":     "List links by Steam ID",
-					"description": "Returns all discord links for a steam account.",
+					"description": "Returns visible discord links for a steam account. Discord identities hidden from link visibility are omitted.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -1343,7 +1343,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/internal/bot/setup/discord/{discordID}/links": map[string]any{
 				"get": map[string]any{
 					"summary":     "List links by Discord ID",
-					"description": "Returns all steam links for a discord user.",
+					"description": "Returns visible steam links for a discord user. Hidden discord link identities return an empty list.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -1360,6 +1360,68 @@ func buildOpenAPIDocument() map[string]any {
 							"content": map[string]any{
 								"application/json": map[string]any{
 									"schema": map[string]any{"$ref": "#/components/schemas/SteamDiscordLinkList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/internal/bot/setup/discord/{discordID}/link-visibility-hidden": map[string]any{
+				"put": map[string]any{
+					"summary":     "Hide Discord link identity",
+					"description": "Suppresses link lookup disclosure for a Discord identity without deleting stored links.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/HideDiscordLinkIdentityRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Discord link identity hidden",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/HiddenDiscordLinkIdentity"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"delete": map[string]any{
+					"summary":     "Unhide Discord link identity",
+					"description": "Removes link lookup suppression for a Discord identity.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Discord link identity unhidden",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/StatusResponse"},
 								},
 							},
 						},
@@ -2514,6 +2576,24 @@ func buildOpenAPIDocument() map[string]any {
 						},
 					},
 					"required": []string{"items"},
+				},
+				"HiddenDiscordLinkIdentity": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"discordId": map[string]any{"type": "string"},
+						"reason":    map[string]any{"type": "string"},
+						"createdBy": map[string]any{"type": "string"},
+						"createdAt": map[string]any{"type": "string", "format": "date-time"},
+						"updatedAt": map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"discordId", "reason", "createdBy", "createdAt", "updatedAt"},
+				},
+				"HideDiscordLinkIdentityRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"reason":    map[string]any{"type": "string"},
+						"createdBy": map[string]any{"type": "string"},
+					},
 				},
 				"CreateSoftLinkRequest": map[string]any{
 					"type": "object",

@@ -252,6 +252,20 @@ Maps Steam accounts to Discord users. A pair can have both soft and hard links.
 - **soft** — user self-reported, unverified. Admins can delete.
 - **hard** — from trusted source (BattleMetrics), authoritatively verified. Cannot be deleted via API.
 
+### `hidden_discord_link_identities`
+
+Read-time suppression flags for Discord identities whose Steam/Discord links should not be disclosed.
+
+| Column | Type | Notes |
+|---|---|---|
+| `discord_id` | `TEXT` | PK, Discord snowflake to suppress from link lookups |
+| `reason` | `TEXT NOT NULL DEFAULT ''` | Optional operator note |
+| `created_by` | `TEXT NOT NULL DEFAULT ''` | Optional operator identifier |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+Global and guild link list queries omit hidden Discord IDs in both Discord→Steam and Steam→Discord directions. The underlying `steam_discord_links` and `guild_steam_discord_links` rows are not deleted so dedupe, future unhide, and internal integrity are preserved.
+
 ### `track_analytics_sessions_cache`
 
 Per-(player, server) cache of raw BattleMetrics player session windows used by the track-group analytics endpoint. Entries are refreshed lazily by `GET /api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/analytics` after a 24-hour TTL.
@@ -339,6 +353,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - Steam profile resolution lives in `internal/steamapi/`. The bot uses `POST /api/internal/bot/setup/steam/resolve` to turn a raw 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` / `steamcommunity.com/id/...` URL into a canonical Steam ID. Vanity URLs are resolved live through `STEAM_API_KEY`, are not cached separately, and always go direct without using the backend proxy pool.
 - Steam ↔ BattleMetrics matching is delegated to an external service in `internal/bmmatch/` configured via `BM_MATCH_URL` + `BM_MATCH_TOKEN`. It exposes `GET /steam-to-bm/{steam_id}` and `GET /bm-to-steam/{bm_id}`; both return a single-string-value JSON object, are sent **directly** (never proxied), and authenticate with a static Bearer token. When unconfigured, backfill resolvers return `ErrSteamAccountNotFound` instead of failing.
 - Platform-identity sync is delegated to `internal/platformsync/`, a thin client for the external `https://link.platformsync.io/api.php` service (URL is hard-coded; only `PLATFORMSYNC_TOKEN` is configurable). Requests are sent **directly** (never proxied). The handler at `POST /api/internal/bot/setup/platform-sync/{platform}/{id}` enforces a 14-day cool-down via `platform_sync_state` and bulk-upserts every discovered `(steam_id, discord_id)` pair (including `previous_*_ids`) into `steam_discord_links` as hard links with `source='platformsync'`. Only the queried side is recorded in `platform_sync_state` so future syncs of discovered counterparts still hit the upstream.
+- `PUT /api/internal/bot/setup/discord/{discordID}/link-visibility-hidden` and `DELETE /api/internal/bot/setup/discord/{discordID}/link-visibility-hidden` manage read-time hiding for Discord link identities.
 - Bot-internal account lookup routes under `/api/internal/bot/setup/steam/` backfill missing `steam_accounts` rows by combining `bmmatch` for the Steam↔BM ID translation with the proxied, unauthenticated BattleMetrics `/players/{id}` for the rest of the profile (BM name, created-at, servers, hours).
 - Bot-internal `GET /api/internal/bot/setup/steam-accounts/count` returns the current `steam_accounts` row count for bot presence updates.
 - Steam game-ban scans use `GET /api/internal/bot/setup/guilds/{guildID}/game-bans`, which batches guild-linked Steam IDs through `ISteamUser/GetPlayerBans`, refreshes stale cache rows after 6 hours, ignores VAC-only bans, and returns only game bans newer than 90 days.

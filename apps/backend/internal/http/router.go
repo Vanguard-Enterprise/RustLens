@@ -138,6 +138,8 @@ func NewRouter(
 		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
 		r.Get("/discord/{discordID}/links", handler.ListLinksByDiscordID)
+		r.Put("/discord/{discordID}/link-visibility-hidden", handler.HideDiscordLinkIdentity)
+		r.Delete("/discord/{discordID}/link-visibility-hidden", handler.UnhideDiscordLinkIdentity)
 		r.Get("/discord/{discordID}/guilds", handler.ListUserGuildLinksByDiscord)
 		r.Get("/discord/{discordID}/is-website-admin", handler.IsDiscordWebsiteAdmin)
 
