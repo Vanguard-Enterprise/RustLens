@@ -3,8 +3,7 @@ FROM node:25-alpine
 WORKDIR /workspace
 COPY . .
 
-RUN corepack enable
-RUN corepack prepare pnpm@10.6.0 --activate
+RUN npm install -g pnpm@10.6.0
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @rustlens/frontend build
 
