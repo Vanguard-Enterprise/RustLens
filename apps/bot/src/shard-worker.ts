@@ -14,12 +14,6 @@ import {
   handleAnalyzeChatInput,
 } from "./analyze-command.js";
 import {
-  BAN_COMMAND_NAME,
-  ensureBanCommand,
-  handleBanChatInput,
-  handleBanModalSubmit,
-} from "./ban-command.js";
-import {
   resolveCommandCategory,
   resolveCustomIdCategory,
 } from "./ban-categories.js";
@@ -47,13 +41,12 @@ import {
   handleOnlineChatInput,
 } from "./online-command.js";
 import {
-  ensureOwnerCommand,
-  handleOwnerAutocomplete,
-  handleOwnerChatInput,
-  handleOwnerModalSubmit,
-  PROXY_COMMAND_NAME,
-  STATS_COMMAND_NAME,
-} from "./owner-command.js";
+  ensureManageCommand,
+  handleManageAutocomplete,
+  handleManageChatInput,
+  handleManageModalSubmit,
+  MANAGE_COMMAND_NAME,
+} from "./manage-command.js";
 import {
   ensurePlayerCommand,
   handlePlayerButtonInteraction,
@@ -76,7 +69,6 @@ import {
   ensureServerCommand,
   handleServerAutocomplete,
   handleServerChatInput,
-  handleServerModalSubmit,
 } from "./server-command.js";
 import {
   ensureSettingsCommand,
@@ -190,8 +182,7 @@ client.once("clientReady", () => {
     ensureSettingsCommand(client, shardID),
     ensureViewCommand(client, shardID),
     ensureServerCommand(client, shardID),
-    ensureBanCommand(client, shardID),
-    ensureOwnerCommand(client, shardID),
+    ensureManageCommand(client, shardID),
     ensureTransferCommand(client, shardID),
     ensureSearchCommand(client, shardID),
     ensureTrackCommand(client, shardID),
@@ -220,7 +211,7 @@ function isIgnorableInteractionReplyError(error: unknown) {
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isAutocomplete()) {
-      if (await handleOwnerAutocomplete(interaction)) {
+      if (await handleManageAutocomplete(interaction)) {
         return;
       }
 
@@ -254,11 +245,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isChatInputCommand()) {
-      if (
-        interaction.commandName !== BAN_COMMAND_NAME &&
-        interaction.commandName !== PROXY_COMMAND_NAME &&
-        interaction.commandName !== STATS_COMMAND_NAME
-      ) {
+      if (interaction.commandName !== MANAGE_COMMAND_NAME) {
         const category = resolveCommandCategory(
           interaction.commandName,
           interaction.options.getSubcommand(false),
@@ -268,11 +255,7 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
 
-      if (await handleBanChatInput(interaction)) {
-        return;
-      }
-
-      if (await handleOwnerChatInput(interaction)) {
+      if (await handleManageChatInput(interaction)) {
         return;
       }
 
@@ -359,11 +342,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isModalSubmit()) {
-      if (await handleBanModalSubmit(interaction)) {
-        return;
-      }
-
-      if (await handleOwnerModalSubmit(interaction)) {
+      if (await handleManageModalSubmit(interaction)) {
         return;
       }
 
@@ -377,10 +356,6 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleWipeReactModalSubmit(interaction)) {
-        return;
-      }
-
-      if (await handleServerModalSubmit(interaction)) {
         return;
       }
 

@@ -19,7 +19,7 @@ import {
   StringSelectMenuBuilder,
   escapeMarkdown,
 } from "discord.js";
-import { CheckboxGroupBuilder, StringSelectBuilder, ModalV2Builder } from "./builders/index.js";
+import { StringSelectBuilder, ModalV2Builder } from "./builders/index.js";
 import { BackendClient, type GuildSettingsPatch } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, updateGuildSettings } from "./guild-settings.js";
@@ -31,9 +31,7 @@ const SETTINGS_SELECT_CUSTOM_ID = "settings:select";
 const SETTINGS_CHANNEL_MODAL_PREFIX = "settings:channel:";
 const SETTINGS_CATEGORY_MODAL_PREFIX = "settings:category:";
 const SETTINGS_ROLE_MODAL_PREFIX = "settings:role:";
-const SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID = "settings:tracked-servers";
 const SETTINGS_SELECT_FIELD_CUSTOM_ID = "settings:value";
-const SETTINGS_TRACKED_SERVERS_FIELD_CUSTOM_ID = "settings:tracked-servers:value";
 const SETTINGS_UNSET_VALUE = "__unset__";
 const SETTINGS_CREATE_TRACKED_USERS_CATEGORY_VALUE = "__create_tracked_users_category__";
 const TRACKED_USERS_CATEGORY_NAME = "Tracked clans";
@@ -41,7 +39,6 @@ const TRACKED_USERS_CATEGORY_NAME = "Tracked clans";
 const SETTINGS_OPTION_WIPE_REACT_LOGS = "wipe_react_logs";
 const SETTINGS_OPTION_LINKING_LOGS = "linking_logs";
 const SETTINGS_OPTION_TRACKED_SERVER_LOGS = "tracked_server_logs";
-const SETTINGS_OPTION_TRACKED_SERVERS = "tracked_servers";
 const SETTINGS_OPTION_ADMIN_ROLE = "admin_role";
 const SETTINGS_OPTION_TRACKED_USERS = "tracked_users";
 
@@ -80,12 +77,6 @@ const settingsChoices: readonly SettingsChoice[] = [
     value: SETTINGS_OPTION_TRACKED_SERVER_LOGS,
     description: "Set the tracked server logs channel",
     emoji: "📃",
-  },
-  {
-    label: "Tracked Servers",
-    value: SETTINGS_OPTION_TRACKED_SERVERS,
-    description: "Choose the tracked servers for this guild",
-    emoji: "🔍",
   },
   {
     label: "Admin Role",
@@ -148,24 +139,15 @@ function formatRoleValue(roleId: string) {
   return roleId ? `<@&${roleId}>` : "`Not set`";
 }
 
-function buildTrackedServersValue(servers: { name: string }[]) {
-  if (servers.length === 0) {
-    return "> * None";
-  }
-
-  return servers.map((server) => `> * ${server.name}`).join("\n");
-}
-
 async function buildSettingsPayload(guild: Guild) {
-  const [settings, trackedServers] = await Promise.all([
-    fetchGuildSettings(guild.id),
-    getBackend().listGuildTrackedServers(getWorkerID(), guild.id),
-  ]);
+  const settings = await fetchGuildSettings(guild.id);
   const trackedUsersCategoryValue = await formatCategoryValue(guild, settings.trackedUsersCategoryId);
 
   const embed = new EmbedBuilder()
     .setTitle("Server Settings")
-    .setDescription("You can edit various settings related to your guild in here.")
+    .setDescription(
+      "You can edit various settings related to your guild in here.\nRun `/server` to configure tracked servers for this guild.",
+    )
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
@@ -183,11 +165,6 @@ async function buildSettingsPayload(guild: Guild) {
       {
         name: "📃 Tracked Server Logs",
         value: `Requires at least one tracked server.\n${formatChannelValue(settings.trackedServerLogChannelId)}`,
-        inline: true,
-      },
-      {
-        name: "🔍 Tracked Servers",
-        value: buildTrackedServersValue(trackedServers.items),
         inline: true,
       },
       {
@@ -309,30 +286,6 @@ async function fetchGuildRoleOptions(guild: Guild) {
     .filter((role): role is Role => Boolean(role))
     .filter((role) => role.id !== guild.id && !role.managed)
     .sort((left, right) => right.position - left.position || left.name.localeCompare(right.name));
-}
-
-function buildTrackedServersModal(
-  trackedServers: { bmId: string; name: string }[],
-  selectedBmIds: Set<string>,
-) {
-  return new ModalV2Builder()
-    .setTitle("Server Settings")
-    .setCustomId(SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID)
-    .addComponent(
-      "Tracked Servers",
-      new CheckboxGroupBuilder()
-        .setCustomId(SETTINGS_TRACKED_SERVERS_FIELD_CUSTOM_ID)
-        .setRequired(false)
-        .setMinValues(0)
-        .setMaxValues(Math.min(trackedServers.length, 25))
-        .addOptions(
-          ...trackedServers.slice(0, 25).map((server) => ({
-            label: trimOptionLabel(server.name),
-            value: server.bmId,
-            default: selectedBmIds.has(server.bmId),
-          })),
-        ),
-    );
 }
 
 function buildChannelSettingsModal(
@@ -552,31 +505,6 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
   const selected = interaction.values[0];
   const settings = await fetchGuildSettings(interaction.guildId);
 
-  if (selected === SETTINGS_OPTION_TRACKED_SERVERS) {
-    const [allTrackedServers, guildTrackedServers] = await Promise.all([
-      getBackend().listTrackedServers(getWorkerID()),
-      getBackend().listGuildTrackedServers(getWorkerID(), interaction.guildId),
-    ]);
-
-    const selectableTrackedServers = allTrackedServers.items.filter((server) => server.includeInGuildSettings);
-
-    if (selectableTrackedServers.length === 0) {
-      await interaction.reply({
-        content: "No tracked servers are available yet. Add them first with /server in the owner guild.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return true;
-    }
-
-    await interaction.showModal(
-      buildTrackedServersModal(
-        selectableTrackedServers,
-        new Set(guildTrackedServers.items.map((server) => server.bmId)),
-      ).toJSON() as any,
-    );
-    return true;
-  }
-
   if (selected === SETTINGS_OPTION_ADMIN_ROLE) {
     const roles = await fetchGuildRoleOptions(interaction.guild);
     await interaction.showModal(
@@ -646,8 +574,7 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
 export async function handleSettingsModalSubmit(interaction: ModalSubmitInteraction) {
   if (!interaction.customId.startsWith(SETTINGS_CHANNEL_MODAL_PREFIX) &&
       !interaction.customId.startsWith(SETTINGS_CATEGORY_MODAL_PREFIX) &&
-      !interaction.customId.startsWith(SETTINGS_ROLE_MODAL_PREFIX) &&
-      interaction.customId !== SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID) {
+      !interaction.customId.startsWith(SETTINGS_ROLE_MODAL_PREFIX)) {
     return false;
   }
 
@@ -660,7 +587,7 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
   }
 
   const selectedValue = parseSettingsSelection(interaction);
-  if (interaction.customId !== SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID && selectedValue === null) {
+  if (selectedValue === null) {
     await interaction.reply({
       content: "Select a value before saving.",
       flags: MessageFlags.Ephemeral,
@@ -742,13 +669,6 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
     }
 
     await updateGuildSettings(interaction.guildId, { [field]: valueToSave });
-    await refreshSettingsMessage(interaction, interaction.guild);
-    return true;
-  }
-
-  if (interaction.customId === SETTINGS_TRACKED_SERVERS_MODAL_CUSTOM_ID) {
-    const selectedBmIds = getFieldValues(interaction, SETTINGS_TRACKED_SERVERS_FIELD_CUSTOM_ID);
-    await getBackend().replaceGuildTrackedServers(getWorkerID(), interaction.guildId, selectedBmIds);
     await refreshSettingsMessage(interaction, interaction.guild);
     return true;
   }

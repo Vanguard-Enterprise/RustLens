@@ -946,6 +946,37 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/guilds/{guildID}/tracked-servers/{bmID}": map[string]any{
+				"post": map[string]any{
+					"summary":     "Enable a tracked server for a guild",
+					"description": "Adds one tracked BattleMetrics server to the guild's enabled list.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{"name": "guildID", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
+						{"name": "bmID", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Server enabled"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"description": "Tracked server not found"},
+						"409": map[string]any{"description": "Server already enabled"},
+					},
+				},
+				"delete": map[string]any{
+					"summary":     "Disable a tracked server for a guild",
+					"description": "Removes one tracked BattleMetrics server from the guild's enabled list.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{"name": "guildID", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
+						{"name": "bmID", "in": "path", "required": true, "schema": map[string]any{"type": "string"}},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Server disabled"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"description": "Server was not enabled"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/tracked-servers": map[string]any{
 				"get": map[string]any{
 					"summary":     "List tracked servers",
@@ -2301,13 +2332,12 @@ func buildOpenAPIDocument() map[string]any {
 				"TrackedServer": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"bmId":                   map[string]any{"type": "string"},
-						"name":                   map[string]any{"type": "string"},
-						"includeInGuildSettings": map[string]any{"type": "boolean"},
-						"lastPolledAt":           map[string]any{"type": "string", "format": "date-time", "nullable": true},
-						"lastPollError":          map[string]any{"type": "string"},
+						"bmId":          map[string]any{"type": "string"},
+						"name":          map[string]any{"type": "string"},
+						"lastPolledAt":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"lastPollError": map[string]any{"type": "string"},
 					},
-					"required": []string{"bmId", "name", "includeInGuildSettings", "lastPolledAt", "lastPollError"},
+					"required": []string{"bmId", "name", "lastPolledAt", "lastPollError"},
 				},
 				"TrackedServerListResponse": map[string]any{
 					"type": "object",
@@ -2322,9 +2352,8 @@ func buildOpenAPIDocument() map[string]any {
 				"CreateTrackedServerRequest": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"bmId":                   map[string]any{"type": "string"},
-						"name":                   map[string]any{"type": "string"},
-						"includeInGuildSettings": map[string]any{"type": "boolean"},
+						"bmId": map[string]any{"type": "string"},
+						"name": map[string]any{"type": "string"},
 					},
 					"required": []string{"bmId", "name"},
 				},
