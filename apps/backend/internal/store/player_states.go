@@ -136,19 +136,19 @@ func (p *PostgresStore) SearchPlayerStatesByName(ctx context.Context, serverBmID
 			ts.name,
 			ps.player_bm_id,
 			sa.steam_id,
-			COALESCE(sac.bm_name, '') AS bm_name,
+			COALESCE(bpc.bm_name, '') AS bm_name,
 			ps.is_online
 		FROM player_states ps
 		JOIN tracked_servers ts ON ts.bm_id = ps.server_bm_id
 		JOIN steam_accounts sa ON sa.bm_id = ps.player_bm_id
-		LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
+		LEFT JOIN bm_profile_cache bpc ON bpc.bm_id = sa.bm_id
 		WHERE ps.server_bm_id = $1
 			AND (
 				ps.is_online = TRUE
 				OR ($4 = TRUE AND ps.offline_since IS NOT NULL AND ps.offline_since >= $5)
 			)
-			AND COALESCE(sac.bm_name, '') ILIKE '%' || $2 || '%'
-		ORDER BY ps.is_online DESC, COALESCE(sac.bm_name, '') ASC, sa.steam_id ASC
+			AND COALESCE(bpc.bm_name, '') ILIKE '%' || $2 || '%'
+		ORDER BY ps.is_online DESC, COALESCE(bpc.bm_name, '') ASC, sa.steam_id ASC
 		LIMIT $3
 	`, serverBmID, query, limit, includeOffline, offlineCutoff)
 	if err != nil {
@@ -226,14 +226,11 @@ func (p *PostgresStore) SyncPlayerStates(ctx context.Context, serverBmID string,
 
 		if player.BmName != "" {
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO steam_account_cache (steam_id, bm_id, bm_name, updated_at)
-				SELECT steam_id, $1, $2, 'epoch'::timestamptz
-				FROM steam_accounts
-				WHERE bm_id = $1
-				ON CONFLICT (steam_id) DO UPDATE
-				SET bm_id = EXCLUDED.bm_id,
-					bm_name = EXCLUDED.bm_name
-				WHERE steam_account_cache.bm_name IS DISTINCT FROM EXCLUDED.bm_name
+				INSERT INTO bm_profile_cache (bm_id, bm_name, updated_at)
+				VALUES ($1, $2, 'epoch'::timestamptz)
+				ON CONFLICT (bm_id) DO UPDATE
+				SET bm_name = EXCLUDED.bm_name
+				WHERE bm_profile_cache.bm_name IS DISTINCT FROM EXCLUDED.bm_name
 			`, player.PlayerBmID, player.BmName); err != nil {
 				return err
 			}

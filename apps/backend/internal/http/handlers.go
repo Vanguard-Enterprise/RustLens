@@ -1747,33 +1747,39 @@ func toWholeHours(seconds int64) int64 {
 	return seconds / 3600
 }
 
-func steamProfileResponseFromCache(account store.SteamAccount, cache store.SteamAccountCache) steamProfileResponse {
-	gaps := make([]steamAnalyticsGap, 0, len(cache.NameGaps))
-	for _, gap := range cache.NameGaps {
+func steamProfileResponseFromCache(account store.SteamAccount, steamCache store.SteamAccountCache, bmCache store.BmProfileCache) steamProfileResponse {
+	gaps := make([]steamAnalyticsGap, 0, len(bmCache.NameGaps))
+	for _, gap := range bmCache.NameGaps {
 		gaps = append(gaps, steamAnalyticsGap{FromUnix: gap.FromUnix, ToUnix: gap.ToUnix})
 	}
 	response := steamProfileResponse{
 		SteamID:       account.SteamID,
-		BmName:        cache.BmName,
-		AvatarImage:   cache.AvatarImage,
-		ServersPlayed: cache.BmServersPlayed,
+		BmName:        bmCache.BmName,
+		AvatarImage:   steamCache.AvatarImage,
+		ServersPlayed: bmCache.BmServersPlayed,
 		NameGaps:      gaps,
 		Hours: steamProfileHours{
-			Vitality: cache.VitalityHours,
-			Atlas:    cache.AtlasHours,
-			Vital:    cache.VitalHours,
-			Modded:   cache.ModdedHours,
-			Official: cache.OfficialHours,
-			Build:    cache.BuildHours,
-			BM:       cache.BmHours,
-			Rust:     cache.RustHours,
+			Vitality: bmCache.VitalityHours,
+			Atlas:    bmCache.AtlasHours,
+			Vital:    bmCache.VitalHours,
+			Modded:   bmCache.ModdedHours,
+			Official: bmCache.OfficialHours,
+			Build:    bmCache.BuildHours,
+			BM:       bmCache.BmHours,
+			Rust:     steamCache.RustHours,
 		},
 	}
 	if account.BmID != nil {
 		response.BmID = *account.BmID
 	}
-	if cache.FirstSeenAt != nil {
-		firstSeenUnix := cache.FirstSeenAt.Unix()
+	if response.BmName == "" {
+		response.BmName = account.BmName
+	}
+	if bmCache.FirstSeenAt != nil {
+		firstSeenUnix := bmCache.FirstSeenAt.Unix()
+		response.FirstSeenUnix = &firstSeenUnix
+	} else if account.FirstSeenAt != nil {
+		firstSeenUnix := account.FirstSeenAt.Unix()
 		response.FirstSeenUnix = &firstSeenUnix
 	}
 	return response
@@ -1824,8 +1830,8 @@ func isLaterTime(candidate *time.Time, current *time.Time) bool {
 	return candidate.After(*current)
 }
 
-func (h *Handler) steamProfileResponseWithStatus(ctx context.Context, account store.SteamAccount, cache store.SteamAccountCache) steamProfileResponse {
-	response := steamProfileResponseFromCache(account, cache)
+func (h *Handler) steamProfileResponseWithStatus(ctx context.Context, account store.SteamAccount, steamCache store.SteamAccountCache, bmCache store.BmProfileCache) steamProfileResponse {
+	response := steamProfileResponseFromCache(account, steamCache, bmCache)
 	if account.BmID == nil {
 		return response
 	}
@@ -1861,19 +1867,28 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cachedProfile, cacheErr := h.postgres.GetSteamAccountCache(r.Context(), steamID)
-	if cacheErr != nil && !errors.Is(cacheErr, store.ErrSteamAccountNotFound) {
-		log.Printf("[backend] GetSteamProfile cache error for %s: %v", steamID, cacheErr)
+	cachedSteam, steamCacheErr := h.postgres.GetSteamAccountCache(r.Context(), steamID)
+	if steamCacheErr != nil && !errors.Is(steamCacheErr, store.ErrSteamAccountNotFound) {
+		log.Printf("[backend] GetSteamProfile steam cache error for %s: %v", steamID, steamCacheErr)
 		writeError(w, http.StatusInternalServerError, "failed to fetch steam account cache")
 		return
 	}
-	if cacheErr == nil && cachedProfile.BmID == *account.BmID && time.Since(cachedProfile.UpdatedAt) < steamAccountCacheTTL {
-		writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedProfile))
+	cachedBm, bmCacheErr := h.postgres.GetBmProfileCache(r.Context(), *account.BmID)
+	if bmCacheErr != nil && !errors.Is(bmCacheErr, store.ErrSteamAccountNotFound) {
+		log.Printf("[backend] GetSteamProfile bm cache error for %s: %v", steamID, bmCacheErr)
+		writeError(w, http.StatusInternalServerError, "failed to fetch bm profile cache")
 		return
 	}
 
-	refreshedCache, refreshErr := h.fetchFreshSteamCache(r.Context(), account)
-	canUseCachedProfile := cacheErr == nil && cachedProfile.BmID == *account.BmID
+	steamFresh := steamCacheErr == nil && time.Since(cachedSteam.UpdatedAt) < steamAccountCacheTTL
+	bmFresh := bmCacheErr == nil && time.Since(cachedBm.UpdatedAt) < steamAccountCacheTTL
+	if steamFresh && bmFresh {
+		writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedSteam, cachedBm))
+		return
+	}
+
+	refreshedSteam, refreshedBm, refreshErr := h.fetchFreshSteamCache(r.Context(), account)
+	canUseCached := steamCacheErr == nil && bmCacheErr == nil
 	if refreshErr != nil {
 		log.Printf("[backend] GetSteamProfile refresh error for %s: %v", steamID, refreshErr)
 		if errors.Is(refreshErr, battlemetrics.ErrPlayerNotFound) {
@@ -1881,8 +1896,8 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if canUseCachedProfile {
-			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedProfile))
+		if canUseCached {
+			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedSteam, cachedBm))
 			return
 		}
 
@@ -1890,31 +1905,42 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedCache, err := h.postgres.UpsertSteamAccountCache(r.Context(), refreshedCache)
+	updatedSteam, err := h.postgres.UpsertSteamAccountCache(r.Context(), refreshedSteam)
 	if err != nil {
-		log.Printf("[backend] GetSteamProfile cache update error for %s: %v", steamID, err)
-		if canUseCachedProfile {
-			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedProfile))
+		log.Printf("[backend] GetSteamProfile steam cache update error for %s: %v", steamID, err)
+		if canUseCached {
+			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedSteam, cachedBm))
 			return
 		}
 
 		writeError(w, http.StatusInternalServerError, "failed to cache steam profile")
 		return
 	}
+	updatedBm, err := h.postgres.UpsertBmProfileCache(r.Context(), refreshedBm)
+	if err != nil {
+		log.Printf("[backend] GetSteamProfile bm cache update error for %s: %v", steamID, err)
+		if canUseCached {
+			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedSteam, cachedBm))
+			return
+		}
 
-	writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, updatedCache))
+		writeError(w, http.StatusInternalServerError, "failed to cache bm profile")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, updatedSteam, updatedBm))
 }
 
-func steamAnalyticsResponseFromCache(account store.SteamAccount, cache store.SteamAccountCache) steamAnalyticsResponse {
-	bmID := cache.BmID
+func steamAnalyticsResponseFromCache(account store.SteamAccount, steamCache store.SteamAccountCache, bmCache store.BmProfileCache) steamAnalyticsResponse {
+	bmID := bmCache.BmID
 	if bmID == "" && account.BmID != nil {
 		bmID = *account.BmID
 	}
-	bmName := cache.BmName
+	bmName := bmCache.BmName
 	if bmName == "" {
 		bmName = account.BmName
 	}
-	avatarImage := cache.AvatarImage
+	avatarImage := steamCache.AvatarImage
 	if avatarImage == "" {
 		avatarImage = account.AvatarImage
 	}
@@ -1923,25 +1949,25 @@ func steamAnalyticsResponseFromCache(account store.SteamAccount, cache store.Ste
 		BmID:         bmID,
 		BmName:       bmName,
 		AvatarImage:  avatarImage,
-		TotalGames:   cache.TotalGames,
-		TopGames:     make([]steamAnalyticsGame, 0, len(cache.TopGames)),
-		TotalServers: cache.BmServersPlayed,
-		TopServers:   make([]steamAnalyticsServer, 0, len(cache.TopServers)),
-		Gaps:         make([]steamAnalyticsGap, 0, len(cache.NameGaps)),
+		TotalGames:   steamCache.TotalGames,
+		TopGames:     make([]steamAnalyticsGame, 0, len(steamCache.TopGames)),
+		TotalServers: bmCache.BmServersPlayed,
+		TopServers:   make([]steamAnalyticsServer, 0, len(bmCache.TopServers)),
+		Gaps:         make([]steamAnalyticsGap, 0, len(bmCache.NameGaps)),
 	}
-	for _, game := range cache.TopGames {
+	for _, game := range steamCache.TopGames {
 		response.TopGames = append(response.TopGames, steamAnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.Hours})
 	}
-	for _, server := range cache.TopServers {
+	for _, server := range bmCache.TopServers {
 		response.TopServers = append(response.TopServers, steamAnalyticsServer{BmID: server.BmID, Name: server.Name, Hours: server.Hours})
 	}
-	for _, gap := range cache.NameGaps {
+	for _, gap := range bmCache.NameGaps {
 		response.Gaps = append(response.Gaps, steamAnalyticsGap(gap))
 	}
 	return response
 }
 
-func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.SteamAccount, profile battlemetrics.PlayerProfile) (store.SteamAccountCache, error) {
+func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.SteamAccount, profile battlemetrics.PlayerProfile) (store.SteamAccountCache, store.BmProfileCache, error) {
 	avatarImage := account.AvatarImage
 	summary, summaryErr := h.steamSummaryClient.GetPlayerSummary(ctx, account.SteamID)
 	steamProfilePrivate := false
@@ -1960,7 +1986,7 @@ func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.
 
 	trackedServers, err := h.postgres.ListTrackedServers(ctx)
 	if err != nil {
-		return store.SteamAccountCache{}, fmt.Errorf("load tracked servers: %w", err)
+		return store.SteamAccountCache{}, store.BmProfileCache{}, fmt.Errorf("load tracked servers: %w", err)
 	}
 
 	trackedByID := make(map[string]store.TrackedServer, len(trackedServers))
@@ -1968,25 +1994,26 @@ func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.
 		trackedByID[server.BmID] = server
 	}
 
-	cache := store.SteamAccountCache{SteamID: account.SteamID, BmID: *account.BmID, BmName: profile.BmName, AvatarImage: avatarImage}
+	steamCache := store.SteamAccountCache{SteamID: account.SteamID, AvatarImage: avatarImage}
+	bmCache := store.BmProfileCache{BmID: *account.BmID, BmName: profile.BmName}
 	if profile.CreatedAt != nil {
-		cache.FirstSeenAt = profile.CreatedAt
+		bmCache.FirstSeenAt = profile.CreatedAt
 	}
 
 	if !steamProfilePrivate {
 		ownedGames, ownedGamesErr := h.steamSummaryClient.GetOwnedGames(ctx, account.SteamID)
 		if ownedGamesErr != nil {
-			return store.SteamAccountCache{}, fmt.Errorf("fetch owned games: %w", ownedGamesErr)
+			return store.SteamAccountCache{}, store.BmProfileCache{}, fmt.Errorf("fetch owned games: %w", ownedGamesErr)
 		}
 		sort.Slice(ownedGames, func(i, j int) bool {
 			return ownedGames[i].PlaytimeForever > ownedGames[j].PlaytimeForever
 		})
 		totalGames := len(ownedGames)
-		cache.TotalGames = &totalGames
-		cache.TopGames = make([]store.AnalyticsGame, 0, min(5, totalGames))
+		steamCache.TotalGames = &totalGames
+		steamCache.TopGames = make([]store.AnalyticsGame, 0, min(5, totalGames))
 		for i := range min(5, totalGames) {
 			game := ownedGames[i]
-			cache.TopGames = append(cache.TopGames, store.AnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.PlaytimeForever / 60})
+			steamCache.TopGames = append(steamCache.TopGames, store.AnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.PlaytimeForever / 60})
 		}
 		for _, game := range ownedGames {
 			if game.AppID != 252490 {
@@ -1994,18 +2021,19 @@ func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.
 			}
 
 			rustHours := game.PlaytimeForever / 60
-			cache.RustHours = &rustHours
+			steamCache.RustHours = &rustHours
 			break
 		}
 	}
 
-	var vitalitySeconds int64
-	var atlasSeconds int64
-	var vitalSeconds int64
-	var moddedSeconds int64
-	var officialSeconds int64
-	var buildSeconds int64
-	var bmSeconds int64
+	bmCache = applyBmProfileToCache(bmCache, profile, trackedByID)
+	return steamCache, bmCache, nil
+}
+
+// applyBmProfileToCache fills the BattleMetrics-derived hour buckets, server list,
+// and name-gap data on a BmProfileCache from a fetched BattleMetrics profile.
+func applyBmProfileToCache(bmCache store.BmProfileCache, profile battlemetrics.PlayerProfile, trackedByID map[string]store.TrackedServer) store.BmProfileCache {
+	var vitalitySeconds, atlasSeconds, vitalSeconds, moddedSeconds, officialSeconds, buildSeconds, bmSeconds int64
 
 	for _, server := range profile.Servers {
 		bmSeconds += server.TimePlayed
@@ -2014,7 +2042,6 @@ func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.
 		if !ok {
 			continue
 		}
-
 		if tracked.IsVitality {
 			vitalitySeconds += server.TimePlayed
 		}
@@ -2035,39 +2062,39 @@ func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.
 		}
 	}
 
-	cache.VitalityHours = toWholeHours(vitalitySeconds)
-	cache.AtlasHours = toWholeHours(atlasSeconds)
-	cache.VitalHours = toWholeHours(vitalSeconds)
-	cache.ModdedHours = toWholeHours(moddedSeconds)
-	cache.OfficialHours = toWholeHours(officialSeconds)
-	cache.BuildHours = toWholeHours(buildSeconds)
-	cache.BmHours = toWholeHours(bmSeconds)
-	cache.BmServersPlayed = len(profile.Servers)
+	bmCache.VitalityHours = toWholeHours(vitalitySeconds)
+	bmCache.AtlasHours = toWholeHours(atlasSeconds)
+	bmCache.VitalHours = toWholeHours(vitalSeconds)
+	bmCache.ModdedHours = toWholeHours(moddedSeconds)
+	bmCache.OfficialHours = toWholeHours(officialSeconds)
+	bmCache.BuildHours = toWholeHours(buildSeconds)
+	bmCache.BmHours = toWholeHours(bmSeconds)
+	bmCache.BmServersPlayed = len(profile.Servers)
 	gaps := computeNameGaps(profile.NameIdentifiers)
-	cache.NameGaps = make([]store.NameGap, 0, len(gaps))
+	bmCache.NameGaps = make([]store.NameGap, 0, len(gaps))
 	for _, gap := range gaps {
-		cache.NameGaps = append(cache.NameGaps, store.NameGap(gap))
+		bmCache.NameGaps = append(bmCache.NameGaps, store.NameGap(gap))
 	}
 	servers := append([]battlemetrics.PlayerServer(nil), profile.Servers...)
 	sort.Slice(servers, func(i, j int) bool {
 		return servers[i].TimePlayed > servers[j].TimePlayed
 	})
-	cache.TopServers = make([]store.AnalyticsServer, 0, min(5, len(servers)))
+	bmCache.TopServers = make([]store.AnalyticsServer, 0, min(5, len(servers)))
 	for i := range min(5, len(servers)) {
 		server := servers[i]
-		cache.TopServers = append(cache.TopServers, store.AnalyticsServer{BmID: server.ServerID, Name: server.ServerName, Hours: toWholeHours(server.TimePlayed)})
+		bmCache.TopServers = append(bmCache.TopServers, store.AnalyticsServer{BmID: server.ServerID, Name: server.ServerName, Hours: toWholeHours(server.TimePlayed)})
 	}
-	return cache, nil
+	return bmCache
 }
 
-func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamAccount) (store.SteamAccountCache, error) {
+func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamAccount) (store.SteamAccountCache, store.BmProfileCache, error) {
 	if account.BmID == nil || strings.TrimSpace(*account.BmID) == "" {
-		return store.SteamAccountCache{}, store.ErrSteamAccountNotFound
+		return store.SteamAccountCache{}, store.BmProfileCache{}, store.ErrSteamAccountNotFound
 	}
 
 	profile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, *account.BmID)
 	if err != nil {
-		return store.SteamAccountCache{}, fmt.Errorf("fetch battlemetrics profile: %w", err)
+		return store.SteamAccountCache{}, store.BmProfileCache{}, fmt.Errorf("fetch battlemetrics profile: %w", err)
 	}
 
 	return h.buildSteamCacheFromProfile(ctx, account, profile)
@@ -2086,11 +2113,14 @@ func (h *Handler) upsertResolvedSteamAccount(ctx context.Context, steamID string
 	account.BmID = &bmID
 	account.BmName = profile.BmName
 
-	cache, err := h.buildSteamCacheFromProfile(ctx, account, profile)
+	steamCache, bmCache, err := h.buildSteamCacheFromProfile(ctx, account, profile)
 	if err != nil {
 		return store.SteamAccount{}, err
 	}
-	if _, err := h.postgres.UpsertSteamAccountCache(ctx, cache); err != nil {
+	if _, err := h.postgres.UpsertSteamAccountCache(ctx, steamCache); err != nil {
+		return store.SteamAccount{}, err
+	}
+	if _, err := h.postgres.UpsertBmProfileCache(ctx, bmCache); err != nil {
 		return store.SteamAccount{}, err
 	}
 
@@ -2204,36 +2234,47 @@ func (h *Handler) GetSteamAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cachedAnalytics, cacheErr := h.postgres.GetSteamAccountCache(r.Context(), steamID)
-	canUseCachedAnalytics := cacheErr == nil && cachedAnalytics.BmID == *account.BmID
-	if canUseCachedAnalytics && time.Since(cachedAnalytics.UpdatedAt) < steamAccountCacheTTL {
-		writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedAnalytics))
+	cachedSteam, steamCacheErr := h.postgres.GetSteamAccountCache(r.Context(), steamID)
+	cachedBm, bmCacheErr := h.postgres.GetBmProfileCache(r.Context(), *account.BmID)
+	canUseCached := steamCacheErr == nil && bmCacheErr == nil
+	if canUseCached && time.Since(cachedSteam.UpdatedAt) < steamAccountCacheTTL && time.Since(cachedBm.UpdatedAt) < steamAccountCacheTTL {
+		writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedSteam, cachedBm))
 		return
 	}
 
-	refreshedCache, err := h.fetchFreshSteamCache(r.Context(), account)
+	refreshedSteam, refreshedBm, err := h.fetchFreshSteamCache(r.Context(), account)
 	if err != nil {
 		log.Printf("[backend] GetSteamAnalytics refresh error for %s: %v", steamID, err)
-		if canUseCachedAnalytics {
-			writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedAnalytics))
+		if canUseCached {
+			writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedSteam, cachedBm))
 			return
 		}
 		writeError(w, http.StatusBadGateway, "failed to fetch analytics")
 		return
 	}
 
-	updatedCache, err := h.postgres.UpsertSteamAccountCache(r.Context(), refreshedCache)
+	updatedSteam, err := h.postgres.UpsertSteamAccountCache(r.Context(), refreshedSteam)
 	if err != nil {
-		log.Printf("[backend] GetSteamAnalytics cache update error for %s: %v", steamID, err)
-		if canUseCachedAnalytics {
-			writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedAnalytics))
+		log.Printf("[backend] GetSteamAnalytics steam cache update error for %s: %v", steamID, err)
+		if canUseCached {
+			writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedSteam, cachedBm))
 			return
 		}
-		writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, refreshedCache))
+		writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, refreshedSteam, refreshedBm))
+		return
+	}
+	updatedBm, err := h.postgres.UpsertBmProfileCache(r.Context(), refreshedBm)
+	if err != nil {
+		log.Printf("[backend] GetSteamAnalytics bm cache update error for %s: %v", steamID, err)
+		if canUseCached {
+			writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, cachedSteam, cachedBm))
+			return
+		}
+		writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, updatedSteam, refreshedBm))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, updatedCache))
+	writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, updatedSteam, updatedBm))
 }
 
 func computeNameGaps(identifiers []battlemetrics.PlayerNameIdentifier) []steamAnalyticsGap {
@@ -2366,29 +2407,123 @@ func (h *Handler) GetSteamAccountByBmID(w http.ResponseWriter, r *http.Request) 
 	writeSteamAccount(w, account)
 }
 
-type bmPlayerProfileServer struct {
-	ServerID      string `json:"serverId"`
-	ServerName    string `json:"serverName"`
-	TimePlayedSec int64  `json:"timePlayedSec"`
-	FirstSeenAt   string `json:"firstSeenAt,omitempty"`
-	LastSeenAt    string `json:"lastSeenAt,omitempty"`
+// GetBmPlayerAnalytics mirrors GetSteamAnalytics for BM-only flows. It uses
+// the BM-keyed cache for BattleMetrics analytics fields and pulls Steam-only
+// fields (top games, total games) from steam_account_cache when a Steam
+// linkage exists.
+func (h *Handler) GetBmPlayerAnalytics(w http.ResponseWriter, r *http.Request) {
+	bmID := strings.TrimSpace(chi.URLParam(r, "bmID"))
+	if !bmIDPattern.MatchString(bmID) {
+		writeError(w, http.StatusBadRequest, "bmID must be a numeric BattleMetrics player ID")
+		return
+	}
+
+	var account store.SteamAccount
+	var steamCache store.SteamAccountCache
+	if linked, err := h.postgres.GetSteamAccountByBmID(r.Context(), bmID); err == nil {
+		account = linked
+		if cache, cacheErr := h.postgres.GetSteamAccountCache(r.Context(), linked.SteamID); cacheErr == nil {
+			steamCache = cache
+		}
+	} else if !errors.Is(err, store.ErrSteamAccountNotFound) {
+		log.Printf("[backend] GetBmPlayerAnalytics steam lookup error for %s: %v", bmID, err)
+	}
+	bmIDCopy := bmID
+	if account.SteamID == "" {
+		account.BmID = &bmIDCopy
+	}
+
+	cachedBm, bmCacheErr := h.postgres.GetBmProfileCache(r.Context(), bmID)
+	if bmCacheErr != nil && !errors.Is(bmCacheErr, store.ErrSteamAccountNotFound) {
+		log.Printf("[backend] GetBmPlayerAnalytics bm cache error for %s: %v", bmID, bmCacheErr)
+		writeError(w, http.StatusInternalServerError, "failed to fetch bm profile cache")
+		return
+	}
+	if bmCacheErr == nil && time.Since(cachedBm.UpdatedAt) < steamAccountCacheTTL {
+		writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, steamCache, cachedBm))
+		return
+	}
+
+	profile, err := h.battleMetricsClient.FetchPlayerProfile(r.Context(), bmID)
+	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+		writeError(w, http.StatusNotFound, "battlemetrics player not found")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetBmPlayerAnalytics fetch error for %s: %v", bmID, err)
+		if bmCacheErr == nil {
+			writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, steamCache, cachedBm))
+			return
+		}
+		writeError(w, http.StatusBadGateway, "failed to fetch battlemetrics profile")
+		return
+	}
+	if profile.BmID == "" {
+		profile.BmID = bmID
+	}
+
+	trackedServers, listErr := h.postgres.ListTrackedServers(r.Context())
+	if listErr != nil {
+		log.Printf("[backend] GetBmPlayerAnalytics load tracked servers error for %s: %v", bmID, listErr)
+		writeError(w, http.StatusInternalServerError, "failed to load tracked servers")
+		return
+	}
+	trackedByID := make(map[string]store.TrackedServer, len(trackedServers))
+	for _, server := range trackedServers {
+		trackedByID[server.BmID] = server
+	}
+	freshBm := store.BmProfileCache{BmID: bmID, BmName: profile.BmName}
+	if profile.CreatedAt != nil {
+		freshBm.FirstSeenAt = profile.CreatedAt
+	}
+	freshBm = applyBmProfileToCache(freshBm, profile, trackedByID)
+	updatedBm, err := h.postgres.UpsertBmProfileCache(r.Context(), freshBm)
+	if err != nil {
+		log.Printf("[backend] GetBmPlayerAnalytics cache update error for %s: %v", bmID, err)
+		writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, steamCache, freshBm))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, steamAnalyticsResponseFromCache(account, steamCache, updatedBm))
 }
 
-type bmPlayerProfileResponse struct {
-	BmID      string                  `json:"bmId"`
-	BmName    string                  `json:"bmName"`
-	SteamID   string                  `json:"steamId,omitempty"`
-	CreatedAt string                  `json:"createdAt,omitempty"`
-	Servers   []bmPlayerProfileServer `json:"servers"`
-}
-
-// GetBmPlayerProfile returns the BattleMetrics profile for a player by BM ID,
-// without requiring or persisting a Steam ID. Used by /player when the input
-// is a BM ID and the player has no Steam linkage in our DB or in BM's data.
+// GetBmPlayerProfile returns the BattleMetrics profile for a player by BM ID
+// using the BM-keyed cache, falling back to a fresh BattleMetrics fetch when
+// the cache is missing or stale. The response uses the same shape as the
+// steam-linked profile endpoint so the bot can render a single profile card
+// for both flows. Steam-only fields (rust hours, avatar) are populated only
+// when a Steam linkage exists.
 func (h *Handler) GetBmPlayerProfile(w http.ResponseWriter, r *http.Request) {
 	bmID := strings.TrimSpace(chi.URLParam(r, "bmID"))
 	if !bmIDPattern.MatchString(bmID) {
 		writeError(w, http.StatusBadRequest, "bmID must be a numeric BattleMetrics player ID")
+		return
+	}
+
+	// Try to find an existing Steam linkage for steam-only enrichment.
+	var account store.SteamAccount
+	var steamCache store.SteamAccountCache
+	if linked, err := h.postgres.GetSteamAccountByBmID(r.Context(), bmID); err == nil {
+		account = linked
+		if cache, cacheErr := h.postgres.GetSteamAccountCache(r.Context(), linked.SteamID); cacheErr == nil {
+			steamCache = cache
+		}
+	} else if !errors.Is(err, store.ErrSteamAccountNotFound) {
+		log.Printf("[backend] GetBmPlayerProfile steam lookup error for %s: %v", bmID, err)
+	}
+	bmIDCopy := bmID
+	if account.SteamID == "" {
+		account.BmID = &bmIDCopy
+	}
+
+	cachedBm, bmCacheErr := h.postgres.GetBmProfileCache(r.Context(), bmID)
+	if bmCacheErr != nil && !errors.Is(bmCacheErr, store.ErrSteamAccountNotFound) {
+		log.Printf("[backend] GetBmPlayerProfile bm cache error for %s: %v", bmID, bmCacheErr)
+		writeError(w, http.StatusInternalServerError, "failed to fetch bm profile cache")
+		return
+	}
+	if bmCacheErr == nil && time.Since(cachedBm.UpdatedAt) < steamAccountCacheTTL {
+		writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, steamCache, cachedBm))
 		return
 	}
 
@@ -2399,37 +2534,41 @@ func (h *Handler) GetBmPlayerProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("[backend] GetBmPlayerProfile error for %s: %v", bmID, err)
+		if bmCacheErr == nil {
+			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, steamCache, cachedBm))
+			return
+		}
 		writeError(w, http.StatusBadGateway, "failed to fetch battlemetrics profile")
 		return
 	}
-
-	servers := make([]bmPlayerProfileServer, 0, len(profile.Servers))
-	for _, server := range profile.Servers {
-		entry := bmPlayerProfileServer{
-			ServerID:      server.ServerID,
-			ServerName:    server.ServerName,
-			TimePlayedSec: server.TimePlayed,
-		}
-		if server.FirstSeenAt != nil {
-			entry.FirstSeenAt = server.FirstSeenAt.UTC().Format(time.RFC3339)
-		}
-		if server.LastSeenAt != nil {
-			entry.LastSeenAt = server.LastSeenAt.UTC().Format(time.RFC3339)
-		}
-		servers = append(servers, entry)
+	if profile.BmID == "" {
+		profile.BmID = bmID
 	}
 
-	resp := bmPlayerProfileResponse{
-		BmID:    profile.BmID,
-		BmName:  profile.BmName,
-		SteamID: profile.SteamID,
-		Servers: servers,
+	trackedServers, listErr := h.postgres.ListTrackedServers(r.Context())
+	if listErr != nil {
+		log.Printf("[backend] GetBmPlayerProfile load tracked servers error for %s: %v", bmID, listErr)
+		writeError(w, http.StatusInternalServerError, "failed to load tracked servers")
+		return
 	}
+	trackedByID := make(map[string]store.TrackedServer, len(trackedServers))
+	for _, server := range trackedServers {
+		trackedByID[server.BmID] = server
+	}
+
+	freshBm := store.BmProfileCache{BmID: bmID, BmName: profile.BmName}
 	if profile.CreatedAt != nil {
-		resp.CreatedAt = profile.CreatedAt.UTC().Format(time.RFC3339)
+		freshBm.FirstSeenAt = profile.CreatedAt
+	}
+	freshBm = applyBmProfileToCache(freshBm, profile, trackedByID)
+	updatedBm, err := h.postgres.UpsertBmProfileCache(r.Context(), freshBm)
+	if err != nil {
+		log.Printf("[backend] GetBmPlayerProfile cache update error for %s: %v", bmID, err)
+		writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, steamCache, freshBm))
+		return
 	}
 
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, steamCache, updatedBm))
 }
 
 func (h *Handler) ListLinksBySteamID(w http.ResponseWriter, r *http.Request) {

@@ -123,14 +123,28 @@ Known Steam player accounts with optional BattleMetrics ID.
 
 ### `steam_account_cache`
 
-Volatile Steam/BattleMetrics profile data cached for lazy `/player` and `/view user` profile rendering. The profile route treats rows with `updated_at` newer than 24 hours as fresh and skips Steam/BattleMetrics API calls; if refresh fails for a stale row, the stale row is returned without changing `updated_at`. The same table also stores Steam game-ban cache state with a separate `game_ban_checked_at` timestamp used by the guild game-ban scan endpoint.
+Steam-keyed volatile profile data — only fields that require a Steam ID live here. BattleMetrics-derived data has moved to `bm_profile_cache` (keyed by `bm_id`). The profile route treats rows with `updated_at` newer than 24 hours as fresh and skips Steam API calls; if refresh fails for a stale row, the stale row is returned without changing `updated_at`. The same table also stores Steam game-ban cache state with a separate `game_ban_checked_at` timestamp used by the guild game-ban scan endpoint.
 
 | Column | Type | Notes |
 |---|---|---|
 | `steam_id` | `TEXT` | PK, FK to `steam_accounts.steam_id` |
-| `bm_id` | `TEXT NOT NULL DEFAULT ''` | BattleMetrics player ID used when the cache was built |
-| `bm_name` | `TEXT NOT NULL DEFAULT ''` | Latest cached BattleMetrics display name |
 | `avatar_image` | `TEXT NOT NULL DEFAULT ''` | Latest cached Steam avatar URL |
+| `rust_hours` | `BIGINT` | Cached Steam Rust playtime, nullable when unavailable/private |
+| `total_games` | `INTEGER` | Cached total owned games on Steam, nullable when private |
+| `top_games` | `JSONB NOT NULL DEFAULT '[]'::jsonb` | Top 5 owned Steam games by playtime |
+| `game_banned` | `BOOLEAN NOT NULL DEFAULT FALSE` | Cached whether Steam reported any game bans |
+| `game_banned_at` | `TIMESTAMPTZ` | Approximate game-ban timestamp derived from `DaysSinceLastBan`, null when no game ban exists |
+| `game_ban_checked_at` | `TIMESTAMPTZ` | Last Steam game-ban refresh timestamp used for the 6-hour TTL |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Cache refresh timestamp |
+
+### `bm_profile_cache`
+
+BattleMetrics-keyed volatile profile data, keyed by BM player ID. Lets BM-only `/player` lookups (no Steam linkage) reuse cached BM data instead of always hitting BattleMetrics, and lets background pollers update cached BM names by `bm_id` without requiring a Steam linkage.
+
+| Column | Type | Notes |
+|---|---|---|
+| `bm_id` | `TEXT` | PK |
+| `bm_name` | `TEXT NOT NULL DEFAULT ''` | Latest cached BattleMetrics display name |
 | `first_seen_at` | `TIMESTAMPTZ` | Cached BattleMetrics player creation / first-seen time |
 | `vitality_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Vitality servers |
 | `atlas_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Atlas servers |
@@ -139,10 +153,9 @@ Volatile Steam/BattleMetrics profile data cached for lazy `/player` and `/view u
 | `official_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Official servers |
 | `build_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Build servers |
 | `bm_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours across all BattleMetrics-returned servers |
-| `rust_hours` | `BIGINT` | Cached Steam Rust playtime, nullable when unavailable/private |
-| `game_banned` | `BOOLEAN NOT NULL DEFAULT FALSE` | Cached whether Steam reported any game bans |
-| `game_banned_at` | `TIMESTAMPTZ` | Approximate game-ban timestamp derived from `DaysSinceLastBan`, null when no game ban exists |
-| `game_ban_checked_at` | `TIMESTAMPTZ` | Last Steam game-ban refresh timestamp used for the 6-hour TTL |
+| `bm_servers_played` | `INTEGER NOT NULL DEFAULT 0` | Distinct BattleMetrics servers played |
+| `name_gaps` | `JSONB NOT NULL DEFAULT '[]'::jsonb` | Multi-month gaps between consecutive BM name identifier periods |
+| `top_servers` | `JSONB NOT NULL DEFAULT '[]'::jsonb` | Top 5 BattleMetrics servers by playtime |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Cache refresh timestamp |
 
 ### `tracked_servers`

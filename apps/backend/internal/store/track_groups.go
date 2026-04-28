@@ -286,7 +286,7 @@ func (p *PostgresStore) ListTrackGroupOnlineState(ctx context.Context, trackGrou
 		SELECT
 			tgm.steam_id,
 			COALESCE(NULLIF(tgm.bm_id, ''), COALESCE(sa.bm_id, '')) AS bm_id,
-			COALESCE(sac.bm_name, '') AS bm_name,
+			COALESCE(bpc.bm_name, '') AS bm_name,
 			COALESCE(gsl.discord_id, '') AS discord_id,
 			COALESCE(sac.avatar_image, '') AS avatar_image,
 			COALESCE(ps.is_online, FALSE) AS is_online,
@@ -296,6 +296,7 @@ func (p *PostgresStore) ListTrackGroupOnlineState(ctx context.Context, trackGrou
 		JOIN track_group_members tgm ON tgm.track_group_id = tg.id
 		LEFT JOIN steam_accounts sa ON sa.steam_id = tgm.steam_id
 		LEFT JOIN steam_account_cache sac ON sac.steam_id = tgm.steam_id
+		LEFT JOIN bm_profile_cache bpc ON bpc.bm_id = COALESCE(NULLIF(tgm.bm_id, ''), sa.bm_id)
 		LEFT JOIN LATERAL (
 			SELECT discord_id
 			FROM guild_steam_discord_links

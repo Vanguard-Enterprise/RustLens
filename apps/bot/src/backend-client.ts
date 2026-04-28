@@ -185,22 +185,6 @@ export type SteamProfileStatus = {
   offlineUnix: number | null;
 };
 
-export type BmPlayerProfileServer = {
-  serverId: string;
-  serverName: string;
-  timePlayedSec: number;
-  firstSeenAt?: string;
-  lastSeenAt?: string;
-};
-
-export type BmPlayerProfile = {
-  bmId: string;
-  bmName: string;
-  steamId?: string;
-  createdAt?: string;
-  servers: BmPlayerProfileServer[];
-};
-
 export type SteamAnalyticsGame = {
   appId: number;
   name: string;
@@ -847,9 +831,17 @@ export class BackendClient {
   }
 
   getBmPlayerProfile(workerId: string, bmId: string) {
-    return this.call<BmPlayerProfile>(
+    return this.call<SteamProfile>(
       workerId,
       `/api/internal/bot/setup/players/${bmId}/bm-profile`,
+      "GET",
+    );
+  }
+
+  getBmPlayerAnalytics(workerId: string, bmId: string) {
+    return this.call<SteamAnalytics>(
+      workerId,
+      `/api/internal/bot/setup/players/${bmId}/bm-analytics`,
       "GET",
     );
   }

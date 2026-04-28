@@ -318,15 +318,31 @@ function buildStatusField(profile: SteamProfile | null) {
   return null;
 }
 
-export function buildProfileButtons(steamId: string) {
+export function buildProfileButtons(steamId: string, bmId?: string | null) {
+  const trimmedSteam = (steamId ?? "").trim();
+  const trimmedBm = (bmId ?? "").trim();
+  // Prefer Steam-keyed buttons when a Steam linkage exists. Fall back to
+  // BM-keyed buttons so BM-only profiles still show analytics + links rather
+  // than disappearing when no Steam ID is available.
+  const analyticsId = /^\d{17}$/.test(trimmedSteam)
+    ? `player:analytics:${trimmedSteam}`
+    : trimmedBm
+    ? `player:analytics-bm:${trimmedBm}`
+    : `player:analytics:`;
+  const linksId = /^\d{17}$/.test(trimmedSteam)
+    ? `player:links:${trimmedSteam}`
+    : trimmedBm
+    ? `player:links-bm:${trimmedBm}`
+    : `player:links:`;
+
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId(`player:analytics:${steamId}`)
+        .setCustomId(analyticsId)
         .setEmoji("📈")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(`player:links:${steamId}`)
+        .setCustomId(linksId)
         .setEmoji("🔗")
         .setStyle(ButtonStyle.Secondary),
     ),
@@ -416,14 +432,17 @@ export function buildUserEmbed(
     embed.setThumbnail(profile.avatarImage);
   }
 
-  let info = `${VIEW_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`;
+  const infoLines: string[] = [];
+  if (steamId && /^\d{17}$/.test(steamId)) {
+    infoLines.push(`${VIEW_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`);
+  }
   if (profile?.bmId) {
-    info += `\n${VIEW_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/rcon/players/${profile.bmId})`;
+    infoLines.push(`${VIEW_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/rcon/players/${profile.bmId})`);
   }
   if (discordId) {
-    info += `\n${VIEW_EMOJIS.discord} <@${discordId}>`;
+    infoLines.push(`${VIEW_EMOJIS.discord} <@${discordId}>`);
   }
-  embed.addFields({ name: "Information", value: info });
+  embed.addFields({ name: "Information", value: infoLines.length > 0 ? infoLines.join("\n") : "*Unknown player*" });
 
   const statusField = buildStatusField(profile);
   if (statusField) {
