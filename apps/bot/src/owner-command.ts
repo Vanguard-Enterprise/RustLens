@@ -8,6 +8,7 @@ import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 export const OWNER_COMMAND_NAME = "owner";
 export const OWNER_STATS_SUBCOMMAND_NAME = "stats";
 
+const OWNER_STATS_VIEW_SUBCOMMAND_NAME = "view";
 const OWNER_PROXY_GROUP_NAME = "proxy";
 const OWNER_PROXY_ADD_SUBCOMMAND_NAME = "add";
 const OWNER_PROXY_LIST_SUBCOMMAND_NAME = "list";
@@ -20,10 +21,15 @@ const ownerCommand = new SlashCommandBuilder()
   .setName(OWNER_COMMAND_NAME)
   .setDescription("Owner-only RustLens utilities")
   .setDMPermission(false)
-  .addSubcommand((subcommand) =>
-    subcommand
+  .addSubcommandGroup((group) =>
+    group
       .setName(OWNER_STATS_SUBCOMMAND_NAME)
-      .setDescription("Show aggregated bot statistics"),
+      .setDescription("Show aggregated bot statistics")
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName(OWNER_STATS_VIEW_SUBCOMMAND_NAME)
+          .setDescription("Show aggregated bot statistics"),
+      ),
   )
   .addSubcommandGroup((group) =>
     group
@@ -380,8 +386,8 @@ export async function handleOwnerChatInput(interaction: ChatInputCommandInteract
     }
   }
 
-  if (subcommand !== OWNER_STATS_SUBCOMMAND_NAME) {
-    await replyOwnerOnly(interaction, `Unknown /owner subcommand: ${subcommand}`);
+  if (group !== OWNER_STATS_SUBCOMMAND_NAME || subcommand !== OWNER_STATS_VIEW_SUBCOMMAND_NAME) {
+    await replyOwnerOnly(interaction, `Unknown /owner subcommand: ${group ? `${group} ` : ""}${subcommand}`);
     return true;
   }
 
