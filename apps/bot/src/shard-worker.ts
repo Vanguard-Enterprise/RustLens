@@ -51,7 +51,8 @@ import {
   handleOwnerAutocomplete,
   handleOwnerChatInput,
   handleOwnerModalSubmit,
-  OWNER_COMMAND_NAME,
+  PROXY_COMMAND_NAME,
+  STATS_COMMAND_NAME,
 } from "./owner-command.js";
 import {
   ensurePlayerCommand,
@@ -241,7 +242,11 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isChatInputCommand()) {
-      if (interaction.commandName !== BAN_COMMAND_NAME && interaction.commandName !== OWNER_COMMAND_NAME) {
+      if (
+        interaction.commandName !== BAN_COMMAND_NAME &&
+        interaction.commandName !== PROXY_COMMAND_NAME &&
+        interaction.commandName !== STATS_COMMAND_NAME
+      ) {
         const category = resolveCommandCategory(
           interaction.commandName,
           interaction.options.getSubcommand(false),
