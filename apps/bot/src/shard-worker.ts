@@ -32,6 +32,11 @@ import {
   handleCheckGameBansChatInput,
 } from "./checkgamebans-command.js";
 import {
+  ensureCreateCommand,
+  handleCreateButtonInteraction,
+  handleCreateChatInput,
+} from "./create-command.js";
+import {
   ensureCompareCommand,
   handleCompareAutocomplete,
   handleCompareChatInput,
@@ -171,6 +176,7 @@ client.once("clientReady", () => {
     ensureAdminCommand(client, shardID),
     ensureBindCommand(client, shardID),
     ensureCheckGameBansCommand(client, shardID),
+    ensureCreateCommand(client, shardID),
     ensureCompareCommand(client, shardID),
     ensureWipeReactCommand(client, shardID),
     ensureSummonCommand(client, shardID),
@@ -284,6 +290,10 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
+      if (await handleCreateChatInput(interaction)) {
+        return;
+      }
+
       if (await handleCompareChatInput(interaction)) {
         return;
       }
@@ -379,6 +389,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleBindButtonInteraction(interaction)) {
+        return;
+      }
+
+      if (await handleCreateButtonInteraction(interaction)) {
         return;
       }
 

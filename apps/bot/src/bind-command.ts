@@ -190,7 +190,7 @@ const bindCommand = new SlashCommandBuilder()
   .setDescription("RustLens bind commands")
   .setDMPermission(false)
   .setContexts(InteractionContextType.Guild)
-  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   .addSubcommand((subcommand) =>
     subcommand
       .setName(BIND_FULLKIT_SUBCOMMAND_NAME)
