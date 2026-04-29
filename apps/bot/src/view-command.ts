@@ -14,6 +14,7 @@ import {
 import { BackendClient, type SteamAccount, type SteamProfile } from "./backend-client.js";
 import { extractBmID } from "./bm-input.js";
 import { loadConfig } from "./config.js";
+import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "./embed-paginator.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
@@ -374,12 +375,12 @@ function buildViewAllPageButtons(ownerId: string, page: number, totalPages: numb
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`${VIEW_ALL_PAGE_CUSTOM_ID_PREFIX}${page - 1}:${ownerId}`)
-        .setEmoji("⬅️")
+        .setEmoji(PAGE_PREVIOUS_EMOJI)
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(page <= 0),
       new ButtonBuilder()
         .setCustomId(`${VIEW_ALL_PAGE_CUSTOM_ID_PREFIX}${page + 1}:${ownerId}`)
-        .setEmoji("➡️")
+        .setEmoji(PAGE_NEXT_EMOJI)
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(page >= totalPages - 1),
     ),

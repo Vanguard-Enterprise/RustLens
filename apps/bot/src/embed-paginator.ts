@@ -12,8 +12,9 @@ import {
 
 export const PAGINATOR_PREV_ID = "embed-paginator:prev";
 export const PAGINATOR_NEXT_ID = "embed-paginator:next";
-const PAGINATOR_INDICATOR_ID = "embed-paginator:indicator";
 const PAGINATOR_TIMEOUT_MS = 5 * 60 * 1000;
+export const PAGE_PREVIOUS_EMOJI = "<:arrow_left:1499045624207773736>";
+export const PAGE_NEXT_EMOJI = "<:arrow_right:1499045625571053710>";
 
 export type PaginatedSection = {
   name: string;
@@ -24,17 +25,12 @@ export function buildPaginatorButtons(page: number, totalPages: number) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(PAGINATOR_PREV_ID)
-      .setEmoji("◀️")
+      .setEmoji(PAGE_PREVIOUS_EMOJI)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page === 0),
     new ButtonBuilder()
-      .setCustomId(PAGINATOR_INDICATOR_ID)
-      .setLabel(`${page + 1}/${totalPages}`)
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(true),
-    new ButtonBuilder()
       .setCustomId(PAGINATOR_NEXT_ID)
-      .setEmoji("▶️")
+      .setEmoji(PAGE_NEXT_EMOJI)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page >= totalPages - 1),
   );
