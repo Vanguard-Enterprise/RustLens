@@ -11,28 +11,24 @@ export const landingFeatures = [
 		description:
 			"Set up servers, admins, and alerts once. Stay organized and play more.",
 		icon: IconShieldHalfFilled,
-		points: [],
 	},
 	{
 		title: "Steam linking",
 		description:
 			"Link Steam to Discord so everyone knows who's who, in chat and in-game.",
 		icon: IconLink,
-		points: [],
 	},
 	{
 		title: "Live presence",
 		description:
 			"See which friends are online and where they're playing, right from Discord.",
 		icon: IconAntennaBars5,
-		points: [],
 	},
 	{
 		title: "Wipe night ready",
 		description:
 			"Plan wipe nights and keep everyone on the same page when it matters most.",
 		icon: IconBroadcast,
-		points: [],
 	},
 ] as const;
 

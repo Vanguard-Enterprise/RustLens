@@ -68,7 +68,7 @@ func TestInitiate_RedirectsToDiscord_SetsCookies(t *testing.T) {
 	}
 }
 
-func TestInitiate_RefusesWhenSessionPresent(t *testing.T) {
+func TestInitiate_RedirectsToDashboardWhenSessionPresent(t *testing.T) {
 	tok := mustSerializeSessionForTest(t, "session-secret", "usr_already")
 	h := discord.NewHandler(discord.HandlerConfig{
 		ClientID:      "id",
@@ -85,8 +85,8 @@ func TestInitiate_RefusesWhenSessionPresent(t *testing.T) {
 		t.Fatalf("status = %d, want 302", w.Code)
 	}
 	loc := w.Header().Get("Location")
-	if !strings.Contains(loc, "/login?error=discord-already-signed-in") {
-		t.Errorf("Location = %q, want ?error=discord-already-signed-in", loc)
+	if !strings.HasSuffix(loc, "/dashboard") {
+		t.Errorf("Location = %q, want suffix /dashboard", loc)
 	}
 }
 
