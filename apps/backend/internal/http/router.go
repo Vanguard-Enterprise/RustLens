@@ -214,6 +214,7 @@ func NewRouter(
 			r.Get("/me/connections", handler.GetCurrentAppUserConnections)
 			r.Get("/me/guilds", handler.GetCurrentAppUserGuilds)
 			r.Get("/me/guilds/installed", handler.GetCurrentAppUserInstalledGuilds)
+			r.Get("/me/guilds/{guildID}/links", handler.GetCurrentAppUserGuildLinks)
 		})
 
 		r.Route("/admin", func(r chi.Router) {
