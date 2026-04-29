@@ -31,6 +31,7 @@ import { extractBmID } from "./bm-input.js";
 import { CheckboxGroupBuilder, ModalV2Builder, TextInputBuilder } from "./builders/index.js";
 import { TextInputStyle } from "./builders/types.js";
 import { loadConfig } from "./config.js";
+import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "./embed-paginator.js";
 import { fetchGuildSettings, hasGuildAdminAccess } from "./guild-settings.js";
 import { buildNextBestOfflineFieldValue, computeNextBestOfflineWindow } from "./next-best-offline.js";
 import { getFieldValues, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
@@ -1262,11 +1263,11 @@ function buildAnalyticsPagerComponents(groupId: number, currentPage: number, tot
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_ANALYTICS_PAGE_PREFIX}${groupId}:${previousPage}`)
-        .setEmoji("◀️")
+        .setEmoji(PAGE_PREVIOUS_EMOJI)
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_ANALYTICS_PAGE_PREFIX}${groupId}:${nextPage}`)
-        .setEmoji("▶️")
+        .setEmoji(PAGE_NEXT_EMOJI)
         .setStyle(ButtonStyle.Secondary),
     ),
   ];

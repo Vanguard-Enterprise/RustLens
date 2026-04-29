@@ -1,10 +1,11 @@
-import type { ChatInputCommandInteraction, Client } from "discord.js";
+import type { ActionRowBuilder, ButtonBuilder, ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 import { resolveSteamInputErrorMessage } from "./steam-input.js";
+import { buildProfileButtons, buildUserEmbed } from "./view-command.js";
 
 export const SETSTEAM_COMMAND_NAME = "setsteam";
 
@@ -50,8 +51,14 @@ function buildEmbed(title: string, description: string) {
 }
 
 async function replyEphemeralEmbed(interaction: ChatInputCommandInteraction, embed: EmbedBuilder) {
-  if (interaction.deferred || interaction.replied) {
-    await interaction.editReply({ embeds: [embed] });
+  if (interaction.deferred) {
+    await interaction.deleteReply().catch(() => undefined);
+    await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (interaction.replied) {
+    await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -59,6 +66,19 @@ async function replyEphemeralEmbed(interaction: ChatInputCommandInteraction, emb
     embeds: [embed],
     flags: MessageFlags.Ephemeral,
   });
+}
+
+async function replyPublicEmbed(
+  interaction: ChatInputCommandInteraction,
+  embed: EmbedBuilder,
+  components?: ActionRowBuilder<ButtonBuilder>[],
+) {
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply({ embeds: [embed], components });
+    return;
+  }
+
+  await interaction.reply({ embeds: [embed], components });
 }
 
 function buildLinkingLogEmbed(
@@ -118,7 +138,7 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
   const backend = getBackend();
   const workerId = getWorkerID();
@@ -170,9 +190,10 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
-  const [settings, steamAccount] = await Promise.all([
+  const [settings, steamAccount, profile] = await Promise.all([
     fetchGuildSettings(interaction.guildId),
     backend.getSteamAccount(workerId, steamId).catch(() => null),
+    backend.getSteamProfile(workerId, steamId).catch(() => null),
   ]);
 
   if (settings.linkingLogChannelId && interaction.guild) {
@@ -184,9 +205,13 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     }
   }
 
-  await replyEphemeralEmbed(
+  const profileName = profile?.bmName || steamAccount?.bmName || steamId;
+  const embed = buildUserEmbed(steamId, profile, interaction.user.id)
+    .setTitle(`${profileName} - successfully linked`);
+  await replyPublicEmbed(
     interaction,
-    buildEmbed("Steam ID linked", `Your Steam ID \`${steamId}\` has been linked for this guild.`),
+    embed,
+    buildProfileButtons(steamId, profile?.bmId ?? steamAccount?.bmId),
   );
   return true;
 }

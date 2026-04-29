@@ -43,6 +43,7 @@ import {
 import {
   ensureManageCommand,
   handleManageAutocomplete,
+  handleManageButtonInteraction,
   handleManageChatInput,
   handleManageModalSubmit,
   MANAGE_COMMAND_NAME,
@@ -382,6 +383,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handlePlayerButtonInteraction(interaction)) {
+        return;
+      }
+
+      if (await handleManageButtonInteraction(interaction)) {
         return;
       }
 

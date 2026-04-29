@@ -1,10 +1,11 @@
 import type {
   AutocompleteInteraction,
+  ButtonInteraction,
   ChatInputCommandInteraction,
   Client,
   ModalSubmitInteraction,
 } from "discord.js";
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { isValidCategory, type BanCategory } from "./ban-categories.js";
 import {
   BAN_CATEGORIES_FIELD_CUSTOM_ID,
@@ -18,6 +19,7 @@ import { invalidateBanCache } from "./ban-check.js";
 import { BackendClient, type OwnerProxy, type TrackedServer } from "./backend-client.js";
 import { CheckboxGroupBuilder, ModalV2Builder, RadioGroupBuilder, TextInputBuilder } from "./builders/index.js";
 import { loadConfig } from "./config.js";
+import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "./embed-paginator.js";
 import {
   getOwnerGuildID,
   isAuthorizedOwner,
@@ -64,6 +66,8 @@ const SERVER_NAME_FIELD = "server_name";
 const SERVER_BM_ID_FIELD = "server_bm_id";
 const SERVER_CATEGORIES_FIELD = "server_categories";
 const SERVER_FREQUENCY_FIELD = "server_frequency";
+const SERVER_LIST_PAGE_SIZE = 20;
+const SERVER_LIST_PAGE_PREFIX = "manage:server:list:page:";
 
 const PROXY_MODAL_EDIT_PREFIX = "manage_proxy_modal:edit:";
 const PROXY_ENABLED_FIELD = "proxy_enabled";
@@ -298,13 +302,13 @@ function formatTrackedServerPollStatus(server: Pick<TrackedServer, "lastPolledAt
   return "Not polled yet";
 }
 
-function buildTrackedServerListDescription(items: TrackedServer[]) {
+function buildTrackedServerListDescription(items: TrackedServer[], page = 0) {
   if (items.length === 0) {
     return "No tracked BattleMetrics servers configured.";
   }
 
   let description = items.map((item, index) =>
-    `${index + 1}. **${item.name}**\n` +
+    `${page * SERVER_LIST_PAGE_SIZE + index + 1}. **${item.name}**\n` +
     `BM: \`${item.bmId}\` | Categories: ${formatTrackedServerCategories(item)}\n` +
     `Frequency: ${formatTrackedServerFrequency(item)}\n` +
     `${formatTrackedServerPollStatus(item)}`
@@ -315,6 +319,55 @@ function buildTrackedServerListDescription(items: TrackedServer[]) {
   }
 
   return description;
+}
+
+function buildTrackedServerListEmbed(items: TrackedServer[], page: number) {
+  const totalPages = Math.max(1, Math.ceil(items.length / SERVER_LIST_PAGE_SIZE));
+  const normalizedPage = Math.max(0, Math.min(page, totalPages - 1));
+  const start = normalizedPage * SERVER_LIST_PAGE_SIZE;
+  const pageItems = items.slice(start, start + SERVER_LIST_PAGE_SIZE);
+
+  return buildEmbed("Tracked Servers", buildTrackedServerListDescription(pageItems, normalizedPage))
+    .setFooter({ text: `RustLens.com • Page ${normalizedPage + 1}/${totalPages}`, iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+function buildTrackedServerListButtons(page: number, totalPages: number) {
+  if (totalPages <= 1) {
+    return [];
+  }
+
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${SERVER_LIST_PAGE_PREFIX}${page - 1}`)
+        .setEmoji(PAGE_PREVIOUS_EMOJI)
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page <= 0),
+      new ButtonBuilder()
+        .setCustomId(`${SERVER_LIST_PAGE_PREFIX}${page + 1}`)
+        .setEmoji(PAGE_NEXT_EMOJI)
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page >= totalPages - 1),
+    ),
+  ];
+}
+
+function parseTrackedServerListPageCustomId(customId: string) {
+  if (!customId.startsWith(SERVER_LIST_PAGE_PREFIX)) {
+    return null;
+  }
+
+  const page = Number(customId.slice(SERVER_LIST_PAGE_PREFIX.length));
+  return Number.isInteger(page) && page >= 0 ? page : null;
+}
+
+function buildTrackedServerListResponse(items: TrackedServer[], page: number) {
+  const totalPages = Math.max(1, Math.ceil(items.length / SERVER_LIST_PAGE_SIZE));
+  const normalizedPage = Math.max(0, Math.min(page, totalPages - 1));
+  return {
+    embed: buildTrackedServerListEmbed(items, normalizedPage),
+    components: buildTrackedServerListButtons(normalizedPage, totalPages),
+  };
 }
 
 function buildTrackedServerDraft(name: string, bmId: string, selectedCategories: readonly string[], selectedFrequency: readonly string[]): TrackedServerDraft {
@@ -523,10 +576,8 @@ async function handleManageServer(interaction: ChatInputCommandInteraction, subc
   if (subcommand === SERVER_LIST_SUB) {
     try {
       const { items } = await fetchTrackedServers();
-      await replyEphemeralEmbed(
-        interaction,
-        buildEmbed("Tracked Servers", buildTrackedServerListDescription(items)),
-      );
+      const response = buildTrackedServerListResponse(items, 0);
+      await interaction.editReply({ embeds: [response.embed], components: response.components });
     } catch {
       await replyEphemeralEmbed(
         interaction,
@@ -670,6 +721,29 @@ export async function handleManageChatInput(interaction: ChatInputCommandInterac
   }
 
   await replyText(interaction, "Unknown command.");
+  return true;
+}
+
+export async function handleManageButtonInteraction(interaction: ButtonInteraction) {
+  const page = parseTrackedServerListPageCustomId(interaction.customId);
+  if (page === null) {
+    return false;
+  }
+
+  if (!isOwnerCommandConfigured() || !isAuthorizedOwner(interaction)) {
+    await interaction.reply({ content: "Only the configured bot owner can use this control.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  try {
+    const { items } = await fetchTrackedServers();
+    const response = buildTrackedServerListResponse(items, page);
+    await interaction.update({ embeds: [response.embed], components: response.components });
+  } catch (error) {
+    console.error("[bot] /manage server list page failed", error);
+    await interaction.reply({ content: "RustLens could not load the tracked server list.", flags: MessageFlags.Ephemeral });
+  }
+
   return true;
 }
 

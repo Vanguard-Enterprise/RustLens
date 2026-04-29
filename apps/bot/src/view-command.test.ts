@@ -48,6 +48,34 @@ describe("view-command", () => {
     expect(embed.fields).toHaveLength(11);
   });
 
+  it("can retitle the player profile embed for setsteam success", () => {
+    const embed = buildUserEmbed("76561198000000000", {
+      steamId: "76561198000000000",
+      bmId: "918543318",
+      bmName: "turn it up",
+      avatarImage: "https://cdn.example/avatar.png",
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
+      serversPlayed: 12,
+      nameGaps: [],
+      hours: {
+        vitality: 10,
+        atlas: 20,
+        vital: 30,
+        modded: 40,
+        official: 50,
+        build: 60,
+        bm: 210,
+        rust: 7347,
+      },
+    }, "123456789012345678").setTitle("turn it up - successfully linked").toJSON();
+
+    expect(embed.title).toBe("turn it up - successfully linked");
+    expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
+    expect(embed.fields).toHaveLength(11);
+    expect(embed.fields?.[0]?.value).toContain("<@123456789012345678>");
+  });
+
   it("adds online status below information when profile has current player state", () => {
     const embed = buildUserEmbed("76561198000000000", {
       steamId: "76561198000000000",
