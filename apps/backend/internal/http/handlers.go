@@ -2633,6 +2633,27 @@ func (h *Handler) GetBmPlayerProfile(w http.ResponseWriter, r *http.Request) {
 
 	profile, err := h.battleMetricsClient.FetchPlayerProfile(r.Context(), bmID)
 	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+		// BM doesn't see this player. If we have a stale BM cache, prefer it.
+		// Otherwise try bmmatch to recover a Steam linkage so we can still
+		// serve Steam-side enrichment instead of 404'ing the bot.
+		if bmCacheErr == nil {
+			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, steamCache, cachedBm))
+			return
+		}
+		if account.SteamID == "" {
+			if linked, lookupErr := h.resolveSteamAccountFromBmMatch(r.Context(), bmID); lookupErr == nil {
+				account = linked
+				if cache, cacheErr := h.postgres.GetSteamAccountCache(r.Context(), linked.SteamID); cacheErr == nil {
+					steamCache = cache
+				}
+			} else if !errors.Is(lookupErr, store.ErrSteamAccountNotFound) {
+				log.Printf("[backend] GetBmPlayerProfile bmmatch lookup error for %s: %v", bmID, lookupErr)
+			}
+		}
+		if account.SteamID != "" {
+			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, steamCache, store.BmProfileCache{BmID: bmID}))
+			return
+		}
 		writeError(w, http.StatusNotFound, "battlemetrics player not found")
 		return
 	}
