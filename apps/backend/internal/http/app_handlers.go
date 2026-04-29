@@ -114,7 +114,10 @@ func requireAppActor(r *http.Request, postgres *store.PostgresStore) (store.AppU
 
 	user, err := postgres.GetAppUserByID(r.Context(), session.UserID)
 	if errors.Is(err, store.ErrAppUserNotFound) {
-		return store.AppUser{}, false, http.StatusUnauthorized, "app user not found"
+		// Session signature is valid but the underlying user was deleted (or
+		// the DB was wiped). Treat this as an invalid session so the frontend
+		// clears the cookie and redirects to /login instead of crashing.
+		return store.AppUser{}, false, http.StatusUnauthorized, "invalid_session"
 	}
 	if err != nil {
 		return store.AppUser{}, false, http.StatusInternalServerError, "failed to load app user"
