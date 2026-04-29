@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -51,7 +52,7 @@ function GuildCard({ guild }: { guild: DashboardGuild }) {
     guild.owner ? userAvatarUrl(guild.owner.id, guild.owner.avatarHash) ?? undefined : undefined;
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden transition-colors hover:bg-accent/30 cursor-pointer h-full">
       <GuildBanner guild={guild} />
       <CardHeader className="flex-row items-center gap-3">
         <Avatar size="lg" className="ring-2 ring-background">
@@ -107,7 +108,13 @@ export async function GuildList() {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {guilds.map((guild) => (
-        <GuildCard key={guild.id} guild={guild} />
+        <Link
+          key={guild.id}
+          href={`/dashboard/guilds/${guild.id}`}
+          className="block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <GuildCard guild={guild} />
+        </Link>
       ))}
     </div>
   );
