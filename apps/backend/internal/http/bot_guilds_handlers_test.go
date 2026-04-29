@@ -50,3 +50,13 @@ func TestGetCurrentAppUserInstalledGuilds_RequiresSession(t *testing.T) {
 		t.Fatalf("status = %d, want 401", w.Code)
 	}
 }
+
+func TestGetCurrentAppUserGuildLinks_RequiresSession(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest(http.MethodGet, "/api/app/me/guilds/123456789012345678/links", nil)
+	w := httptest.NewRecorder()
+	h.GetCurrentAppUserGuildLinks(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
