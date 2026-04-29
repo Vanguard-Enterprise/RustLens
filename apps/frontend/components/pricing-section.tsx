@@ -93,7 +93,10 @@ export function PricingSection() {
 	);
 
 	return (
-		<div className="flex w-full flex-col items-center justify-center space-y-7 p-4">
+		<div
+			className="flex w-full scroll-mt-24 flex-col items-center justify-center space-y-7 p-4"
+			id="pricing"
+		>
 			<div className="mx-auto max-w-xl space-y-2">
 				<h2 className="text-center font-bold text-2xl tracking-tight md:text-3xl lg:font-extrabold lg:text-4xl">
 					Pricing that scales with your community

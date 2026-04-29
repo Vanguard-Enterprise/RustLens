@@ -71,7 +71,7 @@ export function DesktopNav() {
 					</NavigationMenuContent>
 				</NavigationMenuItem>
 				<NavigationMenuLink asChild className="px-4">
-					<a className="rounded-md p-2 hover:bg-accent" href="#">
+					<a className="rounded-md p-2 hover:bg-accent" href="/#pricing">
 						Pricing
 					</a>
 				</NavigationMenuLink>
