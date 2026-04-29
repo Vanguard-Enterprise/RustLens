@@ -318,6 +318,20 @@ function buildStatusField(profile: SteamProfile | null) {
   return null;
 }
 
+function addUserInformationField(embed: EmbedBuilder, steamId: string, profile: SteamProfile | null, discordId?: string) {
+  const infoLines: string[] = [];
+  if (steamId && /^\d{17}$/.test(steamId)) {
+    infoLines.push(`${VIEW_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`);
+  }
+  if (profile?.bmId) {
+    infoLines.push(`${VIEW_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/rcon/players/${profile.bmId})`);
+  }
+  if (discordId) {
+    infoLines.push(`${VIEW_EMOJIS.discord} <@${discordId}>`);
+  }
+  embed.addFields({ name: "Information", value: infoLines.length > 0 ? infoLines.join("\n") : "*Unknown player*" });
+}
+
 export function buildProfileButtons(steamId: string, bmId?: string | null) {
   const trimmedSteam = (steamId ?? "").trim();
   const trimmedBm = (bmId ?? "").trim();
@@ -432,17 +446,7 @@ export function buildUserEmbed(
     embed.setThumbnail(profile.avatarImage);
   }
 
-  const infoLines: string[] = [];
-  if (steamId && /^\d{17}$/.test(steamId)) {
-    infoLines.push(`${VIEW_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`);
-  }
-  if (profile?.bmId) {
-    infoLines.push(`${VIEW_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/rcon/players/${profile.bmId})`);
-  }
-  if (discordId) {
-    infoLines.push(`${VIEW_EMOJIS.discord} <@${discordId}>`);
-  }
-  embed.addFields({ name: "Information", value: infoLines.length > 0 ? infoLines.join("\n") : "*Unknown player*" });
+  addUserInformationField(embed, steamId, profile, discordId);
 
   const statusField = buildStatusField(profile);
   if (statusField) {
@@ -473,6 +477,27 @@ export function buildUserEmbed(
     embed.addFields(buildRiskFactorField(profile));
   }
 
+  return embed;
+}
+
+export function buildUserLinkSuccessEmbed(
+  title: string,
+  steamId: string,
+  profile: SteamProfile | null,
+  discordId?: string,
+): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+
+  if (profile?.avatarImage) {
+    embed.setThumbnail(profile.avatarImage);
+  }
+
+  addUserInformationField(embed, steamId, profile, discordId);
+  embed.addFields(buildRiskFactorField(profile));
   return embed;
 }
 

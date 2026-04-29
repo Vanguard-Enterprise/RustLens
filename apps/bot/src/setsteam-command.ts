@@ -5,6 +5,7 @@ import { loadConfig } from "./config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 import { resolveSteamInputErrorMessage } from "./steam-input.js";
+import { buildUserLinkSuccessEmbed } from "./view-command.js";
 
 export const SETSTEAM_COMMAND_NAME = "setsteam";
 
@@ -59,6 +60,16 @@ async function replyEphemeralEmbed(interaction: ChatInputCommandInteraction, emb
     embeds: [embed],
     flags: MessageFlags.Ephemeral,
   });
+}
+
+async function replyPublicEmbed(interaction: ChatInputCommandInteraction, embed: EmbedBuilder) {
+  if (interaction.deferred || interaction.replied) {
+    await interaction.deleteReply().catch(() => undefined);
+    await interaction.followUp({ embeds: [embed] });
+    return;
+  }
+
+  await interaction.reply({ embeds: [embed] });
 }
 
 function buildLinkingLogEmbed(
@@ -170,9 +181,10 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
-  const [settings, steamAccount] = await Promise.all([
+  const [settings, steamAccount, profile] = await Promise.all([
     fetchGuildSettings(interaction.guildId),
     backend.getSteamAccount(workerId, steamId).catch(() => null),
+    backend.getSteamProfile(workerId, steamId).catch(() => null),
   ]);
 
   if (settings.linkingLogChannelId && interaction.guild) {
@@ -184,9 +196,10 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     }
   }
 
-  await replyEphemeralEmbed(
+  const profileName = profile?.bmName || steamAccount?.bmName || steamId;
+  await replyPublicEmbed(
     interaction,
-    buildEmbed("Steam ID linked", `Your Steam ID \`${steamId}\` has been linked for this guild.`),
+    buildUserLinkSuccessEmbed(`${profileName} - successfully linked`, steamId, profile, interaction.user.id),
   );
   return true;
 }

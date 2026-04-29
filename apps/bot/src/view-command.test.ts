@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SteamAccount } from "./backend-client.js";
-import { __testables, buildUserEmbed } from "./view-command.js";
+import { __testables, buildUserEmbed, buildUserLinkSuccessEmbed } from "./view-command.js";
 
 const OLD_FIRST_SEEN_UNIX = 1577836800;
 
@@ -46,6 +46,35 @@ describe("view-command", () => {
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
     expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
     expect(embed.fields).toHaveLength(11);
+  });
+
+  it("builds the setsteam success embed with only information and risk factor", () => {
+    const embed = buildUserLinkSuccessEmbed("turn it up - successfully linked", "76561198000000000", {
+      steamId: "76561198000000000",
+      bmId: "918543318",
+      bmName: "turn it up",
+      avatarImage: "https://cdn.example/avatar.png",
+      firstSeenUnix: OLD_FIRST_SEEN_UNIX,
+      serversPlayed: 12,
+      nameGaps: [],
+      hours: {
+        vitality: 10,
+        atlas: 20,
+        vital: 30,
+        modded: 40,
+        official: 50,
+        build: 60,
+        bm: 210,
+        rust: 7347,
+      },
+    }, "123456789012345678").toJSON();
+
+    expect(embed.title).toBe("turn it up - successfully linked");
+    expect(embed.fields?.map((field) => field.name)).toEqual([
+      "Information",
+      "Risk Factor <:risk_5:1487595720956448949>",
+    ]);
+    expect(embed.fields?.[0]?.value).toContain("<@123456789012345678>");
   });
 
   it("adds online status below information when profile has current player state", () => {
