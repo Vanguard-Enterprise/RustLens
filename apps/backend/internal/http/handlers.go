@@ -2201,6 +2201,16 @@ func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID stri
 	}
 
 	fullProfile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, bmID)
+	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+		// bmmatch resolved the linkage but BM doesn't see the player yet.
+		// Record the bare steam↔bm linkage so the bot doesn't 404; caches
+		// will warm on a later refresh once BM indexes the player.
+		bmIDCopy := bmID
+		if _, err := h.postgres.UpsertSteamAccount(ctx, steamID, &bmIDCopy); err != nil {
+			return store.SteamAccount{}, err
+		}
+		return h.postgres.GetSteamAccountBySteamID(ctx, steamID)
+	}
 	if err != nil {
 		return store.SteamAccount{}, err
 	}
