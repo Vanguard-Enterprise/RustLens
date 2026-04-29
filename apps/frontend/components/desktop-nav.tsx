@@ -52,15 +52,20 @@ export function DesktopNav() {
 								))}
 							</div>
 							<div className="space-y-2 p-3">
-								{companyLinks2.map((item, i) => (
-									<NavigationMenuLink
-										href={item.href}
-										key={`item-${item.label}-${i}`}
-									>
-										{item.icon}
-										{item.label}
-									</NavigationMenuLink>
-								))}
+								{companyLinks2.map((item, i) => {
+									const external = item.href.startsWith("http");
+									return (
+										<NavigationMenuLink
+											href={item.href}
+											key={`item-${item.label}-${i}`}
+											rel={external ? "noreferrer" : undefined}
+											target={external ? "_blank" : undefined}
+										>
+											{item.icon}
+											{item.label}
+										</NavigationMenuLink>
+									);
+								})}
 							</div>
 						</div>
 					</NavigationMenuContent>

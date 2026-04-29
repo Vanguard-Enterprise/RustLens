@@ -161,9 +161,6 @@ export function LegalPage({
 										<h3 className="font-heading font-semibold text-2xl text-foreground tracking-tight md:text-3xl">
 											Reach the {legalOperatorName} team
 										</h3>
-										<p className="max-w-lg text-muted-foreground text-sm leading-relaxed">
-											{legalContact.responseNote}
-										</p>
 									</div>
 									<div className="flex flex-col items-stretch gap-2 sm:flex-row md:flex-col md:items-end">
 										<Button asChild>

@@ -67,6 +67,7 @@ export const companyLinks: LinkItemType[] = [
 		label: "About Us",
 		href: "#",
 		description: "Learn more about our story and team",
+		blurred: true,
 		icon: (
 			<UsersIcon
 			/>
@@ -76,6 +77,7 @@ export const companyLinks: LinkItemType[] = [
 		label: "Customer Stories",
 		href: "#",
 		description: "See how we've helped our clients succeed",
+		blurred: true,
 		icon: (
 			<StarIcon
 			/>
@@ -84,6 +86,7 @@ export const companyLinks: LinkItemType[] = [
 	{
 		label: "Partnerships",
 		href: "#",
+		blurred: true,
 		icon: (
 			<HandshakeIcon
 			/>
@@ -118,7 +121,7 @@ export const companyLinks2: LinkItemType[] = [
 		),
 	},
 	{
-		label: "Blog",
+		label: "Updates - Coming Soon",
 		href: "#",
 		icon: (
 			<LeafIcon
@@ -127,7 +130,7 @@ export const companyLinks2: LinkItemType[] = [
 	},
 	{
 		label: "Help Center",
-		href: "#",
+		href: "https://discord.com",
 		icon: (
 			<HelpCircleIcon
 			/>

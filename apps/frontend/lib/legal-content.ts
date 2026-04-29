@@ -14,9 +14,7 @@ export type LegalDocument = {
 export const legalOperatorName = "RustLens" as const;
 export const legalEffectiveDate = "April 12, 2026" as const;
 export const legalContact = {
-	email: "legal@rustlens.example",
-	responseNote:
-		"Placeholder contact details are in use until RustLens publishes its final legal and support inbox.",
+	email: "contact@rustlens.com",
 } as const;
 
 export const termsOfService: LegalDocument = {
@@ -93,7 +91,7 @@ export const termsOfService: LegalDocument = {
 		{
 			title: "Contact",
 			paragraphs: [
-				`For questions about these Terms, contact ${legalOperatorName} at ${legalContact.email}. ${legalContact.responseNote}`,
+				`For questions about these Terms, contact ${legalOperatorName} at ${legalContact.email}.`,
 			],
 		},
 	],
@@ -161,7 +159,7 @@ export const refundPolicy: LegalDocument = {
 		{
 			title: "Contact",
 			paragraphs: [
-				`For billing questions or statutory-rights claims, contact ${legalOperatorName} at ${legalContact.email}. ${legalContact.responseNote}`,
+				`For billing questions or statutory-rights claims, contact ${legalOperatorName} at ${legalContact.email}.`,
 			],
 		},
 	],
@@ -244,7 +242,7 @@ export const privacyPolicy: LegalDocument = {
 		{
 			title: "Contact",
 			paragraphs: [
-				`For privacy questions or data requests, contact ${legalOperatorName} at ${legalContact.email}. ${legalContact.responseNote}`,
+				`For privacy questions or data requests, contact ${legalOperatorName} at ${legalContact.email}.`,
 			],
 		},
 	],
