@@ -51,8 +51,14 @@ function buildEmbed(title: string, description: string) {
 }
 
 async function replyEphemeralEmbed(interaction: ChatInputCommandInteraction, embed: EmbedBuilder) {
-  if (interaction.deferred || interaction.replied) {
-    await interaction.editReply({ embeds: [embed] });
+  if (interaction.deferred) {
+    await interaction.deleteReply().catch(() => undefined);
+    await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (interaction.replied) {
+    await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -68,8 +74,7 @@ async function replyPublicEmbed(
   components?: ActionRowBuilder<ButtonBuilder>[],
 ) {
   if (interaction.deferred || interaction.replied) {
-    await interaction.deleteReply().catch(() => undefined);
-    await interaction.followUp({ embeds: [embed], components });
+    await interaction.editReply({ embeds: [embed], components });
     return;
   }
 
@@ -133,7 +138,7 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
   const backend = getBackend();
   const workerId = getWorkerID();
