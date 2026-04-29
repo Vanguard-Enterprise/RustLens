@@ -2216,6 +2216,12 @@ func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID stri
 
 func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (store.SteamAccount, error) {
 	profile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, bmID)
+	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+		// BM doesn't see this player at all (e.g. brand-new BM ID not yet
+		// indexed by the public /players/{id} endpoint). Fall back to the
+		// matching service so we can still record the Steam linkage.
+		return h.resolveSteamAccountFromBmMatch(ctx, bmID)
+	}
 	if err != nil {
 		return store.SteamAccount{}, err
 	}
@@ -2239,6 +2245,29 @@ func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (s
 	}
 
 	return h.upsertResolvedSteamAccount(ctx, profile.SteamID, profile)
+}
+
+// resolveSteamAccountFromBmMatch resolves a Steam ID for a BM ID via the
+// bmmatch service when BattleMetrics itself can't see the player, then records
+// the bare linkage in steam_accounts. Profile/cache rows are left empty — a
+// later refresh will warm them once BM does see the player.
+func (h *Handler) resolveSteamAccountFromBmMatch(ctx context.Context, bmID string) (store.SteamAccount, error) {
+	resolved, err := h.bmMatch.BMToSteam(ctx, bmID)
+	if err != nil {
+		if errors.Is(err, bmmatch.ErrNotFound) || errors.Is(err, bmmatch.ErrNotConfigured) {
+			return store.SteamAccount{}, store.ErrSteamAccountNotFound
+		}
+		return store.SteamAccount{}, err
+	}
+	steamID := strings.TrimSpace(resolved)
+	if steamID == "" {
+		return store.SteamAccount{}, store.ErrSteamAccountNotFound
+	}
+	bmIDCopy := bmID
+	if _, err := h.postgres.UpsertSteamAccount(ctx, steamID, &bmIDCopy); err != nil {
+		return store.SteamAccount{}, err
+	}
+	return h.postgres.GetSteamAccountBySteamID(ctx, steamID)
 }
 
 type steamAnalyticsGame struct {
