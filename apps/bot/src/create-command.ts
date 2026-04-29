@@ -33,6 +33,29 @@ const ACCEPT_BUTTON_EMOJI = { name: "user_tick", id: "1499109036954751138" };
 
 const NO_REQUIRED_ROLE_SENTINEL = "0";
 
+const PENDING_INVITE_TTL_MS = 30 * 60 * 1000;
+
+type PendingInvite = {
+  guildId: string;
+  channelId: string;
+  messageId: string;
+  createdAt: number;
+};
+
+const pendingInvites = new Map<string, PendingInvite>();
+
+function pendingInviteKey(guildId: string, requesterId: string) {
+  return `${guildId}:${requesterId}`;
+}
+
+function prunePendingInvites(now = Date.now()) {
+  for (const [key, pending] of pendingInvites) {
+    if (now - pending.createdAt > PENDING_INVITE_TTL_MS) {
+      pendingInvites.delete(key);
+    }
+  }
+}
+
 const createCommand = new SlashCommandBuilder()
   .setName(CREATE_COMMAND_NAME)
   .setDescription("RustLens create commands")
@@ -256,17 +279,50 @@ async function handleRequestInviteButton(interaction: ButtonInteraction) {
     return;
   }
 
+  prunePendingInvites();
+
+  const pendingKey = pendingInviteKey(interaction.guildId, interaction.user.id);
+  if (pendingInvites.has(pendingKey)) {
+    await replyEphemeral(
+      interaction,
+      "You already have a pending clan invite request. Wait for an admin to accept it before requesting another.",
+    );
+    return;
+  }
+
+  pendingInvites.set(pendingKey, {
+    guildId: interaction.guildId,
+    channelId: interaction.channelId ?? "",
+    messageId: "",
+    createdAt: Date.now(),
+  });
+
   const requesterDisplayName =
     member?.displayName ?? interaction.user.globalName ?? interaction.user.username;
   const requesterAvatarURL =
     member?.displayAvatarURL({ size: 1024 }) ?? interaction.user.displayAvatarURL({ size: 1024 });
 
-  await interaction.reply({
-    content: `<@&${pingRoleId}> <@${interaction.user.id}>`,
-    embeds: [buildClanInviteEmbed(steamId, requesterDisplayName, requesterAvatarURL)],
-    components: [buildAcceptButton(interaction.user.id)],
-    allowedMentions: { roles: [pingRoleId], users: [interaction.user.id] },
-  });
+  try {
+    await interaction.reply({
+      content: `<@&${pingRoleId}> <@${interaction.user.id}>`,
+      embeds: [buildClanInviteEmbed(steamId, requesterDisplayName, requesterAvatarURL)],
+      components: [buildAcceptButton(interaction.user.id)],
+      allowedMentions: { roles: [pingRoleId], users: [interaction.user.id] },
+    });
+  } catch (error) {
+    pendingInvites.delete(pendingKey);
+    throw error;
+  }
+
+  const replyMessage = await interaction.fetchReply().catch(() => null);
+  const existing = pendingInvites.get(pendingKey);
+  if (replyMessage && existing) {
+    pendingInvites.set(pendingKey, {
+      ...existing,
+      channelId: replyMessage.channelId,
+      messageId: replyMessage.id,
+    });
+  }
 }
 
 async function handleAcceptInviteButton(interaction: ButtonInteraction) {
@@ -306,6 +362,8 @@ async function handleAcceptInviteButton(interaction: ButtonInteraction) {
   }
 
   await interaction.message.delete().catch(() => undefined);
+
+  pendingInvites.delete(pendingInviteKey(interaction.guildId, requesterId));
 
   await interaction.reply({
     content: dmFailed
