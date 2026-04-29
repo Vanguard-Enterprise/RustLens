@@ -1,31 +1,32 @@
 import type { LinkItemType } from "@/components/sheard";
-import { GlobeIcon, LayersIcon, UserPlusIcon, BarChart3Icon, PlugIcon, CodeIcon, UsersIcon, StarIcon, HandshakeIcon, FileTextIcon, ShieldIcon, RotateCcwIcon, LeafIcon, HelpCircleIcon } from "lucide-react";
+import { LayoutDashboardIcon, LayersIcon, ShieldIcon, BarChart3Icon, SmartphoneIcon, CodeIcon, UsersIcon, StarIcon, HandshakeIcon, FileTextIcon, RotateCcwIcon, LeafIcon, HelpCircleIcon } from "lucide-react";
 
 export const productLinks: LinkItemType[] = [
 	{
-		label: "Website Builder",
-		href: "#",
-		description: "Create responsive websites with ease",
+		label: "Dashboard",
+		href: "/dashboard",
+		description: "Track your Rust stats, profile, and linked accounts",
 		icon: (
-			<GlobeIcon
+			<LayoutDashboardIcon
 			/>
 		),
 	},
 	{
-		label: "Cloud Platform",
+		label: "Xrnvyq Cebwrpg",
 		href: "#",
-		description: "Deploy and scale apps in the cloud",
+		description: "Pynffvsvrq — qrgnvyf eryrnfrq fbba",
+		blurred: true,
 		icon: (
 			<LayersIcon
 			/>
 		),
 	},
 	{
-		label: "Team Collaboration",
+		label: "Clan Management",
 		href: "#",
-		description: "Tools to help your teams work better together",
+		description: "Organize your clan, members, and shared loadouts",
 		icon: (
-			<UserPlusIcon
+			<ShieldIcon
 			/>
 		),
 	},
@@ -33,17 +34,19 @@ export const productLinks: LinkItemType[] = [
 		label: "Analytics",
 		href: "#",
 		description: "Track and analyze your website traffic",
+		blurred: true,
 		icon: (
 			<BarChart3Icon
 			/>
 		),
 	},
 	{
-		label: "Integrations",
+		label: "Rust+ Integration",
 		href: "#",
-		description: "Connect your apps and services",
+		description: "Connect your Rust+ companion for live alerts",
+		badge: "Coming soon",
 		icon: (
-			<PlugIcon
+			<SmartphoneIcon
 			/>
 		),
 	},
@@ -51,6 +54,7 @@ export const productLinks: LinkItemType[] = [
 		label: "API",
 		href: "#",
 		description: "Build custom integrations with our API",
+		blurred: true,
 		icon: (
 			<CodeIcon
 			/>
