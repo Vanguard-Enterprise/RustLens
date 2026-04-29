@@ -121,6 +121,15 @@ async function replyError(interaction: ChatInputCommandInteraction, content: str
   await interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
 
+function isUnknownApplicationCommandError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code = "code" in error ? error.code : undefined;
+  return code === 10063;
+}
+
 export async function ensureServerCommand(client: Client, shardID: number) {
   if (shardID !== 0 || !client.application) {
     return;
@@ -131,7 +140,14 @@ export async function ensureServerCommand(client: Client, shardID: number) {
   const existing = commands.find((command) => command.name === data.name);
 
   if (existing) {
-    await client.application.commands.edit(existing.id, data);
+    try {
+      await client.application.commands.edit(existing.id, data);
+    } catch (error) {
+      if (!isUnknownApplicationCommandError(error)) {
+        throw error;
+      }
+      await client.application.commands.create(data);
+    }
   } else {
     await client.application.commands.create(data);
   }

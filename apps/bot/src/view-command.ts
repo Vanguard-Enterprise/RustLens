@@ -481,27 +481,6 @@ export function buildUserEmbed(
   return embed;
 }
 
-export function buildUserLinkSuccessEmbed(
-  title: string,
-  steamId: string,
-  profile: SteamProfile | null,
-  discordId?: string,
-): EmbedBuilder {
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
-
-  if (profile?.avatarImage) {
-    embed.setThumbnail(profile.avatarImage);
-  }
-
-  addUserInformationField(embed, steamId, profile, discordId);
-  embed.addFields(buildRiskFactorField(profile));
-  return embed;
-}
-
 export type ResolvedPlayerProfile =
   | {
     ok: true;

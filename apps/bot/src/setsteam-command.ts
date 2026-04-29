@@ -1,11 +1,11 @@
-import type { ChatInputCommandInteraction, Client } from "discord.js";
+import type { ActionRowBuilder, ButtonBuilder, ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 import { resolveSteamInputErrorMessage } from "./steam-input.js";
-import { buildUserLinkSuccessEmbed } from "./view-command.js";
+import { buildProfileButtons, buildUserEmbed } from "./view-command.js";
 
 export const SETSTEAM_COMMAND_NAME = "setsteam";
 
@@ -62,14 +62,18 @@ async function replyEphemeralEmbed(interaction: ChatInputCommandInteraction, emb
   });
 }
 
-async function replyPublicEmbed(interaction: ChatInputCommandInteraction, embed: EmbedBuilder) {
+async function replyPublicEmbed(
+  interaction: ChatInputCommandInteraction,
+  embed: EmbedBuilder,
+  components?: ActionRowBuilder<ButtonBuilder>[],
+) {
   if (interaction.deferred || interaction.replied) {
     await interaction.deleteReply().catch(() => undefined);
-    await interaction.followUp({ embeds: [embed] });
+    await interaction.followUp({ embeds: [embed], components });
     return;
   }
 
-  await interaction.reply({ embeds: [embed] });
+  await interaction.reply({ embeds: [embed], components });
 }
 
 function buildLinkingLogEmbed(
@@ -197,9 +201,12 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
   }
 
   const profileName = profile?.bmName || steamAccount?.bmName || steamId;
+  const embed = buildUserEmbed(steamId, profile, interaction.user.id)
+    .setTitle(`${profileName} - successfully linked`);
   await replyPublicEmbed(
     interaction,
-    buildUserLinkSuccessEmbed(`${profileName} - successfully linked`, steamId, profile, interaction.user.id),
+    embed,
+    buildProfileButtons(steamId, profile?.bmId ?? steamAccount?.bmId),
   );
   return true;
 }

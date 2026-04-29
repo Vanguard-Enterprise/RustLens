@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SteamAccount } from "./backend-client.js";
-import { __testables, buildUserEmbed, buildUserLinkSuccessEmbed } from "./view-command.js";
+import { __testables, buildUserEmbed } from "./view-command.js";
 
 const OLD_FIRST_SEEN_UNIX = 1577836800;
 
@@ -48,8 +48,8 @@ describe("view-command", () => {
     expect(embed.fields).toHaveLength(11);
   });
 
-  it("builds the setsteam success embed with only information and risk factor", () => {
-    const embed = buildUserLinkSuccessEmbed("turn it up - successfully linked", "76561198000000000", {
+  it("can retitle the player profile embed for setsteam success", () => {
+    const embed = buildUserEmbed("76561198000000000", {
       steamId: "76561198000000000",
       bmId: "918543318",
       bmName: "turn it up",
@@ -67,13 +67,12 @@ describe("view-command", () => {
         bm: 210,
         rust: 7347,
       },
-    }, "123456789012345678").toJSON();
+    }, "123456789012345678").setTitle("turn it up - successfully linked").toJSON();
 
     expect(embed.title).toBe("turn it up - successfully linked");
-    expect(embed.fields?.map((field) => field.name)).toEqual([
-      "Information",
-      "Risk Factor <:risk_5:1487595720956448949>",
-    ]);
+    expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
+    expect(embed.fields).toHaveLength(11);
     expect(embed.fields?.[0]?.value).toContain("<@123456789012345678>");
   });
 
