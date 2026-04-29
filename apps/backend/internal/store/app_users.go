@@ -737,3 +737,25 @@ func (p *PostgresStore) InsertAppAuditEvent(ctx context.Context, actorUserID str
 	`, actorUserID, targetUserID, eventType, string(encoded))
 	return err
 }
+
+// IsGuildMember returns true if the given Discord user is recorded as an
+// active member of the given guild in user_guilds.
+func (p *PostgresStore) IsGuildMember(ctx context.Context, guildID, discordID string) (bool, error) {
+	if guildID == "" || discordID == "" {
+		return false, nil
+	}
+	var exists bool
+	err := p.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM user_guilds
+			WHERE guild_id = $1
+			  AND discord_id = $2
+			  AND is_active = TRUE
+		)
+	`, guildID, discordID).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
