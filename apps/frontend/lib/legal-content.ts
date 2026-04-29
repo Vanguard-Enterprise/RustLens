@@ -99,6 +99,74 @@ export const termsOfService: LegalDocument = {
 	],
 };
 
+export const refundPolicy: LegalDocument = {
+	title: "Refund Policy",
+	description:
+		"All sales are final. RustLens does not offer refunds, return windows, or trial-period reversals on paid plans, add-ons, or one-time purchases.",
+	summary:
+		"All purchases of RustLens paid plans, add-ons, and one-time items are final. RustLens does not provide a return window or refunds, except where required by applicable law.",
+	sections: [
+		{
+			title: "All sales are final",
+			paragraphs: [
+				"All purchases of paid RustLens products, including subscription plans, add-on features, and any one-time purchases, are final at the time the payment is completed. RustLens does not offer a return window, evaluation window, cooling-off period, or pro-rated refund for unused time on any plan.",
+				"By completing a purchase, you acknowledge that you have reviewed the product description and pricing and agree that the transaction is non-refundable.",
+			],
+		},
+		{
+			title: "No refunds for unused or partial periods",
+			paragraphs: [
+				"RustLens does not refund unused time on a subscription if you cancel mid-cycle, stop using the service, remove the bot from your guild, lose admin authority over a guild, or otherwise no longer want the paid features. Access to paid features remains available for the period that has already been paid for, and the subscription will not renew once cancellation takes effect.",
+			],
+			bullets: [
+				"No refunds for partially used billing cycles after cancellation.",
+				"No refunds for renewals that proceed automatically on the scheduled billing date.",
+				"No refunds for add-ons or one-time purchases once they have been delivered or activated.",
+				"No refunds based on changes in your guild size, moderation needs, or feature preferences.",
+			],
+		},
+		{
+			title: "Statutory rights",
+			paragraphs: [
+				"Where mandatory local consumer law grants you a non-waivable right to a refund, withdrawal, or cancellation that overrides this policy, RustLens will honor those statutory rights to the extent legally required. This policy does not attempt to limit any right that cannot be excluded by contract.",
+				"If you believe a non-waivable statutory right applies to your purchase, contact RustLens with the relevant details and RustLens will review the request under the applicable law.",
+			],
+		},
+		{
+			title: "Service failures and billing errors",
+			paragraphs: [
+				"If RustLens is unable to deliver a paid feature you purchased, or if you were charged in error (for example, a duplicate charge or a charge after a confirmed cancellation), contact RustLens. Confirmed billing errors and confirmed undelivered purchases will be corrected, typically by reversing the affected charge.",
+				"Routine outages, third-party platform incidents (such as Discord, Steam, or BattleMetrics interruptions), and temporary degradations that are resolved within a reasonable time do not qualify as a service failure for refund purposes.",
+			],
+		},
+		{
+			title: "Cancellations",
+			paragraphs: [
+				"You may cancel a subscription at any time to prevent future renewals. Cancellation stops further billing on the next renewal date but does not refund the current period. Paid features remain available until the end of the period that has already been paid for, after which the account returns to free-tier access.",
+			],
+		},
+		{
+			title: "Chargebacks and disputes",
+			paragraphs: [
+				"Please contact RustLens before filing a payment dispute or chargeback. Most billing questions can be resolved more quickly through direct support.",
+				"Filing a chargeback in circumstances that this policy does not cover may result in suspension of paid features and, where the dispute is determined to be invalid, may make future paid use of RustLens ineligible, except where required by law.",
+			],
+		},
+		{
+			title: "Changes to this Policy",
+			paragraphs: [
+				"RustLens may update this Refund Policy as paid features, billing arrangements, or legal requirements evolve. Updates take effect on the date noted on this page and apply to purchases made on or after that date. Purchases completed before an update remain governed by the policy that was in effect at the time of purchase.",
+			],
+		},
+		{
+			title: "Contact",
+			paragraphs: [
+				`For billing questions or statutory-rights claims, contact ${legalOperatorName} at ${legalContact.email}. ${legalContact.responseNote}`,
+			],
+		},
+	],
+};
+
 export const privacyPolicy: LegalDocument = {
 	title: "Privacy Policy",
 	description:

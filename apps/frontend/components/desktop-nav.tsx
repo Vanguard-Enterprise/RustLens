@@ -27,12 +27,12 @@ export function DesktopNav() {
 						</div>
 						<div className="p-2">
 							<p className="text-muted-foreground text-sm">
-								Interested?{" "}
+								Interested:{" "}
 								<a
 									className="font-medium text-foreground hover:underline"
-									href="#"
+									href="/login"
 								>
-									Schedule a demo
+									Add to Discord
 								</a>
 							</p>
 						</div>
