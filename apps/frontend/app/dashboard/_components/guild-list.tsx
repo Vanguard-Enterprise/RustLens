@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,24 +16,31 @@ function initials(name: string): string {
 }
 
 function GuildBanner({ guild }: { guild: DashboardGuild }) {
-  const src =
-    guildBannerUrl(guild.id, guild.bannerHash) ??
-    guildIconUrl(guild.id, guild.iconHash, 1024);
-  if (!src) {
+  const bannerSrc = guildBannerUrl(guild.id, guild.bannerHash);
+  if (bannerSrc) {
     return (
-      <div
-        aria-hidden
-        className="h-32 w-full bg-gradient-to-br from-muted to-muted-foreground/20"
+      <img
+        src={bannerSrc}
+        alt=""
+        className="h-32 w-full object-cover object-center"
+        loading="lazy"
       />
     );
   }
   return (
-    <img
-      src={src}
-      alt=""
-      className="h-32 w-full object-cover"
-      loading="lazy"
-    />
+    <div
+      aria-hidden
+      className="relative -mt-4 flex h-32 w-full items-center justify-center overflow-hidden rounded-t-xl bg-[linear-gradient(135deg,_color-mix(in_srgb,var(--primary)_85%,black)_0%,_color-mix(in_srgb,var(--primary)_70%,black)_50%,_color-mix(in_srgb,var(--primary)_92%,black)_100%)]"
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(255,255,255,0.18)_0%,_transparent_60%)]" />
+      <Image
+        src="/RustLens.png"
+        alt=""
+        width={96}
+        height={96}
+        className="relative h-16 w-16 object-contain drop-shadow-md [filter:brightness(0)_invert(1)] opacity-95"
+      />
+    </div>
   );
 }
 
