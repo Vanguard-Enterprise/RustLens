@@ -82,6 +82,52 @@ func TestClient_FetchProfile_Success(t *testing.T) {
 	}
 }
 
+func TestClient_FetchUserGuilds_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/users/@me/guilds" || r.Method != http.MethodGet {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("with_counts"); got != "true" {
+			t.Errorf("with_counts = %q, want true", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer tok-abc" {
+			t.Errorf("Authorization = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"id":"100","name":"Alpha","icon":"icon-a"},
+			{"id":"200","name":"Bravo","icon":null}
+		]`))
+	}))
+	defer srv.Close()
+	c := discord.NewClient("id", "secret", discord.WithBaseURL(srv.URL), discord.WithRedirectURI("x"))
+	guilds, err := c.FetchUserGuilds(context.Background(), "tok-abc")
+	if err != nil {
+		t.Fatalf("FetchUserGuilds: %v", err)
+	}
+	if len(guilds) != 2 {
+		t.Fatalf("len = %d, want 2", len(guilds))
+	}
+	if guilds[0].ID != "100" || guilds[0].Name != "Alpha" || guilds[0].IconHash != "icon-a" {
+		t.Errorf("guilds[0] = %+v", guilds[0])
+	}
+	if guilds[1].ID != "200" || guilds[1].IconHash != "" {
+		t.Errorf("guilds[1] = %+v", guilds[1])
+	}
+}
+
+func TestClient_FetchUserGuilds_NonOK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message":"401: Unauthorized"}`))
+	}))
+	defer srv.Close()
+	c := discord.NewClient("id", "secret", discord.WithBaseURL(srv.URL), discord.WithRedirectURI("x"))
+	if _, err := c.FetchUserGuilds(context.Background(), "tok"); err == nil {
+		t.Fatalf("expected error on 401")
+	}
+}
+
 func TestClient_FetchProfile_NoAvatar(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"id":"1","username":"x","avatar":null}`))

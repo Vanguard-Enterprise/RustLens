@@ -95,6 +95,45 @@ func (p *PostgresStore) BulkUpsertUserGuilds(ctx context.Context, guildID string
 	return err
 }
 
+// SyncUserGuildsForUser reconciles the user_guilds rows for a single user
+// against the authoritative list of guilds returned by Discord's
+// /users/@me/guilds endpoint. Listed guilds are upserted active; rows for
+// this user in any guild NOT in the list are marked left.
+func (p *PostgresStore) SyncUserGuildsForUser(ctx context.Context, discordID string, guildIDs []string) error {
+	if discordID == "" {
+		return errors.New("discordID is required")
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO user_guilds (discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at)
+		SELECT $1, gid, TRUE, NOW(), NOW(), NULL FROM unnest($2::text[]) AS gid
+		ON CONFLICT (discord_id, guild_id) DO UPDATE
+		SET is_active = TRUE,
+		    last_seen_at = NOW(),
+		    left_at = NULL
+	`, discordID, guildIDs); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE user_guilds
+		SET is_active = FALSE,
+		    left_at = COALESCE(left_at, NOW())
+		WHERE discord_id = $1
+		  AND is_active = TRUE
+		  AND guild_id <> ALL($2::text[])
+	`, discordID, guildIDs); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 // StampMembersSynced marks bot_guilds.members_synced_at = NOW(). Used after a
 // guildCreate / clientReady member sync completes.
 func (p *PostgresStore) StampMembersSynced(ctx context.Context, guildID string) error {

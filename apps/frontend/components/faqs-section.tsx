@@ -31,22 +31,6 @@ export function FaqsSection() {
 					</AccordionItem>
 				))}
 			</Accordion>
-			<p className="text-muted-foreground">
-				Need more detail? Review the{" "}
-				<a className="text-primary hover:underline" href="/api/docs">
-					backend API docs
-				</a>{" "}
-				or browse the project on{" "}
-				<a
-					className="text-primary hover:underline"
-					href="https://github.com/Vanguard-Enterprise/RustLens-monorepo"
-					rel="noreferrer"
-					target="_blank"
-				>
-					GitHub
-				</a>
-				.
-			</p>
 		</section>
 	);
 }

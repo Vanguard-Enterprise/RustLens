@@ -114,7 +114,10 @@ func requireAppActor(r *http.Request, postgres *store.PostgresStore) (store.AppU
 
 	user, err := postgres.GetAppUserByID(r.Context(), session.UserID)
 	if errors.Is(err, store.ErrAppUserNotFound) {
-		return store.AppUser{}, false, http.StatusUnauthorized, "app user not found"
+		// Session signature is valid but the underlying user was deleted (or
+		// the DB was wiped). Treat this as an invalid session so the frontend
+		// clears the cookie and redirects to /login instead of crashing.
+		return store.AppUser{}, false, http.StatusUnauthorized, "invalid_session"
 	}
 	if err != nil {
 		return store.AppUser{}, false, http.StatusInternalServerError, "failed to load app user"
@@ -614,4 +617,57 @@ func (h *Handler) ListAppAuditEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"items": payload})
+}
+
+// GetCurrentAppUserGuildLinks returns the caller's Discord<->Steam links scoped
+// to a single guild. Membership in the guild is required.
+func (h *Handler) GetCurrentAppUserGuildLinks(w http.ResponseWriter, r *http.Request) {
+	actor, ok, status, message := requireAppActor(r, h.postgres)
+	if !ok {
+		writeError(w, status, message)
+		return
+	}
+
+	guildID, ok := validateSnowflakePathParam(w, r, "guildID")
+	if !ok {
+		return
+	}
+
+	discordID, err := h.postgres.GetAppUserDiscordID(r.Context(), actor.ID)
+	if err != nil {
+		log.Printf("[backend] GetAppUserDiscordID error for %s: %v", actor.ID, err)
+		writeError(w, http.StatusInternalServerError, "failed to load guild links")
+		return
+	}
+	if discordID == "" {
+		writeError(w, http.StatusForbidden, "not a member of this guild")
+		return
+	}
+
+	isMember, err := h.postgres.IsGuildMember(r.Context(), guildID, discordID)
+	if err != nil {
+		log.Printf("[backend] IsGuildMember error for %s guild=%s: %v", actor.ID, guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to load guild links")
+		return
+	}
+	if !isMember {
+		writeError(w, http.StatusForbidden, "not a member of this guild")
+		return
+	}
+
+	rows, err := h.postgres.ListGuildLinksByGuildAndDiscord(r.Context(), guildID, discordID)
+	if err != nil {
+		log.Printf("[backend] ListGuildLinksByGuildAndDiscord error for %s guild=%s: %v", actor.ID, guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to load guild links")
+		return
+	}
+
+	items := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, map[string]any{
+			"steamId":  row.SteamID,
+			"linkedAt": row.CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }

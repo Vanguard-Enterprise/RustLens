@@ -49,7 +49,7 @@ func TestInitiate_RedirectsToDiscord_SetsCookies(t *testing.T) {
 	if q.Get("redirect_uri") != "http://localhost/api/auth/discord/callback" {
 		t.Errorf("redirect_uri = %q", q.Get("redirect_uri"))
 	}
-	if q.Get("scope") != "identify" {
+	if q.Get("scope") != "identify guilds" {
 		t.Errorf("scope = %q", q.Get("scope"))
 	}
 	if q.Get("code_challenge_method") != "S256" {
@@ -68,7 +68,7 @@ func TestInitiate_RedirectsToDiscord_SetsCookies(t *testing.T) {
 	}
 }
 
-func TestInitiate_RefusesWhenSessionPresent(t *testing.T) {
+func TestInitiate_RedirectsToDashboardWhenSessionPresent(t *testing.T) {
 	tok := mustSerializeSessionForTest(t, "session-secret", "usr_already")
 	h := discord.NewHandler(discord.HandlerConfig{
 		ClientID:      "id",
@@ -85,8 +85,8 @@ func TestInitiate_RefusesWhenSessionPresent(t *testing.T) {
 		t.Fatalf("status = %d, want 302", w.Code)
 	}
 	loc := w.Header().Get("Location")
-	if !strings.Contains(loc, "/login?error=discord-already-signed-in") {
-		t.Errorf("Location = %q, want ?error=discord-already-signed-in", loc)
+	if !strings.HasSuffix(loc, "/dashboard") {
+		t.Errorf("Location = %q, want suffix /dashboard", loc)
 	}
 }
 

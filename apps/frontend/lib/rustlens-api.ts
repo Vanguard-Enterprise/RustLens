@@ -76,6 +76,11 @@ export type DashboardGuild = {
 	owner: DashboardGuildOwner | null;
 };
 
+export type GuildLink = {
+	steamId: string;
+	linkedAt: string;
+};
+
 export type AdminUserItem = {
 	user: AppUser;
 	discordId: string;
@@ -313,6 +318,19 @@ export async function getCurrentUserSafe() {
 export async function getMyInstalledGuilds(): Promise<DashboardGuild[]> {
 	const payload = await backendFetch<{ items: DashboardGuild[] }>(
 		"/api/app/me/guilds/installed",
+		undefined,
+		{ requireSession: true },
+	);
+	return payload.items;
+}
+
+/**
+ * Returns the current user's Discord<->Steam links scoped to a single guild.
+ * Throws if the caller is not a member of the guild (backend returns 403).
+ */
+export async function getMyGuildLinks(guildId: string): Promise<GuildLink[]> {
+	const payload = await backendFetch<{ items: GuildLink[] }>(
+		`/api/app/me/guilds/${encodeURIComponent(guildId)}/links`,
 		undefined,
 		{ requireSession: true },
 	);

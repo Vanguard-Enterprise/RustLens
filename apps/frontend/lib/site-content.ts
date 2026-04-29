@@ -7,42 +7,28 @@ import {
 
 export const landingFeatures = [
 	{
-		title: "Guild-ready coordination",
+		title: "Built for clans",
 		description:
-			"Persist guild settings, admin role assignments, tracked-server selections, and wipe-react schedules without scattering state across commands.",
+			"Set up servers, admins, and alerts once. Stay organized and play more.",
 		icon: IconShieldHalfFilled,
-		points: [
-			"guild settings",
-			"admin role",
-			"wipe logs",
-			"tracked server selection",
-		],
 	},
 	{
-		title: "Steam and Discord identity linking",
+		title: "Steam linking",
 		description:
-			"Support soft self-reported links, hard trusted links, guild-scoped associations, and nickname-target resolution around BattleMetrics identifiers.",
+			"Link Steam to Discord so everyone knows who's who, in chat and in-game.",
 		icon: IconLink,
-		points: ["soft links", "hard links", "guild scoped", "nickname targets"],
 	},
 	{
-		title: "Live BattleMetrics presence",
+		title: "Live presence",
 		description:
-			"The backend poller keeps server presence fresh so commands and future web views can surface who is online, where they are, and when they appeared.",
+			"See which friends are online and where they're playing, right from Discord.",
 		icon: IconAntennaBars5,
-		points: ["rolling poller", "player states", "online summaries", "poll errors"],
 	},
 	{
-		title: "Wipe-night response flow",
+		title: "Wipe night ready",
 		description:
-			"Track accepted, declined, and late reactions with persisted metadata, recurring schedules, and the operational logs needed for real Rust communities.",
+			"Plan wipe nights and keep everyone on the same page when it matters most.",
 		icon: IconBroadcast,
-		points: [
-			"active wipe reacts",
-			"recurring schedules",
-			"reaction mutations",
-			"missing reactants",
-		],
 	},
 ] as const;
 
@@ -87,36 +73,30 @@ export const faqs = [
 		id: "item-1",
 		title: "What is RustLens?",
 		content:
-			"RustLens is a Discord-first operations layer for Rust communities. It brings guild settings, Steam and Discord identity linking, BattleMetrics player visibility, and wipe-night coordination into one workflow.",
+			"RustLens is a Discord companion for Rust communities. It helps your group keep track of servers, players, and wipe nights in one place.",
 	},
 	{
 		id: "item-2",
-		title: "Does the website replace the Discord bot?",
+		title: "Do I use the website or the Discord bot?",
 		content:
-			"No. The bot and backend remain the operational core. The current website is a landing-first frontend that explains the system and links into docs while the protected app surface is still evolving.",
+			"Both. The Discord bot is where most of the action happens day to day. The website is here to introduce RustLens and give you a home on the web.",
 	},
 	{
 		id: "item-3",
-		title: "What can guild admins manage today?",
+		title: "What can server admins do with RustLens?",
 		content:
-			"Guild admins can manage configured log channels, alerts, an admin role, tracked server selections, guild-scoped Steam links, nickname targets, wipe reacts, and recurring wipe-react schedules through the bot-backed workflows.",
+			"Admins can pick which servers to follow, set up alerts and log channels, manage Steam links for members, and coordinate wipe nights, all from Discord.",
 	},
 	{
 		id: "item-4",
 		title: "How does RustLens know who is online?",
 		content:
-			"The backend runs a rolling BattleMetrics poller against tracked servers and syncs per-server player presence into Postgres, which lets commands and future web views report who is online and where they are playing.",
+			"RustLens checks tracked servers regularly so your community can see who's playing and where, without anyone having to ask in chat.",
 	},
 	{
 		id: "item-5",
-		title: "Can RustLens handle trusted and self-reported identity links?",
+		title: "Can I link my Steam account to my Discord?",
 		content:
-			"Yes. RustLens supports soft links created by users or admins and hard links from trusted sources such as BattleMetrics-derived mappings, plus guild-scoped associations for server-specific identity management.",
-	},
-	{
-		id: "item-6",
-		title: "Where can I see the backend API?",
-		content:
-			"The backend serves interactive docs at /api/docs and the OpenAPI document at /api/docs/openapi.json when the local stack is running through Traefik.",
+			"Yes. You can connect your Steam and Discord accounts so your community knows who's who in-game. Admins can also help confirm links for their server.",
 	},
 ] as const;
