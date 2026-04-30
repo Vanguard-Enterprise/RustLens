@@ -140,8 +140,7 @@ const trackCommand = new SlashCommandBuilder()
         opt
           .setName(TRACK_PLAYER_OPTION)
           .setDescription("Steam ID, BattleMetrics ID/URL, or player name")
-          .setRequired(true)
-          .setAutocomplete(true),
+          .setRequired(true),
       ),
   )
   .addSubcommand((sub) =>
