@@ -438,7 +438,7 @@ export function buildUserEmbed(
   includeRiskFactor = true,
 ): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setTitle(profile?.bmName || "Player Profile")
+    .setTitle(profile?.bmName || profile?.personaName || "Player Profile")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });

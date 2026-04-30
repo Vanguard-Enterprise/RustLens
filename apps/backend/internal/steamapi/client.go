@@ -31,8 +31,9 @@ type Client struct {
 }
 
 type PlayerSummary struct {
-	SteamID                   string
-	AvatarFull                string
+	SteamID                  string
+	PersonaName              string
+	AvatarFull               string
 	CommunityVisibilityState int
 }
 
@@ -207,8 +208,9 @@ func (c *Client) GetPlayerSummary(ctx context.Context, steamID string) (PlayerSu
 	var payload struct {
 		Response struct {
 			Players []struct {
-				SteamID                   string `json:"steamid"`
-				AvatarFull                string `json:"avatarfull"`
+				SteamID                  string `json:"steamid"`
+				PersonaName              string `json:"personaname"`
+				AvatarFull               string `json:"avatarfull"`
 				CommunityVisibilityState int    `json:"communityvisibilitystate"`
 			} `json:"players"`
 		} `json:"response"`
@@ -222,8 +224,9 @@ func (c *Client) GetPlayerSummary(ctx context.Context, steamID string) (PlayerSu
 	}
 
 	return PlayerSummary{
-		SteamID:                   payload.Response.Players[0].SteamID,
-		AvatarFull:                payload.Response.Players[0].AvatarFull,
+		SteamID:                  payload.Response.Players[0].SteamID,
+		PersonaName:              payload.Response.Players[0].PersonaName,
+		AvatarFull:               payload.Response.Players[0].AvatarFull,
 		CommunityVisibilityState: payload.Response.Players[0].CommunityVisibilityState,
 	}, nil
 }

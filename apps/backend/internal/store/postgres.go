@@ -167,6 +167,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 		CREATE TABLE IF NOT EXISTS steam_account_cache (
 			steam_id TEXT PRIMARY KEY REFERENCES steam_accounts(steam_id) ON DELETE CASCADE,
+			persona_name TEXT NOT NULL DEFAULT '',
 			avatar_image TEXT NOT NULL DEFAULT '',
 			rust_hours BIGINT,
 			total_games INTEGER,
@@ -186,6 +187,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_banned BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_banned_at TIMESTAMPTZ;
 		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS game_ban_checked_at TIMESTAMPTZ;
+		ALTER TABLE steam_account_cache ADD COLUMN IF NOT EXISTS persona_name TEXT NOT NULL DEFAULT '';
 		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_gaps;
 		ALTER TABLE steam_account_cache DROP COLUMN IF EXISTS analytics_updated_at;
 

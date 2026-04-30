@@ -169,6 +169,7 @@ export type SteamProfile = {
   steamId: string;
   bmId: string;
   bmName: string;
+  personaName: string;
   avatarImage: string;
   firstSeenUnix: number | null;
   hours: SteamProfileHours;

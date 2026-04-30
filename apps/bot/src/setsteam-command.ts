@@ -206,7 +206,7 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     }
   }
 
-  const profileName = profile?.bmName || steamAccount?.bmName || steamId;
+  const profileName = profile?.bmName || steamAccount?.bmName || profile?.personaName || steamId;
   const embed = buildUserEmbed(steamId, profile, interaction.user.id)
     .setTitle(`${profileName} - successfully linked`);
   await replyPublicEmbed(

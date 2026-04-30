@@ -1779,6 +1779,7 @@ type steamProfileResponse struct {
 	SteamID       string              `json:"steamId"`
 	BmID          string              `json:"bmId"`
 	BmName        string              `json:"bmName"`
+	PersonaName   string              `json:"personaName"`
 	AvatarImage   string              `json:"avatarImage"`
 	FirstSeenUnix *int64              `json:"firstSeenUnix"`
 	Hours         steamProfileHours   `json:"hours"`
@@ -1810,6 +1811,7 @@ func steamProfileResponseFromCache(account store.SteamAccount, steamCache store.
 	response := steamProfileResponse{
 		SteamID:       account.SteamID,
 		BmName:        bmCache.BmName,
+		PersonaName:   steamCache.PersonaName,
 		AvatarImage:   steamCache.AvatarImage,
 		ServersPlayed: bmCache.BmServersPlayed,
 		NameGaps:      gaps,
@@ -1947,7 +1949,27 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 	if refreshErr != nil {
 		log.Printf("[backend] GetSteamProfile refresh error for %s: %v", steamID, refreshErr)
 		if errors.Is(refreshErr, battlemetrics.ErrPlayerNotFound) {
-			writeError(w, http.StatusNotFound, "battlemetrics profile private")
+			// BM doesn't see this player. Refresh just the Steam-side cache so
+			// the persona name still gets captured/updated, then serve a partial
+			// response with whatever BM cache we already have (often empty).
+			refreshedSteam, refreshSteamErr := h.refreshSteamOnlyCache(r.Context(), account)
+			if refreshSteamErr == nil {
+				if updated, err := h.postgres.UpsertSteamAccountCache(r.Context(), refreshedSteam); err == nil {
+					cachedSteam = updated
+				} else {
+					log.Printf("[backend] GetSteamProfile steam-only cache update error for %s: %v", steamID, err)
+				}
+			} else {
+				log.Printf("[backend] GetSteamProfile steam-only refresh error for %s: %v", steamID, refreshSteamErr)
+			}
+			bmFallback := cachedBm
+			if bmCacheErr != nil {
+				bmFallback = store.BmProfileCache{}
+				if account.BmID != nil {
+					bmFallback.BmID = *account.BmID
+				}
+			}
+			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedSteam, bmFallback))
 			return
 		}
 
@@ -2024,6 +2046,7 @@ func steamAnalyticsResponseFromCache(account store.SteamAccount, steamCache stor
 
 func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.SteamAccount, profile battlemetrics.PlayerProfile) (store.SteamAccountCache, store.BmProfileCache, error) {
 	avatarImage := account.AvatarImage
+	personaName := ""
 	summary, summaryErr := h.steamSummaryClient.GetPlayerSummary(ctx, account.SteamID)
 	steamProfilePrivate := false
 	if summaryErr != nil {
@@ -2033,6 +2056,7 @@ func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.
 		if summary.AvatarFull != "" {
 			avatarImage = summary.AvatarFull
 		}
+		personaName = summary.PersonaName
 	}
 
 	if profile.BmName == "" {
@@ -2049,7 +2073,7 @@ func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.
 		trackedByID[server.BmID] = server
 	}
 
-	steamCache := store.SteamAccountCache{SteamID: account.SteamID, AvatarImage: avatarImage}
+	steamCache := store.SteamAccountCache{SteamID: account.SteamID, PersonaName: personaName, AvatarImage: avatarImage}
 	bmCache := store.BmProfileCache{BmID: *account.BmID, BmName: profile.BmName}
 	if profile.CreatedAt != nil {
 		bmCache.FirstSeenAt = profile.CreatedAt
@@ -2163,6 +2187,23 @@ func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamA
 	}
 
 	return h.buildSteamCacheFromProfile(ctx, account, profile)
+}
+
+// refreshSteamOnlyCache fetches just the Steam-side summary (persona name +
+// avatar) without touching BattleMetrics or owned games. Used to keep the
+// persona name fresh when the BM profile is unreachable so /view user can
+// still show a name.
+func (h *Handler) refreshSteamOnlyCache(ctx context.Context, account store.SteamAccount) (store.SteamAccountCache, error) {
+	cache := store.SteamAccountCache{SteamID: account.SteamID, AvatarImage: account.AvatarImage}
+	summary, err := h.steamSummaryClient.GetPlayerSummary(ctx, account.SteamID)
+	if err != nil {
+		return cache, err
+	}
+	cache.PersonaName = summary.PersonaName
+	if summary.AvatarFull != "" {
+		cache.AvatarImage = summary.AvatarFull
+	}
+	return cache, nil
 }
 
 func (h *Handler) upsertResolvedSteamAccount(ctx context.Context, steamID string, profile battlemetrics.PlayerProfile) (store.SteamAccount, error) {

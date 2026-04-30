@@ -42,6 +42,7 @@ type SteamAccount struct {
 
 type SteamAccountCache struct {
 	SteamID          string
+	PersonaName      string
 	AvatarImage      string
 	RustHours        *int64
 	TotalGames       *int
@@ -115,6 +116,7 @@ func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
 	var topGamesJSON []byte
 	err := scanner.Scan(
 		&record.SteamID,
+		&record.PersonaName,
 		&record.AvatarImage,
 		&record.RustHours,
 		&record.TotalGames,
@@ -258,7 +260,7 @@ func (p *PostgresStore) CountSteamAccounts(ctx context.Context) (int64, error) {
 
 func (p *PostgresStore) GetSteamAccountCache(ctx context.Context, steamID string) (SteamAccountCache, error) {
 	record, err := scanSteamAccountCache(p.pool.QueryRow(ctx, `
-		SELECT steam_id, avatar_image, rust_hours, total_games, top_games,
+		SELECT steam_id, persona_name, avatar_image, rust_hours, total_games, top_games,
 			game_banned, game_banned_at, game_ban_checked_at, updated_at
 		FROM steam_account_cache
 		WHERE steam_id = $1
@@ -284,19 +286,24 @@ func (p *PostgresStore) UpsertSteamAccountCache(ctx context.Context, cache Steam
 
 	return scanSteamAccountCache(p.pool.QueryRow(ctx, `
 		INSERT INTO steam_account_cache (
-			steam_id, avatar_image, rust_hours, total_games, top_games, updated_at
+			steam_id, persona_name, avatar_image, rust_hours, total_games, top_games, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, NOW())
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
 		ON CONFLICT (steam_id) DO UPDATE
-		SET avatar_image = EXCLUDED.avatar_image,
+		SET persona_name = CASE
+				WHEN EXCLUDED.persona_name <> '' THEN EXCLUDED.persona_name
+				ELSE steam_account_cache.persona_name
+			END,
+			avatar_image = EXCLUDED.avatar_image,
 			rust_hours = EXCLUDED.rust_hours,
 			total_games = EXCLUDED.total_games,
 			top_games = EXCLUDED.top_games,
 			updated_at = NOW()
-		RETURNING steam_id, avatar_image, rust_hours, total_games, top_games,
+		RETURNING steam_id, persona_name, avatar_image, rust_hours, total_games, top_games,
 			game_banned, game_banned_at, game_ban_checked_at, updated_at
 	`,
 		cache.SteamID,
+		cache.PersonaName,
 		cache.AvatarImage,
 		cache.RustHours,
 		cache.TotalGames,
