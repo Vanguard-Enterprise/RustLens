@@ -110,7 +110,16 @@ function formatOutcomeLines(items: readonly NicknameOutcome[]) {
     return EMBED_FIELD_VALUE_FALLBACK;
   }
 
-  return truncateFieldValue(items.map((item) => `> * <@${item.discordId}> - ${item.reason}`).join("\n"));
+  const reasonCounts = new Map<string, number>();
+  for (const item of items) {
+    reasonCounts.set(item.reason, (reasonCounts.get(item.reason) ?? 0) + 1);
+  }
+
+  return truncateFieldValue(
+    [...reasonCounts.entries()]
+      .map(([reason, count]) => `> * ${reason} (${count})`)
+      .join("\n"),
+  );
 }
 
 function buildCompletionEmbed(
