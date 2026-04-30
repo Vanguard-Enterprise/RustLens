@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { TrackGroupAnalyticsResponse, TrackGroupOnlineRow } from "./backend-client.js";
 import { __testables } from "./track-command.js";
 
-const { buildAnalyticsPages, buildTrackEmbeds, buildWeekdayFieldValue } = __testables;
+const { buildAddRemoveModal, buildAnalyticsPages, buildTrackEmbeds, buildWeekdayFieldValue } = __testables;
+
+type TestModalComponent = {
+  custom_id?: string;
+  required?: boolean;
+};
+
+function modalComponentAt(modal: ReturnType<ReturnType<typeof buildAddRemoveModal>["toJSON"]>, index: number) {
+  return modal.components[index].component as TestModalComponent;
+}
 
 const MONDAY_BASE = 1767571200; // 2026-01-05 00:00 UTC
 
@@ -97,6 +106,28 @@ describe("buildTrackEmbeds", () => {
     const totalLength = embeds.reduce((sum, embed) => sum + (embed.toJSON().description?.length ?? 0), 0);
     expect(totalLength).toBeLessThanOrEqual(5800);
     expect(embeds.at(-1)?.toJSON().description).toMatch(/\+\d+ more/);
+  });
+});
+
+describe("buildAddRemoveModal", () => {
+  it("renders add with optional identifiers and player name fields", () => {
+    const modal = buildAddRemoveModal(true, 123).toJSON();
+
+    expect(modal.custom_id).toBe("track_modal:add:123");
+    expect(modal.components).toHaveLength(2);
+    expect(modalComponentAt(modal, 0).custom_id).toBe("track_ids");
+    expect(modalComponentAt(modal, 0).required).toBe(false);
+    expect(modalComponentAt(modal, 1).custom_id).toBe("track_player_name");
+    expect(modalComponentAt(modal, 1).required).toBe(false);
+  });
+
+  it("keeps remove as a required identifier-only modal", () => {
+    const modal = buildAddRemoveModal(false, 123).toJSON();
+
+    expect(modal.custom_id).toBe("track_modal:remove:123");
+    expect(modal.components).toHaveLength(1);
+    expect(modalComponentAt(modal, 0).custom_id).toBe("track_ids");
+    expect(modalComponentAt(modal, 0).required).toBe(true);
   });
 });
 
