@@ -400,6 +400,12 @@ function buildRemoveStatusEmbed(removedCount: number) {
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
 }
 
+function refreshTrackGroupInBackground(guild: Guild, guildId: string, groupId: number, context: string) {
+  void refreshTrackGroupById(guild, guildId, groupId).catch((error) => {
+    console.error(`[bot] failed to refresh track group ${groupId} after ${context}`, error);
+  });
+}
+
 function parseIdentifiers(raw: string) {
   return raw
     .split(/[,\s]+/)
@@ -751,9 +757,7 @@ async function handleTrackMemberChatInput(
 
     if (resolved.length > 0) {
       await getBackend().addTrackGroupMembers(getWorkerID(), interaction.guildId, group.id, resolved);
-      await refreshTrackGroupById(interaction.guild, interaction.guildId, group.id).catch((error) => {
-        console.error(`[bot] failed to refresh track group ${group.id} after command add`, error);
-      });
+      refreshTrackGroupInBackground(interaction.guild, interaction.guildId, group.id, "command add");
     }
     await interaction.editReply({ embeds: [buildStatusEmbed(resolved.length, failed.length, failed)] });
     return true;
@@ -779,10 +783,10 @@ async function handleTrackMemberChatInput(
 
   try {
     const removed = await getBackend().removeTrackGroupMembers(getWorkerID(), interaction.guildId, group.id, identifiers);
-    await refreshTrackGroupById(interaction.guild, interaction.guildId, group.id).catch((error) => {
-      console.error(`[bot] failed to refresh track group ${group.id} after command remove`, error);
-    });
     await interaction.editReply({ embeds: [buildRemoveStatusEmbed(removed.count)] });
+    if (removed.count > 0) {
+      refreshTrackGroupInBackground(interaction.guild, interaction.guildId, group.id, "command remove");
+    }
   } catch (error) {
     console.error(`[bot] failed to remove track group members for group ${group.id}`, error);
     await interaction.editReply({ embeds: [buildErrorEmbed("RustLens could not remove that player. Try again shortly.")] });
@@ -1011,9 +1015,7 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
     }
     if (resolved.length > 0) {
       await getBackend().addTrackGroupMembers(getWorkerID(), interaction.guildId, groupId, resolved);
-      await refreshTrackGroupById(interaction.guild, interaction.guildId, groupId).catch((error) => {
-        console.error(`[bot] failed to refresh track group ${groupId} after add`, error);
-      });
+      refreshTrackGroupInBackground(interaction.guild, interaction.guildId, groupId, "modal add");
     }
     await interaction.editReply({
       embeds: [buildStatusEmbed(resolved.length, failed.length, failed)],
@@ -1065,6 +1067,9 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
   await interaction.editReply({
     embeds: [buildRemoveStatusEmbed(removed.count)],
   });
+  if (removed.count > 0) {
+    refreshTrackGroupInBackground(interaction.guild, interaction.guildId, groupId, "modal remove");
+  }
   return true;
 }
 
@@ -1095,24 +1100,22 @@ export async function handleTrackSelectInteraction(interaction: StringSelectMenu
 
   if (action === "add") {
     await getBackend().addTrackGroupMembers(getWorkerID(), interaction.guildId, groupId, [{ steamId, bmId }]);
-    await refreshTrackGroupById(interaction.guild, interaction.guildId, groupId).catch((error) => {
-      console.error(`[bot] failed to refresh track group ${groupId} after select add`, error);
-    });
     await interaction.editReply({
       embeds: [buildStatusEmbed(1, 0, [])],
       components: [],
     });
+    refreshTrackGroupInBackground(interaction.guild, interaction.guildId, groupId, "select add");
     return true;
   }
 
   const removed = await getBackend().removeTrackGroupMembers(getWorkerID(), interaction.guildId, groupId, [steamId]);
-  await refreshTrackGroupById(interaction.guild, interaction.guildId, groupId).catch((error) => {
-    console.error(`[bot] failed to refresh track group ${groupId} after select remove`, error);
-  });
   await interaction.editReply({
     embeds: [buildRemoveStatusEmbed(removed.count)],
     components: [],
   });
+  if (removed.count > 0) {
+    refreshTrackGroupInBackground(interaction.guild, interaction.guildId, groupId, "select remove");
+  }
   return true;
 }
 
