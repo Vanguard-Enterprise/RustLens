@@ -58,6 +58,7 @@ const TRACK_MODAL_REMOVE_PREFIX = "track_modal:remove:";
 const TRACK_MODAL_NOTIFY_PREFIX = "track_modal:notify:";
 
 const TRACK_FIELD_IDS = "track_ids";
+const TRACK_FIELD_PLAYER_NAME = "track_player_name";
 const TRACK_FIELD_NOTIFY_OPTIONS = "track_notify_options";
 const TRACK_NOTIFY_SEND_UPDATES = "send_updates";
 
@@ -629,7 +630,7 @@ function buildAddRemoveModal(isAdd: boolean, groupId: number) {
   const customId = `${isAdd ? TRACK_MODAL_ADD_PREFIX : TRACK_MODAL_REMOVE_PREFIX}${groupId}`;
   const title = isAdd ? "Add tracked users" : "Remove tracked users";
   const placeholder = "76561198000000000, 918543318";
-  return new ModalV2Builder()
+  const modal = new ModalV2Builder()
     .setTitle(title)
     .setCustomId(customId)
     .addComponent(
@@ -637,10 +638,24 @@ function buildAddRemoveModal(isAdd: boolean, groupId: number) {
       new TextInputBuilder()
         .setCustomId(TRACK_FIELD_IDS)
         .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true)
+        .setRequired(!isAdd)
         .setMaxLength(2000)
         .setPlaceholder(placeholder),
     );
+
+  if (isAdd) {
+    modal.addComponent(
+      "Player name on this tracked server",
+      new TextInputBuilder()
+        .setCustomId(TRACK_FIELD_PLAYER_NAME)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(100)
+        .setPlaceholder("One exact or partial player name"),
+    );
+  }
+
+  return modal;
 }
 
 function buildNotifyModal(group: TrackGroup) {
@@ -706,10 +721,11 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
   }
 
   const raw = getFieldValues(interaction, TRACK_FIELD_IDS).join(",");
+  const playerName = isAdd ? getFieldValues(interaction, TRACK_FIELD_PLAYER_NAME).join(" ").trim() : "";
   const identifiers = parseIdentifiers(raw);
-  if (identifiers.length === 0) {
+  if (identifiers.length === 0 && playerName.length === 0) {
     await interaction.reply({
-      embeds: [buildErrorEmbed("Provide at least one Steam ID or BattleMetrics ID.")],
+      embeds: [buildErrorEmbed("Provide at least one Steam ID, BattleMetrics ID, or player name.")],
       flags: MessageFlags.Ephemeral,
     });
     return true;
@@ -719,6 +735,20 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
 
   if (isAdd) {
     const { resolved, failed } = await resolveIdentifiersToMembers(identifiers);
+    if (playerName.length > 0) {
+      const group = await getBackend().getTrackGroup(getWorkerID(), interaction.guildId, groupId).catch(() => null);
+      if (!group) {
+        await interaction.editReply({ embeds: [buildErrorEmbed("That track group could not be found.")] });
+        return true;
+      }
+
+      const matched = await resolvePlayerNameToMember(group.serverBmId, playerName).catch(() => null);
+      if (!matched) {
+        failed.push(`${playerName} (no unique match on this server)`);
+      } else if (!resolved.some((member) => member.steamId === matched.steamId)) {
+        resolved.push(matched);
+      }
+    }
     if (resolved.length > 0) {
       await getBackend().addTrackGroupMembers(getWorkerID(), interaction.guildId, groupId, resolved);
       await refreshTrackGroupById(interaction.guild, interaction.guildId, groupId).catch((error) => {
@@ -804,6 +834,19 @@ async function resolveIdentifiersToMembers(identifiers: string[]) {
   }
 
   return { resolved, failed };
+}
+
+async function resolvePlayerNameToMember(serverBmId: string, playerName: string): Promise<{ steamId: string; bmId: string } | null> {
+  const response = await getBackend().searchPlayerStatesByName(getWorkerID(), serverBmId, playerName, 20, true);
+  const normalizedName = playerName.toLocaleLowerCase();
+  const exactMatches = response.items.filter((item) => item.bmName.toLocaleLowerCase() === normalizedName);
+  const matches = exactMatches.length > 0 ? exactMatches : response.items;
+  if (matches.length !== 1) {
+    return null;
+  }
+
+  const match = matches[0];
+  return { steamId: match.steamId, bmId: match.playerBmId };
 }
 
 async function resolveSteamID(steamId: string): Promise<{ steamId: string; bmId: string } | null> {
@@ -1275,6 +1318,7 @@ function buildAnalyticsPagerComponents(groupId: number, currentPage: number, tot
 
 export const __testables = {
   buildChannelName,
+  buildAddRemoveModal,
   parseIdentifiers,
   buildTrackEmbeds,
   sanitizeGroupNameForChannel,
