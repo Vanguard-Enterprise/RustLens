@@ -366,6 +366,15 @@ function isTrackIdentifierInput(value: string) {
   return STEAM_ID_PATTERN.test(value) || Boolean(extractBmID(value));
 }
 
+function extractTrailingParenthesizedID(value: string) {
+  const match = /\((\d{6,17})\)\s*$/.exec(value.trim());
+  return match?.[1] ?? null;
+}
+
+function normalizePlayerNameQuery(value: string) {
+  return value.replace(/\s*\(\d{6,17}\)\s*$/, "").trim().toLocaleLowerCase();
+}
+
 function buildPlayerSelectComponents(action: "add" | "remove", groupId: number, matches: readonly PlayerNameMatch[]) {
   return [
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
@@ -768,11 +777,16 @@ async function handleTrackMemberChatInput(
     }
   }
 
-  const removed = await getBackend().removeTrackGroupMembers(getWorkerID(), interaction.guildId, group.id, identifiers);
-  await refreshTrackGroupById(interaction.guild, interaction.guildId, group.id).catch((error) => {
-    console.error(`[bot] failed to refresh track group ${group.id} after command remove`, error);
-  });
-  await interaction.editReply({ embeds: [buildRemoveStatusEmbed(removed.count)] });
+  try {
+    const removed = await getBackend().removeTrackGroupMembers(getWorkerID(), interaction.guildId, group.id, identifiers);
+    await refreshTrackGroupById(interaction.guild, interaction.guildId, group.id).catch((error) => {
+      console.error(`[bot] failed to refresh track group ${group.id} after command remove`, error);
+    });
+    await interaction.editReply({ embeds: [buildRemoveStatusEmbed(removed.count)] });
+  } catch (error) {
+    console.error(`[bot] failed to remove track group members for group ${group.id}`, error);
+    await interaction.editReply({ embeds: [buildErrorEmbed("RustLens could not remove that player. Try again shortly.")] });
+  }
   return true;
 }
 
@@ -1150,12 +1164,15 @@ async function resolveIdentifiersToMembers(identifiers: string[]) {
 
 async function resolvePlayerNameToMember(serverBmId: string, playerName: string): Promise<PlayerNameMatchResult> {
   const response = await getBackend().searchPlayerStatesByName(getWorkerID(), serverBmId, playerName, 20, true);
-  const normalizedName = playerName.toLocaleLowerCase();
-  const allMatches = response.items.map((item) => ({
-    steamId: item.steamId,
-    bmId: item.playerBmId,
-    bmName: item.bmName || item.steamId,
-  }));
+  const parenthesizedId = extractTrailingParenthesizedID(playerName);
+  const normalizedName = normalizePlayerNameQuery(playerName);
+  const allMatches = response.items
+    .filter((item) => !parenthesizedId || item.playerBmId === parenthesizedId || item.steamId === parenthesizedId)
+    .map((item) => ({
+      steamId: item.steamId,
+      bmId: item.playerBmId,
+      bmName: item.bmName || item.steamId,
+    }));
   const exactMatches = allMatches.filter((item) => item.bmName.toLocaleLowerCase() === normalizedName);
   const matches = exactMatches.length > 0 ? exactMatches : allMatches;
   if (matches.length === 0) {
@@ -1171,9 +1188,13 @@ async function resolvePlayerNameToMember(serverBmId: string, playerName: string)
 
 async function resolvePlayerNameWithinTrack(guildId: string, groupId: number, playerName: string): Promise<PlayerNameMatchResult> {
   const response = await getBackend().listTrackGroupOnlineState(getWorkerID(), guildId, groupId);
-  const normalizedName = playerName.toLocaleLowerCase();
+  const parenthesizedId = extractTrailingParenthesizedID(playerName);
+  const normalizedName = normalizePlayerNameQuery(playerName);
   const allMatches = response.items
     .filter((item) => {
+      if (parenthesizedId && (item.bmId === parenthesizedId || item.steamId === parenthesizedId)) {
+        return true;
+      }
       const haystack = `${item.bmName} ${item.bmId} ${item.steamId}`.toLocaleLowerCase();
       return haystack.includes(normalizedName);
     })
