@@ -97,6 +97,7 @@ const POLL_INTERVAL_MS = 30_000;
 const trackCommand = new SlashCommandBuilder()
   .setName(TRACK_COMMAND_NAME)
   .setDescription("Manage tracking channels for groups of users on tracked servers")
+  .setDefaultMemberPermissions(null)
   .setDMPermission(false)
   .setContexts(InteractionContextType.Guild)
   .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
