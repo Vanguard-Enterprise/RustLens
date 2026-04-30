@@ -2,15 +2,29 @@ import { describe, expect, it } from "vitest";
 import type { TrackGroupAnalyticsResponse, TrackGroupOnlineRow } from "./backend-client.js";
 import { __testables } from "./track-command.js";
 
-const { buildAddRemoveModal, buildAnalyticsPages, buildTrackEmbeds, buildWeekdayFieldValue } = __testables;
+const { buildAddRemoveModal, buildAnalyticsPages, buildPlayerSelectComponents, buildTrackButtons, buildTrackEmbeds, buildWeekdayFieldValue } = __testables;
 
 type TestModalComponent = {
   custom_id?: string;
   required?: boolean;
 };
 
+type TestButtonComponent = {
+  custom_id?: string;
+  emoji?: { id?: string; name?: string };
+};
+
+type TestSelectComponent = {
+  custom_id?: string;
+  options?: { label: string; value: string }[];
+};
+
 function modalComponentAt(modal: ReturnType<ReturnType<typeof buildAddRemoveModal>["toJSON"]>, index: number) {
   return modal.components[index].component as TestModalComponent;
+}
+
+function actionComponentAt(row: ReturnType<ReturnType<typeof buildTrackButtons>[number]["toJSON"]>, index: number) {
+  return row.components[index] as TestButtonComponent;
 }
 
 const MONDAY_BASE = 1767571200; // 2026-01-05 00:00 UTC
@@ -121,13 +135,40 @@ describe("buildAddRemoveModal", () => {
     expect(modalComponentAt(modal, 1).required).toBe(false);
   });
 
-  it("keeps remove as a required identifier-only modal", () => {
+  it("renders remove with optional identifiers and player name fields", () => {
     const modal = buildAddRemoveModal(false, 123).toJSON();
 
     expect(modal.custom_id).toBe("track_modal:remove:123");
-    expect(modal.components).toHaveLength(1);
+    expect(modal.components).toHaveLength(2);
     expect(modalComponentAt(modal, 0).custom_id).toBe("track_ids");
-    expect(modalComponentAt(modal, 0).required).toBe(true);
+    expect(modalComponentAt(modal, 0).required).toBe(false);
+    expect(modalComponentAt(modal, 1).custom_id).toBe("track_player_name");
+    expect(modalComponentAt(modal, 1).required).toBe(false);
+  });
+});
+
+describe("buildTrackButtons", () => {
+  it("uses the expected add and remove icons", () => {
+    const row = buildTrackButtons(123)[0].toJSON();
+
+    expect(actionComponentAt(row, 0).custom_id).toBe("track:add:123");
+    expect(actionComponentAt(row, 0).emoji?.name).toBe("user_add");
+    expect(actionComponentAt(row, 1).custom_id).toBe("track:remove:123");
+    expect(actionComponentAt(row, 1).emoji?.name).toBe("user_remove");
+  });
+});
+
+describe("buildPlayerSelectComponents", () => {
+  it("renders ambiguous player choices with BM IDs", () => {
+    const row = buildPlayerSelectComponents("add", 123, [
+      { steamId: "76561198000000001", bmId: "111", bmName: "kap" },
+      { steamId: "76561198000000002", bmId: "222", bmName: "kap2" },
+    ])[0].toJSON();
+    const select = row.components[0] as TestSelectComponent;
+
+    expect(select.custom_id).toBe("track_select:player:add:123");
+    expect(select.options?.[0].label).toBe("kap (111)");
+    expect(select.options?.[0].value).toBe("76561198000000001:111");
   });
 });
 

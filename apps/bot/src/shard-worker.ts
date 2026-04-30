@@ -92,6 +92,7 @@ import {
   handleTrackButtonInteraction,
   handleTrackChatInput,
   handleTrackModalSubmit,
+  handleTrackSelectInteraction,
   startTrackGroupPoller,
 } from "./track-command.js";
 import {
@@ -345,6 +346,10 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isStringSelectMenu()) {
       const category = resolveCustomIdCategory(interaction.customId);
       if (category && (await enforceBan(interaction, category))) {
+        return;
+      }
+
+      if (await handleTrackSelectInteraction(interaction)) {
         return;
       }
 
