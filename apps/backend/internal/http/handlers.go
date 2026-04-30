@@ -2058,26 +2058,31 @@ func (h *Handler) buildSteamCacheFromProfile(ctx context.Context, account store.
 	if !steamProfilePrivate {
 		ownedGames, ownedGamesErr := h.steamSummaryClient.GetOwnedGames(ctx, account.SteamID)
 		if ownedGamesErr != nil {
-			return store.SteamAccountCache{}, store.BmProfileCache{}, fmt.Errorf("fetch owned games: %w", ownedGamesErr)
-		}
-		sort.Slice(ownedGames, func(i, j int) bool {
-			return ownedGames[i].PlaytimeForever > ownedGames[j].PlaytimeForever
-		})
-		totalGames := len(ownedGames)
-		steamCache.TotalGames = &totalGames
-		steamCache.TopGames = make([]store.AnalyticsGame, 0, min(5, totalGames))
-		for i := range min(5, totalGames) {
-			game := ownedGames[i]
-			steamCache.TopGames = append(steamCache.TopGames, store.AnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.PlaytimeForever / 60})
-		}
-		for _, game := range ownedGames {
-			if game.AppID != 252490 {
-				continue
+			// Owned games can be private even when the summary visibility is not 1
+			// (e.g. summary lookup failed, or Steam reports the profile as public
+			// but the games list specifically is restricted). Treat as private:
+			// keep the BM name + cache, just skip game stats.
+			log.Printf("[backend] buildSteamCacheFromProfile owned games error for %s: %v", account.SteamID, ownedGamesErr)
+		} else {
+			sort.Slice(ownedGames, func(i, j int) bool {
+				return ownedGames[i].PlaytimeForever > ownedGames[j].PlaytimeForever
+			})
+			totalGames := len(ownedGames)
+			steamCache.TotalGames = &totalGames
+			steamCache.TopGames = make([]store.AnalyticsGame, 0, min(5, totalGames))
+			for i := range min(5, totalGames) {
+				game := ownedGames[i]
+				steamCache.TopGames = append(steamCache.TopGames, store.AnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.PlaytimeForever / 60})
 			}
+			for _, game := range ownedGames {
+				if game.AppID != 252490 {
+					continue
+				}
 
-			rustHours := game.PlaytimeForever / 60
-			steamCache.RustHours = &rustHours
-			break
+				rustHours := game.PlaytimeForever / 60
+				steamCache.RustHours = &rustHours
+				break
+			}
 		}
 	}
 
