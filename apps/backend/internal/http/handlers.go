@@ -2189,10 +2189,10 @@ func (h *Handler) fetchFreshSteamCache(ctx context.Context, account store.SteamA
 	return h.buildSteamCacheFromProfile(ctx, account, profile)
 }
 
-// refreshSteamOnlyCache fetches just the Steam-side summary (persona name +
-// avatar) without touching BattleMetrics or owned games. Used to keep the
-// persona name fresh when the BM profile is unreachable so /view user can
-// still show a name.
+// refreshSteamOnlyCache fetches the Steam-side data (persona name, avatar,
+// owned games / Rust hours) without touching BattleMetrics. Used when the BM
+// profile is unreachable so /view user can still show steam-side stats and a
+// display name.
 func (h *Handler) refreshSteamOnlyCache(ctx context.Context, account store.SteamAccount) (store.SteamAccountCache, error) {
 	cache := store.SteamAccountCache{SteamID: account.SteamID, AvatarImage: account.AvatarImage}
 	summary, err := h.steamSummaryClient.GetPlayerSummary(ctx, account.SteamID)
@@ -2202,6 +2202,35 @@ func (h *Handler) refreshSteamOnlyCache(ctx context.Context, account store.Steam
 	cache.PersonaName = summary.PersonaName
 	if summary.AvatarFull != "" {
 		cache.AvatarImage = summary.AvatarFull
+	}
+
+	if summary.CommunityVisibilityState == 1 {
+		return cache, nil
+	}
+
+	ownedGames, ownedGamesErr := h.steamSummaryClient.GetOwnedGames(ctx, account.SteamID)
+	if ownedGamesErr != nil {
+		// Games list can be private even when visibility isn't 1; tolerate.
+		log.Printf("[backend] refreshSteamOnlyCache owned games error for %s: %v", account.SteamID, ownedGamesErr)
+		return cache, nil
+	}
+	sort.Slice(ownedGames, func(i, j int) bool {
+		return ownedGames[i].PlaytimeForever > ownedGames[j].PlaytimeForever
+	})
+	totalGames := len(ownedGames)
+	cache.TotalGames = &totalGames
+	cache.TopGames = make([]store.AnalyticsGame, 0, min(5, totalGames))
+	for i := range min(5, totalGames) {
+		game := ownedGames[i]
+		cache.TopGames = append(cache.TopGames, store.AnalyticsGame{AppID: game.AppID, Name: game.Name, Hours: game.PlaytimeForever / 60})
+	}
+	for _, game := range ownedGames {
+		if game.AppID != 252490 {
+			continue
+		}
+		rustHours := game.PlaytimeForever / 60
+		cache.RustHours = &rustHours
+		break
 	}
 	return cache, nil
 }
