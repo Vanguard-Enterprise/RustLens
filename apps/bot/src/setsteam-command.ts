@@ -144,11 +144,12 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
   const workerId = getWorkerID();
   const existingLinks = await backend.listGuildLinksByDiscord(workerId, interaction.guildId, interaction.user.id);
   if (existingLinks.items.length > 0) {
+    const existingSteamId = existingLinks.items[0].steamId;
     await replyEphemeralEmbed(
       interaction,
       buildEmbed(
         "Error",
-        "You can not change your steam ID once set, please contact an administrator to change it for you.",
+        `You have already linked your Discord to \`${existingSteamId}\`. Please contact an administrator to change it for you.`,
       ),
     );
     return true;
