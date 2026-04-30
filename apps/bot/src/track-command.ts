@@ -5,6 +5,7 @@ import type {
   Client,
   Guild,
   ModalSubmitInteraction,
+  StringSelectMenuInteraction,
   TextChannel,
 } from "discord.js";
 import {
@@ -19,6 +20,7 @@ import {
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
 } from "discord.js";
 import {
   BackendClient,
@@ -52,6 +54,7 @@ const TRACK_BUTTON_VIEW_PREFIX = "track:view:";
 const TRACK_BUTTON_NOTIFY_PREFIX = "track:notify:";
 const TRACK_BUTTON_ANALYTICS_PREFIX = "track:analytics:";
 const TRACK_BUTTON_ANALYTICS_PAGE_PREFIX = "track:analyticspage:";
+const TRACK_SELECT_PLAYER_PREFIX = "track_select:player:";
 
 const TRACK_MODAL_ADD_PREFIX = "track_modal:add:";
 const TRACK_MODAL_REMOVE_PREFIX = "track_modal:remove:";
@@ -74,6 +77,12 @@ const TRACK_NOTIFICATION_EMOJI = { id: "1498033713764761852", name: "notificatio
 const TRACK_EMBED_DESCRIPTION_MAX = 3900;
 const TRACK_MESSAGE_TEXT_MAX = 5800;
 type TrackViewMode = "online" | "offline";
+type TrackMemberInput = { steamId: string; bmId: string };
+type PlayerNameMatchResult =
+  | { status: "none" }
+  | { status: "unique"; member: TrackMemberInput }
+  | { status: "ambiguous"; matches: PlayerNameMatch[] };
+type PlayerNameMatch = TrackMemberInput & { bmName: string };
 const EMOJIS = {
   steam: "<:steam:1444016467648581642>",
   battlemetrics: "<:battlemetrics:1444011821529956472>",
@@ -260,12 +269,12 @@ export function buildTrackButtons(groupId: number, mode: TrackViewMode = "online
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_ADD_PREFIX}${groupId}`)
-        .setEmoji(TRACK_ADD_EMOJI)
+        .setEmoji(TRACK_REMOVE_EMOJI)
         .setLabel("Add")
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_REMOVE_PREFIX}${groupId}`)
-        .setEmoji(TRACK_REMOVE_EMOJI)
+        .setEmoji(TRACK_ADD_EMOJI)
         .setLabel("Remove")
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
@@ -302,6 +311,39 @@ function buildStatusEmbed(successful: number, unsuccessful: number, failedIds: s
   return new EmbedBuilder()
     .setTitle("Tracking Status")
     .setDescription(lines.join("\n"))
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+function buildPlayerSelectEmbed(playerName: string) {
+  return buildErrorEmbed(`Multiple players matched **${playerName}** on this server. Select the correct player below.`);
+}
+
+function truncateOptionLabel(value: string) {
+  return value.length <= 100 ? value : `${value.slice(0, 97)}...`;
+}
+
+function buildPlayerSelectComponents(action: "add" | "remove", groupId: number, matches: readonly PlayerNameMatch[]) {
+  return [
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`${TRACK_SELECT_PLAYER_PREFIX}${action}:${groupId}`)
+        .setPlaceholder("Select a player")
+        .addOptions(
+          matches.slice(0, 10).map((match) => ({
+            label: truncateOptionLabel(`${match.bmName || match.steamId} (${match.bmId})`),
+            value: `${match.steamId}:${match.bmId}`,
+          })),
+        ),
+    ),
+  ];
+}
+
+function buildRemoveStatusEmbed(removedCount: number) {
+  return new EmbedBuilder()
+    .setTitle("Tracking Status")
+    .setDescription(`> * Removed: ${removedCount}`)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
@@ -638,22 +680,20 @@ function buildAddRemoveModal(isAdd: boolean, groupId: number) {
       new TextInputBuilder()
         .setCustomId(TRACK_FIELD_IDS)
         .setStyle(TextInputStyle.Paragraph)
-        .setRequired(!isAdd)
+        .setRequired(false)
         .setMaxLength(2000)
         .setPlaceholder(placeholder),
     );
 
-  if (isAdd) {
-    modal.addComponent(
-      "Player name on this tracked server",
-      new TextInputBuilder()
-        .setCustomId(TRACK_FIELD_PLAYER_NAME)
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false)
-        .setMaxLength(100)
-        .setPlaceholder("One exact or partial player name"),
-    );
-  }
+  modal.addComponent(
+    "Player name on this tracked server",
+    new TextInputBuilder()
+      .setCustomId(TRACK_FIELD_PLAYER_NAME)
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setMaxLength(100)
+      .setPlaceholder("One exact or partial player name"),
+  );
 
   return modal;
 }
@@ -721,7 +761,7 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
   }
 
   const raw = getFieldValues(interaction, TRACK_FIELD_IDS).join(",");
-  const playerName = isAdd ? getFieldValues(interaction, TRACK_FIELD_PLAYER_NAME).join(" ").trim() : "";
+  const playerName = getFieldValues(interaction, TRACK_FIELD_PLAYER_NAME).join(" ").trim();
   const identifiers = parseIdentifiers(raw);
   if (identifiers.length === 0 && playerName.length === 0) {
     await interaction.reply({
@@ -742,11 +782,18 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
         return true;
       }
 
-      const matched = await resolvePlayerNameToMember(group.serverBmId, playerName).catch(() => null);
-      if (!matched) {
+      const matched = await resolvePlayerNameToMember(group.serverBmId, playerName).catch((): PlayerNameMatchResult => ({ status: "none" }));
+      if (matched.status === "ambiguous") {
+        await interaction.editReply({
+          embeds: [buildPlayerSelectEmbed(playerName)],
+          components: buildPlayerSelectComponents("add", groupId, matched.matches),
+        });
+        return true;
+      }
+      if (matched.status === "none") {
         failed.push(`${playerName} (no unique match on this server)`);
-      } else if (!resolved.some((member) => member.steamId === matched.steamId)) {
-        resolved.push(matched);
+      } else if (!resolved.some((member) => member.steamId === matched.member.steamId)) {
+        resolved.push(matched.member);
       }
     }
     if (resolved.length > 0) {
@@ -759,6 +806,31 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
       embeds: [buildStatusEmbed(resolved.length, failed.length, failed)],
     });
     return true;
+  }
+
+  if (playerName.length > 0) {
+    const group = await getBackend().getTrackGroup(getWorkerID(), interaction.guildId, groupId).catch(() => null);
+    if (!group) {
+      await interaction.editReply({ embeds: [buildErrorEmbed("That track group could not be found.")] });
+      return true;
+    }
+
+    const matched = await resolvePlayerNameToMember(group.serverBmId, playerName).catch((): PlayerNameMatchResult => ({ status: "none" }));
+    if (matched.status === "ambiguous") {
+      await interaction.editReply({
+        embeds: [buildPlayerSelectEmbed(playerName)],
+        components: buildPlayerSelectComponents("remove", groupId, matched.matches),
+      });
+      return true;
+    }
+    if (matched.status === "none") {
+      if (identifiers.length === 0) {
+        await interaction.editReply({ embeds: [buildErrorEmbed(`${playerName} did not uniquely match a player on this server.`)] });
+        return true;
+      }
+    } else if (!identifiers.includes(matched.member.steamId)) {
+      identifiers.push(matched.member.steamId);
+    }
   }
 
   let removed: { count: number };
@@ -778,20 +850,61 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
   }
 
   await interaction.editReply({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle("Tracking Status")
-        .setDescription(`> * Removed: ${removed.count}`)
-        .setColor(RUSTLENS_EMBED_COLOR)
-        .setTimestamp()
-        .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
-    ],
+    embeds: [buildRemoveStatusEmbed(removed.count)],
+  });
+  return true;
+}
+
+export async function handleTrackSelectInteraction(interaction: StringSelectMenuInteraction) {
+  if (!interaction.customId.startsWith(TRACK_SELECT_PLAYER_PREFIX)) {
+    return false;
+  }
+
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) {
+    await interaction.reply({
+      content: "This select can only be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  const rest = interaction.customId.slice(TRACK_SELECT_PLAYER_PREFIX.length);
+  const [actionRaw, groupRaw] = rest.split(":");
+  const action = actionRaw === "remove" ? "remove" : actionRaw === "add" ? "add" : null;
+  const groupId = Number(groupRaw);
+  const selected = interaction.values[0]?.split(":") ?? [];
+  const [steamId, bmId] = selected;
+  if (!action || !Number.isInteger(groupId) || groupId <= 0 || !steamId || !bmId) {
+    return true;
+  }
+
+  await interaction.deferUpdate();
+
+  if (action === "add") {
+    await getBackend().addTrackGroupMembers(getWorkerID(), interaction.guildId, groupId, [{ steamId, bmId }]);
+    await refreshTrackGroupById(interaction.guild, interaction.guildId, groupId).catch((error) => {
+      console.error(`[bot] failed to refresh track group ${groupId} after select add`, error);
+    });
+    await interaction.editReply({
+      embeds: [buildStatusEmbed(1, 0, [])],
+      components: [],
+    });
+    return true;
+  }
+
+  const removed = await getBackend().removeTrackGroupMembers(getWorkerID(), interaction.guildId, groupId, [steamId]);
+  await refreshTrackGroupById(interaction.guild, interaction.guildId, groupId).catch((error) => {
+    console.error(`[bot] failed to refresh track group ${groupId} after select remove`, error);
+  });
+  await interaction.editReply({
+    embeds: [buildRemoveStatusEmbed(removed.count)],
+    components: [],
   });
   return true;
 }
 
 async function resolveIdentifiersToMembers(identifiers: string[]) {
-  const resolved: { steamId: string; bmId: string }[] = [];
+  const resolved: TrackMemberInput[] = [];
   const failed: string[] = [];
   const seenSteam = new Set<string>();
 
@@ -836,17 +949,25 @@ async function resolveIdentifiersToMembers(identifiers: string[]) {
   return { resolved, failed };
 }
 
-async function resolvePlayerNameToMember(serverBmId: string, playerName: string): Promise<{ steamId: string; bmId: string } | null> {
+async function resolvePlayerNameToMember(serverBmId: string, playerName: string): Promise<PlayerNameMatchResult> {
   const response = await getBackend().searchPlayerStatesByName(getWorkerID(), serverBmId, playerName, 20, true);
   const normalizedName = playerName.toLocaleLowerCase();
-  const exactMatches = response.items.filter((item) => item.bmName.toLocaleLowerCase() === normalizedName);
-  const matches = exactMatches.length > 0 ? exactMatches : response.items;
-  if (matches.length !== 1) {
-    return null;
+  const allMatches = response.items.map((item) => ({
+    steamId: item.steamId,
+    bmId: item.playerBmId,
+    bmName: item.bmName || item.steamId,
+  }));
+  const exactMatches = allMatches.filter((item) => item.bmName.toLocaleLowerCase() === normalizedName);
+  const matches = exactMatches.length > 0 ? exactMatches : allMatches;
+  if (matches.length === 0) {
+    return { status: "none" };
+  }
+  if (matches.length === 1) {
+    const match = matches[0];
+    return { status: "unique", member: { steamId: match.steamId, bmId: match.bmId } };
   }
 
-  const match = matches[0];
-  return { steamId: match.steamId, bmId: match.playerBmId };
+  return { status: "ambiguous", matches: matches.slice(0, 10) };
 }
 
 async function resolveSteamID(steamId: string): Promise<{ steamId: string; bmId: string } | null> {
@@ -1319,6 +1440,8 @@ function buildAnalyticsPagerComponents(groupId: number, currentPage: number, tot
 export const __testables = {
   buildChannelName,
   buildAddRemoveModal,
+  buildPlayerSelectComponents,
+  buildTrackButtons,
   parseIdentifiers,
   buildTrackEmbeds,
   sanitizeGroupNameForChannel,
