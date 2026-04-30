@@ -1214,6 +1214,20 @@ export class BackendClient {
     );
   }
 
+  claimTrackGroupNotification(
+    workerId: string,
+    guildId: string,
+    groupId: number,
+    payload: { steamId: string; isOnline: boolean; onlineUnix: number },
+  ) {
+    return this.call<{ claimed: boolean }>(
+      workerId,
+      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/notifications/claim`,
+      "POST",
+      { ...payload, workerId },
+    );
+  }
+
   getTrackGroupAnalytics(workerId: string, guildId: string, groupId: number) {
     return this.call<TrackGroupAnalyticsResponse>(
       workerId,

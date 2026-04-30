@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TrackGroupAnalyticsResponse, TrackGroupOnlineRow } from "./backend-client.js";
 import { __testables } from "./track-command.js";
 
-const { buildAddRemoveModal, buildAnalyticsPages, buildPlayerSelectComponents, buildTrackButtons, buildTrackEmbeds, buildWeekdayFieldValue } = __testables;
+const { buildAddRemoveModal, buildAnalyticsPages, buildPlayerSelectComponents, buildTrackButtons, buildTrackEmbeds, buildWeekdayFieldValue, dedupeTrackRows } = __testables;
 
 type TestModalComponent = {
   custom_id?: string;
@@ -120,6 +120,18 @@ describe("buildTrackEmbeds", () => {
     const totalLength = embeds.reduce((sum, embed) => sum + (embed.toJSON().description?.length ?? 0), 0);
     expect(totalLength).toBeLessThanOrEqual(5800);
     expect(embeds.at(-1)?.toJSON().description).toMatch(/\+\d+ more/);
+  });
+});
+
+describe("dedupeTrackRows", () => {
+  it("keeps one row per Steam ID and prefers rows with Discord data", () => {
+    const first = makeOnlineRow("76561198127315384", "Jigsaw", false);
+    const second = { ...makeOnlineRow("76561198127315384", "Jigsaw", false), discordId: "123" };
+    const rows = dedupeTrackRows([first, second, makeOnlineRow("76561198151846617", "lack", true)]);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].steamId).toBe("76561198127315384");
+    expect(rows[0].discordId).toBe("123");
   });
 });
 

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ const (
 	leaseMapKey                = "rustlens:bot:leases"
 	workerHeartbeatPref        = "rustlens:bot:worker:heartbeat:"
 	workerStatsPref            = "rustlens:bot:worker:stats:"
+	trackNotificationClaimPref = "rustlens:track:notification:claim:"
 	battleMetricsPollerLockKey = "rustlens:battlemetrics:poller:lock"
 )
 
@@ -202,4 +204,13 @@ return 0
 `
 
 	return r.client.Eval(ctx, releaseScript, []string{battleMetricsPollerLockKey}, owner).Err()
+}
+
+func (r *RedisStore) TryClaimTrackNotification(ctx context.Context, groupID int64, steamID string, isOnline bool, onlineUnix int64, owner string, ttl time.Duration) (bool, error) {
+	state := "offline"
+	if isOnline {
+		state = "online"
+	}
+	key := fmt.Sprintf("%s%d:%s:%s:%d", trackNotificationClaimPref, groupID, steamID, state, onlineUnix)
+	return r.client.SetNX(ctx, key, owner, ttl).Result()
 }

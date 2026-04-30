@@ -217,6 +217,17 @@ function buildOfflineLine(row: TrackGroupOnlineRow) {
   return `> * ${bmLink(row)}${stamp}`;
 }
 
+function dedupeTrackRows(rows: TrackGroupOnlineRow[]) {
+  const bySteamId = new Map<string, TrackGroupOnlineRow>();
+  for (const row of rows) {
+    const existing = bySteamId.get(row.steamId);
+    if (!existing || (!existing.discordId && row.discordId)) {
+      bySteamId.set(row.steamId, row);
+    }
+  }
+  return [...bySteamId.values()];
+}
+
 function chunkDescriptionLines(lines: string[]) {
   const chunks: string[] = [];
   let current = "";
@@ -1340,9 +1351,10 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   const mode = requestedMode ?? trackViewModes.get(group.id) ?? "online";
   trackViewModes.set(group.id, mode);
 
-  const { items: rows } = await getBackend()
+  const { items: rawRows } = await getBackend()
     .listTrackGroupOnlineState(getWorkerID(), guild.id, group.id)
     .catch(() => ({ items: [] as TrackGroupOnlineRow[] }));
+  const rows = dedupeTrackRows(rawRows);
 
   const onlineRows = rows.filter((row) => row.isOnline);
   const onlineCount = onlineRows.length;
@@ -1407,12 +1419,30 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
       }
     }
     for (const change of changes) {
+      const claimed = await claimTrackNotification(guild.id, group.id, change.row, change.isOnline);
+      if (!claimed) {
+        continue;
+      }
       const updateEmbed = buildJoinLeaveEmbed(change.row, change.isOnline, serverName);
       await textChannel.send({ embeds: [updateEmbed] }).catch(() => null);
     }
   }
 
   previousSnapshots.set(group.id, current);
+}
+
+async function claimTrackNotification(guildId: string, groupId: number, row: TrackGroupOnlineRow, isOnline: boolean) {
+  try {
+    const response = await getBackend().claimTrackGroupNotification(getWorkerID(), guildId, groupId, {
+      steamId: row.steamId,
+      isOnline,
+      onlineUnix: row.onlineUnix,
+    });
+    return response.claimed;
+  } catch (error) {
+    console.error(`[bot] failed to claim track notification for group ${groupId} steam ${row.steamId}`, error);
+    return false;
+  }
 }
 
 async function refreshTrackGroupById(guild: Guild, guildId: string, groupId: number, mode?: TrackViewMode) {
@@ -1691,6 +1721,7 @@ export const __testables = {
   buildAddRemoveModal,
   buildPlayerSelectComponents,
   buildTrackButtons,
+  dedupeTrackRows,
   parseIdentifiers,
   buildTrackEmbeds,
   sanitizeGroupNameForChannel,

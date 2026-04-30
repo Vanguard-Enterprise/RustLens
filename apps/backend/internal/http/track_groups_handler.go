@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -40,6 +42,13 @@ type trackGroupMemberPayload struct {
 
 type trackGroupRemoveMembersRequest struct {
 	Identifiers []string `json:"identifiers"`
+}
+
+type trackNotificationClaimRequest struct {
+	SteamID    string `json:"steamId"`
+	IsOnline   bool   `json:"isOnline"`
+	OnlineUnix int64  `json:"onlineUnix"`
+	WorkerID   string `json:"workerId"`
 }
 
 func trackGroupToMap(group store.TrackGroup) map[string]any {
@@ -384,4 +393,54 @@ func (h *Handler) ListTrackGroupOnlineState(w http.ResponseWriter, r *http.Reque
 		response = append(response, trackGroupOnlineRowToMap(row))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": response})
+}
+
+func (h *Handler) ClaimTrackGroupNotification(w http.ResponseWriter, r *http.Request) {
+	guildID, ok := validateGuildID(w, r)
+	if !ok {
+		return
+	}
+	id, ok := parseTrackGroupID(w, r)
+	if !ok {
+		return
+	}
+
+	if _, err := h.postgres.GetTrackGroup(r.Context(), guildID, id); errors.Is(err, store.ErrTrackGroupNotFound) {
+		writeError(w, http.StatusNotFound, "track group not found")
+		return
+	} else if err != nil {
+		log.Printf("[backend] GetTrackGroup error for guild %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "failed to load track group")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var req trackNotificationClaimRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	req.SteamID = strings.TrimSpace(req.SteamID)
+	req.WorkerID = strings.TrimSpace(req.WorkerID)
+	if !steamIDPattern.MatchString(req.SteamID) {
+		writeError(w, http.StatusBadRequest, "steamId must be a 17-digit Steam ID")
+		return
+	}
+	if req.OnlineUnix < 0 {
+		writeError(w, http.StatusBadRequest, "onlineUnix must be non-negative")
+		return
+	}
+	if req.WorkerID == "" {
+		writeError(w, http.StatusBadRequest, "workerId is required")
+		return
+	}
+
+	claimed, err := h.redis.TryClaimTrackNotification(r.Context(), id, req.SteamID, req.IsOnline, req.OnlineUnix, req.WorkerID, 10*time.Minute)
+	if err != nil {
+		log.Printf("[backend] TryClaimTrackNotification error for group %d steam %s: %v", id, req.SteamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to claim track notification")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"claimed": claimed})
 }

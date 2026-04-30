@@ -171,6 +171,7 @@ func NewRouter(
 		r.Post("/guilds/{guildID}/track-groups/{groupID}/members", handler.AddTrackGroupMembers)
 		r.Post("/guilds/{guildID}/track-groups/{groupID}/members/remove", handler.RemoveTrackGroupMembers)
 		r.Get("/guilds/{guildID}/track-groups/{groupID}/online-state", handler.ListTrackGroupOnlineState)
+		r.Post("/guilds/{guildID}/track-groups/{groupID}/notifications/claim", handler.ClaimTrackGroupNotification)
 		r.Get("/guilds/{guildID}/track-groups/{groupID}/analytics", handler.GetTrackGroupAnalytics)
 	})
 
