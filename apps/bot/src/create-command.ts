@@ -28,7 +28,7 @@ const CREATE_INVITE_REQUIRED_ROLE_OPTION_NAME = "required_role";
 export const CREATE_INVITE_REQUEST_PREFIX = "ci_req:";
 export const CREATE_INVITE_ACCEPT_PREFIX = "ci_acc:";
 
-const REQUEST_BUTTON_EMOJI = { name: "user_remove", id: "1498006708549587155" };
+const REQUEST_BUTTON_EMOJI = { name: "user_add", id: "1498006708549587155" };
 const ACCEPT_BUTTON_EMOJI = { name: "user_tick", id: "1499109036954751138" };
 
 const NO_REQUIRED_ROLE_SENTINEL = "0";

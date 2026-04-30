@@ -152,9 +152,9 @@ describe("buildTrackButtons", () => {
     const row = buildTrackButtons(123)[0].toJSON();
 
     expect(actionComponentAt(row, 0).custom_id).toBe("track:add:123");
-    expect(actionComponentAt(row, 0).emoji?.name).toBe("user_remove");
+    expect(actionComponentAt(row, 0).emoji?.name).toBe("user_add");
     expect(actionComponentAt(row, 1).custom_id).toBe("track:remove:123");
-    expect(actionComponentAt(row, 1).emoji?.name).toBe("user_add");
+    expect(actionComponentAt(row, 1).emoji?.name).toBe("user_remove");
   });
 });
 

@@ -71,8 +71,8 @@ const JOIN_COLOR = 1233708;
 const LEAVE_COLOR = 13832761;
 const TRACK_ONLINE_EMOJI = "<:Online:1497993468981805076>";
 const TRACK_OFFLINE_EMOJI = "<:Offline:1497993467660599476>";
-const TRACK_ADD_EMOJI = { id: "1498006709866856458", name: "user_add" };
-const TRACK_REMOVE_EMOJI = { id: "1498006708549587155", name: "user_remove" };
+const TRACK_ADD_EMOJI = { id: "1498006708549587155", name: "user_add" };
+const TRACK_REMOVE_EMOJI = { id: "1498006709866856458", name: "user_remove" };
 const TRACK_NOTIFICATION_EMOJI = { id: "1498033713764761852", name: "notification" };
 const TRACK_EMBED_DESCRIPTION_MAX = 3900;
 const TRACK_MESSAGE_TEXT_MAX = 5800;
@@ -269,12 +269,12 @@ export function buildTrackButtons(groupId: number, mode: TrackViewMode = "online
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_ADD_PREFIX}${groupId}`)
-        .setEmoji(TRACK_REMOVE_EMOJI)
+        .setEmoji(TRACK_ADD_EMOJI)
         .setLabel("Add")
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`${TRACK_BUTTON_REMOVE_PREFIX}${groupId}`)
-        .setEmoji(TRACK_ADD_EMOJI)
+        .setEmoji(TRACK_REMOVE_EMOJI)
         .setLabel("Remove")
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
@@ -331,7 +331,7 @@ function buildPlayerSelectComponents(action: "add" | "remove", groupId: number, 
         .setCustomId(`${TRACK_SELECT_PLAYER_PREFIX}${action}:${groupId}`)
         .setPlaceholder("Select a player")
         .addOptions(
-          matches.slice(0, 10).map((match) => ({
+          matches.slice(0, 25).map((match) => ({
             label: truncateOptionLabel(`${match.bmName || match.steamId} (${match.bmId})`),
             value: `${match.steamId}:${match.bmId}`,
           })),
@@ -967,7 +967,7 @@ async function resolvePlayerNameToMember(serverBmId: string, playerName: string)
     return { status: "unique", member: { steamId: match.steamId, bmId: match.bmId } };
   }
 
-  return { status: "ambiguous", matches: matches.slice(0, 10) };
+  return { status: "ambiguous", matches: matches.slice(0, 25) };
 }
 
 async function resolveSteamID(steamId: string): Promise<{ steamId: string; bmId: string } | null> {
