@@ -54,6 +54,7 @@ import {
   MANAGE_COMMAND_NAME,
 } from "./manage-command.js";
 import {
+  deferPlayerButton,
   ensurePlayerCommand,
   handlePlayerButtonInteraction,
   handlePlayerChatInput,
@@ -213,7 +214,7 @@ function isIgnorableInteractionReplyError(error: unknown) {
   }
 
   const code = (error as { code?: unknown }).code;
-  return code === 10008 || code === 10062;
+  return code === 10008 || code === 10062 || code === 40060;
 }
 
 client.on("interactionCreate", async (interaction) => {
@@ -389,6 +390,9 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isButton()) {
       const buttonCategory = resolveCustomIdCategory(interaction.customId);
+      if (buttonCategory && interaction.customId.startsWith("player:")) {
+        await deferPlayerButton(interaction);
+      }
       if (buttonCategory && (await enforceBan(interaction, buttonCategory))) {
         return;
       }

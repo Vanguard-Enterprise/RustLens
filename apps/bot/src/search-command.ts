@@ -35,6 +35,7 @@ const SEARCH_STRING_OPTION_NAME = "string";
 const SEARCH_SERVER_OPTION_NAME = "server";
 const SEARCH_INCLUDE_OFFLINE_OPTION_NAME = "include_offline";
 const SEARCH_RESULT_LIMIT = 20;
+const TRACKED_SERVER_AUTOCOMPLETE_CACHE_TTL_MS = 30_000;
 
 const shardID = process.env.SHARD_ID ?? "0";
 
@@ -66,6 +67,15 @@ const searchCommand = new SlashCommandBuilder()
 
 let _backend: BackendClient | undefined;
 let _workerID: string | undefined;
+let trackedServerAutocompleteCache: {
+  items: TrackedServer[];
+  expiresAt: number;
+  refresh: Promise<void> | null;
+} = {
+  items: [],
+  expiresAt: 0,
+  refresh: null,
+};
 
 function getBackend() {
   if (!_backend) {
@@ -93,6 +103,38 @@ function buildSearchEmbed(title: string, description: string) {
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+}
+
+function refreshTrackedServerAutocompleteCache() {
+  const now = Date.now();
+  if (trackedServerAutocompleteCache.refresh) {
+    return trackedServerAutocompleteCache.refresh;
+  }
+
+  trackedServerAutocompleteCache.refresh = getBackend()
+    .listTrackedServers(getWorkerID())
+    .then((response) => {
+      trackedServerAutocompleteCache.items = response.items;
+      trackedServerAutocompleteCache.expiresAt = Date.now() + TRACKED_SERVER_AUTOCOMPLETE_CACHE_TTL_MS;
+    })
+    .catch((error) => {
+      console.error("[bot] failed to refresh search autocomplete servers", error);
+      if (trackedServerAutocompleteCache.items.length === 0) {
+        trackedServerAutocompleteCache.expiresAt = now + 5_000;
+      }
+    })
+    .finally(() => {
+      trackedServerAutocompleteCache.refresh = null;
+    });
+
+  return trackedServerAutocompleteCache.refresh;
+}
+
+function getTrackedServerAutocompleteItems() {
+  if (trackedServerAutocompleteCache.expiresAt <= Date.now()) {
+    void refreshTrackedServerAutocompleteCache();
+  }
+  return trackedServerAutocompleteCache.items;
 }
 
 function formatSearchEta(seconds: number) {
@@ -149,14 +191,7 @@ export async function handleSearchAutocomplete(interaction: AutocompleteInteract
     return true;
   }
 
-  let trackedServers: TrackedServer[] = [];
-  try {
-    const response = await getBackend().listTrackedServers(getWorkerID());
-    trackedServers = response.items;
-  } catch {
-    await interaction.respond([]);
-    return true;
-  }
+  const trackedServers = getTrackedServerAutocompleteItems();
 
   const needle = String(focused.value ?? "").trim().toLocaleLowerCase();
   const choices = trackedServers
