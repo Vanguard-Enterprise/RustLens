@@ -34,9 +34,6 @@ func (p *PostgresStore) ListGuildOnlineSummary(ctx context.Context, guildID stri
 			JOIN steam_accounts sa ON sa.steam_id = gsl.steam_id
 			LEFT JOIN bm_profile_cache bpc ON bpc.bm_id = sa.bm_id
 			JOIN player_states ps ON ps.player_bm_id = sa.bm_id
-			JOIN guild_tracked_servers gts
-				ON gts.guild_id = gsl.guild_id
-				AND gts.server_bm_id = ps.server_bm_id
 			JOIN tracked_servers ts ON ts.bm_id = ps.server_bm_id
 			WHERE gsl.guild_id = $1
 			  AND sa.bm_id IS NOT NULL
