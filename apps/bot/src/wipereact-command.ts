@@ -2191,6 +2191,10 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
       return true;
     }
 
+    if (!action.requiresReason) {
+      await deferEphemeral(interaction);
+    }
+
     const record = await getPersistedWipeReact(interaction.guildId, interaction.message.id).catch(() => null);
     if (!record) {
       await replyEphemeral(interaction, "This wipe react message is no longer valid.");
@@ -2213,7 +2217,6 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
       return true;
     }
 
-    await deferEphemeral(interaction);
     return processWipeReactAction(interaction, interaction.message, action.type);
   }
 

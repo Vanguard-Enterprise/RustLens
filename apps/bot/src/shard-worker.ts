@@ -54,10 +54,12 @@ import {
   MANAGE_COMMAND_NAME,
 } from "./manage-command.js";
 import {
+  deferPlayerChatInput,
   deferPlayerButton,
   ensurePlayerCommand,
   handlePlayerButtonInteraction,
   handlePlayerChatInput,
+  PLAYER_COMMAND_NAME,
 } from "./player-command.js";
 import {
   ensureNicknameCommand,
@@ -254,6 +256,10 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isChatInputCommand()) {
+      if (interaction.commandName === PLAYER_COMMAND_NAME) {
+        await deferPlayerChatInput(interaction);
+      }
+
       if (interaction.commandName !== MANAGE_COMMAND_NAME) {
         const category = resolveCommandCategory(
           interaction.commandName,

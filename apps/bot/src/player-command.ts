@@ -87,6 +87,11 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
   const discordUser = interaction.options.getUser("discord_user", false);
 
   if (!identifier && !discordUser) {
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: "Provide either an identifier or a discord user." });
+      return true;
+    }
+
     await interaction.reply({
       content: "Provide either an identifier or a discord user.",
       flags: MessageFlags.Ephemeral,
@@ -95,7 +100,7 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
   }
 
   if (discordUser) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await deferPlayerChatInput(interaction);
 
     if (!(await isWebsiteAdmin(interaction.user.id))) {
       await interaction.editReply({
@@ -110,7 +115,7 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     return true;
   }
 
-  await interaction.deferReply();
+  await deferPlayerChatInput(interaction);
 
   const lookupIdentifier = await resolveLookupIdentifier(identifier);
   if (!lookupIdentifier.ok) {
@@ -166,6 +171,18 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     components: buildProfileButtons(account.steamId),
   });
   return true;
+}
+
+export async function deferPlayerChatInput(interaction: ChatInputCommandInteraction) {
+  if (interaction.deferred || interaction.replied) {
+    return;
+  }
+
+  const discordUser = interaction.options.getUser("discord_user", false);
+  const identifier = interaction.options.getString("identifier", false)?.trim() ?? "";
+  await interaction.deferReply({
+    flags: discordUser || !identifier ? MessageFlags.Ephemeral : undefined,
+  });
 }
 
 async function fetchPlayerProfile(steamId: string) {
