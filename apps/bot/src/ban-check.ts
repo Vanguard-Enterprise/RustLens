@@ -12,6 +12,9 @@ import { loadConfig } from "./config.js";
 
 const BANNED_EMBED_COLOR = 0xd31239;
 const CACHE_TTL_MS = 30_000;
+const INTERACTION_BAN_LOOKUP_BUDGET_MS = 1_000;
+
+const banLookupTimedOut = Symbol("banLookupTimedOut");
 
 type CacheEntry = {
   categories: Set<BanCategory>;
@@ -76,6 +79,15 @@ async function loadBannedCategories(discordId: string): Promise<Set<BanCategory>
   return lookup;
 }
 
+async function loadBannedCategoriesWithinInteractionBudget(discordId: string) {
+  return Promise.race([
+    loadBannedCategories(discordId),
+    new Promise<typeof banLookupTimedOut>((resolve) => {
+      setTimeout(() => resolve(banLookupTimedOut), INTERACTION_BAN_LOOKUP_BUDGET_MS);
+    }),
+  ]);
+}
+
 export function invalidateBanCache(discordId: string) {
   banCache.delete(discordId);
 }
@@ -133,9 +145,9 @@ export async function enforceBanForAutocomplete(
   interaction: AutocompleteInteraction,
   category: BanCategory,
 ): Promise<boolean> {
-  let banned: boolean;
+  let categories: Set<BanCategory> | typeof banLookupTimedOut;
   try {
-    banned = await isUserBannedFromCategory(interaction.user.id, category);
+    categories = await loadBannedCategoriesWithinInteractionBudget(interaction.user.id);
   } catch (error) {
     console.error("[bot] ban lookup failed (autocomplete; failing closed)", {
       discordId: interaction.user.id,
@@ -148,7 +160,17 @@ export async function enforceBanForAutocomplete(
     }
     return true;
   }
-  if (!banned) {
+
+  if (categories === banLookupTimedOut) {
+    console.warn("[bot] ban lookup timed out before autocomplete acknowledgement", {
+      discordId: interaction.user.id,
+      category,
+      budgetMs: INTERACTION_BAN_LOOKUP_BUDGET_MS,
+    });
+    return false;
+  }
+
+  if (!categories.has(category)) {
     return false;
   }
   try {
@@ -167,9 +189,9 @@ export async function enforceBan(
     | StringSelectMenuInteraction,
   category: BanCategory,
 ): Promise<boolean> {
-  let banned: boolean;
+  let categories: Set<BanCategory> | typeof banLookupTimedOut;
   try {
-    banned = await isUserBannedFromCategory(interaction.user.id, category);
+    categories = await loadBannedCategoriesWithinInteractionBudget(interaction.user.id);
   } catch (error) {
     console.error("[bot] ban lookup failed (failing closed)", {
       discordId: interaction.user.id,
@@ -178,7 +200,17 @@ export async function enforceBan(
     await replyBanUnavailableEphemeral(interaction);
     return true;
   }
-  if (!banned) {
+
+  if (categories === banLookupTimedOut) {
+    console.warn("[bot] ban lookup timed out before interaction acknowledgement", {
+      discordId: interaction.user.id,
+      category,
+      budgetMs: INTERACTION_BAN_LOOKUP_BUDGET_MS,
+    });
+    return false;
+  }
+
+  if (!categories.has(category)) {
     return false;
   }
   await replyBannedEphemeral(interaction);
