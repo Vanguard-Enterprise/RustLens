@@ -1,5 +1,6 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { isGuildTooLargeForDms, replyDmLimitError } from "./dm-limit.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
 import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
@@ -99,6 +100,11 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
 
   const role = interaction.options.getRole("scope", true);
   const message = interaction.options.getString("message", true);
+
+  if (isGuildTooLargeForDms(guild)) {
+    await replyDmLimitError(interaction, guild);
+    return true;
+  }
 
   if (message.length > 4096) {
     await interaction.editReply({

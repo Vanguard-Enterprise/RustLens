@@ -36,6 +36,7 @@ import {
   TextInputStyle,
 } from "./builders/index.js";
 import { loadConfig } from "./config.js";
+import { isGuildTooLargeForDms, replyDmLimitError } from "./dm-limit.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import {
   fetchGuildSettings,
@@ -1930,6 +1931,11 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const messageText = interaction.options.getString(WIPEREACT_MESSAGE_OPTION_NAME)?.trim() ?? "";
+    if (messageText.length > 0 && isGuildTooLargeForDms(guild)) {
+      await replyDmLimitError(interaction, guild);
+      return true;
+    }
+
     const selectedMessageId = interaction.options.getString(WIPEREACT_TARGET_OPTION_NAME);
     const record = selectedMessageId
       ? await getPersistedWipeReact(interaction.guildId, selectedMessageId).catch(() => null)
