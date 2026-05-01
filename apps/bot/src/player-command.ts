@@ -95,15 +95,15 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
   }
 
   if (discordUser) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     if (!(await isWebsiteAdmin(interaction.user.id))) {
-      await interaction.reply({
+      await interaction.editReply({
         embeds: [buildWebsiteAdminOnlyEmbed()],
-        flags: MessageFlags.Ephemeral,
       });
       return true;
     }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await runPlatformSyncSafely("discord", discordUser.id);
     const embed = await buildDiscordLinksEmbed(discordUser);
     await interaction.editReply({ embeds: [embed] });
@@ -300,14 +300,11 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
   if (interaction.customId.startsWith("player:analytics-bm:")) {
     const bmId = interaction.customId.slice("player:analytics-bm:".length);
     if (!/^\d+$/.test(bmId)) {
-      await interaction.reply({
-        content: "Invalid analytics button.",
-        flags: MessageFlags.Ephemeral,
-      });
+      await replyOrEditPlayerButtonError(interaction, "Invalid analytics button.");
       return true;
     }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await deferPlayerButton(interaction);
 
     try {
       const { backend, workerId } = getBackend();
@@ -324,14 +321,11 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
   if (interaction.customId.startsWith("player:analytics:")) {
     const steamId = interaction.customId.slice("player:analytics:".length);
     if (!/^\d{17}$/.test(steamId)) {
-      await interaction.reply({
-        content: "Invalid analytics button.",
-        flags: MessageFlags.Ephemeral,
-      });
+      await replyOrEditPlayerButtonError(interaction, "Invalid analytics button.");
       return true;
     }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await deferPlayerButton(interaction);
 
     try {
       const { backend, workerId } = getBackend();
@@ -348,14 +342,11 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
   if (interaction.customId.startsWith("player:links-bm:")) {
     const bmId = interaction.customId.slice("player:links-bm:".length);
     if (!/^\d+$/.test(bmId)) {
-      await interaction.reply({
-        content: "Invalid links button.",
-        flags: MessageFlags.Ephemeral,
-      });
+      await replyOrEditPlayerButtonError(interaction, "Invalid links button.");
       return true;
     }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await deferPlayerButton(interaction);
 
     const isAdmin = await isWebsiteAdmin(interaction.user.id);
     try {
@@ -376,14 +367,11 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
   if (interaction.customId.startsWith("player:links:")) {
     const steamId = interaction.customId.slice("player:links:".length);
     if (!/^\d{17}$/.test(steamId)) {
-      await interaction.reply({
-        content: "Invalid links button.",
-        flags: MessageFlags.Ephemeral,
-      });
+      await replyOrEditPlayerButtonError(interaction, "Invalid links button.");
       return true;
     }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await deferPlayerButton(interaction);
 
     const isAdmin = await isWebsiteAdmin(interaction.user.id);
     try {
@@ -399,6 +387,20 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
   }
 
   return false;
+}
+
+export async function deferPlayerButton(interaction: ButtonInteraction) {
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
+}
+
+async function replyOrEditPlayerButtonError(interaction: ButtonInteraction, content: string) {
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply({ content, components: [] });
+    return;
+  }
+  await interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
 
 async function runPlatformSyncSafely(platform: "steam" | "discord", id: string): Promise<void> {
