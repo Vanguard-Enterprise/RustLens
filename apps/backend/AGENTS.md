@@ -231,7 +231,7 @@ BattleMetrics presence state per tracked server and player.
 
 ### Guild Online Summary
 
-`online_summary.go` joins `guild_steam_discord_links`, `guild_tracked_servers`, `steam_accounts`, `steam_account_cache`, `player_states`, and `tracked_servers` to produce the guild online summary used by the bot's `/online` command. The query only returns rows where the linked Steam account has a non-null `bm_id`, the matching player state is currently online, and the server is selected for that guild.
+`online_summary.go` joins `guild_steam_discord_links`, `steam_accounts`, `bm_profile_cache`, `player_states`, and bot-wide `tracked_servers` to produce the guild online summary used by the bot's `/online` command. The query only returns rows where the linked Steam account has a non-null `bm_id`, the matching `player_states` row is currently online, and the server is globally tracked by the bot. It intentionally does not filter by `guild_tracked_servers`.
 
 ### `steam_discord_links`
 
