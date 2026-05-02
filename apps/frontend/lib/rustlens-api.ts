@@ -114,10 +114,30 @@ export type AdminUsersPage = {
 
 export type AdminGuildItem = {
 	guildId: string;
-	activeMembers: number;
-	linkedMembers: number;
-	trackedServers: number;
-	adminRoleId: string;
+	name: string;
+	iconHash: string | null;
+	ownerDiscordId: string | null;
+	ownerUsername: string | null;
+	ownerGlobalName: string | null;
+	ownerAvatarHash: string | null;
+	approximateMemberCount: number | null;
+	isInstalled: boolean;
+	leftAt: string | null;
+	isConfigured: boolean;
+	trackedServerCount: number;
+};
+
+export type AdminGuildsQuery = {
+	q?: string;
+	page?: number;
+	pageSize?: number;
+};
+
+export type AdminGuildsPage = {
+	items: AdminGuildItem[];
+	total: number;
+	page: number;
+	pageSize: number;
 };
 
 export type AdminServerItem = {
@@ -355,13 +375,17 @@ export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<Admin
 	);
 }
 
-export async function getAdminGuilds() {
-	const payload = await backendFetch<{ items: AdminGuildItem[] }>(
-		"/api/app/admin/guilds",
+export async function getAdminGuilds(params: AdminGuildsQuery = {}): Promise<AdminGuildsPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminGuildsPage>(
+		`/api/app/admin/guilds${qs ? `?${qs}` : ""}`,
 		undefined,
 		{ requireSession: true },
 	);
-	return payload.items;
 }
 
 export async function getAdminServers() {
