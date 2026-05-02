@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
 	NavigationMenu,
 	NavigationMenuContent,
@@ -71,9 +72,9 @@ export function DesktopNav() {
 					</NavigationMenuContent>
 				</NavigationMenuItem>
 				<NavigationMenuLink asChild className="px-4">
-					<a className="rounded-md p-2 hover:bg-accent" href="/#pricing">
+					<Link className="rounded-md p-2 hover:bg-accent" href="/#pricing">
 						Pricing
-					</a>
+					</Link>
 				</NavigationMenuLink>
 			</NavigationMenuList>
 		</NavigationMenu>
