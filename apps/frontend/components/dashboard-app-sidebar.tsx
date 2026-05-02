@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { NavDocuments } from "@/components/nav-documents";
+import { NavGroup } from "@/components/nav-group";
 import { NavMain } from "@/components/nav-main";
 import { NavSecondary } from "@/components/nav-secondary";
 import {
@@ -36,6 +37,7 @@ import {
 	Settings2Icon,
 	ShieldCheckIcon,
 	UsersIcon,
+	UsersRoundIcon,
 } from "lucide-react";
 
 export type DashboardSidebarArea = "admin" | "dashboard";
@@ -176,8 +178,24 @@ export function DashboardAppSidebar({
 			</SidebarHeader>
 			<SidebarContent>
 				<NavMain items={navMain} />
-				<NavDocuments items={DOCUMENTS} />
-				<NavSecondary items={NAV_SECONDARY} className="mt-auto" />
+				{area === "admin" ? (
+					<NavGroup
+						label="Discord"
+						items={[
+							{
+								title: "Guilds",
+								path: "/admin/guilds",
+								icon: UsersRoundIcon,
+								isActive: pathname === "/admin/guilds" || pathname.startsWith("/admin/guilds/"),
+							},
+						]}
+					/>
+				) : (
+					<>
+						<NavDocuments items={DOCUMENTS} />
+						<NavSecondary items={NAV_SECONDARY} className="mt-auto" />
+					</>
+				)}
 			</SidebarContent>
 			<SidebarFooter>
 				<SidebarNavUser csrfToken={csrfToken} user={user} variant={area} />
