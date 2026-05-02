@@ -34,7 +34,7 @@ export const termsOfService: LegalDocument = {
 		{
 			title: "Accounts and credential security",
 			paragraphs: [
-				"Some RustLens features require an account secured through email and password authentication, and some features may optionally connect a Discord account. You are responsible for keeping your credentials secure, for controlling access to your account, and for all activity that occurs under your session.",
+				"Some RustLens features require an account secured through Discord authentication. You are responsible for keeping your Discord account secure, for controlling access to your account, and for all activity that occurs under your session.",
 				"You must provide accurate information when registering, linking accounts, or submitting Steam identifiers. You must promptly update information that becomes inaccurate and notify RustLens if you believe your account, guild configuration, or linked identities have been accessed without authorization.",
 			],
 			bullets: [
@@ -179,8 +179,7 @@ export const privacyPolicy: LegalDocument = {
 			],
 			bullets: [
 				"Account and profile data, such as display name, avatar URL, account roles, and login timestamps.",
-				"Email and authentication data, such as email addresses, password hashes, password reset tokens, email verification tokens, and session-related login events.",
-				"Optional Discord account data, such as Discord user ID, username, display name, avatar, profile email returned by Discord, and guild membership state.",
+				"Discord account data, such as Discord user ID, username, display name, avatar, and guild membership state.",
 				"Steam and BattleMetrics-related data, such as Steam IDs, BattleMetrics player IDs, BattleMetrics display names, avatars, soft or hard account links, and guild-scoped identity associations.",
 				"Guild and operational data, such as guild settings, admin role assignments, tracked-server selections, wipe-react records and schedules, and player presence state synced from tracked servers.",
 				"Security and audit data, such as auth events, administrative actions, request context needed for abuse prevention, and operational logging.",
@@ -189,7 +188,7 @@ export const privacyPolicy: LegalDocument = {
 		{
 			title: "Where the information comes from",
 			paragraphs: [
-				"RustLens collects information directly from you when you register, sign in, reset a password, verify an email address, link an account, or submit a Steam identifier. RustLens also receives information from Discord when optional OAuth or linked-account flows are used.",
+				"RustLens collects information directly from you when you sign in with Discord, link an account, or submit a Steam identifier. RustLens also receives information from Discord when OAuth or linked-account flows are used.",
 				"RustLens may derive or refresh identity and activity information from external services such as BattleMetrics and Steam, and from bot-observed guild activity such as membership changes, guild-scoped linking actions, wipe-react participation, and tracked-server coordination events.",
 			],
 		},
@@ -199,7 +198,7 @@ export const privacyPolicy: LegalDocument = {
 				"RustLens uses collected data to provide the service, maintain account security, support guild operations, and improve reliability of Discord and backend workflows.",
 			],
 			bullets: [
-				"Authenticate users, manage sessions, verify email ownership, and reset passwords.",
+				"Authenticate users via Discord and manage sessions.",
 				"Link or reconcile Discord, Steam, and BattleMetrics identities across user, guild, and bot workflows.",
 				"Support guild administration, tracked-server management, wipe-react coordination, nickname targeting, and online-summary features.",
 				"Operate, secure, debug, and audit the service, including abuse prevention and internal administrative review.",

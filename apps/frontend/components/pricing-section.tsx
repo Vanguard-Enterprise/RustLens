@@ -21,6 +21,7 @@ type Plan = {
 		href: string;
 	};
 	highlighted?: boolean;
+	blurred?: boolean;
 };
 
 const plans: Plan[] = [
@@ -33,9 +34,10 @@ const plans: Plan[] = [
 		},
 		features: [
 			"1 Discord guild",
-			"Up to 5 tracked Rust servers",
-			"Steam to Discord identity linking",
-			"Live in-game presence in chat",
+			"Up to 3 tracked Rust servers",
+			"/player Steam & BattleMetrics lookups",
+			"/online live presence on tracked servers",
+			"/setsteam manual Steam ↔ Discord linking",
 			"Community support",
 		],
 		btn: {
@@ -45,7 +47,7 @@ const plans: Plan[] = [
 	},
 	{
 		highlighted: true,
-		name: "Clan",
+		name: "Pro",
 		info: "For active Rust communities",
 		price: {
 			monthly: 9,
@@ -54,31 +56,33 @@ const plans: Plan[] = [
 		features: [
 			"1 Discord guild",
 			"Unlimited tracked Rust servers",
-			"Wipe-react schedules and reactions",
-			"BattleMetrics player matching",
-			"Online roster summaries",
-			"Nickname automation",
+			"/wipereact raid coordination + recurring schedules",
+			"/track live clan channels with auto-updating counts",
+			"/analyze offline raid-window heatmaps",
+			"/checkgamebans bulk Steam ban scans",
+			"/compare cross-server & cross-wipe activity",
 			"Priority support",
 		],
 		btn: {
-			text: "Choose Clan",
+			text: "Choose Pro",
 			href: "/login",
 		},
 	},
 	{
-		name: "Network",
-		info: "For multi-guild clan networks",
+		blurred: true,
+		name: "Quantum Synergy",
+		info: "Hyperscale meshnet for distributed clanverses",
 		price: {
-			monthly: 29,
-			yearly: 24,
+			monthly: 42,
+			yearly: 33,
 		},
 		features: [
-			"Up to 10 Discord guilds",
-			"Everything in Clan",
-			"Cross-guild identity reconciliation",
-			"Custom polling tiers",
-			"Dedicated support",
-			"Early access to new features",
+			"Tachyon-grade flarpwhomp throughput",
+			"Recursive blorbnet identity entanglement",
+			"Up to 14 zorp-bound discord vortices",
+			"Polychromatic snurfle polling lattice",
+			"24/7 wibble-tier concierge wranglers",
+			"Pre-alpha access to phantom widgets",
 		],
 		btn: {
 			text: "Contact us",
@@ -134,8 +138,10 @@ export function PricingCard({
 				"relative flex w-full flex-col overflow-hidden rounded-lg border shadow-xs",
 				plan.highlighted &&
 					"scale-105 border-primary/50 shadow-md ring-1 ring-primary/20",
+				plan.blurred && "select-none [&_*]:blur-[5px] [&_*]:pointer-events-none",
 				className
 			)}
+			aria-hidden={plan.blurred ? true : undefined}
 			key={plan.name}
 			{...props}
 		>
