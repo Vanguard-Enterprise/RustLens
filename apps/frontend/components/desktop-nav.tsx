@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
 	NavigationMenu,
 	NavigationMenuContent,
@@ -27,12 +28,12 @@ export function DesktopNav() {
 						</div>
 						<div className="p-2">
 							<p className="text-muted-foreground text-sm">
-								Interested?{" "}
+								Interested:{" "}
 								<a
 									className="font-medium text-foreground hover:underline"
-									href="#"
+									href="/login"
 								>
-									Schedule a demo
+									Add to Discord
 								</a>
 							</p>
 						</div>
@@ -52,23 +53,28 @@ export function DesktopNav() {
 								))}
 							</div>
 							<div className="space-y-2 p-3">
-								{companyLinks2.map((item, i) => (
-									<NavigationMenuLink
-										href={item.href}
-										key={`item-${item.label}-${i}`}
-									>
-										{item.icon}
-										{item.label}
-									</NavigationMenuLink>
-								))}
+								{companyLinks2.map((item, i) => {
+									const external = item.href.startsWith("http");
+									return (
+										<NavigationMenuLink
+											href={item.href}
+											key={`item-${item.label}-${i}`}
+											rel={external ? "noreferrer" : undefined}
+											target={external ? "_blank" : undefined}
+										>
+											{item.icon}
+											{item.label}
+										</NavigationMenuLink>
+									);
+								})}
 							</div>
 						</div>
 					</NavigationMenuContent>
 				</NavigationMenuItem>
 				<NavigationMenuLink asChild className="px-4">
-					<a className="rounded-md p-2 hover:bg-accent" href="#">
+					<Link className="rounded-md p-2 hover:bg-accent" href="/#pricing">
 						Pricing
-					</a>
+					</Link>
 				</NavigationMenuLink>
 			</NavigationMenuList>
 		</NavigationMenu>

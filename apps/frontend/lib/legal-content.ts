@@ -14,9 +14,7 @@ export type LegalDocument = {
 export const legalOperatorName = "RustLens" as const;
 export const legalEffectiveDate = "April 12, 2026" as const;
 export const legalContact = {
-	email: "legal@rustlens.example",
-	responseNote:
-		"Placeholder contact details are in use until RustLens publishes its final legal and support inbox.",
+	email: "contact@rustlens.com",
 } as const;
 
 export const termsOfService: LegalDocument = {
@@ -36,7 +34,7 @@ export const termsOfService: LegalDocument = {
 		{
 			title: "Accounts and credential security",
 			paragraphs: [
-				"Some RustLens features require an account secured through email and password authentication, and some features may optionally connect a Discord account. You are responsible for keeping your credentials secure, for controlling access to your account, and for all activity that occurs under your session.",
+				"Some RustLens features require an account secured through Discord authentication. You are responsible for keeping your Discord account secure, for controlling access to your account, and for all activity that occurs under your session.",
 				"You must provide accurate information when registering, linking accounts, or submitting Steam identifiers. You must promptly update information that becomes inaccurate and notify RustLens if you believe your account, guild configuration, or linked identities have been accessed without authorization.",
 			],
 			bullets: [
@@ -93,7 +91,75 @@ export const termsOfService: LegalDocument = {
 		{
 			title: "Contact",
 			paragraphs: [
-				`For questions about these Terms, contact ${legalOperatorName} at ${legalContact.email}. ${legalContact.responseNote}`,
+				`For questions about these Terms, contact ${legalOperatorName} at ${legalContact.email}.`,
+			],
+		},
+	],
+};
+
+export const refundPolicy: LegalDocument = {
+	title: "Refund Policy",
+	description:
+		"All sales are final. RustLens does not offer refunds, return windows, or trial-period reversals on paid plans, add-ons, or one-time purchases.",
+	summary:
+		"All purchases of RustLens paid plans, add-ons, and one-time items are final. RustLens does not provide a return window or refunds, except where required by applicable law.",
+	sections: [
+		{
+			title: "All sales are final",
+			paragraphs: [
+				"All purchases of paid RustLens products, including subscription plans, add-on features, and any one-time purchases, are final at the time the payment is completed. RustLens does not offer a return window, evaluation window, cooling-off period, or pro-rated refund for unused time on any plan.",
+				"By completing a purchase, you acknowledge that you have reviewed the product description and pricing and agree that the transaction is non-refundable.",
+			],
+		},
+		{
+			title: "No refunds for unused or partial periods",
+			paragraphs: [
+				"RustLens does not refund unused time on a subscription if you cancel mid-cycle, stop using the service, remove the bot from your guild, lose admin authority over a guild, or otherwise no longer want the paid features. Access to paid features remains available for the period that has already been paid for, and the subscription will not renew once cancellation takes effect.",
+			],
+			bullets: [
+				"No refunds for partially used billing cycles after cancellation.",
+				"No refunds for renewals that proceed automatically on the scheduled billing date.",
+				"No refunds for add-ons or one-time purchases once they have been delivered or activated.",
+				"No refunds based on changes in your guild size, moderation needs, or feature preferences.",
+			],
+		},
+		{
+			title: "Statutory rights",
+			paragraphs: [
+				"Where mandatory local consumer law grants you a non-waivable right to a refund, withdrawal, or cancellation that overrides this policy, RustLens will honor those statutory rights to the extent legally required. This policy does not attempt to limit any right that cannot be excluded by contract.",
+				"If you believe a non-waivable statutory right applies to your purchase, contact RustLens with the relevant details and RustLens will review the request under the applicable law.",
+			],
+		},
+		{
+			title: "Service failures and billing errors",
+			paragraphs: [
+				"If RustLens is unable to deliver a paid feature you purchased, or if you were charged in error (for example, a duplicate charge or a charge after a confirmed cancellation), contact RustLens. Confirmed billing errors and confirmed undelivered purchases will be corrected, typically by reversing the affected charge.",
+				"Routine outages, third-party platform incidents (such as Discord, Steam, or BattleMetrics interruptions), and temporary degradations that are resolved within a reasonable time do not qualify as a service failure for refund purposes.",
+			],
+		},
+		{
+			title: "Cancellations",
+			paragraphs: [
+				"You may cancel a subscription at any time to prevent future renewals. Cancellation stops further billing on the next renewal date but does not refund the current period. Paid features remain available until the end of the period that has already been paid for, after which the account returns to free-tier access.",
+			],
+		},
+		{
+			title: "Chargebacks and disputes",
+			paragraphs: [
+				"Please contact RustLens before filing a payment dispute or chargeback. Most billing questions can be resolved more quickly through direct support.",
+				"Filing a chargeback in circumstances that this policy does not cover may result in suspension of paid features and, where the dispute is determined to be invalid, may make future paid use of RustLens ineligible, except where required by law.",
+			],
+		},
+		{
+			title: "Changes to this Policy",
+			paragraphs: [
+				"RustLens may update this Refund Policy as paid features, billing arrangements, or legal requirements evolve. Updates take effect on the date noted on this page and apply to purchases made on or after that date. Purchases completed before an update remain governed by the policy that was in effect at the time of purchase.",
+			],
+		},
+		{
+			title: "Contact",
+			paragraphs: [
+				`For billing questions or statutory-rights claims, contact ${legalOperatorName} at ${legalContact.email}.`,
 			],
 		},
 	],
@@ -113,8 +179,7 @@ export const privacyPolicy: LegalDocument = {
 			],
 			bullets: [
 				"Account and profile data, such as display name, avatar URL, account roles, and login timestamps.",
-				"Email and authentication data, such as email addresses, password hashes, password reset tokens, email verification tokens, and session-related login events.",
-				"Optional Discord account data, such as Discord user ID, username, display name, avatar, profile email returned by Discord, and guild membership state.",
+				"Discord account data, such as Discord user ID, username, display name, avatar, and guild membership state.",
 				"Steam and BattleMetrics-related data, such as Steam IDs, BattleMetrics player IDs, BattleMetrics display names, avatars, soft or hard account links, and guild-scoped identity associations.",
 				"Guild and operational data, such as guild settings, admin role assignments, tracked-server selections, wipe-react records and schedules, and player presence state synced from tracked servers.",
 				"Security and audit data, such as auth events, administrative actions, request context needed for abuse prevention, and operational logging.",
@@ -123,7 +188,7 @@ export const privacyPolicy: LegalDocument = {
 		{
 			title: "Where the information comes from",
 			paragraphs: [
-				"RustLens collects information directly from you when you register, sign in, reset a password, verify an email address, link an account, or submit a Steam identifier. RustLens also receives information from Discord when optional OAuth or linked-account flows are used.",
+				"RustLens collects information directly from you when you sign in with Discord, link an account, or submit a Steam identifier. RustLens also receives information from Discord when OAuth or linked-account flows are used.",
 				"RustLens may derive or refresh identity and activity information from external services such as BattleMetrics and Steam, and from bot-observed guild activity such as membership changes, guild-scoped linking actions, wipe-react participation, and tracked-server coordination events.",
 			],
 		},
@@ -133,7 +198,7 @@ export const privacyPolicy: LegalDocument = {
 				"RustLens uses collected data to provide the service, maintain account security, support guild operations, and improve reliability of Discord and backend workflows.",
 			],
 			bullets: [
-				"Authenticate users, manage sessions, verify email ownership, and reset passwords.",
+				"Authenticate users via Discord and manage sessions.",
 				"Link or reconcile Discord, Steam, and BattleMetrics identities across user, guild, and bot workflows.",
 				"Support guild administration, tracked-server management, wipe-react coordination, nickname targeting, and online-summary features.",
 				"Operate, secure, debug, and audit the service, including abuse prevention and internal administrative review.",
@@ -176,7 +241,7 @@ export const privacyPolicy: LegalDocument = {
 		{
 			title: "Contact",
 			paragraphs: [
-				`For privacy questions or data requests, contact ${legalOperatorName} at ${legalContact.email}. ${legalContact.responseNote}`,
+				`For privacy questions or data requests, contact ${legalOperatorName} at ${legalContact.email}.`,
 			],
 		},
 	],

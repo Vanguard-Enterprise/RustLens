@@ -18,8 +18,9 @@ function DiscordIcon() {
 
 const navLinks = [
 	{ href: "/", label: "Home" },
-	{ href: "/terms", label: "Terms" },
+	{ href: "/terms-of-service", label: "Terms" },
 	{ href: "/privacy", label: "Privacy" },
+	{ href: "/refund-policy", label: "Refunds" },
 ];
 
 const socialLinks = [

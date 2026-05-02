@@ -4,6 +4,7 @@ import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { HeroSection } from "@/components/hero";
 import { LogosSection } from "@/components/logos-section";
+import { PricingSection } from "@/components/pricing-section";
 import { getCsrfToken } from "@/lib/csrf";
 import { getSession } from "@/lib/session";
 
@@ -27,6 +28,7 @@ export default async function Home() {
 				<HeroSection />
 				<LogosSection />
 				<FeatureSection />
+				<PricingSection />
 				<FaqsSection />
 			</main>
 			<Footer />
