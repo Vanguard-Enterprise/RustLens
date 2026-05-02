@@ -282,11 +282,8 @@ func TestListAdminGuilds_Pagination(t *testing.T) {
 	if len(page4.Items) != 0 {
 		t.Errorf("page4 items: want 0 (off the end), got %d", len(page4.Items))
 	}
-	// NOTE: The store uses COUNT(*) OVER () in the row, so total is 0 when no
-	// rows match the LIMIT/OFFSET window (off-the-end page). This is a known
-	// quirk of the current implementation.
-	if page4.Total != 0 {
-		t.Errorf("page4 total (off-the-end window quirk): want 0, got %d", page4.Total)
+	if page4.Total != 30 {
+		t.Errorf("page4 total: want 30, got %d", page4.Total)
 	}
 }
 

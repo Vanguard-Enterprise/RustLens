@@ -243,8 +243,9 @@ type ListAdminGuildsOpts struct {
 }
 
 // ListAdminGuilds returns one paginated page of bot_guilds rows joined with
-// guild_settings (configured flag) and guild_tracked_servers (count). Total is
-// the COUNT(*) of matched rows before LIMIT/OFFSET.
+// guild_settings (configured flag) and guild_tracked_servers (count). Total
+// is computed in a separate COUNT(*) query against the same WHERE clause so
+// off-the-end pages still report the correct total.
 func (p *PostgresStore) ListAdminGuilds(ctx context.Context, opts ListAdminGuildsOpts) ([]AdminGuildRow, int, error) {
 	page := opts.Page
 	if page < 1 {
@@ -256,13 +257,24 @@ func (p *PostgresStore) ListAdminGuilds(ctx context.Context, opts ListAdminGuild
 	}
 	offset := (page - 1) * pageSize
 
+	const whereClause = `
+		WHERE ($1 = ''
+		       OR bg.name ILIKE '%' || $1 || '%'
+		       OR bg.guild_id ILIKE $1 || '%'
+		       OR bg.owner_username ILIKE '%' || $1 || '%')
+	`
+
+	var total int
+	if err := p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM bot_guilds bg `+whereClause, opts.Q).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
 	rows, err := p.pool.Query(ctx, `
 		SELECT bg.guild_id, bg.name, bg.icon_hash,
 		       bg.owner_discord_id, bg.owner_username, bg.owner_global_name, bg.owner_avatar_hash,
 		       bg.approximate_member_count, bg.is_installed, bg.left_at,
 		       (gs.guild_id IS NOT NULL) AS is_configured,
-		       COALESCE(gts.cnt, 0)      AS tracked_server_count,
-		       COUNT(*) OVER ()          AS total
+		       COALESCE(gts.cnt, 0)      AS tracked_server_count
 		FROM bot_guilds bg
 		LEFT JOIN guild_settings gs ON gs.guild_id = bg.guild_id
 		LEFT JOIN (
@@ -270,10 +282,7 @@ func (p *PostgresStore) ListAdminGuilds(ctx context.Context, opts ListAdminGuild
 			FROM guild_tracked_servers
 			GROUP BY guild_id
 		) gts ON gts.guild_id = bg.guild_id
-		WHERE ($1 = ''
-		       OR bg.name ILIKE '%' || $1 || '%'
-		       OR bg.guild_id ILIKE $1 || '%'
-		       OR bg.owner_username ILIKE '%' || $1 || '%')
+		`+whereClause+`
 		ORDER BY bg.name ASC, bg.guild_id ASC
 		LIMIT $2 OFFSET $3
 	`, opts.Q, pageSize, offset)
@@ -283,19 +292,16 @@ func (p *PostgresStore) ListAdminGuilds(ctx context.Context, opts ListAdminGuild
 	defer rows.Close()
 
 	out := make([]AdminGuildRow, 0)
-	total := 0
 	for rows.Next() {
 		var r AdminGuildRow
-		var rowTotal int64
 		if err := rows.Scan(
 			&r.GuildID, &r.Name, &r.IconHash,
 			&r.OwnerDiscordID, &r.OwnerUsername, &r.OwnerGlobalName, &r.OwnerAvatarHash,
 			&r.ApproximateMemberCount, &r.IsInstalled, &r.LeftAt,
-			&r.IsConfigured, &r.TrackedServerCount, &rowTotal,
+			&r.IsConfigured, &r.TrackedServerCount,
 		); err != nil {
 			return nil, 0, err
 		}
-		total = int(rowTotal)
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
