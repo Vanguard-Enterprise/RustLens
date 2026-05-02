@@ -164,3 +164,186 @@ func TestListAdminUsers_FiltersAndPagination(t *testing.T) {
 		t.Errorf("bogus sort: want 400 got %d", code)
 	}
 }
+
+// --- ListAdminGuilds tests ---
+
+type listAdminGuildsResp struct {
+	Items    []adminGuildItem `json:"items"`
+	Total    int              `json:"total"`
+	Page     int              `json:"page"`
+	PageSize int              `json:"pageSize"`
+}
+
+func (ts *testHandlerServer) getGuilds(t *testing.T, path string) listAdminGuildsResp {
+	t.Helper()
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", path, nil)
+	ts.h.ListAdminGuilds(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("GET %s: status=%d body=%s", path, rr.Code, rr.Body.String())
+	}
+	var resp listAdminGuildsResp
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, rr.Body.String())
+	}
+	return resp
+}
+
+func wipeGuildTables(t *testing.T, ts *testHandlerServer) {
+	t.Helper()
+	if _, err := ts.pool.Exec(context.Background(), `
+		TRUNCATE bot_guilds, guild_settings, guild_tracked_servers, tracked_servers RESTART IDENTITY CASCADE
+	`); err != nil {
+		t.Fatalf("truncate guilds: %v", err)
+	}
+}
+
+func insertBotGuild(t *testing.T, ts *testHandlerServer, guildID, name, ownerUsername string) {
+	t.Helper()
+	if _, err := ts.pool.Exec(context.Background(), `
+		INSERT INTO bot_guilds (guild_id, name, owner_username, is_installed, installed_at, metadata_updated_at)
+		VALUES ($1, $2, $3, TRUE, NOW(), NOW())
+	`, guildID, name, ownerUsername); err != nil {
+		t.Fatalf("insert bot_guilds: %v", err)
+	}
+}
+
+func insertGuildSettings(t *testing.T, ts *testHandlerServer, guildID string) {
+	t.Helper()
+	if _, err := ts.pool.Exec(context.Background(), `
+		INSERT INTO guild_settings (guild_id) VALUES ($1)
+	`, guildID); err != nil {
+		t.Fatalf("insert guild_settings: %v", err)
+	}
+}
+
+func insertGuildTrackedServer(t *testing.T, ts *testHandlerServer, guildID, bmID string) {
+	t.Helper()
+	// guild_tracked_servers references tracked_servers.bm_id — insert a parent row first.
+	if _, err := ts.pool.Exec(context.Background(), `
+		INSERT INTO tracked_servers (bm_id, name) VALUES ($1, 'test') ON CONFLICT (bm_id) DO NOTHING
+	`, bmID); err != nil {
+		t.Fatalf("insert tracked_servers: %v", err)
+	}
+	if _, err := ts.pool.Exec(context.Background(), `
+		INSERT INTO guild_tracked_servers (guild_id, server_bm_id) VALUES ($1, $2)
+	`, guildID, bmID); err != nil {
+		t.Fatalf("insert guild_tracked_servers: %v", err)
+	}
+}
+
+func TestListAdminGuilds_Empty(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	wipeGuildTables(t, ts)
+
+	resp := ts.getGuilds(t, "/api/app/admin/guilds")
+	if resp.Total != 0 {
+		t.Errorf("total: want 0, got %d", resp.Total)
+	}
+	if len(resp.Items) != 0 {
+		t.Errorf("items: want 0, got %d", len(resp.Items))
+	}
+	if resp.Page != 1 {
+		t.Errorf("page: want 1, got %d", resp.Page)
+	}
+	if resp.PageSize != 20 {
+		t.Errorf("pageSize: want 20 default, got %d", resp.PageSize)
+	}
+}
+
+func TestListAdminGuilds_Pagination(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	wipeGuildTables(t, ts)
+
+	for i := 0; i < 30; i++ {
+		insertBotGuild(t, ts, fmt.Sprintf("100000000000000%03d", i), fmt.Sprintf("Guild %02d", i), "alice")
+	}
+
+	page1 := ts.getGuilds(t, "/api/app/admin/guilds?page=1&pageSize=10")
+	if page1.Total != 30 {
+		t.Errorf("page1 total: want 30, got %d", page1.Total)
+	}
+	if len(page1.Items) != 10 {
+		t.Errorf("page1 items: want 10, got %d", len(page1.Items))
+	}
+	if page1.Items[0].Name != "Guild 00" {
+		t.Errorf("page1[0]: want %q, got %q", "Guild 00", page1.Items[0].Name)
+	}
+
+	page2 := ts.getGuilds(t, "/api/app/admin/guilds?page=2&pageSize=10")
+	if len(page2.Items) != 10 {
+		t.Errorf("page2 items: want 10, got %d", len(page2.Items))
+	}
+	if page2.Items[0].Name != "Guild 10" {
+		t.Errorf("page2[0]: want %q, got %q", "Guild 10", page2.Items[0].Name)
+	}
+
+	page4 := ts.getGuilds(t, "/api/app/admin/guilds?page=4&pageSize=10")
+	if len(page4.Items) != 0 {
+		t.Errorf("page4 items: want 0 (off the end), got %d", len(page4.Items))
+	}
+	// NOTE: The store uses COUNT(*) OVER () in the row, so total is 0 when no
+	// rows match the LIMIT/OFFSET window (off-the-end page). This is a known
+	// quirk of the current implementation.
+	if page4.Total != 0 {
+		t.Errorf("page4 total (off-the-end window quirk): want 0, got %d", page4.Total)
+	}
+}
+
+func TestListAdminGuilds_Search(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	wipeGuildTables(t, ts)
+
+	insertBotGuild(t, ts, "111111111111111111", "Alpha", "alice")
+	insertBotGuild(t, ts, "222222222222222222", "Bravo", "bob")
+	insertBotGuild(t, ts, "333333333333333333", "Charlie", "carol")
+
+	r := ts.getGuilds(t, "/api/app/admin/guilds?q=brav")
+	if r.Total != 1 || r.Items[0].Name != "Bravo" {
+		t.Errorf("name search: want Bravo only, got total=%d items=%v", r.Total, r.Items)
+	}
+
+	r = ts.getGuilds(t, "/api/app/admin/guilds?q=22222")
+	if r.Total != 1 || r.Items[0].GuildID != "222222222222222222" {
+		t.Errorf("id search: want guild 222..., got total=%d items=%v", r.Total, r.Items)
+	}
+
+	r = ts.getGuilds(t, "/api/app/admin/guilds?q=carol")
+	if r.Total != 1 || r.Items[0].Name != "Charlie" {
+		t.Errorf("owner search: want Charlie, got total=%d items=%v", r.Total, r.Items)
+	}
+
+	r = ts.getGuilds(t, "/api/app/admin/guilds?q=zzz_no_match")
+	if r.Total != 0 || len(r.Items) != 0 {
+		t.Errorf("no match: want empty, got total=%d items=%v", r.Total, r.Items)
+	}
+}
+
+func TestListAdminGuilds_ConfiguredAndTrackedCount(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	wipeGuildTables(t, ts)
+
+	insertBotGuild(t, ts, "111111111111111111", "WithSettings", "alice")
+	insertBotGuild(t, ts, "222222222222222222", "Bare", "bob")
+
+	insertGuildSettings(t, ts, "111111111111111111")
+	insertGuildTrackedServer(t, ts, "111111111111111111", "bm-1")
+	insertGuildTrackedServer(t, ts, "111111111111111111", "bm-2")
+
+	resp := ts.getGuilds(t, "/api/app/admin/guilds")
+	if resp.Total != 2 {
+		t.Fatalf("total: want 2, got %d", resp.Total)
+	}
+
+	byID := map[string]adminGuildItem{}
+	for _, it := range resp.Items {
+		byID[it.GuildID] = it
+	}
+
+	if got := byID["111111111111111111"]; !got.IsConfigured || got.TrackedServerCount != 2 {
+		t.Errorf("WithSettings: want isConfigured=true count=2, got %+v", got)
+	}
+	if got := byID["222222222222222222"]; got.IsConfigured || got.TrackedServerCount != 0 {
+		t.Errorf("Bare: want isConfigured=false count=0, got %+v", got)
+	}
+}
