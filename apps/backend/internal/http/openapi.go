@@ -2081,14 +2081,37 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/app/admin/guilds": map[string]any{
 				"get": map[string]any{
 					"summary":     "List admin guilds",
-					"description": "Returns internal admin overview data for guild activity, linked members, and tracked servers.",
+					"description": "Returns paginated bot_guilds rows with name/icon/owner metadata, plus join-derived isConfigured (guild_settings) and trackedServerCount (guild_tracked_servers). Supports free-text search across name, guild_id prefix, and owner username.",
 					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "q",
+							"in":          "query",
+							"required":    false,
+							"description": "Substring/prefix search across bot_guilds.name, bot_guilds.guild_id (prefix), and bot_guilds.owner_username.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "page",
+							"in":          "query",
+							"required":    false,
+							"description": "1-based page number. Default 1.",
+							"schema":      map[string]any{"type": "integer", "minimum": 1},
+						},
+						{
+							"name":        "pageSize",
+							"in":          "query",
+							"required":    false,
+							"description": "Page size, default 20, capped at 100.",
+							"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
+						},
+					},
 					"responses": map[string]any{
 						"200": map[string]any{
 							"description": "Admin guilds returned",
 							"content": map[string]any{
 								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/AdminGuildOverviewListResponse"},
+									"schema": map[string]any{"$ref": "#/components/schemas/AdminGuildListResponse"},
 								},
 							},
 						},
@@ -2991,26 +3014,41 @@ func buildOpenAPIDocument() map[string]any {
 					},
 					"required": []string{"items"},
 				},
-				"AdminGuildOverview": map[string]any{
+				"AdminGuildItem": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"guildId":        map[string]any{"type": "string"},
-						"activeMembers":  map[string]any{"type": "integer"},
-						"linkedMembers":  map[string]any{"type": "integer"},
-						"trackedServers": map[string]any{"type": "integer"},
-						"adminRoleId":    map[string]any{"type": "string"},
+						"guildId":                map[string]any{"type": "string"},
+						"name":                   map[string]any{"type": "string"},
+						"iconHash":               map[string]any{"type": "string", "nullable": true},
+						"ownerDiscordId":         map[string]any{"type": "string", "nullable": true},
+						"ownerUsername":          map[string]any{"type": "string", "nullable": true},
+						"ownerGlobalName":        map[string]any{"type": "string", "nullable": true},
+						"ownerAvatarHash":        map[string]any{"type": "string", "nullable": true},
+						"approximateMemberCount": map[string]any{"type": "integer", "nullable": true},
+						"isInstalled":            map[string]any{"type": "boolean"},
+						"leftAt":                 map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"isConfigured":           map[string]any{"type": "boolean"},
+						"trackedServerCount":     map[string]any{"type": "integer"},
 					},
-					"required": []string{"guildId", "activeMembers", "linkedMembers", "trackedServers", "adminRoleId"},
+					"required": []string{
+						"guildId", "name", "iconHash",
+						"ownerDiscordId", "ownerUsername", "ownerGlobalName", "ownerAvatarHash",
+						"approximateMemberCount", "isInstalled", "leftAt",
+						"isConfigured", "trackedServerCount",
+					},
 				},
-				"AdminGuildOverviewListResponse": map[string]any{
+				"AdminGuildListResponse": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
 						"items": map[string]any{
 							"type":  "array",
-							"items": map[string]any{"$ref": "#/components/schemas/AdminGuildOverview"},
+							"items": map[string]any{"$ref": "#/components/schemas/AdminGuildItem"},
 						},
+						"total":    map[string]any{"type": "integer"},
+						"page":     map[string]any{"type": "integer"},
+						"pageSize": map[string]any{"type": "integer"},
 					},
-					"required": []string{"items"},
+					"required": []string{"items", "total", "page", "pageSize"},
 				},
 				"AdminServerOverview": map[string]any{
 					"type": "object",
