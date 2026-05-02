@@ -89,6 +89,7 @@ apps/frontend/
     login/page.tsx                      # Sign-in entry: redirects to /api/auth/discord (OAuth start lives on the backend); renders an error/notice page only when redirected back with ?error= or ?notice=
     logout/route.ts                     # CSRF-protected POST that clears the session cookie
     admin/page.tsx                      # Internal ops dashboard guarded by app-user internal_admin role
+    admin/guilds/page.tsx               # Admin Discord/Guilds list (paginated bot_guilds with name+ID+owner search)
     dashboard/page.tsx                  # Authenticated user dashboard root
     dashboard/guilds/[guildId]/page.tsx # Per-guild authenticated dashboard view
     privacy/page.tsx                    # Public privacy-policy page
@@ -225,6 +226,7 @@ Key patterns:
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
 - Discord OAuth lives at `/api/auth/discord` (initiate) and `/api/auth/discord/callback` on the **backend**, served by `internal/oauth/discord/`. The callback creates the signed `rustlens_session` cookie shared with Next.js.
 - App-facing routes under `/api/app/*` are protected by an internal shared-secret header used only by Next.js server-side code. Session-authenticated `/api/app/*` routes additionally validate the signed frontend session token with `APP_SESSION_SECRET` and derive the actor from that session before resolving current-user/admin authorization through `app_users` roles. Admin RBAC routes are mounted under `/api/app/admin/*` and back the internal-admin dashboard (roles, users, guilds, servers, audit, action dispatcher, CSV export).
+- The admin `GET /api/app/admin/guilds` route reads paginated rows from `bot_guilds` LEFT JOIN `guild_settings` LEFT JOIN `guild_tracked_servers` (count). Query params: `q` (substring on `name`/`owner_username`, prefix on `guild_id`), `page` (default 1), `pageSize` (default 20, capped at 100). Response is `{items, total, page, pageSize}`.
 - Password-auth routes (`/api/app/auth/register|login|password/reset/*|email/verify/*`) exist on the backend, but no frontend page calls them today — the live login is Discord-only.
 - The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, polling three `tracked_servers.high_frequency=true` servers followed by one non-high-frequency server when both subsets exist. It updates `tracked_servers.last_polled_at` / `last_poll_error` and syncs per-server player presence into `player_states`.
 
