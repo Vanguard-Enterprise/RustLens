@@ -83,86 +83,116 @@ Production routing is handled outside this repository.
 ```
 apps/frontend/
   app/
-    layout.tsx           # App Router root layout + metadata
-    auth/                # Browser auth routes: explicit email/password sign-in, register, reset, verify, plus optional Discord OAuth start/callback
-    admin/               # Internal RustLens ops dashboard routes guarded by app-user internal_admin role
-    dashboard/           # Authenticated user dashboard routes built on the Efferd app shell
-    logout/route.ts      # Session clear + redirect route
-    not-found.tsx        # App Router 404 route that reuses the landing shell and RustLens-themed empty state
-    page.tsx             # Public landing page only
-    login/page.tsx       # Public login route using the RustLens-adapted auth block with email/password first and optional Discord entry
-    sign-in/page.tsx     # Legacy alias that redirects to /login
-    signin/page.tsx      # Legacy alias that redirects to /login
-    signup/page.tsx      # Legacy alias that redirects to /login
-    sign-up/page.tsx     # Legacy alias that redirects to /login
-    privacy/page.tsx     # Public privacy-policy route for the entire RustLens service
-    terms/page.tsx       # Public terms-of-service route for the entire RustLens service
-    globals.css          # Tailwind v4 theme tokens and global styling
+    layout.tsx                          # App Router root layout + metadata
+    page.tsx                            # Public landing page
+    not-found.tsx                       # App Router 404 route that reuses the landing shell
+    login/page.tsx                      # Sign-in entry: redirects to /api/auth/discord (OAuth start lives on the backend); renders an error/notice page only when redirected back with ?error= or ?notice=
+    logout/route.ts                     # CSRF-protected POST that clears the session cookie
+    admin/page.tsx                      # Internal ops dashboard guarded by app-user internal_admin role
+    dashboard/page.tsx                  # Authenticated user dashboard root
+    dashboard/guilds/[guildId]/page.tsx # Per-guild authenticated dashboard view
+    privacy/page.tsx                    # Public privacy-policy page
+    terms-of-service/page.tsx           # Public terms-of-service page
+    refund-policy/page.tsx              # Public refund-policy page
+    globals.css                         # Tailwind v4 theme tokens and global styling
   components/
-    app-shell.tsx        # Efferd app-shell-4-based authenticated shell shared by /dashboard and /admin
-    app-sidebar.tsx      # Route-aware RustLens sidebar navigation for dashboard/admin
-    app-header.tsx       # Authenticated shell header with breadcrumbs and session-aware user menu
-    auth-page.tsx        # RustLens sign-in panel adapted from the @efferd/auth-3 block with explicit sign-in vs create-account email flows and optional Discord action
-    faqs-section.tsx     # FAQ accordion adapted from the @efferd/faqs-1 block with RustLens-specific questions
-    feature-section.tsx  # Feature strip adapted from the @efferd/features-1 block using landingFeatures content
-    header.tsx           # Sticky top navigation with docs / add-bot CTAs
-    hero.tsx             # RustLens launch hero based on the @efferd/hero-3 block
-    logos-section.tsx    # System/integration strip for the landing page
-    not-found.tsx        # RustLens-themed 404 state adapted from the @efferd/not-found-2 block
-    footer.tsx           # RustLens footer adapted from the @efferd/footer-1 block with repo/docs links
-    legal-page.tsx       # Shared long-form legal page shell used by /terms and /privacy
-    ui/                  # shadcn/ui primitives added as source
+    app-shell.tsx              # Authenticated shell wrapping shadcn SidebarProvider/SidebarInset
+    app-sidebar.tsx            # Route-aware RustLens sidebar navigation for dashboard/admin
+    dashboard-app-sidebar.tsx  # Dashboard-specific sidebar variant
+    app-header.tsx             # Authenticated shell header with breadcrumbs and session-aware user menu
+    app-breadcrumbs.tsx        # Breadcrumb derivation for the authenticated header
+    site-header.tsx            # Public-page top navigation
+    header.tsx                 # Sticky top navigation with docs / add-bot CTAs
+    hero.tsx                   # Landing hero
+    feature-section.tsx        # Landing feature strip
+    faqs-section.tsx           # Landing FAQ accordion
+    logos-section.tsx / logo-cloud.tsx  # Integration logo strip
+    pricing-section.tsx        # Landing pricing block
+    footer.tsx                 # Footer with FaDiscord (react-icons) social link
+    auth-page.tsx              # "Sign in with Discord" panel (single OAuth button, no email/password UI)
+    auth-divider.tsx           # Divider used inside the auth panel
+    not-found.tsx              # 404 panel reused by app/not-found.tsx
+    legal-page.tsx / legal-toc.tsx       # Shared long-form legal page shell + TOC used by /privacy, /terms-of-service, /refund-policy
+    chart-area-interactive.tsx, data-table.tsx, section-cards.tsx, latest-change.tsx, frequency-toggle.tsx, dashboard-skeleton.tsx  # Dashboard widgets
+    nav-main.tsx, nav-secondary.tsx, nav-documents.tsx, nav-group.tsx, nav-links.tsx, nav-user.tsx, sidebar-nav-user.tsx, mobile-nav.tsx, desktop-nav.tsx, custom-sidebar-trigger.tsx  # Navigation primitives
+    logo.tsx                   # Brand logo component
+    ui/                        # shadcn/ui primitives added as source
   lib/
-    legal-content.ts     # Shared terms/privacy copy, effective date, and legal contact placeholders
-    rustlens-api.ts      # Server-side frontend client for app-auth and /api/app aggregate/admin routes
-    session.ts           # Signed Next.js session cookie helpers for browser auth
+    rustlens-api.ts      # Server-side client for /api/app aggregate, admin, and (still-exposed) password-auth backend routes
+    session.ts           # Signed Next.js `rustlens_session` cookie helpers (14-day TTL)
+    csrf.ts              # Double-submit CSRF token helper used by the Discord OAuth start link and /logout POST
+    rate-limit.ts        # Redis-backed rate limiter (used by auth-related routes)
+    discord-cdn.ts       # Discord avatar/CDN URL helpers
+    app-origin.ts        # APP_ORIGIN resolution
+    relative-time.ts     # Time formatting utility
+    legal-content.ts     # Shared privacy/terms/refund copy and legal contact placeholders
     site-content.ts      # Landing-page content model used by the page, FAQ section, and tests
   Dockerfile             # Frontend image for GHCR publish workflow
 ```
 
 Key patterns:
 
-- The frontend now has three surfaces: public marketing/auth routes, authenticated user routes under `/dashboard`, and internal ops routes under `/admin`.
-- Browser auth is **Next.js-owned** using a signed session cookie. `APP_SESSION_SECRET` is required; there is no insecure fallback. Email + password is the primary login, with explicit sign-in vs registration selection in the frontend, password reset and email verification flows, and Redis-backed shared rate limiting on the public auth route handlers. Discord OAuth is optional and used for account linking or convenience login when configured.
-- Browser auth form posts now use a shared double-submit CSRF token helper on the Next.js side for `/auth/*` and `/logout` POST routes, alongside the signed session cookie.
-- Email verification no longer creates a browser session by itself; verification links redirect back to `/login` with a success notice after the token is consumed.
-- The frontend calls **app-facing backend routes** under `/api/app/*` with a shared internal app secret from server-side code only. Authenticated `/api/app/*` routes also receive the signed `rustlens_session` token via a server-only header so the backend derives the acting user from the validated session instead of trusting a caller-supplied user ID. The browser never calls these routes directly and the frontend does **not** call the bot JWT routes from the browser.
-- The authenticated shell is based on `@efferd/app-shell-4` installed through the shadcn CLI and adapted to RustLens navigation/state.
-- Next.js still runs as a **hybrid Node server** in dev/prod rather than a static export.
+- The frontend has three surfaces: public marketing/legal routes, authenticated user routes under `/dashboard`, and internal ops routes under `/admin`.
+- **Login is Discord OAuth only.** `/login` redirects unauthenticated visitors to `/api/auth/discord` (handled by the Go backend, not Next.js). The signed `rustlens_session` cookie is set by the backend on successful callback; `APP_SESSION_SECRET` is required and shared with the backend. The backend still exposes password-auth endpoints (`/api/app/auth/register`, `/login`, `/password/reset/*`, `/email/verify/*`) and `lib/rustlens-api.ts` has client helpers for them, but **no frontend page invokes those flows today** — there is no email/password form, password reset UI, or verification UI.
+- Auth-related browser actions (the Discord OAuth start link and `/logout` POST) use a double-submit CSRF token via `lib/csrf.ts`. Redis-backed rate limiting (`lib/rate-limit.ts`) is wired in for auth-related handlers.
+- The frontend calls **app-facing backend routes** under `/api/app/*` with a shared internal app secret (`APP_API_INTERNAL_SECRET`) from server-side code only. Authenticated `/api/app/*` routes also receive the signed `rustlens_session` token via a server-only header so the backend derives the acting user from the validated session instead of trusting a caller-supplied user ID. The browser never calls these routes directly and the frontend does **not** call the bot JWT routes from the browser.
+- The authenticated shell wraps shadcn `SidebarProvider`/`SidebarInset` primitives (no `@efferd/*` dependency).
+- Next.js runs as a **hybrid Node server** in dev/prod rather than a static export.
 
 ### Backend (Go)
 
 ```
 apps/backend/
-  cmd/server/main.go        # Entrypoint: config -> stores -> service -> router -> server
+  cmd/server/main.go         # Entrypoint: config -> stores -> service -> router -> server
   internal/
-    config/config.go         # Env-based config with defaults (PORT, POSTGRES_URL, REDIS_URL, etc.)
+    config/config.go         # Env-based config with defaults
     http/
-      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/setup/* incl. guild settings, steam/discord linking, player state lookups, guild online summaries, and nickname targets
-      handlers.go            # Handler implementations incl. guild-settings, tracked BattleMetrics servers, player states, player profile aggregation, guild online summaries, nickname-target lookups, and wipe-react persistence/history endpoints
-      app_handlers.go        # App-auth and /api/app aggregate/admin handlers for browser sessions and internal ops
+      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/owner/*, /api/internal/bot/setup/*, /api/auth/discord (+ /callback), /api/app/* (auth, me, admin)
+      handlers.go            # Bot-internal handler implementations
+      app_handlers.go        # /api/app aggregate, password-auth, and admin handlers
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
-    auth/jwt.go              # JWT signing/validation for bot service auth
+    auth/jwt.go              # JWT signing/validation for bot service auth + app session token
+    appauth/                 # App-session auth: handler, repo, middleware, Discord-OAuth-driven session creation
+    oauth/discord/           # Discord OAuth client + initiate/callback handlers backing /api/auth/discord
+    admin/                   # Admin RBAC: roles, permissions, audit, action dispatcher
     battlemetrics/
-      client.go              # BattleMetrics HTTP client for tracked server polling
+      client.go              # BattleMetrics HTTP client (unauthenticated public API; routed through outbound proxy provider)
       poller.go              # Background rolling poller for tracked servers
+    bmmatch/                 # External Steam<->BM resolution service client (BM_MATCH_URL + BM_MATCH_TOKEN, direct/never proxied)
+    platformsync/            # platformsync.io client for cross-platform identity discovery
+    outboundhttp/            # Outbound HTTP provider with proxy rotation, per-proxy health window, and auto-disable
+    proxycrypto/             # AES-GCM encrypt/decrypt for outbound_proxies storage
+    steamapi/                # Steam Web API client (profile, owned games, ban lookups)
+    cleanup/                 # Background data-cleanup service
+    wipereactscheduler/      # Background scheduler enqueuing due wipe-react schedule posts
+    users/                   # App-user session helpers
     shards/
       service.go             # Shard coordination business logic
       allocator.go           # Shard assignment algorithm
       heartbeat.go           # Heartbeat/lease management
     store/
-      postgres.go            # pgx pool + schema auto-migration (bot_worker_events, guild_settings, tracked_servers, outbound_proxies, player_states, wipe_reacts, user_guilds, user_bans, track_groups, track_group_members)
+      postgres.go            # pgx pool + EnsureSchema (auto-migrates all tables listed under "Schema" below)
       app_users.go           # App-user, connected-account, aggregate, and admin listing store logic
       app_password_auth.go   # Password credential, reset-token, and email-verification store logic
-      wipe_reacts.go         # Persisted wipe react CRUD + reaction mutation helpers
-      redis.go               # go-redis client for heartbeats and shard leases
-      steam.go               # Steam account & Discord link CRUD (upsert, lookup, profile metadata refresh, bulk hard links, soft link delete, guild nickname target joins)
-      tracked_servers.go     # Global tracked BattleMetrics server CRUD
-      outbound_proxies.go    # Encrypted outbound proxy CRUD for owner-managed BattleMetrics proxy rotation
+      admin/audit             # Admin RBAC + audit-event store logic
+      wipe_reacts.go          # Persisted wipe react CRUD + reaction mutation helpers
+      wipe_react_schedules.go # Recurring wipe-react schedule CRUD
+      wipe_react_schedule_posts.go # Backend-owned schedule post queue (claim/complete/release)
+      redis.go               # go-redis client for heartbeats, leases, and notification claim keys
+      steam.go                # Steam account & Discord link CRUD (upsert, lookup, profile metadata refresh, bulk hard links, soft link delete, guild nickname target joins)
+      tracked_servers.go      # Global tracked BattleMetrics server CRUD
+      outbound_proxies.go     # Encrypted outbound proxy CRUD for owner-managed BattleMetrics proxy rotation
       guild_tracked_servers.go # Guild-specific selection of owner-managed tracked servers
-      player_states.go       # Per-server BattleMetrics player presence state sync and lookup
-      online_summary.go      # Guild online summary join across guild links, global tracked servers, steam accounts, and player_states
-      user_bans.go           # Owner-managed per-discord-user ban categories (used by the bot `/ban` command)
+      player_states.go        # Per-server BattleMetrics player presence state sync and lookup
+      online_summary.go       # Guild online summary join across guild links, global tracked servers, steam accounts, and player_states
+      tracked_log_events.go   # Snapshot source for guild tracked-server log events
+      track_groups.go         # /track-groups + members + online state + notification claims
+      track_analytics.go      # Cached BM-session analytics for /track and offline analytics
+      bot_guilds.go           # Bot guild metadata sync (upsert/leave/reconcile)
+      platform_sync.go        # platform_sync_state CRUD for the 14-day platformsync TTL
+      owner_stats.go          # Aggregated stats for /api/internal/bot/owner/stats
+      cleanup.go              # Background-cleanup queries
+      user_bans.go            # Owner-managed per-discord-user ban categories (used by the bot `/ban` command)
 ```
 
 Key patterns:
@@ -178,7 +208,7 @@ Key patterns:
 - Bot tracked-server routes (`/api/internal/bot/setup/tracked-servers*`) are JWT-protected and persist the bot's global BattleMetrics server list in Postgres.
 - Bot player-state routes (`/api/internal/bot/setup/player-states/*`) are JWT-protected and expose BattleMetrics presence state by server and by player. The search route (`/player-states/servers/{serverID}/search?q=&limit=&includeOffline=`) does an `ILIKE '%q%'` match on `steam_account_cache.bm_name` joined with `steam_accounts` + `player_states` for one tracked server, returns online rows by default, optionally includes rows where `player_states.offline_since` is within the last 24 hours when `includeOffline=true`, is capped at `limit` (default 20, max 20), and is the source for the bot `/search` command. When `/search` fans out profile refreshes after the DB search returns, the bot now runs them with concurrency equal to the configured proxy count when `PROXY_ENABLED=true`, otherwise sequentially.
 - Bot steam profile route (`/api/internal/bot/setup/steam/{steamID}/profile`) is JWT-protected and lazily refreshes `steam_account_cache` after a 24-hour TTL. Fresh cache entries skip Steam/BattleMetrics API calls; stale cache entries are returned if refresh fails unless BattleMetrics responds with `404 Unknown player`, in which case the route returns `404 battlemetrics profile private`. The route caches BattleMetrics name, Steam avatar, first-seen timestamp, total BattleMetrics hours across all returned servers, tracked-server category buckets, Steam Rust playtime, and the count of distinct BattleMetrics servers played (`bm_servers_played`). The response also includes optional current/last tracked-server status derived from `player_states` joined to `tracked_servers` for the profile embed.
-- Bot steam account lookup routes (`/api/internal/bot/setup/steam/{steamID}` and `/api/internal/bot/setup/steam/by-bm/{bmID}`) now backfill missing `steam_accounts` rows through direct, authorized BattleMetrics requests with `BATTLEMETRICS_API_KEY` and immediately warm `steam_account_cache` from the returned profile data. These fallback requests are sent directly and are never proxied.
+- Bot steam account lookup routes (`/api/internal/bot/setup/steam/{steamID}` and `/api/internal/bot/setup/steam/by-bm/{bmID}`) backfill missing `steam_accounts` rows by resolving Steam<->BM through the external `bmmatch` service (`internal/bmmatch/`, configured via `BM_MATCH_URL` + `BM_MATCH_TOKEN`) and immediately warm `steam_account_cache` from the resolved profile data. These fallback requests are sent directly and are never proxied. When `bmmatch` is unconfigured, backfill resolvers return `ErrSteamAccountNotFound` rather than failing the parent request.
 - Bot link lookup routes suppress Discord IDs present in `hidden_discord_link_identities`, hiding the user's Steam links when looking up by Discord ID and hiding that Discord account when looking up any associated Steam ID without deleting link rows.
 - Bot steam-account count route (`/api/internal/bot/setup/steam-accounts/count`) is JWT-protected and returns the current `steam_accounts` row count so shards can keep the bot presence text in sync with tracked users.
 - Bot steam analytics route (`/api/internal/bot/setup/steam/{steamID}/analytics`) is JWT-protected and uses the same 24-hour `steam_account_cache.updated_at` TTL and refresh path as the steam profile route. Profile and analytics share the same cached Steam/BattleMetrics data, including name-gap data used by both the player risk factor and analytics gap display. If Steam summary reports `communityvisibilitystate = 1`, RustLens skips `GetOwnedGames` and leaves game totals/playtime private. The response includes top 5 owned Steam games by playtime with `totalGames` (null if the Steam profile is private), top 5 BattleMetrics servers by playtime with `totalServers`, and `gaps` between consecutive name identifier periods longer than ~1 month (each as `fromUnix`/`toUnix`).
@@ -193,7 +223,9 @@ Key patterns:
 - Bot website-admin lookup route (`/api/internal/bot/setup/discord/{discordID}/is-website-admin`) is JWT-protected and returns `{ "isAdmin": bool }`. A Discord user is a website admin when their `user_connected_accounts` row (`provider='discord'`) maps to an `app_users.id` that has at least one row in `admin_user_roles`. Used by `/search` and the `/player` links button / discord-user lookup.
 - Bot platform-sync route (`POST /api/internal/bot/setup/platform-sync/{platform}/{id}` with `platform` of `steam` or `discord`) is JWT-protected and runs an external `platformsync.io` lookup if the last sync for that `(platform, id)` pair in `platform_sync_state` is older than 14 days. The upstream URL is hard-coded to `https://link.platformsync.io/api.php`; the bearer-style token comes from `PLATFORMSYNC_TOKEN`. Requests are sent **directly** (never proxied). Every `(steam_id, discord_id)` tuple discovered — including all `previous_*_ids` — is upserted as a hard link in `steam_discord_links` with `source='platformsync'`. Only the queried side is recorded in `platform_sync_state`, so a later sync of one of the discovered IDs still hits the upstream.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
-- App-facing routes under `/api/app/*` are protected by an internal shared-secret header used only by Next.js server-side code. Session-authenticated `/api/app/*` routes also validate the signed frontend session token with `APP_SESSION_SECRET` and derive the actor from that session before resolving current-user/admin authorization through `app_users` roles. The backend no longer exposes an email-status lookup route for browser auth.
+- Discord OAuth lives at `/api/auth/discord` (initiate) and `/api/auth/discord/callback` on the **backend**, served by `internal/oauth/discord/`. The callback creates the signed `rustlens_session` cookie shared with Next.js.
+- App-facing routes under `/api/app/*` are protected by an internal shared-secret header used only by Next.js server-side code. Session-authenticated `/api/app/*` routes additionally validate the signed frontend session token with `APP_SESSION_SECRET` and derive the actor from that session before resolving current-user/admin authorization through `app_users` roles. Admin RBAC routes are mounted under `/api/app/admin/*` and back the internal-admin dashboard (roles, users, guilds, servers, audit, action dispatcher, CSV export).
+- Password-auth routes (`/api/app/auth/register|login|password/reset/*|email/verify/*`) exist on the backend, but no frontend page calls them today — the live login is Discord-only.
 - The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, polling three `tracked_servers.high_frequency=true` servers followed by one non-high-frequency server when both subsets exist. It updates `tracked_servers.last_polled_at` / `last_poll_error` and syncs per-server player presence into `player_states`.
 
 **App users & browser auth**
@@ -238,7 +270,7 @@ apps/bot/src/
   guild-member-cache.ts # Shared in-memory expiring guild member snapshot cache for commands that need broad guild membership scans; refreshes only on demand after expiry
   shards.ts             # Shard reconciliation logic
   shard-runtime.ts      # discord.js ShardingManager wrapper
-  shard-worker.ts       # Individual shard worker process + interaction handling (requires GuildMembers + GuildVoiceStates intents) and refreshes bot presence to "tracking {users} users" from the steam_accounts row count
+  shard-worker.ts       # Individual shard worker process + interaction handling (requires Guilds + GuildMembers + GuildVoiceStates intents) and refreshes bot presence to "tracking {users} users" from the steam_accounts row count
   admin-command.ts      # /admin setsteam|removesteam registration + guild-link admin flow
   settings-command.ts   # /settings embed + select-menu/modal flow for guild settings
   bind-command.ts       # /bind fullkit/turret/rocket/c4 modal registration + submit handling
@@ -263,10 +295,24 @@ apps/bot/src/
   create-command.ts     # /create invite {role} {required_role?} — guild-admin command that posts a public clan-invite request embed with a button; clicking the button validates the user's guild Steam link (and optional required role) and posts a `/clan invite {steamId}` message that pings the configured role + requester, with an admin-only Accept button that deletes the message and DMs the requester a "Clan Invite Pending" embed
   ban-check.ts          # In-memory TTL cache of per-user ban categories plus `enforceBan` / `enforceBanForAutocomplete` helpers used by the interaction dispatcher to short-circuit banned users with a red #d31239 "Error — You have been banned" embed
   website-admin.ts      # In-memory TTL cache + helper that asks the backend whether a Discord user is a website admin (any row in `admin_user_roles`); used by `/search` and the `/player` links button / discord-user lookup
+  manage-command.ts     # /manage — owner-only management surface in the control guild (proxies, etc.) gated by `BOT_OWNER_DISCORD_IDS`
+  owner-command.ts      # Shared owner-command scaffolding consumed by /manage and /server
+  owner-guard.ts        # Runtime owner-Discord-ID guard for owner-only commands
+  dm-limit.ts           # Caps `/announce` and `/create invite` DMs in large guilds (`DM_GUILD_MEMBER_LIMIT`)
+  bot-guilds.ts         # Bot-side sync of `bot_guilds` table on join/leave/reconcile
+  guild-settings.ts     # Shared guild-settings fetch/cache helper
+  shard-stats.ts        # Shard-side stats reporting helper
+  tracked-server-logs.ts # Polls `/tracked-server-log-events` and posts join/leave embeds to the configured log channel
+  track-analytics-chart.ts # PNG renderer for the weekday/hour heatmap + hourly bar chart on /track Analytics and /analyze offline
+  next-best-offline.ts  # Pure logic for picking the lowest-avg-online 2-hour window from analytics data
+  bm-input.ts / steam-input.ts # Identifier parsers (Steam ID, profile URLs, BM ID)
+  embed-paginator.ts    # ◀️▶️ pagination fallback when an embed exceeds Discord limits
+  proxy-aware-parallelism.ts # Concurrency helper that scales with proxy count when PROXY_ENABLED
+  shared.ts             # Shared bot helpers
 ```
 
 Flow: worker registers with backend -> polls `/assignments` -> reconciles local discord.js shards -> heartbeats leases -> releases on shutdown. Auth via self-signed JWT using `BOT_SERVICE_JWT_SECRET`.
-Command flow: shard `0` registers `/settings`, `/setsteam`, `/player`, `/checkgamebans`, `/wipereact ...`, `/bind ...`, `/create ...`, `/summon`, `/announce`, `/online`, `/nickname`, `/compare`, `/view`, `/server`, `/ban`, `/track`, and `/admin ...` at startup. `/settings` is a guild-administrator-only command that renders an ephemeral settings embed with a select menu for configuring wipe-react logs, linking logs, tracked-server logs, the tracked-users category (parent for `/track` group channels), the admin role, and the guild's selected tracked servers. Guild tracked servers are chosen from the owner-managed global `/server` list entries that have `Include in guild settings?` enabled and are persisted separately from guild settings. Turning that toggle off later removes the server from every guild's selected tracked-server list. `/setsteam {steam_id}` is a public guild command that accepts either a 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` or `steamcommunity.com/id/...` URL, resolves vanity URLs through the backend with `STEAM_API_KEY`, then creates a soft link in both the global `steam_discord_links` table and the guild-scoped `guild_steam_discord_links` table; if the user already has a guild Steam link, RustLens replies with an error embed instructing them to contact an administrator. When Linking Logs is configured, successful `/setsteam` calls emit an embed containing the Steam ID, optional BattleMetrics ID, and Discord user mention. `/player {identifier?} {discord_user?}` is a **global** command (usable in any guild or DM) where `identifier` accepts a 17-digit Steam ID, a supported `steamcommunity.com/profiles/...` or `steamcommunity.com/id/...` URL, or a BattleMetrics ID and looks up the matching `steam_accounts` row directly — no guild-link check — then renders the same player profile card as `/view user` using the backend steam-profile endpoint. The optional `discord_user` option is **website-admin-only** and renders a `Links - {discord_name}` embed instead, listing the Discord user's strong (`hard`) and soft Steam links from `steam_discord_links`; soft entries that also appear as strong are dropped, and missing `bm_id`s are filled in via the same BattleMetrics fallback `/player` uses. Before rendering the embed, the bot calls the backend platform-sync route for that Discord ID, which triggers a 14-day-stale `platformsync.io` lookup that upserts any discovered Steam IDs (including previous IDs) as hard links. If the `steam_accounts` lookup misses for a Steam ID or BattleMetrics ID, the backend now performs a direct, authorized BattleMetrics lookup, persists the recovered Steam/BM link, and warms the profile cache before replying. If the stored `bm_id` refresh returns BattleMetrics `404 Unknown player`, `/player` now replies with an `Error` embed whose description is `BM profile private` instead of rendering the normal player card. The 🔗 links button on the `/player` and `/search` profile embeds renders a `Links - {bm_name}` embed listing Discord users linked to the Steam ID; non-website-admins only see the strong-links section, website admins also see the soft-links section. Before rendering the embed, the bot calls the backend platform-sync route for that Steam ID — the backend triggers an external `platformsync.io` lookup if the last sync for that Steam ID is older than 14 days, upserts any discovered Discord IDs (including previous IDs) as hard links, and the resulting embed reflects the freshly-upserted links. `/view user` accepts the same Steam inputs for its `identifier` field in addition to BattleMetrics IDs and Discord identifiers, resolving vanity URLs live through the backend without separate caching. `/checkgamebans` allows either Discord Administrator or the configured admin role, scans all guild-linked Steam IDs through the backend Steam ban endpoint, reuses cached results newer than 6 hours, ignores VAC-only bans, and posts a `Gamebans < 90 days` embed showing only game bans newer than 90 days. `/view` remains guild-scoped; `/player` is intentionally not. The card uses `steam_accounts.bm_id`, reads cached profile display/hour data from the backend steam-profile endpoint, sums total BattleMetrics playtime from all servers returned by BattleMetrics, sums category buckets from globally tracked `/server` entries, fetches Steam-owned Rust playtime directly, and includes a Risk Factor field composed of three factors (Steam→BM hour gap, servers played, BM hours) each computed against a separate formula. The card includes an analytics button (📈) that posts an ephemeral embed via the backend analytics endpoint showing top owned games, top played servers, and multi-month activity gaps from BattleMetrics name-change history, plus a links button (🔗) placeholder. `/view user` uses the same backend profile card flow, while `/view all` and `/view nosteam` keep their existing guild-admin-only summary behavior. `/admin setsteam {user} {steam_id}` and `/admin removesteam {user}` are protected by either Discord Administrator or the configured admin role and manage guild-scoped Steam links for other users; they never delete existing rows from the global `steam_discord_links` table, and `/admin setsteam` ensures a global soft link exists before replacing the guild link. `/online` is a public guild command that renders one or more non-ephemeral RustLens embeds grouping currently online linked users by tracked BattleMetrics server selected for that guild; if the embed limits are reached, follow-up embeds use the title `Online summary cont.`. `/nickname` allows either Discord Administrator or the configured admin role, reads one guild-scoped Steam link per Discord user from `/api/internal/bot/setup/guilds/{guildID}/nickname-targets`, and attempts to set each member nickname to `{discord nickname} - {bm_name}` while counting missing `bm_id` / `bm_name` entries and Discord edit failures as failed. Commands that need full-guild member scans must use `apps/bot/src/guild-member-cache.ts` instead of calling `guild.members.fetch()` directly; the cache is in-memory, shared within the bot process, only refreshes on demand when expired, and deduplicates concurrent refreshes per guild to reduce `Request Guild Members` rate limits. `/compare {server?} {wipereact?}` is administrator-only, autocompletes tracked servers from global `tracked_servers`, autocompletes past guild wipe reacts by title/date, defaults to the most recently passed wipe react when no options are given, compares a wipe react against the invoker's current voice channel or the full guild member list when the invoker is not in voice, compares a server against the invoker's current voice channel, and compares the selected wipe react against the selected server when both options are provided. All comparisons ignore members or guild links that do not resolve through `guild_steam_discord_links -> steam_accounts.bm_id` where BattleMetrics player resolution is required. `/transfer` only creates guild-scoped links for users who are currently in the guild, skipping missing members from the imported embed data. Guild-scoped links are also removed automatically when a user leaves the guild. `/ban {user}` is owner-guild-only, registered only in `BOT_OWNER_GUILD_ID` and gated at runtime by `BOT_OWNER_DISCORD_IDS`. It opens a modal with six feature-category checkboxes (Setup And Configuration, Steam Linking And Identity, Player And Account Lookup, Activity Presence And Checks, Guild Coordination And Utility, Other) pre-filled with the user's current restrictions; submitting PUTs the selection to `/api/internal/bot/setup/bans/{discordID}` (empty selection deletes the ban row). The shard worker's `interactionCreate` dispatcher maps each incoming `(commandName, subcommand)` — and component `customId` prefixes for modals, buttons, and string selects — to a ban category via `apps/bot/src/ban-categories.ts` and calls `enforceBan` (30s TTL per-shard cache) from `apps/bot/src/ban-check.ts`. Banned users receive an ephemeral red `#d31239` embed titled `Error` with description `You have been banned`; the `/ban` command itself is always exempt so owners can never lock themselves out. `/server add`, `/server edit`, `/server remove`, and `/server list` are owner-guild-only commands registered only in `BOT_OWNER_GUILD_ID`; runtime access is restricted to the comma-separated Discord ID list in `BOT_OWNER_DISCORD_IDS`. `/server add` and `/server edit` open the same modal with server name, BattleMetrics ID, an `Include in guild settings?` toggle, and category checkboxes for `Vitality`, `Atlas`, `Vital`, `Modded`, `Official`, and `Build`. `/server edit` and `/server remove` use autocomplete-backed tracked-server selection instead of manual BM ID entry, and `/server list` shows the global tracked server registry with stored categories and poll status. `/summon {scope}`, `/announce {scope} {message}`, `/wipereact`, `/bind massinvite`, and `/create invite` allow either Discord Administrator or the configured admin role. `/bind` is `GuildInstall`-only (not user-installable) so subcommands like `/bind massinvite` cannot be invoked outside guilds where the bot is installed. `/wipereact` uses in-command autocomplete for selecting active wipe reacts on `/wipereact delete`, `/wipereact missing {scope} {wipereact}`, `/wipereact react add {user} {type} {wipereact}`, and `/wipereact react remove {user} {wipereact}`. Wipe reacts now require Wipe React Logs to be configured in `/settings`; successful wipe-react reaction changes continue to emit the existing log embeds to that configured channel. `/wipereact schedule create` opens a modal to create a recurring wipe-react schedule (max 3 per guild) with day selection (Mon-Sun + Force Wipe), time, timezone, repeat interval, and post-before timing; `/wipereact schedule delete` and `/wipereact schedule edit` manage existing schedules via autocomplete. Wipe reacts are persisted in Postgres through backend bot-only endpoints, including the message/channel IDs, config, and accepted/declined/late user lists, and shard workers rehydrate active wipe-react expiry timers on startup. `/wipereact missing` posts an embed titled `Missing reactants` listing members of the selected role who have not accepted, declined, or marked late; this requires the bot to have the Discord Guild Members privileged intent enabled. `/track {group_name} {server}` allows either Discord Administrator or the configured admin role; team name is capped at 12 characters, server is autocompleted from the global tracked-servers list, and the command creates a text channel under the configured Tracked users category, persists a `track_groups` row, sends a pinned online/offline embed with Add/Remove/Notifications/Analytics buttons, and runs a poller (every ~30s) that refreshes the embed, renames the channel to `{slug}-{online_count}`, and (when `send_updates` is enabled via the notifications modal) posts join/leave embeds in the channel. The Add modal accepts comma- or period-separated Steam IDs and BattleMetrics IDs, resolves Steam→BM via `steam_accounts` with the same lazy fallback as `/player`, and replies with a `Tracking Status` embed listing successful/unsuccessful counts and unresolved IDs. The 📈 Analytics button is restricted to website admins (any `admin_user_roles` row) and posts a non-ephemeral weekday analytics embed: each weekday lists the best-time-for-an-offline window (lowest 2-hour avg-online block) and the most-online hours; the embed pulls data from the backend track-group analytics route (200 BattleMetrics sessions per member per server, cached for 24h in `track_analytics_sessions_cache`, dropping days under 30 minutes of play), and falls back to gray ◀️▶️ pagination buttons that anyone can use when the rendered embed exceeds Discord limits.
+Command flow: shard `0` registers `/settings`, `/setsteam`, `/player`, `/checkgamebans`, `/wipereact ...`, `/bind ...`, `/create ...`, `/summon`, `/announce`, `/online`, `/nickname`, `/compare`, `/view`, `/server`, `/ban`, `/manage`, `/track`, `/transfer`, `/search`, `/analyze offline`, and `/admin ...` at startup. `/settings` is a guild-administrator-only command that renders an ephemeral settings embed with a select menu for configuring wipe-react logs, linking logs, tracked-server logs, the tracked-users category (parent for `/track` group channels), the admin role, and the guild's selected tracked servers. Guild tracked servers are chosen from the owner-managed global `/server` list entries that have `Include in guild settings?` enabled and are persisted separately from guild settings. Turning that toggle off later removes the server from every guild's selected tracked-server list. `/setsteam {steam_id}` is a public guild command that accepts either a 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` or `steamcommunity.com/id/...` URL, resolves vanity URLs through the backend with `STEAM_API_KEY`, then creates a soft link in both the global `steam_discord_links` table and the guild-scoped `guild_steam_discord_links` table; if the user already has a guild Steam link, RustLens replies with an error embed instructing them to contact an administrator. When Linking Logs is configured, successful `/setsteam` calls emit an embed containing the Steam ID, optional BattleMetrics ID, and Discord user mention. `/player {identifier?} {discord_user?}` is a **global** command (usable in any guild or DM) where `identifier` accepts a 17-digit Steam ID, a supported `steamcommunity.com/profiles/...` or `steamcommunity.com/id/...` URL, or a BattleMetrics ID and looks up the matching `steam_accounts` row directly — no guild-link check — then renders the same player profile card as `/view user` using the backend steam-profile endpoint. The optional `discord_user` option is **website-admin-only** and renders a `Links - {discord_name}` embed instead, listing the Discord user's strong (`hard`) and soft Steam links from `steam_discord_links`; soft entries that also appear as strong are dropped, and missing `bm_id`s are filled in via the same BattleMetrics fallback `/player` uses. Before rendering the embed, the bot calls the backend platform-sync route for that Discord ID, which triggers a 14-day-stale `platformsync.io` lookup that upserts any discovered Steam IDs (including previous IDs) as hard links. If the `steam_accounts` lookup misses for a Steam ID or BattleMetrics ID, the backend resolves Steam<->BM through the external `bmmatch` service, persists the recovered Steam/BM link, and warms the profile cache before replying (when `bmmatch` is unconfigured the resolver returns `ErrSteamAccountNotFound`). If the stored `bm_id` refresh returns BattleMetrics `404 Unknown player`, `/player` now replies with an `Error` embed whose description is `BM profile private` instead of rendering the normal player card. The 🔗 links button on the `/player` and `/search` profile embeds renders a `Links - {bm_name}` embed listing Discord users linked to the Steam ID; non-website-admins only see the strong-links section, website admins also see the soft-links section. Before rendering the embed, the bot calls the backend platform-sync route for that Steam ID — the backend triggers an external `platformsync.io` lookup if the last sync for that Steam ID is older than 14 days, upserts any discovered Discord IDs (including previous IDs) as hard links, and the resulting embed reflects the freshly-upserted links. `/view user` accepts the same Steam inputs for its `identifier` field in addition to BattleMetrics IDs and Discord identifiers, resolving vanity URLs live through the backend without separate caching. `/checkgamebans` allows either Discord Administrator or the configured admin role, scans all guild-linked Steam IDs through the backend Steam ban endpoint, reuses cached results newer than 6 hours, ignores VAC-only bans, and posts a `Gamebans < 90 days` embed showing only game bans newer than 90 days. `/view` remains guild-scoped; `/player` is intentionally not. The card uses `steam_accounts.bm_id`, reads cached profile display/hour data from the backend steam-profile endpoint, sums total BattleMetrics playtime from all servers returned by BattleMetrics, sums category buckets from globally tracked `/server` entries, fetches Steam-owned Rust playtime directly, and includes a Risk Factor field composed of three factors (Steam→BM hour gap, servers played, BM hours) each computed against a separate formula. The card includes an analytics button (📈) that posts an ephemeral embed via the backend analytics endpoint showing top owned games, top played servers, and multi-month activity gaps from BattleMetrics name-change history, plus a links button (🔗) placeholder. `/view user` uses the same backend profile card flow, while `/view all` and `/view nosteam` keep their existing guild-admin-only summary behavior. `/admin setsteam {user} {steam_id}` and `/admin removesteam {user}` are protected by either Discord Administrator or the configured admin role and manage guild-scoped Steam links for other users; they never delete existing rows from the global `steam_discord_links` table, and `/admin setsteam` ensures a global soft link exists before replacing the guild link. `/online` is a public guild command that renders one or more non-ephemeral RustLens embeds grouping currently online linked users by tracked BattleMetrics server selected for that guild; if the embed limits are reached, follow-up embeds use the title `Online summary cont.`. `/nickname` allows either Discord Administrator or the configured admin role, reads one guild-scoped Steam link per Discord user from `/api/internal/bot/setup/guilds/{guildID}/nickname-targets`, and attempts to set each member nickname to `{discord nickname} - {bm_name}` while counting missing `bm_id` / `bm_name` entries and Discord edit failures as failed. Commands that need full-guild member scans must use `apps/bot/src/guild-member-cache.ts` instead of calling `guild.members.fetch()` directly; the cache is in-memory, shared within the bot process, only refreshes on demand when expired, and deduplicates concurrent refreshes per guild to reduce `Request Guild Members` rate limits. `/compare {server?} {wipereact?}` is administrator-only, autocompletes tracked servers from global `tracked_servers`, autocompletes past guild wipe reacts by title/date, defaults to the most recently passed wipe react when no options are given, compares a wipe react against the invoker's current voice channel or the full guild member list when the invoker is not in voice, compares a server against the invoker's current voice channel, and compares the selected wipe react against the selected server when both options are provided. All comparisons ignore members or guild links that do not resolve through `guild_steam_discord_links -> steam_accounts.bm_id` where BattleMetrics player resolution is required. `/transfer` only creates guild-scoped links for users who are currently in the guild, skipping missing members from the imported embed data. Guild-scoped links are also removed automatically when a user leaves the guild. `/ban {user}` is owner-guild-only, registered only in `BOT_OWNER_GUILD_ID` and gated at runtime by `BOT_OWNER_DISCORD_IDS`. It opens a modal with six feature-category checkboxes (Setup And Configuration, Steam Linking And Identity, Player And Account Lookup, Activity Presence And Checks, Guild Coordination And Utility, Other) pre-filled with the user's current restrictions; submitting PUTs the selection to `/api/internal/bot/setup/bans/{discordID}` (empty selection deletes the ban row). The shard worker's `interactionCreate` dispatcher maps each incoming `(commandName, subcommand)` — and component `customId` prefixes for modals, buttons, and string selects — to a ban category via `apps/bot/src/ban-categories.ts` and calls `enforceBan` (30s TTL per-shard cache) from `apps/bot/src/ban-check.ts`. Banned users receive an ephemeral red `#d31239` embed titled `Error` with description `You have been banned`; the `/ban` command itself is always exempt so owners can never lock themselves out. `/server add`, `/server edit`, `/server remove`, and `/server list` are owner-guild-only commands registered only in `BOT_OWNER_GUILD_ID`; runtime access is restricted to the comma-separated Discord ID list in `BOT_OWNER_DISCORD_IDS`. `/server add` and `/server edit` open the same modal with server name, BattleMetrics ID, an `Include in guild settings?` toggle, and category checkboxes for `Vitality`, `Atlas`, `Vital`, `Modded`, `Official`, and `Build`. `/server edit` and `/server remove` use autocomplete-backed tracked-server selection instead of manual BM ID entry, and `/server list` shows the global tracked server registry with stored categories and poll status. `/summon {scope}`, `/announce {scope} {message}`, `/wipereact`, `/bind massinvite`, and `/create invite` allow either Discord Administrator or the configured admin role. `/bind` is `GuildInstall`-only (not user-installable) so subcommands like `/bind massinvite` cannot be invoked outside guilds where the bot is installed. `/wipereact` uses in-command autocomplete for selecting active wipe reacts on `/wipereact delete`, `/wipereact missing {scope} {wipereact}`, `/wipereact react add {user} {type} {wipereact}`, and `/wipereact react remove {user} {wipereact}`. Wipe reacts now require Wipe React Logs to be configured in `/settings`; successful wipe-react reaction changes continue to emit the existing log embeds to that configured channel. `/wipereact schedule create` opens a modal to create a recurring wipe-react schedule (max 3 per guild) with day selection (Mon-Sun + Force Wipe), time, timezone, repeat interval, and post-before timing; `/wipereact schedule delete` and `/wipereact schedule edit` manage existing schedules via autocomplete. Wipe reacts are persisted in Postgres through backend bot-only endpoints, including the message/channel IDs, config, and accepted/declined/late user lists, and shard workers rehydrate active wipe-react expiry timers on startup. `/wipereact missing` posts an embed titled `Missing reactants` listing members of the selected role who have not accepted, declined, or marked late; this requires the bot to have the Discord Guild Members privileged intent enabled. `/track {group_name} {server}` allows either Discord Administrator or the configured admin role; team name is capped at 12 characters, server is autocompleted from the global tracked-servers list, and the command creates a text channel under the configured Tracked users category, persists a `track_groups` row, sends a pinned online/offline embed with Add/Remove/Notifications/Analytics buttons, and runs a poller (every ~30s) that refreshes the embed, renames the channel to `{slug}-{online_count}`, and (when `send_updates` is enabled via the notifications modal) posts join/leave embeds in the channel. The Add modal accepts comma- or period-separated Steam IDs and BattleMetrics IDs, resolves Steam→BM via `steam_accounts` with the same lazy fallback as `/player`, and replies with a `Tracking Status` embed listing successful/unsuccessful counts and unresolved IDs. The 📈 Analytics button is restricted to website admins (any `admin_user_roles` row) and posts a non-ephemeral weekday analytics embed: each weekday lists the best-time-for-an-offline window (lowest 2-hour avg-online block) and the most-online hours; the embed pulls data from the backend track-group analytics route (200 BattleMetrics sessions per member per server, cached for 24h in `track_analytics_sessions_cache`, dropping days under 30 minutes of play), and falls back to gray ◀️▶️ pagination buttons that anyone can use when the rendered embed exceeds Discord limits.
 
 `/analyze offline {identifier}` is a public global command registered by shard `0`; it accepts Steam IDs, supported Steam profile URLs, or BattleMetrics IDs and posts the same offline timing chart style as `/track` analytics without website-admin gating.
 
@@ -280,7 +326,9 @@ Local infra is defined in `infra/docker-compose.yml`:
 
 ## Environment Variables
 
-Each app has a `.env.example` — copy and fill before running. Key backend config with defaults:
+Each app has a `.env.example` — copy and fill before running.
+
+**Backend** (`apps/backend/internal/config/config.go` is the source of truth):
 
 | Variable | Default |
 |---|---|
@@ -292,13 +340,42 @@ Each app has a `.env.example` — copy and fill before running. Key backend conf
 | `APP_SESSION_SECRET` | required |
 | `BOT_TARGET_SHARDS` | `4` |
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` |
+| `BOT_JWT_ISSUER` | `rustlens-bot` |
+| `BOT_JWT_AUDIENCE` | `rustlens-backend` |
 | `STEAM_API_KEY` | `` |
-| `BATTLEMETRICS_API_KEY` | `` |
 | `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS` | `30` |
-| `PROXY_ENCRYPTION_KEY` | `` |
+| `BM_MATCH_URL` / `BM_MATCH_TOKEN` | `` (Steam<->BM resolution disabled when unset) |
 | `PLATFORMSYNC_TOKEN` | `` |
+| `PROXY_ENABLED` | `false` |
+| `PROXY_ENDPOINTS` | `` (CSV; legacy fallback when no DB-managed proxies exist) |
+| `PROXY_ENCRYPTION_KEY` | `` (required for DB-managed proxy CRUD) |
+| `APP_ORIGIN` | `http://localhost` |
+| `APP_BASE_URL` | `http://localhost:3000` |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | `` (required to enable `/api/auth/discord`) |
+| `APP_ADMIN_DISCORD_IDS` | `` (CSV; bootstraps internal-admin role) |
+| `APP_EMAIL_TOKEN_TTL_MINUTES` | `20` |
+| `ALLOW_AUTH_DEBUG_TOKENS` | `false` |
 
-The bot requires a real `DISCORD_TOKEN` for gateway login. Owner-only `/server` command registration also requires `BOT_OWNER_GUILD_ID` and `BOT_OWNER_DISCORD_IDS`. The Go backend autoloads `apps/backend/.env` in local runs, so values like `STEAM_API_KEY`, `BATTLEMETRICS_API_KEY`, `APP_API_INTERNAL_SECRET`, `APP_SESSION_SECRET`, and `APP_ADMIN_DISCORD_IDS` can be provided there without separate shell export. The frontend expects `APP_SESSION_SECRET`, `APP_API_INTERNAL_SECRET`, and usually `RUSTLENS_API_URL`; `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be set to the canonical external origin for Discord OAuth callbacks and local auth debug preview links. Frontend auth throttling also requires `REDIS_URL` (or `RATE_LIMIT_REDIS_URL`) in production. `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` are optional and only needed when Discord login/linking is enabled; the frontend now uses PKCE plus OAuth `state` for the Discord code flow. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects a dedicated canonical client-IP header configured via `TRUST_PROXY_IP_HEADER` for the frontend auth rate limiter. Local auth debug previews are disabled by default and only appear when backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`. `/wipereact missing` requires the Discord Guild Members privileged intent to be enabled for the application because the shard worker now requests `GatewayIntentBits.GuildMembers`.
+The BattleMetrics public API client is unauthenticated; there is no `BATTLEMETRICS_API_KEY` env var. Steam<->BM resolution is delegated to the external `bmmatch` service via `BM_MATCH_URL` + `BM_MATCH_TOKEN`.
+
+**Bot** (`apps/bot/src/config.ts`):
+
+| Variable | Default |
+|---|---|
+| `DISCORD_TOKEN` | required for gateway login |
+| `BOT_SERVICE_JWT_SECRET` | required (must match backend) |
+| `BOT_JWT_ISSUER` | `rustlens-bot` |
+| `BOT_JWT_AUDIENCE` | `rustlens-backend` |
+| `BACKEND_URL` | `http://localhost:8080` |
+| `BOT_WORKER_ID` | `bot-{pid}` |
+| `BOT_RECONCILE_INTERVAL_MS` | `15000` |
+| `BOT_HEARTBEAT_INTERVAL_MS` | `8000` |
+| `BOT_OWNER_GUILD_ID` / `BOT_OWNER_DISCORD_IDS` | required for owner-only `/server`, `/ban`, `/manage` |
+| `PROXY_ENABLED` / `PROXY_ENDPOINTS` | `false` / `` (controls bot-side proxied request concurrency) |
+
+**Frontend** expects `APP_SESSION_SECRET` and `APP_API_INTERNAL_SECRET` (shared with backend), and usually `RUSTLENS_API_URL`. `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be the canonical external origin used for Discord OAuth callbacks. Auth-handler rate limiting uses `REDIS_URL` (or `RATE_LIMIT_REDIS_URL`) via `lib/rate-limit.ts`. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects a dedicated canonical client-IP header configured via `TRUST_PROXY_IP_HEADER` for the rate limiter.
+
+`/wipereact missing` requires the Discord Guild Members privileged intent because the shard worker requests `GatewayIntentBits.GuildMembers` (alongside `Guilds` and `GuildVoiceStates`).
 
 ## CI/CD
 
