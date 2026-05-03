@@ -453,10 +453,15 @@ function isUnknownInteractionError(error: unknown) {
 }
 
 function logExpiredInteraction(kind: string, id: string, createdTimestamp: number) {
+  const config = loadConfig();
   console.warn("[bot] skipped expired interaction", {
     kind,
     id,
     ageMs: Date.now() - createdTimestamp,
+    workerId: config.workerId,
+    shardId: Number(process.env.SHARD_ID ?? "0"),
+    shardCount: Number(process.env.SHARD_COUNT ?? "1"),
+    pid: process.pid,
   });
 }
 

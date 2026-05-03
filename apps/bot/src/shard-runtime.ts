@@ -8,7 +8,7 @@ export class ShardRuntime {
   private readonly children = new Map<number, ChildProcess>();
   private messageListener: MessageListener | undefined;
 
-  constructor(private readonly token: string) {}
+  constructor(private readonly token: string, private readonly workerId: string) {}
 
   activeShards() {
     return [...this.children.keys()].sort((a, b) => a - b);
@@ -38,6 +38,7 @@ export class ShardRuntime {
         SHARD_ID: String(shardID),
         SHARD_COUNT: String(totalShards),
         DISCORD_TOKEN: this.token,
+        BOT_WORKER_ID: this.workerId,
       },
     });
 
