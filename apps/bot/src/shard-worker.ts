@@ -317,18 +317,18 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isChatInputCommand()) {
-      if (interaction.commandName === PLAYER_COMMAND_NAME) {
-        if (!(await deferPlayerChatInput(interaction))) {
-          return;
-        }
-      }
-
       if (interaction.commandName !== MANAGE_COMMAND_NAME) {
         const category = resolveCommandCategory(
           interaction.commandName,
           interaction.options.getSubcommand(false),
         );
         if (await enforceBan(interaction, category)) {
+          return;
+        }
+      }
+
+      if (interaction.commandName === PLAYER_COMMAND_NAME) {
+        if (!(await deferPlayerChatInput(interaction))) {
           return;
         }
       }

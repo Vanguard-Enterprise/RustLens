@@ -39,6 +39,7 @@ const COMMAND_CATEGORY_MAP: Record<string, BanCategory> = {
   summon: "coordination",
   announce: "coordination",
   bind: "coordination",
+  create: "coordination",
   track: "activity",
 };
 
@@ -60,6 +61,9 @@ export function resolveCustomIdCategory(customId: string): BanCategory | null {
     return "activity";
   }
   if (customId.startsWith("wipereact_") || customId.startsWith("bind_")) {
+    return "coordination";
+  }
+  if (customId.startsWith("ci_req:") || customId.startsWith("ci_acc:")) {
     return "coordination";
   }
   if (customId.startsWith("player:analytics:") || customId.startsWith("player:links:")) {

@@ -1949,27 +1949,7 @@ func (h *Handler) GetSteamProfile(w http.ResponseWriter, r *http.Request) {
 	if refreshErr != nil {
 		log.Printf("[backend] GetSteamProfile refresh error for %s: %v", steamID, refreshErr)
 		if errors.Is(refreshErr, battlemetrics.ErrPlayerNotFound) {
-			// BM doesn't see this player. Refresh just the Steam-side cache so
-			// the persona name still gets captured/updated, then serve a partial
-			// response with whatever BM cache we already have (often empty).
-			refreshedSteam, refreshSteamErr := h.refreshSteamOnlyCache(r.Context(), account)
-			if refreshSteamErr == nil {
-				if updated, err := h.postgres.UpsertSteamAccountCache(r.Context(), refreshedSteam); err == nil {
-					cachedSteam = updated
-				} else {
-					log.Printf("[backend] GetSteamProfile steam-only cache update error for %s: %v", steamID, err)
-				}
-			} else {
-				log.Printf("[backend] GetSteamProfile steam-only refresh error for %s: %v", steamID, refreshSteamErr)
-			}
-			bmFallback := cachedBm
-			if bmCacheErr != nil {
-				bmFallback = store.BmProfileCache{}
-				if account.BmID != nil {
-					bmFallback.BmID = *account.BmID
-				}
-			}
-			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, cachedSteam, bmFallback))
+			writeError(w, http.StatusNotFound, "battlemetrics profile private")
 			return
 		}
 

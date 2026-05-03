@@ -845,6 +845,13 @@ export async function handleTrackButtonInteraction(interaction: ButtonInteractio
     if (!Number.isInteger(groupId) || groupId <= 0 || !interaction.inGuild() || !interaction.guildId) {
       return false;
     }
+    if (!(await hasGuildAdminAccess(interaction))) {
+      await interaction.reply({
+        embeds: [buildErrorEmbed("Only the configured admin role or administrators can change track notifications.")],
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
 
     let group: TrackGroup;
     try {
@@ -966,6 +973,13 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
   if (interaction.customId.startsWith(TRACK_MODAL_NOTIFY_PREFIX)) {
     const groupId = Number(interaction.customId.slice(TRACK_MODAL_NOTIFY_PREFIX.length));
     if (!Number.isInteger(groupId) || groupId <= 0) {
+      return true;
+    }
+    if (!(await hasGuildAdminAccess(interaction))) {
+      await interaction.reply({
+        embeds: [buildErrorEmbed("Only the configured admin role or administrators can change track notifications.")],
+        flags: MessageFlags.Ephemeral,
+      });
       return true;
     }
     const selected = getFieldValues(interaction, TRACK_FIELD_NOTIFY_OPTIONS);
