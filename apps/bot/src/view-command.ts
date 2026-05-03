@@ -179,6 +179,7 @@ function calculateSteamBmHourRisk(profile: SteamProfile | null) {
 
 const SECONDS_PER_DAY = 86400;
 const DAYS_PER_MONTH = 30;
+const RECENT_BREAK_DAYS = 120;
 const BREAK_WINDOW_DAYS = 365;
 
 function calculateRecentBreaksRisk(profile: SteamProfile | null, now: Date = new Date()) {
@@ -188,6 +189,7 @@ function calculateRecentBreaksRisk(profile: SteamProfile | null, now: Date = new
   }
 
   const nowUnix = Math.floor(now.getTime() / 1000);
+  const recentCutoff = nowUnix - RECENT_BREAK_DAYS * SECONDS_PER_DAY;
   const windowStart = nowUnix - BREAK_WINDOW_DAYS * SECONDS_PER_DAY;
 
   let totalRisk = 0;
@@ -205,7 +207,7 @@ function calculateRecentBreaksRisk(profile: SteamProfile | null, now: Date = new
     }
     breakCount += 1;
     longestBreakDays = Math.max(longestBreakDays, Math.round(durationDays));
-    totalRisk += months * 2 - 1;
+    totalRisk += gap.toUnix >= recentCutoff ? months * 2 - 1 : months + 1;
   }
 
   return {
