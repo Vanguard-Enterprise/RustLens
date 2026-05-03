@@ -97,6 +97,10 @@ func (h *Handler) SyncPlatformIdentity(w http.ResponseWriter, r *http.Request) {
 		resp.Synced = true
 		resp.LastSyncedAt = syncedAt
 		resp.Linked = false
+		resp.SteamID = lookup.SteamID
+		resp.DiscordID = lookup.DiscordID
+		resp.PreviousSteamIDs = lookup.PreviousSteamIDs
+		resp.PreviousDiscordIDs = lookup.PreviousDiscordIDs
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}

@@ -74,15 +74,27 @@ func TestLookupParsesPreviousIDsList(t *testing.T) {
 func TestLookupNotLinkedReturnsErrNotLinked(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"linked":false}`))
+		_, _ = w.Write([]byte(`{"linked":false,"steam_id":"765611990317183373","discord_id":null,"previous_discord_ids":"NA"}`))
 	}))
 	defer server.Close()
 	withBaseURL(t, server.URL)
 
 	client := NewClient("secret", time.Second)
-	_, err := client.Lookup(context.Background(), "76561198888013469")
+	out, err := client.Lookup(context.Background(), "765611990317183373")
 	if !errors.Is(err, ErrNotLinked) {
 		t.Errorf("err = %v, want ErrNotLinked", err)
+	}
+	if out.Linked {
+		t.Errorf("Linked = true, want false")
+	}
+	if out.SteamID != "765611990317183373" {
+		t.Errorf("SteamID = %q", out.SteamID)
+	}
+	if out.DiscordID != "" {
+		t.Errorf("DiscordID = %q, want empty", out.DiscordID)
+	}
+	if len(out.PreviousDiscordIDs) != 0 {
+		t.Errorf("PreviousDiscordIDs = %v, want empty", out.PreviousDiscordIDs)
 	}
 }
 
