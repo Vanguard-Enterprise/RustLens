@@ -257,7 +257,9 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === PLAYER_COMMAND_NAME) {
-        await deferPlayerChatInput(interaction);
+        if (!(await deferPlayerChatInput(interaction))) {
+          return;
+        }
       }
 
       if (interaction.commandName !== MANAGE_COMMAND_NAME) {
@@ -397,7 +399,9 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isButton()) {
       const buttonCategory = resolveCustomIdCategory(interaction.customId);
       if (buttonCategory && interaction.customId.startsWith("player:")) {
-        await deferPlayerButton(interaction);
+        if (!(await deferPlayerButton(interaction))) {
+          return;
+        }
       }
       if (buttonCategory && (await enforceBan(interaction, buttonCategory))) {
         return;
