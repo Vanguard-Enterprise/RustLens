@@ -212,7 +212,7 @@ describe("view-command", () => {
       ],
     } as never;
 
-    expect(__testables.calculateRecentBreaksRisk(profile, now)).toEqual({ level: 5, breaks: 2, longestBreakDays: 120 });
+    expect(__testables.calculateRecentBreaksRisk(profile, now)).toEqual({ level: 10, breaks: 2, longestBreakDays: 120 });
   });
 
   it("counts breaks longer than one month", () => {
@@ -224,10 +224,10 @@ describe("view-command", () => {
       ],
     } as never;
 
-    expect(__testables.calculateRecentBreaksRisk(profile, now)).toEqual({ level: 0, breaks: 1, longestBreakDays: 35 });
+    expect(__testables.calculateRecentBreaksRisk(profile, now)).toEqual({ level: 1, breaks: 1, longestBreakDays: 35 });
   });
 
-  it("doubles the risk per month when a break ended within 10 days", () => {
+  it("scores every break with months times two minus one", () => {
     const now = new Date("2026-04-01T00:00:00Z");
     const nowUnix = Math.floor(now.getTime() / 1000);
     const profile = {
@@ -236,7 +236,7 @@ describe("view-command", () => {
       ],
     } as never;
 
-    expect(__testables.calculateRecentBreaksRisk(profile, now)).toEqual({ level: 6, breaks: 1, longestBreakDays: 90 });
+    expect(__testables.calculateRecentBreaksRisk(profile, now)).toEqual({ level: 5, breaks: 1, longestBreakDays: 90 });
   });
 
   it("ignores breaks that ended more than a year ago", () => {
