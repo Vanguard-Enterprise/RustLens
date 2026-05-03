@@ -194,6 +194,7 @@ function calculateRecentBreaksRisk(profile: SteamProfile | null, now: Date = new
 
   let totalRisk = 0;
   let breakCount = 0;
+  let longestBreakDays = 0;
 
   for (const gap of gaps) {
     if (gap.toUnix < windowStart) {
@@ -201,10 +202,11 @@ function calculateRecentBreaksRisk(profile: SteamProfile | null, now: Date = new
     }
     const durationDays = (gap.toUnix - gap.fromUnix) / SECONDS_PER_DAY;
     const months = Math.floor(durationDays / DAYS_PER_MONTH);
-    if (months < 2) {
+    if (months < 1) {
       continue;
     }
     breakCount += 1;
+    longestBreakDays = Math.max(longestBreakDays, Math.round(durationDays));
     const isRecent = gap.toUnix >= recentCutoff;
     totalRisk += isRecent ? months * 2 : months - 1;
   }
@@ -212,6 +214,7 @@ function calculateRecentBreaksRisk(profile: SteamProfile | null, now: Date = new
   return {
     level: Math.max(0, Math.min(10, totalRisk)),
     breaks: breakCount,
+    longestBreakDays,
   };
 }
 
@@ -274,8 +277,8 @@ function buildRiskFactorField(profile: SteamProfile | null, now: Date = new Date
     : `${riskEmoji(0)} Steam → BM hour difference: **private**`;
 
   const recentBreaksLine = recentBreaksRisk
-    ? `${riskEmoji(recentBreaksRisk.level)} Recent breaks > 2 months: **${recentBreaksRisk.breaks}**`
-    : `${riskEmoji(0)} Recent breaks > 2 months: **unknown**`;
+    ? `${riskEmoji(recentBreaksRisk.level)} Recent breaks > 1 month: **${recentBreaksRisk.breaks}** (${recentBreaksRisk.longestBreakDays} days)`
+    : `${riskEmoji(0)} Recent breaks > 1 month: **unknown**`;
 
   const serversLine = serversRisk
     ? `${riskEmoji(serversRisk.level)} Servers played: **${serversRisk.servers}**`
@@ -291,7 +294,7 @@ function buildRiskFactorField(profile: SteamProfile | null, now: Date = new Date
 
   return {
     name: `Risk Factor ${riskEmoji(averageRisk)}`,
-    value: [steamBmLine, recentBreaksLine, accountCreatedLine, serversLine, bmHoursLine].join("\n"),
+    value: [recentBreaksLine, steamBmLine, accountCreatedLine, serversLine, bmHoursLine].join("\n"),
   };
 }
 
