@@ -47,7 +47,7 @@ export async function renderServerAnalyticsChart(analytics: ServerAnalyticsRespo
   const max = maxPop(analytics);
   drawLineChart(ctx, analytics, max);
   drawWeekdayBars(ctx, analytics, max);
-  drawLegend(ctx);
+  drawLegend(ctx, analytics);
 
   return canvas.encode("png");
 }
@@ -181,6 +181,22 @@ function drawTrend(
   ctx.setLineDash([]);
 }
 
+function sortedAnalyticsPoints(analytics: ServerAnalyticsResponse) {
+  return [...analytics.points].sort((a, b) => a.timestampUnix - b.timestampUnix);
+}
+
+function formatTrendDelta(trend: ReturnType<typeof trendLine>) {
+  if (!trend) {
+    return "";
+  }
+  const start = Math.max(0, trend.startValue);
+  const end = Math.max(0, trend.endValue);
+  const percent = ((end - start) / Math.max(1, start)) * 100;
+  const rounded = Math.round(percent);
+  const sign = rounded >= 0 ? "+" : "";
+  return ` ${sign}${rounded}%`;
+}
+
 function drawWeekdayBars(ctx: any, analytics: ServerAnalyticsResponse, max: number) {
   ctx.fillStyle = "#e8eef7";
   ctx.font = `700 22px ${FONT_FAMILY}`;
@@ -238,15 +254,18 @@ function drawGrid(ctx: any, left: number, top: number, width: number, height: nu
   ctx.restore();
 }
 
-function drawLegend(ctx: any) {
+function drawLegend(ctx: any, analytics: ServerAnalyticsResponse) {
+  const points = sortedAnalyticsPoints(analytics);
+  const averageTrend = averageTrendLine(points);
+  const peakTrend = peakTrendLine(points);
   const items = [
     ["Max pop", MAX_COLOR],
     ["Avg pop", AVG_COLOR],
     ["Min pop", MIN_COLOR],
-    ["Trend", TREND_COLOR],
-    ["Peak trend", PEAK_TREND_COLOR],
+    [`Trend${formatTrendDelta(averageTrend)}`, TREND_COLOR],
+    [`Peak trend${formatTrendDelta(peakTrend)}`, PEAK_TREND_COLOR],
   ];
-  let x = WIDTH - 690;
+  let x = WIDTH - 760;
   const y = 104;
   for (const [label, color] of items) {
     ctx.fillStyle = color;
@@ -255,6 +274,6 @@ function drawLegend(ctx: any) {
     ctx.font = `14px ${FONT_FAMILY}`;
     ctx.textAlign = "left";
     ctx.fillText(label, x + 38, y - 4);
-    x += 135;
+    x += 150;
   }
 }
