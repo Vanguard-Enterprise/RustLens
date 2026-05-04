@@ -114,10 +114,30 @@ export type AdminUsersPage = {
 
 export type AdminGuildItem = {
 	guildId: string;
-	activeMembers: number;
-	linkedMembers: number;
-	trackedServers: number;
-	adminRoleId: string;
+	name: string;
+	iconHash: string | null;
+	ownerDiscordId: string | null;
+	ownerUsername: string | null;
+	ownerGlobalName: string | null;
+	ownerAvatarHash: string | null;
+	approximateMemberCount: number | null;
+	isInstalled: boolean;
+	leftAt: string | null;
+	isConfigured: boolean;
+	trackedServerCount: number;
+};
+
+export type AdminGuildsQuery = {
+	q?: string;
+	page?: number;
+	pageSize?: number;
+};
+
+export type AdminGuildsPage = {
+	items: AdminGuildItem[];
+	total: number;
+	page: number;
+	pageSize: number;
 };
 
 export type AdminServerItem = {
@@ -135,6 +155,12 @@ export type AdminRoleItem = {
 	description: string | null;
 	isSystem: boolean;
 	permissions: string[];
+	memberCount: number;
+};
+
+export type AdminPermissionItem = {
+	key: string;
+	description: string;
 };
 
 export type AuditEventItem = {
@@ -248,6 +274,31 @@ async function backendFetch<T>(
 	return (await response.json()) as T;
 }
 
+type AdminActionEnvelope = {
+	params: Record<string, unknown>;
+	reason: string;
+};
+
+/**
+ * Posts to the admin action dispatcher. Returns the action's result payload
+ * (the inner `result` field from the standard `{ok, result}` envelope).
+ *
+ * Server-only helper; consumed by Server Actions in app/admin/.../actions.ts.
+ */
+export async function postAdminAction<T = unknown>(
+	type: string,
+	params: Record<string, unknown>,
+	reason: string,
+): Promise<T> {
+	const envelope: AdminActionEnvelope = { params, reason };
+	const payload = await backendFetch<AdminActionResponse<T>>(
+		`/api/app/admin/actions/${encodeURIComponent(type)}`,
+		{ method: "POST", body: JSON.stringify(envelope) },
+		{ requireSession: true },
+	);
+	return payload.result;
+}
+
 export function registerWithPassword(payload: {
 	email: string;
 	password: string;
@@ -355,13 +406,17 @@ export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<Admin
 	);
 }
 
-export async function getAdminGuilds() {
-	const payload = await backendFetch<{ items: AdminGuildItem[] }>(
-		"/api/app/admin/guilds",
+export async function getAdminGuilds(params: AdminGuildsQuery = {}): Promise<AdminGuildsPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminGuildsPage>(
+		`/api/app/admin/guilds${qs ? `?${qs}` : ""}`,
 		undefined,
 		{ requireSession: true },
 	);
-	return payload.items;
 }
 
 export async function getAdminServers() {
@@ -376,6 +431,15 @@ export async function getAdminServers() {
 export async function getAdminRoles() {
 	const payload = await backendFetch<{ items: AdminRoleItem[] }>(
 		"/api/app/admin/roles",
+		undefined,
+		{ requireSession: true },
+	);
+	return payload.items;
+}
+
+export async function getAdminPermissions() {
+	const payload = await backendFetch<{ items: AdminPermissionItem[] }>(
+		"/api/app/admin/permissions",
 		undefined,
 		{ requireSession: true },
 	);
@@ -412,4 +476,35 @@ export async function getAuditEvents(limit = 30) {
 		{ requireSession: true },
 	);
 	return payload.items;
+}
+
+export type CreateAdminRoleInput = {
+	key: string;
+	name: string;
+	description: string;
+	permissions: string[];
+};
+
+export async function createAdminRole(input: CreateAdminRoleInput, reason: string) {
+	return postAdminAction<{ id: string; key: string }>("roles.create", input, reason);
+}
+
+export async function updateAdminRole(
+	id: string,
+	patch: { name: string; description: string },
+	reason: string,
+) {
+	return postAdminAction<{ id: string }>("roles.update", { id, ...patch }, reason);
+}
+
+export async function setAdminRolePermissions(id: string, permissions: string[], reason: string) {
+	return postAdminAction<{ id: string; count: number }>(
+		"roles.permissions.set",
+		{ id, permissions },
+		reason,
+	);
+}
+
+export async function deleteAdminRole(id: string, reason: string) {
+	return postAdminAction<{ id: string }>("roles.delete", { id }, reason);
 }

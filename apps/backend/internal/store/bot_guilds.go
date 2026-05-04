@@ -214,3 +214,98 @@ func (p *PostgresStore) ListInstalledGuildsForUser(ctx context.Context, discordI
 	}
 	return out, rows.Err()
 }
+
+// AdminGuildRow is one row returned by ListAdminGuilds.
+type AdminGuildRow struct {
+	GuildID                string
+	Name                   string
+	IconHash               *string
+	OwnerDiscordID         *string
+	OwnerUsername          *string
+	OwnerGlobalName        *string
+	OwnerAvatarHash        *string
+	ApproximateMemberCount *int32
+	IsInstalled            bool
+	LeftAt                 *time.Time
+	IsConfigured           bool
+	TrackedServerCount     int32
+}
+
+// ListAdminGuildsOpts are query parameters for ListAdminGuilds.
+//
+// Q is a free-text search applied to bot_guilds.name (substring),
+// bot_guilds.guild_id (prefix), and bot_guilds.owner_username (substring), all
+// case-insensitive. Empty string disables the WHERE clause.
+type ListAdminGuildsOpts struct {
+	Q        string
+	Page     int // 1-based; values <= 0 are treated as 1
+	PageSize int // values <= 0 or > 100 are clamped to 20
+}
+
+// ListAdminGuilds returns one paginated page of bot_guilds rows joined with
+// guild_settings (configured flag) and guild_tracked_servers (count). Total
+// is computed in a separate COUNT(*) query against the same WHERE clause so
+// off-the-end pages still report the correct total.
+func (p *PostgresStore) ListAdminGuilds(ctx context.Context, opts ListAdminGuildsOpts) ([]AdminGuildRow, int, error) {
+	page := opts.Page
+	if page < 1 {
+		page = 1
+	}
+	pageSize := opts.PageSize
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+	offset := (page - 1) * pageSize
+
+	const whereClause = `
+		WHERE ($1 = ''
+		       OR bg.name ILIKE '%' || $1 || '%'
+		       OR bg.guild_id ILIKE $1 || '%'
+		       OR bg.owner_username ILIKE '%' || $1 || '%')
+	`
+
+	var total int
+	if err := p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM bot_guilds bg `+whereClause, opts.Q).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT bg.guild_id, bg.name, bg.icon_hash,
+		       bg.owner_discord_id, bg.owner_username, bg.owner_global_name, bg.owner_avatar_hash,
+		       bg.approximate_member_count, bg.is_installed, bg.left_at,
+		       (gs.guild_id IS NOT NULL) AS is_configured,
+		       COALESCE(gts.cnt, 0)      AS tracked_server_count
+		FROM bot_guilds bg
+		LEFT JOIN guild_settings gs ON gs.guild_id = bg.guild_id
+		LEFT JOIN (
+			SELECT guild_id, COUNT(*)::int AS cnt
+			FROM guild_tracked_servers
+			GROUP BY guild_id
+		) gts ON gts.guild_id = bg.guild_id
+		`+whereClause+`
+		ORDER BY bg.name ASC, bg.guild_id ASC
+		LIMIT $2 OFFSET $3
+	`, opts.Q, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	out := make([]AdminGuildRow, 0)
+	for rows.Next() {
+		var r AdminGuildRow
+		if err := rows.Scan(
+			&r.GuildID, &r.Name, &r.IconHash,
+			&r.OwnerDiscordID, &r.OwnerUsername, &r.OwnerGlobalName, &r.OwnerAvatarHash,
+			&r.ApproximateMemberCount, &r.IsInstalled, &r.LeftAt,
+			&r.IsConfigured, &r.TrackedServerCount,
+		); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
+}

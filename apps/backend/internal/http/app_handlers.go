@@ -527,34 +527,6 @@ func (h *Handler) ListAppAdminUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": payload})
 }
 
-func (h *Handler) ListAppAdminGuilds(w http.ResponseWriter, r *http.Request) {
-	actor, ok, status, message := requireInternalAdmin(r, h.postgres)
-	if !ok {
-		writeError(w, status, message)
-		return
-	}
-
-	items, err := h.postgres.ListAdminGuilds(r.Context())
-	if err != nil {
-		log.Printf("[backend] ListAppAdminGuilds error for %s: %v", actor.ID, err)
-		writeError(w, http.StatusInternalServerError, "failed to load admin guilds")
-		return
-	}
-
-	payload := make([]map[string]any, 0, len(items))
-	for _, item := range items {
-		payload = append(payload, map[string]any{
-			"guildId":        item.GuildID,
-			"activeMembers":  item.ActiveMembers,
-			"linkedMembers":  item.LinkedMembers,
-			"trackedServers": item.TrackedServers,
-			"adminRoleId":    item.AdminRoleID,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"items": payload})
-}
-
 func (h *Handler) ListAppAdminServers(w http.ResponseWriter, r *http.Request) {
 	actor, ok, status, message := requireInternalAdmin(r, h.postgres)
 	if !ok {

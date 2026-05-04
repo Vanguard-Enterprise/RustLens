@@ -128,6 +128,63 @@ func TestStore_SuperadminImpliesAllPermissions(t *testing.T) {
 	}
 }
 
+func TestListRolesWithMemberCount(t *testing.T) {
+	pool := newPool(t)
+	ctx := context.Background()
+	s := rbac.NewStore(pool)
+	if err := s.SeedPermissionsAndRoles(ctx); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Use a unique custom role so member counts are deterministic regardless of
+	// other tests that may assign users to system roles.
+	customKey := "test_member_count_" + randSuffix()
+	var roleIDStr string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO admin_roles (key, name, is_system) VALUES ($1, $2, false) RETURNING id::text`,
+		customKey, customKey,
+	).Scan(&roleIDStr); err != nil {
+		t.Fatalf("insert custom role: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM admin_roles WHERE key = $1`, customKey)
+	})
+
+	// Seed two users and assign both to the custom role.
+	userA := "usr_mc_a_" + randSuffix()
+	userB := "usr_mc_b_" + randSuffix()
+	seedAppUser(t, pool, userA)
+	seedAppUser(t, pool, userB)
+
+	for _, uid := range []string{userA, userB} {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO admin_user_roles (user_id, role_id) VALUES ($1, $2::uuid) ON CONFLICT DO NOTHING`,
+			uid, roleIDStr,
+		); err != nil {
+			t.Fatalf("assign role to %s: %v", uid, err)
+		}
+	}
+
+	roles, err := s.ListRolesWithMemberCount(ctx)
+	if err != nil {
+		t.Fatalf("ListRolesWithMemberCount: %v", err)
+	}
+
+	found := false
+	for _, r := range roles {
+		if r.Key == customKey {
+			found = true
+			if r.MemberCount < 2 {
+				t.Errorf("custom role memberCount: want >= 2, got %d", r.MemberCount)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("custom role %q not found in ListRolesWithMemberCount result", customKey)
+	}
+}
+
 func TestSeedPermissionsAndRoles_InstallsUsersPerms(t *testing.T) {
 	pool := newPool(t)
 	ctx := context.Background()

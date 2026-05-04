@@ -3599,6 +3599,7 @@ type adminRoleItem struct {
 	Description string   `json:"description"`
 	IsSystem    bool     `json:"isSystem"`
 	Permissions []string `json:"permissions"`
+	MemberCount int      `json:"memberCount"`
 }
 
 // ListAdminRoles handles GET /api/app/admin/roles.
@@ -3606,9 +3607,9 @@ type adminRoleItem struct {
 // (admin_role_permissions has no explicit rows for superadmin). For all other
 // roles the permissions are queried from admin_role_permissions.
 func (h *Handler) ListAdminRoles(w http.ResponseWriter, r *http.Request) {
-	roles, err := h.rbacStore.ListRoles(r.Context())
+	roles, err := h.rbacStore.ListRolesWithMemberCount(r.Context())
 	if err != nil {
-		log.Printf("[backend] ListAdminRoles: ListRoles error: %v", err)
+		log.Printf("[backend] ListAdminRoles: ListRolesWithMemberCount error: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to list roles")
 		return
 	}
@@ -3616,16 +3617,16 @@ func (h *Handler) ListAdminRoles(w http.ResponseWriter, r *http.Request) {
 	items := make([]adminRoleItem, 0, len(roles))
 	for _, rl := range roles {
 		var perms []string
-		if rl.Key == rbac.RoleSuperadmin {
+		if rl.Role.Key == rbac.RoleSuperadmin {
 			all := rbac.AllPermissions()
 			perms = make([]string, len(all))
 			for i, p := range all {
 				perms[i] = p.Key
 			}
 		} else {
-			perms, err = h.rbacStore.PermissionsForRole(r.Context(), rl.ID)
+			perms, err = h.rbacStore.PermissionsForRole(r.Context(), rl.Role.ID)
 			if err != nil {
-				log.Printf("[backend] ListAdminRoles: PermissionsForRole(%s) error: %v", rl.Key, err)
+				log.Printf("[backend] ListAdminRoles: PermissionsForRole(%s) error: %v", rl.Role.Key, err)
 				writeError(w, http.StatusInternalServerError, "failed to load role permissions")
 				return
 			}
@@ -3634,15 +3635,34 @@ func (h *Handler) ListAdminRoles(w http.ResponseWriter, r *http.Request) {
 			perms = []string{}
 		}
 		items = append(items, adminRoleItem{
-			ID:          rl.ID.String(),
-			Key:         rl.Key,
-			Name:        rl.Name,
-			Description: rl.Description,
-			IsSystem:    rl.IsSystem,
+			ID:          rl.Role.ID.String(),
+			Key:         rl.Role.Key,
+			Name:        rl.Role.Name,
+			Description: rl.Role.Description,
+			IsSystem:    rl.Role.IsSystem,
 			Permissions: perms,
+			MemberCount: rl.MemberCount,
 		})
 	}
 
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// adminPermissionItem is the JSON shape for a single permission in the
+// ListAdminPermissions response.
+type adminPermissionItem struct {
+	Key         string `json:"key"`
+	Description string `json:"description"`
+}
+
+// ListAdminPermissions handles GET /api/app/admin/permissions. Returns the
+// canonical permission catalog from rbac.AllPermissions(). Static; no DB read.
+func (h *Handler) ListAdminPermissions(w http.ResponseWriter, r *http.Request) {
+	perms := rbac.AllPermissions()
+	items := make([]adminPermissionItem, len(perms))
+	for i, p := range perms {
+		items[i] = adminPermissionItem{Key: p.Key, Description: p.Description}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 

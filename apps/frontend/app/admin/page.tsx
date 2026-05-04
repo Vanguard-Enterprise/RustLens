@@ -35,7 +35,12 @@ export default async function Page() {
         } as React.CSSProperties
       }
     >
-      <AppSidebar csrfToken={csrfToken} user={user} variant="inset" />
+      <AppSidebar
+        csrfToken={csrfToken}
+        user={user}
+        permissions={session.permissions ?? []}
+        variant="inset"
+      />
       <SidebarInset>
         <SiteHeader />
         <div className="flex flex-1 flex-col">

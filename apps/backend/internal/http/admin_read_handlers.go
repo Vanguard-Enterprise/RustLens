@@ -11,6 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"rustlens/backend/internal/store"
 )
 
 // Read-side admin endpoints consumed by the frontend admin pages.
@@ -41,11 +43,18 @@ type adminAppUser struct {
 }
 
 type adminGuildItem struct {
-	GuildID        string `json:"guildId"`
-	ActiveMembers  int    `json:"activeMembers"`
-	LinkedMembers  int    `json:"linkedMembers"`
-	TrackedServers int    `json:"trackedServers"`
-	AdminRoleID    string `json:"adminRoleId"`
+	GuildID                string  `json:"guildId"`
+	Name                   string  `json:"name"`
+	IconHash               *string `json:"iconHash"`
+	OwnerDiscordID         *string `json:"ownerDiscordId"`
+	OwnerUsername          *string `json:"ownerUsername"`
+	OwnerGlobalName        *string `json:"ownerGlobalName"`
+	OwnerAvatarHash        *string `json:"ownerAvatarHash"`
+	ApproximateMemberCount *int32  `json:"approximateMemberCount"`
+	IsInstalled            bool    `json:"isInstalled"`
+	LeftAt                 *string `json:"leftAt"`
+	IsConfigured           bool    `json:"isConfigured"`
+	TrackedServerCount     int     `json:"trackedServerCount"`
 }
 
 type adminServerItem struct {
@@ -206,43 +215,67 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListAdminGuilds: GET /api/app/admin/guilds
+// Query:
+//   q=<substring>            matches bot_guilds.name (substring), guild_id (prefix), owner_username (substring); ILIKE
+//   page=1 (default)         1-based
+//   pageSize=20 (default)    capped at 100
 func (h *Handler) ListAdminGuilds(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	pool := h.postgres.Pool()
+	q := r.URL.Query()
 
-	rows, err := pool.Query(ctx, `
-		SELECT s.guild_id,
-		       s.admin_role_id,
-		       (SELECT COUNT(*) FROM user_guilds g WHERE g.guild_id = s.guild_id AND g.left_at IS NULL),
-		       (SELECT COUNT(*) FROM guild_steam_discord_links l WHERE l.guild_id = s.guild_id),
-		       (SELECT COUNT(*) FROM guild_tracked_servers t WHERE t.guild_id = s.guild_id)
-		FROM guild_settings s
-		ORDER BY s.guild_id
-		LIMIT 500
-	`)
+	page := 1
+	pageSize := 20
+	if v := q.Get("page"); v != "" {
+		parseLimit(v, &page)
+		if page < 1 {
+			page = 1
+		}
+	}
+	if v := q.Get("pageSize"); v != "" {
+		parseLimit(v, &pageSize)
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	rows, total, err := h.postgres.ListAdminGuilds(ctx, store.ListAdminGuildsOpts{
+		Q:        q.Get("q"),
+		Page:     page,
+		PageSize: pageSize,
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	defer rows.Close()
 
-	items := []adminGuildItem{}
-	for rows.Next() {
-		var (
-			item           adminGuildItem
-			active, linked int64
-			tracked        int64
-		)
-		if err := rows.Scan(&item.GuildID, &item.AdminRoleID, &active, &linked, &tracked); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
+	items := make([]adminGuildItem, 0, len(rows))
+	for _, r := range rows {
+		it := adminGuildItem{
+			GuildID:                r.GuildID,
+			Name:                   r.Name,
+			IconHash:               r.IconHash,
+			OwnerDiscordID:         r.OwnerDiscordID,
+			OwnerUsername:          r.OwnerUsername,
+			OwnerGlobalName:        r.OwnerGlobalName,
+			OwnerAvatarHash:        r.OwnerAvatarHash,
+			ApproximateMemberCount: r.ApproximateMemberCount,
+			IsInstalled:            r.IsInstalled,
+			IsConfigured:           r.IsConfigured,
+			TrackedServerCount:     int(r.TrackedServerCount),
 		}
-		item.ActiveMembers = int(active)
-		item.LinkedMembers = int(linked)
-		item.TrackedServers = int(tracked)
-		items = append(items, item)
+		if r.LeftAt != nil {
+			s := r.LeftAt.Format(time.RFC3339)
+			it.LeftAt = &s
+		}
+		items = append(items, it)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":    items,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+	})
 }
 
 // ListAdminServers: GET /api/app/admin/servers

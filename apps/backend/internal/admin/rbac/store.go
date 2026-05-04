@@ -87,6 +87,37 @@ func (s *Store) ListRoles(ctx context.Context) ([]Role, error) {
 	return out, rows.Err()
 }
 
+// RoleWithMemberCount extends Role with the count of distinct app_users
+// currently holding this role (admin_user_roles rows).
+type RoleWithMemberCount struct {
+	Role
+	MemberCount int
+}
+
+func (s *Store) ListRolesWithMemberCount(ctx context.Context) ([]RoleWithMemberCount, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT r.id, r.key, r.name, COALESCE(r.description, ''), r.is_system,
+		       COUNT(ur.user_id)::int AS member_count
+		FROM admin_roles r
+		LEFT JOIN admin_user_roles ur ON ur.role_id = r.id
+		GROUP BY r.id, r.key, r.name, r.description, r.is_system
+		ORDER BY r.key
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RoleWithMemberCount
+	for rows.Next() {
+		var r RoleWithMemberCount
+		if err := rows.Scan(&r.Role.ID, &r.Role.Key, &r.Role.Name, &r.Role.Description, &r.Role.IsSystem, &r.MemberCount); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) RoleIDByKey(ctx context.Context, key string) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `SELECT id FROM admin_roles WHERE key = $1`, key).Scan(&id)

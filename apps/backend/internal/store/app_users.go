@@ -84,14 +84,6 @@ type AdminUserListItem struct {
 	SteamConnectionCount int
 }
 
-type AdminGuildOverview struct {
-	GuildID        string
-	ActiveMembers  int
-	LinkedMembers  int
-	TrackedServers int
-	AdminRoleID    string
-}
-
 type AdminServerOverview struct {
 	ServerBMID    string
 	Name          string
@@ -206,21 +198,6 @@ func scanAdminUserListItem(scanner rowScanner) (AdminUserListItem, error) {
 	record.User.Roles, err = decodeStringSlice(rolesJSON)
 	if err != nil {
 		return AdminUserListItem{}, err
-	}
-	return record, nil
-}
-
-func scanAdminGuildOverview(scanner rowScanner) (AdminGuildOverview, error) {
-	var record AdminGuildOverview
-	err := scanner.Scan(
-		&record.GuildID,
-		&record.ActiveMembers,
-		&record.LinkedMembers,
-		&record.TrackedServers,
-		&record.AdminRoleID,
-	)
-	if err != nil {
-		return AdminGuildOverview{}, err
 	}
 	return record, nil
 }
@@ -609,40 +586,6 @@ func (p *PostgresStore) ListAdminUsers(ctx context.Context) ([]AdminUserListItem
 	items := make([]AdminUserListItem, 0)
 	for rows.Next() {
 		record, err := scanAdminUserListItem(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, record)
-	}
-	return items, rows.Err()
-}
-
-func (p *PostgresStore) ListAdminGuilds(ctx context.Context) ([]AdminGuildOverview, error) {
-	rows, err := p.pool.Query(ctx, `
-		SELECT ug.guild_id,
-			COUNT(DISTINCT CASE WHEN ug.is_active THEN ug.discord_id END)::int AS active_members,
-			COUNT(DISTINCT gsl.discord_id)::int AS linked_members,
-			COUNT(DISTINCT gts.server_bm_id)::int AS tracked_servers,
-			COALESCE(gs.admin_role_id, '') AS admin_role_id
-		FROM user_guilds ug
-		LEFT JOIN guild_steam_discord_links gsl
-			ON gsl.guild_id = ug.guild_id
-			AND gsl.discord_id = ug.discord_id
-		LEFT JOIN guild_tracked_servers gts
-			ON gts.guild_id = ug.guild_id
-		LEFT JOIN guild_settings gs
-			ON gs.guild_id = ug.guild_id
-		GROUP BY ug.guild_id, gs.admin_role_id
-		ORDER BY active_members DESC, ug.guild_id
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	items := make([]AdminGuildOverview, 0)
-	for rows.Next() {
-		record, err := scanAdminGuildOverview(rows)
 		if err != nil {
 			return nil, err
 		}
