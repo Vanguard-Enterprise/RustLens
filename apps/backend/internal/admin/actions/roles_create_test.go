@@ -16,8 +16,8 @@ import (
 )
 
 // newRolesCRUDHarness wires the real rbac.Resolver plus a fake dispatcher-level
-// permission resolver. Only NewRolesCreateAction is registered here; Tasks 3-5
-// will add the remaining three roles actions and update the harness accordingly.
+// permission resolver. All four roles.* actions are registered here:
+// roles.create, roles.delete, roles.update, and roles.permissions.set.
 func newRolesCRUDHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, *rbac.Store, func(map[string]bool)) {
 	t.Helper()
 	dsn := os.Getenv("TEST_POSTGRES_URL")
@@ -49,7 +49,9 @@ func newRolesCRUDHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, 
 	if err := reg.Register(actions.NewRolesDeleteAction(s.Pool())); err != nil {
 		t.Fatalf("reg delete: %v", err)
 	}
-	// NewRolesPermissionsSetAction is not implemented yet; it will be registered here in Task 5.
+	if err := reg.Register(actions.NewRolesPermissionsSetAction(s.Pool())); err != nil {
+		t.Fatalf("reg permissions set: %v", err)
+	}
 	disp := actions.NewDispatcher(reg, perms, auditSinkBridge{au}, fixedActor)
 	r := chi.NewRouter()
 	r.Post("/api/app/admin/actions/{type}", disp.ServeHTTP)

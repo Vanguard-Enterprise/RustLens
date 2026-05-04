@@ -20,6 +20,9 @@ func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *r
 	if err := reg.Register(actions.NewRolesDeleteAction(pool)); err != nil {
 		return err
 	}
+	if err := reg.Register(actions.NewRolesPermissionsSetAction(pool)); err != nil {
+		return err
+	}
 	if err := reg.Register(actions.NewRolesUpdateAction(pool)); err != nil {
 		return err
 	}
