@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/store"
 )
 
@@ -83,6 +84,10 @@ func (h *Handler) GetServerPlayerCountAnalytics(w http.ResponseWriter, r *http.R
 	selectedStart, selectedStop := serverAnalyticsRange(now, days)
 
 	entry, err := h.getServerAnalyticsCache(r, bmID, cacheStart, cacheStop)
+	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
+		writeError(w, http.StatusNotFound, "BattleMetrics server not found")
+		return
+	}
 	if err != nil {
 		log.Printf("[backend] server analytics fetch failed for server %s: %v", bmID, err)
 		writeError(w, http.StatusBadGateway, "failed to fetch server analytics")

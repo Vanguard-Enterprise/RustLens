@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -53,6 +54,7 @@ func (c *Client) FetchServerPlayerCountHistory(ctx context.Context, serverID str
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Del("Authorization")
 
 	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
 	log.Printf("[battlemetrics] server history request server=%s proxied=%t proxy=%q", serverID, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
@@ -67,7 +69,8 @@ func (c *Client) FetchServerPlayerCountHistory(ctx context.Context, serverID str
 		return nil, ErrPlayerNotFound
 	}
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("battlemetrics server history returned status %d", response.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
+		return nil, fmt.Errorf("battlemetrics server history returned status %d: %s", response.StatusCode, string(body))
 	}
 
 	var payload serverPlayerCountHistoryPayload
