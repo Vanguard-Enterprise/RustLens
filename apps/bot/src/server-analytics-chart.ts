@@ -17,6 +17,7 @@ const MAX_COLOR = "#f6d57b";
 const AVG_COLOR = "#2d789f";
 const MIN_COLOR = "#8795aa";
 const TREND_COLOR = "#d31239";
+const PEAK_TREND_COLOR = "#22c55e";
 const PEAK_TREND_MIN_PEAK_RATIO = 0.5;
 
 function maxPop(analytics: ServerAnalyticsResponse) {
@@ -73,12 +74,13 @@ function drawLineChart(ctx: any, analytics: ServerAnalyticsResponse, max: number
   const maxTime = points[points.length - 1].timestampUnix;
   const timeSpan = Math.max(1, maxTime - minTime);
   const xFor = (timestampUnix: number) => CHART_LEFT + ((timestampUnix - minTime) / timeSpan) * LINE_WIDTH;
-  const yFor = (value: number) => baseline - (value / max) * LINE_HEIGHT;
+  const yFor = (value: number) => baseline - (Math.min(max, Math.max(0, value)) / max) * LINE_HEIGHT;
 
   drawSeries(ctx, points.map((point) => [xFor(point.timestampUnix), yFor(point.max)]), MAX_COLOR);
   drawSeries(ctx, points.map((point) => [xFor(point.timestampUnix), yFor(point.value)]), AVG_COLOR);
   drawSeries(ctx, points.map((point) => [xFor(point.timestampUnix), yFor(point.min)]), MIN_COLOR);
-  drawPeakTrend(ctx, points, xFor, yFor);
+  drawTrend(ctx, averageTrendLine(points), xFor, yFor, TREND_COLOR);
+  drawTrend(ctx, peakTrendLine(points), xFor, yFor, PEAK_TREND_COLOR);
 
   ctx.fillStyle = "#8795aa";
   ctx.font = `13px ${FONT_FAMILY}`;
@@ -114,16 +116,19 @@ function acceptedPeakTrendPoints(points: ServerAnalyticsResponse["points"]) {
   return points.filter((point) => point.max >= minimumHighPop);
 }
 
-function peakTrendLine(points: ServerAnalyticsResponse["points"]) {
-  const accepted = acceptedPeakTrendPoints(points);
-  if (accepted.length < 2) {
+function trendLine(
+  fitPoints: ServerAnalyticsResponse["points"],
+  valueFor: (point: ServerAnalyticsResponse["points"][number]) => number,
+  rangePoints = fitPoints,
+) {
+  if (fitPoints.length < 2 || rangePoints.length < 2) {
     return null;
   }
 
-  const firstTime = accepted[0].timestampUnix;
-  const values = accepted.map((point) => ({
+  const firstTime = fitPoints[0].timestampUnix;
+  const values = fitPoints.map((point) => ({
     x: (point.timestampUnix - firstTime) / 86400,
-    y: point.max,
+    y: valueFor(point),
   }));
   const count = values.length;
   const sumX = values.reduce((sum, point) => sum + point.x, 0);
@@ -137,8 +142,8 @@ function peakTrendLine(points: ServerAnalyticsResponse["points"]) {
 
   const slope = (count * sumXY - sumX * sumY) / denominator;
   const intercept = (sumY - slope * sumX) / count;
-  const start = points[0];
-  const end = points[points.length - 1];
+  const start = rangePoints[0];
+  const end = rangePoints[rangePoints.length - 1];
   return {
     startTimestampUnix: start.timestampUnix,
     endTimestampUnix: end.timestampUnix,
@@ -147,18 +152,26 @@ function peakTrendLine(points: ServerAnalyticsResponse["points"]) {
   };
 }
 
-function drawPeakTrend(
+function averageTrendLine(points: ServerAnalyticsResponse["points"]) {
+  return trendLine(points, (point) => point.value);
+}
+
+function peakTrendLine(points: ServerAnalyticsResponse["points"]) {
+  return trendLine(acceptedPeakTrendPoints(points), (point) => point.max, points);
+}
+
+function drawTrend(
   ctx: any,
-  points: ServerAnalyticsResponse["points"],
+  trend: ReturnType<typeof trendLine>,
   xFor: (timestampUnix: number) => number,
   yFor: (value: number) => number,
+  color: string,
 ) {
-  const trend = peakTrendLine(points);
   if (!trend) {
     return;
   }
 
-  ctx.strokeStyle = TREND_COLOR;
+  ctx.strokeStyle = color;
   ctx.lineWidth = 4;
   ctx.setLineDash([18, 12]);
   ctx.beginPath();
@@ -231,8 +244,9 @@ function drawLegend(ctx: any) {
     ["Avg pop", AVG_COLOR],
     ["Min pop", MIN_COLOR],
     ["Trend", TREND_COLOR],
+    ["Peak trend", PEAK_TREND_COLOR],
   ];
-  let x = WIDTH - 560;
+  let x = WIDTH - 690;
   const y = 104;
   for (const [label, color] of items) {
     ctx.fillStyle = color;
