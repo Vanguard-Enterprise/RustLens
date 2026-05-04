@@ -43,8 +43,11 @@ func newRolesCRUDHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, 
 	if err := reg.Register(actions.NewRolesCreateAction(s.Pool())); err != nil {
 		t.Fatalf("reg create: %v", err)
 	}
-	// NewRolesUpdateAction, NewRolesDeleteAction, NewRolesPermissionsSetAction
-	// are not implemented yet; they will be registered here in Tasks 3-5.
+	if err := reg.Register(actions.NewRolesUpdateAction(s.Pool())); err != nil {
+		t.Fatalf("reg update: %v", err)
+	}
+	// NewRolesDeleteAction, NewRolesPermissionsSetAction
+	// are not implemented yet; they will be registered here in Tasks 4-5.
 	disp := actions.NewDispatcher(reg, perms, auditSinkBridge{au}, fixedActor)
 	r := chi.NewRouter()
 	r.Post("/api/app/admin/actions/{type}", disp.ServeHTTP)
