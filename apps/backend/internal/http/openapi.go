@@ -2139,6 +2139,74 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/app/admin/permissions": map[string]any{
+				"get": map[string]any{
+					"summary":     "List the canonical admin permission catalog",
+					"description": "Returns every permission key registered in rbac.AllPermissions(), with its human-readable description. Static catalog; no DB read.",
+					"tags":        []string{"admin"},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Permission catalog",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"items": map[string]any{
+												"type": "array",
+												"items": map[string]any{
+													"type": "object",
+													"required": []string{"key", "description"},
+													"properties": map[string]any{
+														"key":         map[string]any{"type": "string"},
+														"description": map[string]any{"type": "string"},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			"/api/app/admin/roles": map[string]any{
+				"get": map[string]any{
+					"summary": "List admin roles with permission and member counts",
+					"tags":    []string{"admin"},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Roles",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"items": map[string]any{
+												"type": "array",
+												"items": map[string]any{
+													"type": "object",
+													"required": []string{"id", "key", "name", "isSystem", "permissions", "memberCount"},
+													"properties": map[string]any{
+														"id":          map[string]any{"type": "string"},
+														"key":         map[string]any{"type": "string"},
+														"name":        map[string]any{"type": "string"},
+														"description": map[string]any{"type": "string"},
+														"isSystem":    map[string]any{"type": "boolean"},
+														"permissions": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+														"memberCount": map[string]any{"type": "integer"},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 			"/api/app/admin/audit": map[string]any{
 				"get": map[string]any{
 					"summary":     "List admin audit events",
