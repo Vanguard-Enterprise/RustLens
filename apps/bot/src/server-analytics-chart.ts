@@ -17,6 +17,7 @@ const MAX_COLOR = "#f6d57b";
 const AVG_COLOR = "#2d789f";
 const MIN_COLOR = "#8795aa";
 const TREND_COLOR = "#d31239";
+const PEAK_TREND_MIN_PEAK_RATIO = 0.5;
 
 function maxPop(analytics: ServerAnalyticsResponse) {
   const lineMax = Math.max(0, ...analytics.points.flatMap((point) => [point.min, point.value, point.max]));
@@ -108,16 +109,9 @@ function drawSeries(ctx: any, coords: number[][], color: string) {
 }
 
 function acceptedPeakTrendPoints(points: ServerAnalyticsResponse["points"]) {
-  const accepted: ServerAnalyticsResponse["points"] = [];
-  let previousAcceptedMax: number | null = null;
-  for (const point of points) {
-    if (previousAcceptedMax !== null && point.max < previousAcceptedMax * 0.4) {
-      continue;
-    }
-    accepted.push(point);
-    previousAcceptedMax = point.max;
-  }
-  return accepted;
+  const peak = Math.max(0, ...points.map((point) => point.max));
+  const minimumHighPop = peak * PEAK_TREND_MIN_PEAK_RATIO;
+  return points.filter((point) => point.max >= minimumHighPop);
 }
 
 function peakTrendLine(points: ServerAnalyticsResponse["points"]) {
@@ -143,8 +137,8 @@ function peakTrendLine(points: ServerAnalyticsResponse["points"]) {
 
   const slope = (count * sumXY - sumX * sumY) / denominator;
   const intercept = (sumY - slope * sumX) / count;
-  const start = points[0];
-  const end = points[points.length - 1];
+  const start = accepted[0];
+  const end = accepted[accepted.length - 1];
   return {
     startTimestampUnix: start.timestampUnix,
     endTimestampUnix: end.timestampUnix,
