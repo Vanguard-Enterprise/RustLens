@@ -111,9 +111,22 @@ function drawSeries(ctx: any, coords: number[][], color: string) {
 }
 
 function acceptedPeakTrendPoints(points: ServerAnalyticsResponse["points"]) {
-  const peak = Math.max(0, ...points.map((point) => point.max));
-  const minimumHighPop = peak * PEAK_TREND_MIN_PEAK_RATIO;
-  return points.filter((point) => point.max >= minimumHighPop);
+  const localPeaks = points.filter((point, index) => {
+    const previous = points[index - 1];
+    const next = points[index + 1];
+    return (!previous || point.max >= previous.max) && (!next || point.max >= next.max);
+  });
+
+  const accepted: ServerAnalyticsResponse["points"] = [];
+  let previousAcceptedMax: number | null = null;
+  for (const point of localPeaks) {
+    if (previousAcceptedMax !== null && point.max < previousAcceptedMax * PEAK_TREND_MIN_PEAK_RATIO) {
+      continue;
+    }
+    accepted.push(point);
+    previousAcceptedMax = point.max;
+  }
+  return accepted;
 }
 
 function trendLine(
@@ -144,11 +157,15 @@ function trendLine(
   const intercept = (sumY - slope * sumX) / count;
   const start = rangePoints[0];
   const end = rangePoints[rangePoints.length - 1];
+  const deltaStart = fitPoints[0];
+  const deltaEnd = fitPoints[fitPoints.length - 1];
   return {
     startTimestampUnix: start.timestampUnix,
     endTimestampUnix: end.timestampUnix,
     startValue: intercept + slope * ((start.timestampUnix - firstTime) / 86400),
     endValue: intercept + slope * ((end.timestampUnix - firstTime) / 86400),
+    deltaStartValue: intercept + slope * ((deltaStart.timestampUnix - firstTime) / 86400),
+    deltaEndValue: intercept + slope * ((deltaEnd.timestampUnix - firstTime) / 86400),
   };
 }
 
@@ -189,8 +206,8 @@ function formatTrendDelta(trend: ReturnType<typeof trendLine>) {
   if (!trend) {
     return "";
   }
-  const start = Math.max(0, trend.startValue);
-  const end = Math.max(0, trend.endValue);
+  const start = Math.max(0, trend.deltaStartValue);
+  const end = Math.max(0, trend.deltaEndValue);
   const percent = ((end - start) / Math.max(1, start)) * 100;
   const rounded = Math.round(percent);
   const sign = rounded >= 0 ? "+" : "";
@@ -265,7 +282,7 @@ function drawLegend(ctx: any, analytics: ServerAnalyticsResponse) {
     [`Trend${formatTrendDelta(averageTrend)}`, TREND_COLOR],
     [`Peak trend${formatTrendDelta(peakTrend)}`, PEAK_TREND_COLOR],
   ];
-  let x = WIDTH - 760;
+  let x = WIDTH - 840;
   const y = 104;
   for (const [label, color] of items) {
     ctx.fillStyle = color;
