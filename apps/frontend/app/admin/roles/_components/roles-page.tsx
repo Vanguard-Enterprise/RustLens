@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon, SearchIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { AdminPermissionItem, AdminRoleItem } from "@/lib/rustlens-api";
 
 import {
@@ -14,7 +15,7 @@ import {
 	updateRoleAction,
 } from "../actions";
 import { DeleteRoleDialog } from "./delete-role-dialog";
-import { RoleDrawer } from "./role-drawer";
+import { RoleDialog } from "./role-dialog";
 import { RolesTable } from "./roles-table";
 
 type Props = {
@@ -22,19 +23,31 @@ type Props = {
 	permissionsCatalog: AdminPermissionItem[];
 };
 
-type DrawerState =
+type DialogState =
 	| { open: false }
 	| { open: true; mode: "create"; role: null }
 	| { open: true; mode: "edit"; role: AdminRoleItem };
 
 export function RolesPage({ initialRoles, permissionsCatalog }: Props) {
 	const router = useRouter();
-	const [drawer, setDrawer] = React.useState<DrawerState>({ open: false });
+	const [dialog, setDialog] = React.useState<DialogState>({ open: false });
 	const [deleting, setDeleting] = React.useState<AdminRoleItem | null>(null);
 	const [error, setError] = React.useState<string | null>(null);
+	const [search, setSearch] = React.useState("");
+
+	const filteredRoles = React.useMemo(() => {
+		const q = search.trim().toLowerCase();
+		if (!q) return initialRoles;
+		return initialRoles.filter(
+			(r) =>
+				r.name.toLowerCase().includes(q) ||
+				r.key.toLowerCase().includes(q) ||
+				(r.description ?? "").toLowerCase().includes(q),
+		);
+	}, [initialRoles, search]);
 
 	const onSubmit = async (
-		input: Parameters<React.ComponentProps<typeof RoleDrawer>["onSubmit"]>[0],
+		input: Parameters<React.ComponentProps<typeof RoleDialog>["onSubmit"]>[0],
 	) => {
 		setError(null);
 		if (input.mode === "create") {
@@ -87,9 +100,18 @@ export function RolesPage({ initialRoles, permissionsCatalog }: Props) {
 
 	return (
 		<div className="flex flex-col gap-4">
-			<div className="flex items-center justify-between">
-				<div />
-				<Button onClick={() => setDrawer({ open: true, mode: "create", role: null })}>
+			<div className="flex items-center justify-between gap-4">
+				<div className="relative w-full max-w-sm">
+					<SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+					<Input
+						type="search"
+						placeholder="Search by name, key, or description"
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+						className="pl-8"
+					/>
+				</div>
+				<Button onClick={() => setDialog({ open: true, mode: "create", role: null })}>
 					<PlusIcon className="mr-2 size-4" />
 					New role
 				</Button>
@@ -98,17 +120,17 @@ export function RolesPage({ initialRoles, permissionsCatalog }: Props) {
 			{error ? <p className="text-sm text-destructive">{error}</p> : null}
 
 			<RolesTable
-				roles={initialRoles}
-				onEdit={(role) => setDrawer({ open: true, mode: "edit", role })}
+				roles={filteredRoles}
+				onEdit={(role) => setDialog({ open: true, mode: "edit", role })}
 				onDelete={(role) => setDeleting(role)}
 			/>
 
-			<RoleDrawer
-				open={drawer.open}
-				mode={drawer.open ? drawer.mode : "create"}
-				role={drawer.open && drawer.mode === "edit" ? drawer.role : null}
+			<RoleDialog
+				open={dialog.open}
+				mode={dialog.open ? dialog.mode : "create"}
+				role={dialog.open && dialog.mode === "edit" ? dialog.role : null}
 				catalog={permissionsCatalog}
-				onOpenChange={(open) => setDrawer(open ? drawer : { open: false })}
+				onOpenChange={(open) => setDialog(open ? dialog : { open: false })}
 				onSubmit={onSubmit}
 			/>
 
