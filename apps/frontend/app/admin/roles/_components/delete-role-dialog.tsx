@@ -54,7 +54,7 @@ export function DeleteRoleDialog({ role, open, onOpenChange, onConfirm }: Props)
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
+            <DialogContent className="text-left">
                 <DialogHeader>
                     <DialogTitle>Delete role &ldquo;{role.name}&rdquo;?</DialogTitle>
                     <DialogDescription>
