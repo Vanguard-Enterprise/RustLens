@@ -67,7 +67,7 @@ func (a *rolesPermissionsSetAction) Execute(ctx context.Context, in ActionInput)
 	if err != nil {
 		return ActionResult{}, err
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer tx.Rollback(ctx)
 
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM admin_role_permissions WHERE role_id::text=$1`, p.ID,

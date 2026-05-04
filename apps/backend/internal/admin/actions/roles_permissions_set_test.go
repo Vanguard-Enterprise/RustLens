@@ -74,14 +74,24 @@ func TestRolesPermissionsSet_IdempotentReset(t *testing.T) {
 	setPerms(map[string]bool{rbac.PermAdminsGrant: true})
 	seedAppUser(t, s, "usr_test_actor", "Actor", false)
 	id := insertCustomRole(t, s, "rpset_idem", "Custom")
+	// Pre-seed a permission that differs from what we will set, so the
+	// DELETE leg of the first call is observable in the final assertion.
+	if _, err := s.Pool().Exec(context.Background(),
+		`INSERT INTO admin_role_permissions (role_id, permission_key) VALUES ($1::uuid, $2)`,
+		id, rbac.PermUsersExport,
+	); err != nil {
+		t.Fatal(err)
+	}
 
 	body := mustJSON(t, map[string]any{
 		"params": map[string]any{"id": id, "permissions": []string{rbac.PermUsersRead}},
 		"reason": "t",
 	})
+	// First call: should clear PermUsersExport and insert PermUsersRead.
 	if r := mustPOST(t, srv.URL+"/api/app/admin/actions/roles.permissions.set", body); r.StatusCode != 200 {
 		t.Fatalf("first call status=%d body=%s", r.StatusCode, readBody(r))
 	}
+	// Second call (idempotent): same payload, same expected state.
 	if r := mustPOST(t, srv.URL+"/api/app/admin/actions/roles.permissions.set", body); r.StatusCode != 200 {
 		t.Fatalf("second call status=%d body=%s", r.StatusCode, readBody(r))
 	}
@@ -123,5 +133,20 @@ func TestRolesPermissionsSet_SystemRoleRejected(t *testing.T) {
 	resp := mustPOST(t, srv.URL+"/api/app/admin/actions/roles.permissions.set", body)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("status=%d; want 403", resp.StatusCode)
+	}
+}
+
+func TestRolesPermissionsSet_NonExistentID(t *testing.T) {
+	srv, s, _, setPerms := newRolesCRUDHarness(t)
+	setPerms(map[string]bool{rbac.PermAdminsGrant: true})
+	seedAppUser(t, s, "usr_test_actor", "Actor", false)
+
+	body := mustJSON(t, map[string]any{
+		"params": map[string]any{"id": "00000000-0000-0000-0000-000000000000", "permissions": []string{rbac.PermUsersRead}},
+		"reason": "t",
+	})
+	resp := mustPOST(t, srv.URL+"/api/app/admin/actions/roles.permissions.set", body)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status=%d; want 404 body=%s", resp.StatusCode, readBody(resp))
 	}
 }
