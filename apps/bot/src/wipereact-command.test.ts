@@ -17,6 +17,14 @@ describe("wipereact command", () => {
       required: true,
       value: "",
     });
+    expect(modal.components[1].component).toEqual({
+      type: ComponentType.TextInput,
+      custom_id: "wipereact_description",
+      style: 2,
+      max_length: 250,
+      required: false,
+      value: "",
+    });
     expect(modal.components[3].component).toEqual({
       type: ComponentType.TextInput,
       custom_id: "wipereact_timezone",
@@ -117,6 +125,45 @@ describe("wipereact command", () => {
     expect(result.state.acceptedUserIds).toEqual(["1", "2"]);
     expect(result.state.declinedUserIds).toEqual([]);
     expect(result.state.lateUserIds).toEqual(["3"]);
+  });
+
+  it("detects a user's current reaction bucket", () => {
+    const state = {
+      name: "EU Monday",
+      description: "Main roam",
+      timeZone: "Europe/London",
+      scheduledUnix: 1774557951,
+      creatorId: "999",
+      askLateReason: true,
+      askDeclinedReason: true,
+      acceptedUserIds: ["1"],
+      declinedUserIds: ["2"],
+      lateUserIds: ["3"],
+      embedTimestamp: "2026-03-02T20:44:18.917Z",
+    };
+
+    expect(__testables.getUserReactionType(state, "1")).toBe("accepted");
+    expect(__testables.getUserReactionType(state, "2")).toBe("declined");
+    expect(__testables.getUserReactionType(state, "3")).toBe("late");
+    expect(__testables.getUserReactionType(state, "4")).toBeNull();
+  });
+
+  it("omits empty wipe react embed descriptions", () => {
+    const embed = __testables.buildWipeReactEmbed({
+      name: "EU Monday",
+      description: "",
+      timeZone: "Europe/London",
+      scheduledUnix: 1774557951,
+      creatorId: "999",
+      askLateReason: true,
+      askDeclinedReason: true,
+      acceptedUserIds: [],
+      declinedUserIds: [],
+      lateUserIds: [],
+      embedTimestamp: "2026-03-02T20:44:18.917Z",
+    });
+
+    expect(embed).not.toHaveProperty("description");
   });
 
   it("parses the wipe react message state from embeds and buttons", () => {

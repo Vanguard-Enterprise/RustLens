@@ -620,7 +620,7 @@ function buildStatusField(prefix: string, userIds: readonly string[]) {
 function buildWipeReactEmbed(state: WipeReactMessageState) {
   return {
     title: state.name,
-    description: state.description,
+    ...(state.description.length > 0 ? { description: state.description } : {}),
     color: RUSTLENS_EMBED_COLOR,
     timestamp: state.embedTimestamp,
     footer: {
@@ -1008,7 +1008,7 @@ function buildScheduleStepTwoModal(
       new TextInputBuilder()
         .setCustomId(WIPEREACT_SCHEDULE_DESCRIPTION_CUSTOM_ID)
         .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true)
+        .setRequired(false)
         .setMaxLength(250)
         .setValue(defaults?.description ?? ""),
     )
@@ -1037,7 +1037,7 @@ function buildScheduleStepTwoModal(
 function buildScheduleConfirmEmbed(config: ScheduleWipeReactConfig) {
   return {
     title: `Schedule: ${config.name}`,
-    description: config.description,
+    ...(config.description.length > 0 ? { description: config.description } : {}),
     color: RUSTLENS_EMBED_COLOR,
     fields: [
       { name: "Schedule", value: formatScheduleSummary(config) },
@@ -1110,7 +1110,7 @@ function buildWipeReactModal(
       new TextInputBuilder()
         .setCustomId(WIPEREACT_DESCRIPTION_CUSTOM_ID)
         .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true)
+        .setRequired(false)
         .setMaxLength(250)
         .setValue(defaults?.description ?? ""),
     )
@@ -1206,13 +1206,6 @@ function buildWipeReactStateFromModal(
 
   const description =
     getFieldValues(interaction, WIPEREACT_DESCRIPTION_CUSTOM_ID)[0]?.trim() ?? "";
-  if (description.length === 0) {
-    return {
-      state: null,
-      error: "Description is required.",
-    } as const;
-  }
-
   const timeInput = getFieldValues(interaction, WIPEREACT_TIME_CUSTOM_ID)[0] ?? "";
   const parsedDate = parseFlexibleDateTime(timeInput, timeZoneResult.timeZone);
   if (parsedDate.error || !parsedDate.date) {
@@ -1274,6 +1267,19 @@ function parseActionButton(customId: string): ParsedActionButton | null {
   return null;
 }
 
+function getUserReactionType(state: WipeReactMessageState, userId: string): WipeReactAction | null {
+  if (state.acceptedUserIds.includes(userId)) {
+    return "accepted";
+  }
+  if (state.declinedUserIds.includes(userId)) {
+    return "declined";
+  }
+  if (state.lateUserIds.includes(userId)) {
+    return "late";
+  }
+  return null;
+}
+
 function applyUserReaction(
   state: WipeReactMessageState,
   userId: string,
@@ -1283,14 +1289,7 @@ function applyUserReaction(
   const declinedUserIds = state.declinedUserIds.filter((entry) => entry !== userId);
   const lateUserIds = state.lateUserIds.filter((entry) => entry !== userId);
 
-  const previousAction =
-    state.acceptedUserIds.includes(userId)
-      ? "accepted"
-      : state.declinedUserIds.includes(userId)
-        ? "declined"
-        : state.lateUserIds.includes(userId)
-          ? "late"
-          : null;
+  const previousAction = getUserReactionType(state, userId);
 
   if (action === "accepted") {
     acceptedUserIds.push(userId);
@@ -1727,6 +1726,35 @@ async function processWipeReactAction(
       interaction,
       "RustLens needs Wipe React Logs configured before wipe reacts can be used. Run /settings and set Wipe React Logs.",
     );
+    return true;
+  }
+
+  if (getUserReactionType(state, interaction.user.id) === action) {
+    const removal = await getBackend().removeWipeReactReaction(
+      getWipeReactWorkerID(),
+      interaction.guildId,
+      message.id,
+      interaction.user.id,
+    );
+    if (!removal.changed || !removal.removedType) {
+      await replyEphemeral(interaction, "You do not have a reaction on this wipe react.");
+      return true;
+    }
+
+    await logsChannel.send({
+      embeds: [
+        buildReactionRemovalLogEmbed(
+          toWipeReactState(removal.wipeReact),
+          removal.removedType,
+          interaction.user,
+          `Removed by clicking ${actionLabel(action)} again.`,
+        ),
+      ],
+    });
+
+    await syncPersistedWipeReactMessage(message.guild!, removal.wipeReact);
+
+    await replyEphemeral(interaction, `${actionEmoji(action)} Removed your ${actionLabel(action).toLowerCase()} reaction.`);
     return true;
   }
 
@@ -2210,6 +2238,11 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
       return true;
     }
 
+    if (getUserReactionType(toWipeReactState(record), interaction.user.id) === action.type) {
+      await deferEphemeral(interaction);
+      return processWipeReactAction(interaction, interaction.message, action.type);
+    }
+
     if (action.requiresReason) {
       await interaction.showModal(
         buildReasonModal(action.type, interaction.channelId, interaction.message.id).toJSON() as any,
@@ -2458,11 +2491,6 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
     }
 
     const description = getFieldValues(interaction, WIPEREACT_SCHEDULE_DESCRIPTION_CUSTOM_ID)[0]?.trim() ?? "";
-    if (description.length === 0) {
-      await replyEphemeral(interaction, "Description is required.");
-      return true;
-    }
-
     const options = new Set(getFieldValues(interaction, WIPEREACT_SCHEDULE_OPTIONS_CUSTOM_ID));
 
     draft.config.name = name;
@@ -2775,6 +2803,7 @@ export const __testables = {
   formatScheduleChoiceName,
   formatScheduleSummary,
   formatTimestampForInput,
+  getUserReactionType,
   parseActionButton,
   parseFlexibleDateTime,
   parseScheduleTime,
