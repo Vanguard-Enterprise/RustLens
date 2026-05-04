@@ -155,6 +155,12 @@ export type AdminRoleItem = {
 	description: string | null;
 	isSystem: boolean;
 	permissions: string[];
+	memberCount: number;
+};
+
+export type AdminPermissionItem = {
+	key: string;
+	description: string;
 };
 
 export type AuditEventItem = {
@@ -266,6 +272,31 @@ async function backendFetch<T>(
 	}
 
 	return (await response.json()) as T;
+}
+
+type AdminActionEnvelope = {
+	params: Record<string, unknown>;
+	reason: string;
+};
+
+/**
+ * Posts to the admin action dispatcher. Returns the action's result payload
+ * (the inner `result` field from the standard `{ok, result}` envelope).
+ *
+ * Server-only helper; consumed by Server Actions in app/admin/.../actions.ts.
+ */
+export async function postAdminAction<T = unknown>(
+	type: string,
+	params: Record<string, unknown>,
+	reason: string,
+): Promise<T> {
+	const envelope: AdminActionEnvelope = { params, reason };
+	const payload = await backendFetch<AdminActionResponse<T>>(
+		`/api/app/admin/actions/${encodeURIComponent(type)}`,
+		{ method: "POST", body: JSON.stringify(envelope) },
+		{ requireSession: true },
+	);
+	return payload.result;
 }
 
 export function registerWithPassword(payload: {
@@ -406,6 +437,15 @@ export async function getAdminRoles() {
 	return payload.items;
 }
 
+export async function getAdminPermissions() {
+	const payload = await backendFetch<{ items: AdminPermissionItem[] }>(
+		"/api/app/admin/permissions",
+		undefined,
+		{ requireSession: true },
+	);
+	return payload.items;
+}
+
 export async function getAdminUser(userId: string): Promise<AdminUserDetail> {
 	return backendFetch<AdminUserDetail>(
 		`/api/app/admin/users/${encodeURIComponent(userId)}`,
@@ -436,4 +476,35 @@ export async function getAuditEvents(limit = 30) {
 		{ requireSession: true },
 	);
 	return payload.items;
+}
+
+export type CreateAdminRoleInput = {
+	key: string;
+	name: string;
+	description: string;
+	permissions: string[];
+};
+
+export async function createAdminRole(input: CreateAdminRoleInput, reason: string) {
+	return postAdminAction<{ id: string; key: string }>("roles.create", input, reason);
+}
+
+export async function updateAdminRole(
+	id: string,
+	patch: { name: string; description: string },
+	reason: string,
+) {
+	return postAdminAction<{ id: string }>("roles.update", { id, ...patch }, reason);
+}
+
+export async function setAdminRolePermissions(id: string, permissions: string[], reason: string) {
+	return postAdminAction<{ id: string; count: number }>(
+		"roles.permissions.set",
+		{ id, permissions },
+		reason,
+	);
+}
+
+export async function deleteAdminRole(id: string, reason: string) {
+	return postAdminAction<{ id: string }>("roles.delete", { id }, reason);
 }
