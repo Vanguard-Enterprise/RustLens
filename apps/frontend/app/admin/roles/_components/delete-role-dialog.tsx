@@ -26,10 +26,11 @@ type Props = {
 export function DeleteRoleDialog({ role, open, onOpenChange, onConfirm }: Props) {
     const [reason, setReason] = React.useState("");
     const [submitting, setSubmitting] = React.useState(false);
-
-    React.useEffect(() => {
+    const [prevOpen, setPrevOpen] = React.useState(open);
+    if (open !== prevOpen) {
+        setPrevOpen(open);
         if (open) setReason("");
-    }, [open]);
+    }
 
     if (!role) return null;
 

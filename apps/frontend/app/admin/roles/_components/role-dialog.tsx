@@ -50,24 +50,26 @@ export function RoleDialog({ open, onOpenChange, mode, role, catalog, onSubmit }
     const [reasonOpen, setReasonOpen] = React.useState(false);
     const [submitting, setSubmitting] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
-
-    React.useEffect(() => {
-        if (!open) return;
-        setError(null);
-        setReason("");
-        setReasonOpen(false);
-        if (mode === "create") {
-            setKey("");
-            setName("");
-            setDescription("");
-            setPerms(new Set());
-        } else if (role) {
-            setKey(role.key);
-            setName(role.name);
-            setDescription(role.description ?? "");
-            setPerms(new Set(role.permissions));
+    const [prevOpen, setPrevOpen] = React.useState(open);
+    if (open !== prevOpen) {
+        setPrevOpen(open);
+        if (open) {
+            setError(null);
+            setReason("");
+            setReasonOpen(false);
+            if (mode === "create") {
+                setKey("");
+                setName("");
+                setDescription("");
+                setPerms(new Set());
+            } else if (role) {
+                setKey(role.key);
+                setName(role.name);
+                setDescription(role.description ?? "");
+                setPerms(new Set(role.permissions));
+            }
         }
-    }, [open, mode, role]);
+    }
 
     const togglePerm = (k: string, on: boolean) => {
         setPerms((cur) => {
