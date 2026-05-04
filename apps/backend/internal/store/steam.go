@@ -9,11 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type NameGap struct {
-	FromUnix int64 `json:"fromUnix"`
-	ToUnix   int64 `json:"toUnix"`
-}
-
 type AnalyticsGame struct {
 	AppID int    `json:"appId"`
 	Name  string `json:"name"`
@@ -67,9 +62,20 @@ type BmProfileCache struct {
 	BuildHours      int64
 	BmHours         int64
 	BmServersPlayed int
-	NameGaps        []NameGap
 	TopServers      []AnalyticsServer
 	UpdatedAt       time.Time
+}
+
+type BmNameHistoryInput struct {
+	Name       string
+	LastSeenAt time.Time
+}
+
+type BmNameHistory struct {
+	BmID       string
+	Name       string
+	LastSeenAt time.Time
+	ObservedAt time.Time
 }
 
 type SteamGameBanCache struct {
@@ -142,7 +148,6 @@ func scanSteamAccountCache(scanner rowScanner) (SteamAccountCache, error) {
 
 func scanBmProfileCache(scanner rowScanner) (BmProfileCache, error) {
 	var record BmProfileCache
-	var nameGapsJSON []byte
 	var topServersJSON []byte
 	err := scanner.Scan(
 		&record.BmID,
@@ -156,20 +161,11 @@ func scanBmProfileCache(scanner rowScanner) (BmProfileCache, error) {
 		&record.BuildHours,
 		&record.BmHours,
 		&record.BmServersPlayed,
-		&nameGapsJSON,
 		&topServersJSON,
 		&record.UpdatedAt,
 	)
 	if err != nil {
 		return BmProfileCache{}, err
-	}
-	if len(nameGapsJSON) > 0 {
-		if err := json.Unmarshal(nameGapsJSON, &record.NameGaps); err != nil {
-			return BmProfileCache{}, err
-		}
-	}
-	if record.NameGaps == nil {
-		record.NameGaps = []NameGap{}
 	}
 	if len(topServersJSON) > 0 {
 		if err := json.Unmarshal(topServersJSON, &record.TopServers); err != nil {
@@ -315,7 +311,7 @@ func (p *PostgresStore) GetBmProfileCache(ctx context.Context, bmID string) (BmP
 	record, err := scanBmProfileCache(p.pool.QueryRow(ctx, `
 		SELECT bm_id, bm_name, first_seen_at, vitality_hours, atlas_hours, vital_hours,
 			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played,
-			name_gaps, top_servers, updated_at
+			top_servers, updated_at
 		FROM bm_profile_cache
 		WHERE bm_id = $1
 	`, bmID))
@@ -329,14 +325,6 @@ func (p *PostgresStore) GetBmProfileCache(ctx context.Context, bmID string) (BmP
 }
 
 func (p *PostgresStore) UpsertBmProfileCache(ctx context.Context, cache BmProfileCache) (BmProfileCache, error) {
-	gaps := cache.NameGaps
-	if gaps == nil {
-		gaps = []NameGap{}
-	}
-	nameGapsJSON, err := json.Marshal(gaps)
-	if err != nil {
-		return BmProfileCache{}, err
-	}
 	topServers := cache.TopServers
 	if topServers == nil {
 		topServers = []AnalyticsServer{}
@@ -350,9 +338,9 @@ func (p *PostgresStore) UpsertBmProfileCache(ctx context.Context, cache BmProfil
 		INSERT INTO bm_profile_cache (
 			bm_id, bm_name, first_seen_at, vitality_hours, atlas_hours, vital_hours,
 			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played,
-			name_gaps, top_servers, updated_at
+			top_servers, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
 		ON CONFLICT (bm_id) DO UPDATE
 		SET bm_name = EXCLUDED.bm_name,
 			first_seen_at = EXCLUDED.first_seen_at,
@@ -364,12 +352,11 @@ func (p *PostgresStore) UpsertBmProfileCache(ctx context.Context, cache BmProfil
 			build_hours = EXCLUDED.build_hours,
 			bm_hours = EXCLUDED.bm_hours,
 			bm_servers_played = EXCLUDED.bm_servers_played,
-			name_gaps = EXCLUDED.name_gaps,
 			top_servers = EXCLUDED.top_servers,
 			updated_at = NOW()
 		RETURNING bm_id, bm_name, first_seen_at, vitality_hours, atlas_hours, vital_hours,
 			modded_hours, official_hours, build_hours, bm_hours, bm_servers_played,
-			name_gaps, top_servers, updated_at
+			top_servers, updated_at
 	`,
 		cache.BmID,
 		cache.BmName,
@@ -382,9 +369,62 @@ func (p *PostgresStore) UpsertBmProfileCache(ctx context.Context, cache BmProfil
 		cache.BuildHours,
 		cache.BmHours,
 		cache.BmServersPlayed,
-		nameGapsJSON,
 		topServersJSON,
 	))
+}
+
+func (p *PostgresStore) UpsertBmNameHistory(ctx context.Context, bmID string, names []BmNameHistoryInput) error {
+	if bmID == "" || len(names) == 0 {
+		return nil
+	}
+
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	for _, item := range names {
+		if item.Name == "" || item.LastSeenAt.IsZero() {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO bm_name_history (bm_id, name, last_seen_at, observed_at)
+			VALUES ($1, $2, $3, NOW())
+			ON CONFLICT (bm_id, name, last_seen_at) DO UPDATE
+			SET observed_at = NOW()
+		`, bmID, item.Name, item.LastSeenAt); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (p *PostgresStore) ListBmNameHistory(ctx context.Context, bmID string) ([]BmNameHistory, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT bm_id, name, last_seen_at, observed_at
+		FROM bm_name_history
+		WHERE bm_id = $1
+		ORDER BY last_seen_at ASC, name ASC
+	`, bmID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []BmNameHistory{}
+	for rows.Next() {
+		var item BmNameHistory
+		if err := rows.Scan(&item.BmID, &item.Name, &item.LastSeenAt, &item.ObservedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (p *PostgresStore) ListSteamGameBanCache(ctx context.Context, steamIDs []string) ([]SteamGameBanCache, error) {

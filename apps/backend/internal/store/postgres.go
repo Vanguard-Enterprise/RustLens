@@ -206,13 +206,27 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			build_hours BIGINT NOT NULL DEFAULT 0,
 			bm_hours BIGINT NOT NULL DEFAULT 0,
 			bm_servers_played INTEGER NOT NULL DEFAULT 0,
-			name_gaps JSONB NOT NULL DEFAULT '[]'::jsonb,
 			top_servers JSONB NOT NULL DEFAULT '[]'::jsonb,
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
+		ALTER TABLE bm_profile_cache DROP COLUMN IF EXISTS name_gaps;
+
 		CREATE INDEX IF NOT EXISTS bm_profile_cache_updated_idx
 		ON bm_profile_cache (updated_at);
+
+		CREATE TABLE IF NOT EXISTS bm_name_history (
+			bm_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			last_seen_at TIMESTAMPTZ NOT NULL,
+			observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (bm_id, name, last_seen_at)
+		);
+
+		ALTER TABLE bm_name_history DROP CONSTRAINT IF EXISTS bm_name_history_bm_id_fkey;
+
+		CREATE INDEX IF NOT EXISTS bm_name_history_bm_seen_idx
+		ON bm_name_history (bm_id, last_seen_at DESC);
 
 		DO $$
 		DECLARE
@@ -228,7 +242,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 					INSERT INTO bm_profile_cache (
 						bm_id, bm_name, first_seen_at, vitality_hours, atlas_hours, vital_hours,
 						modded_hours, official_hours, build_hours, bm_hours, bm_servers_played,
-						name_gaps, top_servers, updated_at
+						top_servers, updated_at
 					)
 					SELECT
 						sac.bm_id,
@@ -242,7 +256,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 						sac.build_hours,
 						sac.bm_hours,
 						sac.bm_servers_played,
-						sac.name_gaps,
 						sac.top_servers,
 						sac.updated_at
 					FROM steam_account_cache sac
@@ -258,7 +271,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 						build_hours = EXCLUDED.build_hours,
 						bm_hours = EXCLUDED.bm_hours,
 						bm_servers_played = EXCLUDED.bm_servers_played,
-						name_gaps = EXCLUDED.name_gaps,
 						top_servers = EXCLUDED.top_servers,
 						updated_at = EXCLUDED.updated_at
 					WHERE bm_profile_cache.updated_at < EXCLUDED.updated_at

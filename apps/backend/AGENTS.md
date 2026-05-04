@@ -154,9 +154,23 @@ BattleMetrics-keyed volatile profile data, keyed by BM player ID. Lets BM-only `
 | `build_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours for tracked Build servers |
 | `bm_hours` | `BIGINT NOT NULL DEFAULT 0` | Cached whole hours across all BattleMetrics-returned servers |
 | `bm_servers_played` | `INTEGER NOT NULL DEFAULT 0` | Distinct BattleMetrics servers played |
-| `name_gaps` | `JSONB NOT NULL DEFAULT '[]'::jsonb` | Multi-month gaps between consecutive BM name identifier periods |
 | `top_servers` | `JSONB NOT NULL DEFAULT '[]'::jsonb` | Top 5 BattleMetrics servers by playtime |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Cache refresh timestamp |
+
+### `bm_name_history`
+
+Raw BattleMetrics name identifier history keyed by BM player ID. Fresh BM profile fetches merge returned `{name, lastSeen}` entries into this table. Bot-facing `nameGaps` / analytics `gaps` are computed from these raw rows at response time instead of being cached as derived JSON.
+
+| Column | Type | Notes |
+|---|---|---|
+| `bm_id` | `TEXT NOT NULL` | BattleMetrics player ID |
+| `name` | `TEXT NOT NULL` | BattleMetrics name identifier |
+| `last_seen_at` | `TIMESTAMPTZ NOT NULL` | Timestamp returned by BattleMetrics for that name identifier |
+| `observed_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last time RustLens saw this entry in a BM profile response |
+
+**PK**: `(bm_id, name, last_seen_at)`.
+
+**Index**: `bm_name_history_bm_seen_idx ON (bm_id, last_seen_at DESC)`.
 
 ### `tracked_servers`
 
