@@ -223,6 +223,7 @@ func NewRouter(
 			r.Use(requireSession)
 			r.Post("/actions/{type}", handler.actionDispatcher.ServeHTTP)
 			r.Get("/roles", handler.ListAdminRoles)
+			r.Get("/permissions", handler.ListAdminPermissions)
 			r.Get("/users", handler.ListAdminUsers)
 			r.Get("/users/export.csv", handler.ExportAdminUsersCSV)
 			r.Get("/users/{id}", handler.GetAdminUser)

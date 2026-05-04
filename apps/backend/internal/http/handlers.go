@@ -3609,6 +3609,24 @@ func (h *Handler) ListAdminRoles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// adminPermissionItem is the JSON shape for a single permission in the
+// ListAdminPermissions response.
+type adminPermissionItem struct {
+	Key         string `json:"key"`
+	Description string `json:"description"`
+}
+
+// ListAdminPermissions handles GET /api/app/admin/permissions. Returns the
+// canonical permission catalog from rbac.AllPermissions(). Static; no DB read.
+func (h *Handler) ListAdminPermissions(w http.ResponseWriter, r *http.Request) {
+	perms := rbac.AllPermissions()
+	items := make([]adminPermissionItem, len(perms))
+	for i, p := range perms {
+		items[i] = adminPermissionItem{Key: p.Key, Description: p.Description}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 var banCategoryAllowlist = map[string]struct{}{
 	"setup":        {},
 	"linking":      {},
