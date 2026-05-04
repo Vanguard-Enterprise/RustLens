@@ -137,8 +137,8 @@ function peakTrendLine(points: ServerAnalyticsResponse["points"]) {
 
   const slope = (count * sumXY - sumX * sumY) / denominator;
   const intercept = (sumY - slope * sumX) / count;
-  const start = accepted[0];
-  const end = accepted[accepted.length - 1];
+  const start = points[0];
+  const end = points[points.length - 1];
   return {
     startTimestampUnix: start.timestampUnix,
     endTimestampUnix: end.timestampUnix,
@@ -230,7 +230,7 @@ function drawLegend(ctx: any) {
     ["Max pop", MAX_COLOR],
     ["Avg pop", AVG_COLOR],
     ["Min pop", MIN_COLOR],
-    ["Peak trend", TREND_COLOR],
+    ["Trend", TREND_COLOR],
   ];
   let x = WIDTH - 560;
   const y = 104;
