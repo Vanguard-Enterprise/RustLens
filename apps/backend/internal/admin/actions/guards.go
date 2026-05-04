@@ -17,6 +17,23 @@ func GuardActingOnSelf(actorID, targetID string) error {
 	return nil
 }
 
+// AssertNotSystemRole returns ErrPermissionDenied if the role at roleID has
+// is_system=true, ErrNotFound if no row exists, or nil otherwise. roleID may
+// be either a UUID string or a bare key — the query handles both.
+func AssertNotSystemRole(ctx context.Context, pool *pgxpool.Pool, roleID string) error {
+	var isSystem bool
+	err := pool.QueryRow(ctx,
+		`SELECT is_system FROM admin_roles WHERE id::text = $1`, roleID,
+	).Scan(&isSystem)
+	if err != nil {
+		return fmt.Errorf("%w: role %s", ErrNotFound, roleID)
+	}
+	if isSystem {
+		return fmt.Errorf("%w: cannot modify system role", ErrPermissionDenied)
+	}
+	return nil
+}
+
 // GuardLastSuperadminByUser returns ErrConflict if the target user holds the
 // superadmin role and removing/disabling them would leave zero users with the
 // superadmin role. Returns nil if the target is not a superadmin, or if there
