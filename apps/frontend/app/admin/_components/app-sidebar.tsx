@@ -11,6 +11,7 @@ import type { Sidebar } from "@/components/ui/sidebar";
 type AppSidebarProps = Omit<React.ComponentProps<typeof Sidebar>, "variant"> & {
 	user: SidebarNavUser;
 	csrfToken: string;
+	permissions?: string[];
 	variant?: React.ComponentProps<typeof Sidebar>["variant"];
 };
 
