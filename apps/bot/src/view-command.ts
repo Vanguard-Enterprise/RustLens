@@ -179,7 +179,8 @@ function calculateSteamBmHourRisk(profile: SteamProfile | null) {
 
 const SECONDS_PER_DAY = 86400;
 const DAYS_PER_MONTH = 30;
-const RECENT_BREAK_DAYS = 10;
+const RECENT_BREAK_DAYS = 120;
+const MID_BREAK_DAYS = 240;
 const BREAK_WINDOW_DAYS = 365;
 
 function calculateRecentBreaksRisk(profile: SteamProfile | null, now: Date = new Date()) {
@@ -190,10 +191,10 @@ function calculateRecentBreaksRisk(profile: SteamProfile | null, now: Date = new
 
   const nowUnix = Math.floor(now.getTime() / 1000);
   const windowStart = nowUnix - BREAK_WINDOW_DAYS * SECONDS_PER_DAY;
-  const recentCutoff = nowUnix - RECENT_BREAK_DAYS * SECONDS_PER_DAY;
 
   let totalRisk = 0;
   let breakCount = 0;
+  let longestBreakDays = 0;
 
   for (const gap of gaps) {
     if (gap.toUnix < windowStart) {
@@ -201,17 +202,24 @@ function calculateRecentBreaksRisk(profile: SteamProfile | null, now: Date = new
     }
     const durationDays = (gap.toUnix - gap.fromUnix) / SECONDS_PER_DAY;
     const months = Math.floor(durationDays / DAYS_PER_MONTH);
-    if (months < 2) {
+    if (months < 1) {
       continue;
     }
     breakCount += 1;
-    const isRecent = gap.toUnix >= recentCutoff;
-    totalRisk += isRecent ? months * 2 : months - 1;
+    longestBreakDays = Math.max(longestBreakDays, Math.round(durationDays));
+    const endedDaysAgo = (nowUnix - gap.toUnix) / SECONDS_PER_DAY;
+    const recencyMultiplier = endedDaysAgo <= RECENT_BREAK_DAYS
+      ? 1.25
+      : endedDaysAgo <= MID_BREAK_DAYS
+        ? 1
+        : 0.75;
+    totalRisk += Math.round(months * 1.5 * recencyMultiplier);
   }
 
   return {
     level: Math.max(0, Math.min(10, totalRisk)),
     breaks: breakCount,
+    longestBreakDays,
   };
 }
 
@@ -274,8 +282,8 @@ function buildRiskFactorField(profile: SteamProfile | null, now: Date = new Date
     : `${riskEmoji(0)} Steam → BM hour difference: **private**`;
 
   const recentBreaksLine = recentBreaksRisk
-    ? `${riskEmoji(recentBreaksRisk.level)} Recent breaks > 2 months: **${recentBreaksRisk.breaks}**`
-    : `${riskEmoji(0)} Recent breaks > 2 months: **unknown**`;
+    ? `${riskEmoji(recentBreaksRisk.level)} Recent breaks > 1 month: **${recentBreaksRisk.breaks}** (${recentBreaksRisk.longestBreakDays} days)`
+    : `${riskEmoji(0)} Recent breaks > 1 month: **unknown**`;
 
   const serversLine = serversRisk
     ? `${riskEmoji(serversRisk.level)} Servers played: **${serversRisk.servers}**`
@@ -291,7 +299,7 @@ function buildRiskFactorField(profile: SteamProfile | null, now: Date = new Date
 
   return {
     name: `Risk Factor ${riskEmoji(averageRisk)}`,
-    value: [steamBmLine, recentBreaksLine, accountCreatedLine, serversLine, bmHoursLine].join("\n"),
+    value: [recentBreaksLine, steamBmLine, accountCreatedLine, serversLine, bmHoursLine].join("\n"),
   };
 }
 

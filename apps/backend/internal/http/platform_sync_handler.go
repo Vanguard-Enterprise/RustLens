@@ -87,19 +87,20 @@ func (h *Handler) SyncPlatformIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Even when the lookup says the identity is not linked, we still record
-	// that we asked so the bot doesn't keep hammering the upstream service.
-	if _, err := h.postgres.UpsertPlatformSyncState(r.Context(), platform, id); err != nil {
-		log.Printf("[backend] SyncPlatformIdentity UpsertPlatformSyncState error: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to record platform sync state")
-		return
-	}
-
-	resp.Synced = true
-	resp.LastSyncedAt = time.Now().UTC()
-
 	if errors.Is(lookupErr, platformsync.ErrNotLinked) {
+		// Even when the lookup says the identity is not linked, we still record
+		// that we asked so the bot doesn't keep hammering the upstream service.
+		syncedAt, ok := h.recordPlatformSyncState(w, r, platform, id)
+		if !ok {
+			return
+		}
+		resp.Synced = true
+		resp.LastSyncedAt = syncedAt
 		resp.Linked = false
+		resp.SteamID = lookup.SteamID
+		resp.DiscordID = lookup.DiscordID
+		resp.PreviousSteamIDs = lookup.PreviousSteamIDs
+		resp.PreviousDiscordIDs = lookup.PreviousDiscordIDs
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
@@ -125,7 +126,24 @@ func (h *Handler) SyncPlatformIdentity(w http.ResponseWriter, r *http.Request) {
 		resp.HardLinkCount = len(links)
 	}
 
+	syncedAt, ok := h.recordPlatformSyncState(w, r, platform, id)
+	if !ok {
+		return
+	}
+	resp.Synced = true
+	resp.LastSyncedAt = syncedAt
+
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) recordPlatformSyncState(w http.ResponseWriter, r *http.Request, platform string, id string) (time.Time, bool) {
+	state, err := h.postgres.UpsertPlatformSyncState(r.Context(), platform, id)
+	if err != nil {
+		log.Printf("[backend] SyncPlatformIdentity UpsertPlatformSyncState error: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to record platform sync state")
+		return time.Time{}, false
+	}
+	return state.LastPlatformSyncAt, true
 }
 
 // buildPlatformSyncHardLinks turns a platformsync result into the set of

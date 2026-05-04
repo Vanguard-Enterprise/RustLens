@@ -23,6 +23,8 @@ import { isWebsiteAdmin } from "./website-admin.js";
 
 export const PLAYER_COMMAND_NAME = "player";
 
+const DISCORD_UNKNOWN_INTERACTION = 10062;
+
 const PLAYER_EMOJIS = {
   steam: "<:steam:1444016467648581642>",
   battlemetrics: "<:battlemetrics:1444011821529956472>",
@@ -100,7 +102,9 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
   }
 
   if (discordUser) {
-    await deferPlayerChatInput(interaction);
+    if (!(await deferPlayerChatInput(interaction))) {
+      return true;
+    }
 
     if (!(await isWebsiteAdmin(interaction.user.id))) {
       await interaction.editReply({
@@ -115,7 +119,9 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     return true;
   }
 
-  await deferPlayerChatInput(interaction);
+  if (!(await deferPlayerChatInput(interaction))) {
+    return true;
+  }
 
   const lookupIdentifier = await resolveLookupIdentifier(identifier);
   if (!lookupIdentifier.ok) {
@@ -175,14 +181,23 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
 
 export async function deferPlayerChatInput(interaction: ChatInputCommandInteraction) {
   if (interaction.deferred || interaction.replied) {
-    return;
+    return true;
   }
 
   const discordUser = interaction.options.getUser("discord_user", false);
   const identifier = interaction.options.getString("identifier", false)?.trim() ?? "";
-  await interaction.deferReply({
-    flags: discordUser || !identifier ? MessageFlags.Ephemeral : undefined,
-  });
+  try {
+    await interaction.deferReply({
+      flags: discordUser || !identifier ? MessageFlags.Ephemeral : undefined,
+    });
+    return true;
+  } catch (error) {
+    if (isUnknownInteractionError(error)) {
+      logExpiredInteraction("/player", interaction.id, interaction.createdTimestamp);
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function fetchPlayerProfile(steamId: string) {
@@ -321,7 +336,9 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       return true;
     }
 
-    await deferPlayerButton(interaction);
+    if (!(await deferPlayerButton(interaction))) {
+      return true;
+    }
 
     try {
       const { backend, workerId } = getBackend();
@@ -342,7 +359,9 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       return true;
     }
 
-    await deferPlayerButton(interaction);
+    if (!(await deferPlayerButton(interaction))) {
+      return true;
+    }
 
     try {
       const { backend, workerId } = getBackend();
@@ -363,7 +382,9 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       return true;
     }
 
-    await deferPlayerButton(interaction);
+    if (!(await deferPlayerButton(interaction))) {
+      return true;
+    }
 
     const isAdmin = await isWebsiteAdmin(interaction.user.id);
     try {
@@ -388,7 +409,9 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       return true;
     }
 
-    await deferPlayerButton(interaction);
+    if (!(await deferPlayerButton(interaction))) {
+      return true;
+    }
 
     const isAdmin = await isWebsiteAdmin(interaction.user.id);
     try {
@@ -408,8 +431,38 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
 
 export async function deferPlayerButton(interaction: ButtonInteraction) {
   if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    } catch (error) {
+      if (isUnknownInteractionError(error)) {
+        logExpiredInteraction("player button", interaction.id, interaction.createdTimestamp);
+        return false;
+      }
+      throw error;
+    }
   }
+  return true;
+}
+
+function isUnknownInteractionError(error: unknown) {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+
+  return (error as { code?: unknown }).code === DISCORD_UNKNOWN_INTERACTION;
+}
+
+function logExpiredInteraction(kind: string, id: string, createdTimestamp: number) {
+  const config = loadConfig();
+  console.warn("[bot] skipped expired interaction", {
+    kind,
+    id,
+    ageMs: Date.now() - createdTimestamp,
+    workerId: config.workerId,
+    shardId: Number(process.env.SHARD_ID ?? "0"),
+    shardCount: Number(process.env.SHARD_COUNT ?? "1"),
+    pid: process.pid,
+  });
 }
 
 async function replyOrEditPlayerButtonError(interaction: ButtonInteraction, content: string) {

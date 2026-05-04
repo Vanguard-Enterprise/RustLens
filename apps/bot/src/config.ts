@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { hostname } from "node:os";
 
 export type BotConfig = {
   backendUrl: string;
@@ -32,7 +33,8 @@ function getProxiedRequestConcurrency() {
 }
 
 export function loadConfig(): BotConfig {
-  const workerFallback = `bot-${process.pid}`;
+  const host = hostname().replace(/[^a-zA-Z0-9_-]/g, "-");
+  const workerFallback = `bot-${host}-${process.pid}`;
   const jwtSecret = process.env.BOT_SERVICE_JWT_SECRET?.trim();
   if (!jwtSecret) {
     throw new Error("BOT_SERVICE_JWT_SECRET is required");

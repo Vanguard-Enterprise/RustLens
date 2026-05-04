@@ -1,3 +1,4 @@
+import type { Interaction } from "discord.js";
 import { ActivityType, Client, GatewayIntentBits, MessageFlags } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
@@ -219,6 +220,66 @@ function isIgnorableInteractionReplyError(error: unknown) {
   return code === 10008 || code === 10062 || code === 40060;
 }
 
+function isUnknownInteractionError(error: unknown) {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+
+  return (error as { code?: unknown }).code === 10062;
+}
+
+function isAlreadyAcknowledgedInteractionError(error: unknown) {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+
+  return (error as { code?: unknown }).code === 40060;
+}
+
+function interactionKind(interaction: Interaction) {
+  if (interaction.isChatInputCommand()) {
+    return `/${interaction.commandName}`;
+  }
+  if (interaction.isButton()) {
+    return `button:${interaction.customId}`;
+  }
+  if (interaction.isStringSelectMenu()) {
+    return `select:${interaction.customId}`;
+  }
+  if (interaction.isModalSubmit()) {
+    return `modal:${interaction.customId}`;
+  }
+  if (interaction.isAutocomplete()) {
+    return `autocomplete:/${interaction.commandName}`;
+  }
+
+  return interaction.type;
+}
+
+function logUnknownInteraction(interaction: Interaction) {
+  console.warn("[bot] skipped unknown interaction", {
+    kind: interactionKind(interaction),
+    id: interaction.id,
+    ageMs: Date.now() - interaction.createdTimestamp,
+    workerId: config.workerId,
+    shardId: shardID,
+    shardCount,
+    pid: process.pid,
+  });
+}
+
+function logAlreadyAcknowledgedInteraction(interaction: Interaction) {
+  console.warn("[bot] skipped already acknowledged interaction", {
+    kind: interactionKind(interaction),
+    id: interaction.id,
+    ageMs: Date.now() - interaction.createdTimestamp,
+    workerId: config.workerId,
+    shardId: shardID,
+    shardCount,
+    pid: process.pid,
+  });
+}
+
 client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isAutocomplete()) {
@@ -256,16 +317,18 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isChatInputCommand()) {
-      if (interaction.commandName === PLAYER_COMMAND_NAME) {
-        await deferPlayerChatInput(interaction);
-      }
-
       if (interaction.commandName !== MANAGE_COMMAND_NAME) {
         const category = resolveCommandCategory(
           interaction.commandName,
           interaction.options.getSubcommand(false),
         );
         if (await enforceBan(interaction, category)) {
+          return;
+        }
+      }
+
+      if (interaction.commandName === PLAYER_COMMAND_NAME) {
+        if (!(await deferPlayerChatInput(interaction))) {
           return;
         }
       }
@@ -397,7 +460,9 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isButton()) {
       const buttonCategory = resolveCustomIdCategory(interaction.customId);
       if (buttonCategory && interaction.customId.startsWith("player:")) {
-        await deferPlayerButton(interaction);
+        if (!(await deferPlayerButton(interaction))) {
+          return;
+        }
       }
       if (buttonCategory && (await enforceBan(interaction, buttonCategory))) {
         return;
@@ -435,6 +500,16 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
   } catch (error) {
+    if (isUnknownInteractionError(error)) {
+      logUnknownInteraction(interaction);
+      return;
+    }
+
+    if (isAlreadyAcknowledgedInteractionError(error)) {
+      logAlreadyAcknowledgedInteraction(interaction);
+      return;
+    }
+
     console.error("[bot] interaction handling failed", error);
 
     if (interaction.isRepliable()) {

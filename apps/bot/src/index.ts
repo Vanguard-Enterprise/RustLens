@@ -20,7 +20,7 @@ async function main() {
   }
 
   const backend = new BackendClient(config.backendUrl, config.jwtSecret, config.jwtIssuer, config.jwtAudience);
-  const runtime = new ShardRuntime(config.discordToken);
+  const runtime = new ShardRuntime(config.discordToken, config.workerId);
 
   const shardSnapshots = new Map<number, ShardStatSnapshot>();
   const workerProcessSnapshot = { uptimeSec: 0, rssBytes: 0 };
