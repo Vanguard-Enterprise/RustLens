@@ -16,6 +16,7 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_COLOR = "#f6d57b";
 const AVG_COLOR = "#2d789f";
 const MIN_COLOR = "#8795aa";
+const TREND_COLOR = "#d31239";
 
 function maxPop(analytics: ServerAnalyticsResponse) {
   const lineMax = Math.max(0, ...analytics.points.flatMap((point) => [point.min, point.value, point.max]));
@@ -76,6 +77,7 @@ function drawLineChart(ctx: any, analytics: ServerAnalyticsResponse, max: number
   drawSeries(ctx, points.map((point) => [xFor(point.timestampUnix), yFor(point.max)]), MAX_COLOR);
   drawSeries(ctx, points.map((point) => [xFor(point.timestampUnix), yFor(point.value)]), AVG_COLOR);
   drawSeries(ctx, points.map((point) => [xFor(point.timestampUnix), yFor(point.min)]), MIN_COLOR);
+  drawPeakTrend(ctx, points, xFor, yFor);
 
   ctx.fillStyle = "#8795aa";
   ctx.font = `13px ${FONT_FAMILY}`;
@@ -103,6 +105,73 @@ function drawSeries(ctx: any, coords: number[][], color: string) {
     ctx.lineTo(x, y);
   }
   ctx.stroke();
+}
+
+function acceptedPeakTrendPoints(points: ServerAnalyticsResponse["points"]) {
+  const accepted: ServerAnalyticsResponse["points"] = [];
+  let previousAcceptedMax: number | null = null;
+  for (const point of points) {
+    if (previousAcceptedMax !== null && point.max < previousAcceptedMax * 0.4) {
+      continue;
+    }
+    accepted.push(point);
+    previousAcceptedMax = point.max;
+  }
+  return accepted;
+}
+
+function peakTrendLine(points: ServerAnalyticsResponse["points"]) {
+  const accepted = acceptedPeakTrendPoints(points);
+  if (accepted.length < 2) {
+    return null;
+  }
+
+  const firstTime = accepted[0].timestampUnix;
+  const values = accepted.map((point) => ({
+    x: (point.timestampUnix - firstTime) / 86400,
+    y: point.max,
+  }));
+  const count = values.length;
+  const sumX = values.reduce((sum, point) => sum + point.x, 0);
+  const sumY = values.reduce((sum, point) => sum + point.y, 0);
+  const sumXY = values.reduce((sum, point) => sum + point.x * point.y, 0);
+  const sumXX = values.reduce((sum, point) => sum + point.x * point.x, 0);
+  const denominator = count * sumXX - sumX * sumX;
+  if (denominator === 0) {
+    return null;
+  }
+
+  const slope = (count * sumXY - sumX * sumY) / denominator;
+  const intercept = (sumY - slope * sumX) / count;
+  const start = points[0];
+  const end = points[points.length - 1];
+  return {
+    startTimestampUnix: start.timestampUnix,
+    endTimestampUnix: end.timestampUnix,
+    startValue: intercept + slope * ((start.timestampUnix - firstTime) / 86400),
+    endValue: intercept + slope * ((end.timestampUnix - firstTime) / 86400),
+  };
+}
+
+function drawPeakTrend(
+  ctx: any,
+  points: ServerAnalyticsResponse["points"],
+  xFor: (timestampUnix: number) => number,
+  yFor: (value: number) => number,
+) {
+  const trend = peakTrendLine(points);
+  if (!trend) {
+    return;
+  }
+
+  ctx.strokeStyle = TREND_COLOR;
+  ctx.lineWidth = 4;
+  ctx.setLineDash([18, 12]);
+  ctx.beginPath();
+  ctx.moveTo(xFor(trend.startTimestampUnix), yFor(trend.startValue));
+  ctx.lineTo(xFor(trend.endTimestampUnix), yFor(trend.endValue));
+  ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function drawWeekdayBars(ctx: any, analytics: ServerAnalyticsResponse, max: number) {
@@ -167,8 +236,9 @@ function drawLegend(ctx: any) {
     ["Max pop", MAX_COLOR],
     ["Avg pop", AVG_COLOR],
     ["Min pop", MIN_COLOR],
+    ["Peak trend", TREND_COLOR],
   ];
-  let x = WIDTH - 430;
+  let x = WIDTH - 560;
   const y = 104;
   for (const [label, color] of items) {
     ctx.fillStyle = color;
@@ -177,6 +247,6 @@ function drawLegend(ctx: any) {
     ctx.font = `14px ${FONT_FAMILY}`;
     ctx.textAlign = "left";
     ctx.fillText(label, x + 38, y - 4);
-    x += 130;
+    x += 135;
   }
 }
