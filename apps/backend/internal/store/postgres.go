@@ -578,6 +578,15 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS track_analytics_sessions_cache_fetched_idx
 			ON track_analytics_sessions_cache (fetched_at);
 
+		CREATE TABLE IF NOT EXISTS server_player_count_history_cache (
+			server_bm_id TEXT PRIMARY KEY REFERENCES tracked_servers(bm_id) ON DELETE CASCADE,
+			points JSONB NOT NULL DEFAULT '[]'::jsonb,
+			fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS server_player_count_history_cache_fetched_idx
+			ON server_player_count_history_cache (fetched_at);
+
 		CREATE TABLE IF NOT EXISTS user_bans (
 			discord_id TEXT PRIMARY KEY,
 			categories TEXT[] NOT NULL DEFAULT '{}',

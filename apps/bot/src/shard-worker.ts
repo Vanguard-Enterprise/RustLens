@@ -12,6 +12,7 @@ import {
 } from "./announce-command.js";
 import {
   ensureAnalyzeCommand,
+  handleAnalyzeAutocomplete,
   handleAnalyzeChatInput,
 } from "./analyze-command.js";
 import {
@@ -308,6 +309,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleSearchAutocomplete(interaction)) {
+        return;
+      }
+
+      if (await handleAnalyzeAutocomplete(interaction)) {
         return;
       }
 

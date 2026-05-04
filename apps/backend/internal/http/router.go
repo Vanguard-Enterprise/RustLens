@@ -113,6 +113,7 @@ func NewRouter(
 		r.Post("/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/release", handler.ReleaseWipeReactSchedulePost)
 		r.Get("/tracked-servers", handler.ListTrackedServers)
 		r.Post("/tracked-servers", handler.CreateTrackedServer)
+		r.Get("/tracked-servers/{bmID}/player-count-history", handler.GetServerPlayerCountAnalytics)
 		r.Put("/tracked-servers/{bmID}", handler.UpdateTrackedServer)
 		r.Delete("/tracked-servers/{bmID}", handler.DeleteTrackedServer)
 		r.Get("/player-states/servers/{serverID}", handler.ListOnlinePlayerStatesByServer)

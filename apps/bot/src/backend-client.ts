@@ -328,6 +328,35 @@ export type TrackedServerListResponse = {
   items: TrackedServer[];
 };
 
+export type ServerAnalyticsTimeframe = "7d" | "14d" | "30d" | "60d" | "90d";
+
+export type ServerAnalyticsPoint = {
+  timestampUnix: number;
+  timestamp: string;
+  min: number;
+  value: number;
+  max: number;
+};
+
+export type ServerAnalyticsWeekday = {
+  weekday: string;
+  min: number;
+  value: number;
+  max: number;
+};
+
+export type ServerAnalyticsResponse = {
+  serverBmId: string;
+  serverName: string;
+  timeframe: ServerAnalyticsTimeframe;
+  start: string;
+  stop: string;
+  points: ServerAnalyticsPoint[];
+  weekdays: ServerAnalyticsWeekday[];
+  cachedAt: string;
+  cacheWindow: string;
+};
+
 export type GuildTrackedServer = {
   guildId: string;
   bmId: string;
@@ -738,6 +767,17 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/tracked-servers`,
       "GET",
+    );
+  }
+
+  getServerAnalytics(workerId: string, bmId: string, timeframe: ServerAnalyticsTimeframe) {
+    const query = new URLSearchParams({ timeframe }).toString();
+    return this.call<ServerAnalyticsResponse>(
+      workerId,
+      `/api/internal/bot/setup/tracked-servers/${bmId}/player-count-history?${query}`,
+      "GET",
+      undefined,
+      30_000,
     );
   }
 

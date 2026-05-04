@@ -296,6 +296,18 @@ Per-(player, server) cache of raw BattleMetrics player session windows used by t
 
 **Index**: `track_analytics_sessions_cache_fetched_idx ON (fetched_at)` for future TTL sweeps.
 
+### `server_player_count_history_cache`
+
+Per-server cache of raw BattleMetrics daily player-count history used by `/analyze server`. Entries are refreshed lazily by `GET /api/internal/bot/setup/tracked-servers/{bmID}/player-count-history` after a 24-hour TTL.
+
+| Column | Type | Notes |
+|---|---|---|
+| `server_bm_id` | `TEXT` | PK, FK to `tracked_servers.bm_id` |
+| `points` | `JSONB NOT NULL DEFAULT '[]'::jsonb` | Array of `{timestampUnix, min, value, max}` daily rows |
+| `fetched_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last refresh time, drives the 24-hour TTL |
+
+**Index**: `server_player_count_history_cache_fetched_idx ON (fetched_at)` for future TTL sweeps.
+
 ### `platform_sync_state`
 
 Tracks the last time RustLens queried the external `platformsync.io` service for a given Steam or Discord ID. Used to enforce the 14-day cool-down on outbound platformsync calls.

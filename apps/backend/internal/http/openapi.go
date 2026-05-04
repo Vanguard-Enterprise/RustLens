@@ -1063,6 +1063,43 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/tracked-servers/{bmID}/player-count-history": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get tracked server player count analytics",
+					"description": "Returns chart-ready BattleMetrics player-count history for a tracked server. The selected timeframe filters the time series; weekday distribution is computed from the cached 90-day window.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "bmID",
+							"in":          "path",
+							"required":    true,
+							"description": "BattleMetrics server ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "timeframe",
+							"in":          "query",
+							"required":    true,
+							"description": "Timeframe for the top time-series chart.",
+							"schema":      map[string]any{"type": "string", "enum": []string{"7d", "14d", "30d", "60d", "90d"}},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Server analytics returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/ServerAnalyticsResponse"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+						"502": map[string]any{"description": "BattleMetrics upstream failure"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/tracked-servers/{bmID}": map[string]any{
 				"delete": map[string]any{
 					"summary":     "Delete tracked server",
@@ -2391,6 +2428,48 @@ func buildOpenAPIDocument() map[string]any {
 						},
 					},
 					"required": []string{"items"},
+				},
+				"ServerAnalyticsPoint": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"timestampUnix": map[string]any{"type": "integer"},
+						"timestamp":     map[string]any{"type": "string", "format": "date-time"},
+						"min":           map[string]any{"type": "integer"},
+						"value":         map[string]any{"type": "number"},
+						"max":           map[string]any{"type": "integer"},
+					},
+					"required": []string{"timestampUnix", "timestamp", "min", "value", "max"},
+				},
+				"ServerAnalyticsWeekday": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"weekday": map[string]any{"type": "string"},
+						"min":     map[string]any{"type": "number"},
+						"value":   map[string]any{"type": "number"},
+						"max":     map[string]any{"type": "number"},
+					},
+					"required": []string{"weekday", "min", "value", "max"},
+				},
+				"ServerAnalyticsResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"serverBmId":  map[string]any{"type": "string"},
+						"serverName":  map[string]any{"type": "string"},
+						"timeframe":   map[string]any{"type": "string"},
+						"start":       map[string]any{"type": "string", "format": "date-time"},
+						"stop":        map[string]any{"type": "string", "format": "date-time"},
+						"cachedAt":    map[string]any{"type": "string", "format": "date-time"},
+						"cacheWindow": map[string]any{"type": "string"},
+						"points": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/ServerAnalyticsPoint"},
+						},
+						"weekdays": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/ServerAnalyticsWeekday"},
+						},
+					},
+					"required": []string{"serverBmId", "serverName", "timeframe", "start", "stop", "cachedAt", "cacheWindow", "points", "weekdays"},
 				},
 				"CreateTrackedServerRequest": map[string]any{
 					"type": "object",
