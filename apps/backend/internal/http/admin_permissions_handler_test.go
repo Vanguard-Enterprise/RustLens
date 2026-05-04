@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+
+	"rustlens/backend/internal/admin/rbac"
 )
 
 // listAdminPermissionsResp mirrors the JSON shape returned by ListAdminPermissions.
@@ -90,5 +92,56 @@ func TestListAdminPermissions_RoutedThroughChi(t *testing.T) {
 
 	if len(resp.Items) < 10 {
 		t.Errorf("items routed through chi: want at least 10, got %d", len(resp.Items))
+	}
+}
+
+// listAdminRolesResp mirrors the JSON shape returned by ListAdminRoles.
+type listAdminRolesResp struct {
+	Items []adminRoleItem `json:"items"`
+}
+
+// TestListAdminRoles_IncludesMemberCount verifies that each role item in the
+// GET /api/app/admin/roles response carries a memberCount field (zero or more).
+// Skips when TEST_POSTGRES_URL is not set.
+func TestListAdminRoles_IncludesMemberCount(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	// newTestHandlerServer skips when TEST_POSTGRES_URL is unset, so if we
+	// reach here we have a real Postgres pool.
+	ctx := httptest.NewRequest("GET", "/", nil).Context()
+	rbacStore := rbac.NewStore(ts.pool)
+	if err := rbacStore.SeedPermissionsAndRoles(ctx); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	ts.h.rbacStore = rbacStore
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/app/admin/roles", nil)
+	ts.h.ListAdminRoles(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp listAdminRolesResp
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, rr.Body.String())
+	}
+
+	if len(resp.Items) == 0 {
+		t.Fatal("expected at least one role in response")
+	}
+
+	// Verify the memberCount field is present (always serialised; no omitempty).
+	// Round-trip through a raw map to confirm the JSON key exists.
+	raw := struct {
+		Items []map[string]any `json:"items"`
+	}{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("raw unmarshal: %v", err)
+	}
+	for _, item := range raw.Items {
+		if _, ok := item["memberCount"]; !ok {
+			t.Errorf("role %v is missing memberCount field", item["key"])
+		}
 	}
 }
