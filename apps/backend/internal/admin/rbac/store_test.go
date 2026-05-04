@@ -146,6 +146,9 @@ func TestListRolesWithMemberCount(t *testing.T) {
 	).Scan(&roleIDStr); err != nil {
 		t.Fatalf("insert custom role: %v", err)
 	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM admin_roles WHERE key = $1`, customKey)
+	})
 
 	// Seed two users and assign both to the custom role.
 	userA := "usr_mc_a_" + randSuffix()

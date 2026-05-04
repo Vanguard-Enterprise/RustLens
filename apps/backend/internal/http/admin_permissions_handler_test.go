@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -114,6 +115,24 @@ func TestListAdminRoles_IncludesMemberCount(t *testing.T) {
 	}
 	ts.h.rbacStore = rbacStore
 
+	// Seed a user and assign them to the moderator role so memberCount is non-zero.
+	const memberUserID = "usr_lar_member_test_a"
+	seedUser(t, ts.pool, memberUserID, "MemberTest", seedOpts{})
+	modRoleID, err := rbacStore.RoleIDByKey(ctx, rbac.RoleModerator)
+	if err != nil {
+		t.Fatalf("role id for moderator: %v", err)
+	}
+	if _, err := ts.pool.Exec(ctx,
+		`INSERT INTO admin_user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+		memberUserID, modRoleID,
+	); err != nil {
+		t.Fatalf("assign moderator role: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = ts.pool.Exec(context.Background(),
+			`DELETE FROM admin_user_roles WHERE user_id = $1`, memberUserID)
+	})
+
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/app/admin/roles", nil)
 	ts.h.ListAdminRoles(rr, req)
@@ -144,4 +163,16 @@ func TestListAdminRoles_IncludesMemberCount(t *testing.T) {
 			t.Errorf("role %v is missing memberCount field", item["key"])
 		}
 	}
+
+	// Verify the moderator role has memberCount >= 1 (we just assigned one user).
+	for _, item := range raw.Items {
+		if item["key"] == rbac.RoleModerator {
+			count := int(item["memberCount"].(float64))
+			if count < 1 {
+				t.Errorf("moderator memberCount: want >= 1, got %d", count)
+			}
+			return
+		}
+	}
+	t.Errorf("moderator role not found in response items")
 }
