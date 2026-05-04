@@ -14,6 +14,9 @@ import (
 // the parameter is kept on the call site so future token-generating actions
 // can be wired here without churn.
 func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *rbac.Resolver, _ string) error {
+	if err := reg.Register(actions.NewRolesCreateAction(pool)); err != nil {
+		return err
+	}
 	if err := reg.Register(actions.NewUsersEditAction(pool)); err != nil {
 		return err
 	}
@@ -36,9 +39,6 @@ func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *r
 		return err
 	}
 	if err := reg.Register(actions.NewUsersPurgeAction(pool)); err != nil {
-		return err
-	}
-	if err := reg.Register(actions.NewRolesCreateAction(pool)); err != nil {
 		return err
 	}
 	return nil
