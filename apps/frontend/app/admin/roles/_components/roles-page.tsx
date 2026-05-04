@@ -32,7 +32,6 @@ export function RolesPage({ initialRoles, permissionsCatalog }: Props) {
 	const router = useRouter();
 	const [dialog, setDialog] = React.useState<DialogState>({ open: false });
 	const [deleting, setDeleting] = React.useState<AdminRoleItem | null>(null);
-	const [error, setError] = React.useState<string | null>(null);
 	const [search, setSearch] = React.useState("");
 
 	const filteredRoles = React.useMemo(() => {
@@ -49,7 +48,6 @@ export function RolesPage({ initialRoles, permissionsCatalog }: Props) {
 	const onSubmit = async (
 		input: Parameters<React.ComponentProps<typeof RoleDialog>["onSubmit"]>[0],
 	) => {
-		setError(null);
 		if (input.mode === "create") {
 			const res = await createRoleAction(
 				{
@@ -65,6 +63,10 @@ export function RolesPage({ initialRoles, permissionsCatalog }: Props) {
 			return;
 		}
 		// Edit: post update + permissions.set sequentially. Reuse one reason.
+		// Backend exposes these as separate actions, so a failure between them
+		// can leave the role partially updated; on any failure we refresh so
+		// the table reflects actual persisted state and prefix the error to
+		// make partial-success obvious to the admin.
 		if (!input.role) return;
 		const role = input.role;
 		const nameChanged = role.name !== input.next.name;
@@ -73,28 +75,42 @@ export function RolesPage({ initialRoles, permissionsCatalog }: Props) {
 		const newPerms = [...input.next.permissions].sort().join(",");
 		const permsChanged = oldPerms !== newPerms;
 
-		if (nameChanged || descChanged) {
-			const r = await updateRoleAction(
-				role.id,
-				{ name: input.next.name, description: input.next.description },
-				input.reason,
-			);
-			if (!r.ok) throw new Error(r.error);
+		let metadataApplied = false;
+		try {
+			if (nameChanged || descChanged) {
+				const r = await updateRoleAction(
+					role.id,
+					{ name: input.next.name, description: input.next.description },
+					input.reason,
+				);
+				if (!r.ok) throw new Error(r.error);
+				metadataApplied = true;
+			}
+			if (permsChanged) {
+				const r = await setRolePermissionsAction(
+					role.id,
+					input.next.permissions,
+					input.reason,
+				);
+				if (!r.ok) {
+					throw new Error(
+						metadataApplied
+							? `Name/description saved, but permissions update failed: ${r.error}. Reopen the role to retry.`
+							: r.error,
+					);
+				}
+			}
+			router.refresh();
+		} catch (err) {
+			router.refresh();
+			throw err;
 		}
-		if (permsChanged) {
-			const r = await setRolePermissionsAction(role.id, input.next.permissions, input.reason);
-			if (!r.ok) throw new Error(r.error);
-		}
-		router.refresh();
 	};
 
 	const onDeleteConfirm = async (reason: string) => {
 		if (!deleting) return;
 		const res = await deleteRoleAction(deleting.id, reason);
-		if (!res.ok) {
-			setError(res.error);
-			return;
-		}
+		if (!res.ok) throw new Error(res.error);
 		router.refresh();
 	};
 
@@ -116,8 +132,6 @@ export function RolesPage({ initialRoles, permissionsCatalog }: Props) {
 					New role
 				</Button>
 			</div>
-
-			{error ? <p className="text-sm text-destructive">{error}</p> : null}
 
 			<RolesTable
 				roles={filteredRoles}

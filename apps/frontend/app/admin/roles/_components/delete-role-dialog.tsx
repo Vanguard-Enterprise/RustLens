@@ -26,20 +26,27 @@ type Props = {
 export function DeleteRoleDialog({ role, open, onOpenChange, onConfirm }: Props) {
     const [reason, setReason] = React.useState("");
     const [submitting, setSubmitting] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
     const [prevOpen, setPrevOpen] = React.useState(open);
     if (open !== prevOpen) {
         setPrevOpen(open);
-        if (open) setReason("");
+        if (open) {
+            setReason("");
+            setError(null);
+        }
     }
 
     if (!role) return null;
 
     const submit = async () => {
         if (!reason.trim()) return;
+        setError(null);
         setSubmitting(true);
         try {
             await onConfirm(reason.trim());
             onOpenChange(false);
+        } catch (err) {
+            setError((err as Error).message);
         } finally {
             setSubmitting(false);
         }
@@ -64,9 +71,14 @@ export function DeleteRoleDialog({ role, open, onOpenChange, onConfirm }: Props)
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
                     />
+                    {error ? <p className="text-sm text-destructive">{error}</p> : null}
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    <Button
+                        variant="outline"
+                        onClick={() => onOpenChange(false)}
+                        disabled={submitting}
+                    >
                         Cancel
                     </Button>
                     <Button
