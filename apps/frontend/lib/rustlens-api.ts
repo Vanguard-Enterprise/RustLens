@@ -508,3 +508,122 @@ export async function setAdminRolePermissions(id: string, permissions: string[],
 export async function deleteAdminRole(id: string, reason: string) {
 	return postAdminAction<{ id: string }>("roles.delete", { id }, reason);
 }
+
+// --- User actions (single) ---
+
+export type AssignRoleResult = { userId: string; roleKey: string };
+
+export async function assignAdminRole(
+	userId: string,
+	roleKey: string,
+	reason: string,
+): Promise<AssignRoleResult> {
+	return postAdminAction<AssignRoleResult>("users.roles.grant", { userId, roleKey }, reason);
+}
+
+export async function revokeAdminRole(
+	userId: string,
+	roleKey: string,
+	reason: string,
+): Promise<AssignRoleResult> {
+	return postAdminAction<AssignRoleResult>("users.roles.revoke", { userId, roleKey }, reason);
+}
+
+export type EditUserPatch = {
+	displayName?: string;
+	avatarUrl?: string;
+};
+
+export async function editAdminUser(
+	userId: string,
+	patch: EditUserPatch,
+	reason: string,
+) {
+	return postAdminAction<{ userId: string }>("users.edit", { userId, ...patch }, reason);
+}
+
+export async function suspendAdminUser(userId: string, reason: string) {
+	return postAdminAction<{ userId: string }>("users.suspend", { userId }, reason);
+}
+
+export async function unsuspendAdminUser(userId: string, reason: string) {
+	return postAdminAction<{ userId: string }>("users.unsuspend", { userId }, reason);
+}
+
+export async function deleteAdminUser(
+	userId: string,
+	reason: string,
+	typedConfirmation: string,
+) {
+	return postAdminAction<{ userId: string }>(
+		"users.delete",
+		{ userId, typedConfirmation },
+		reason,
+	);
+}
+
+export async function restoreAdminUser(userId: string, reason: string) {
+	return postAdminAction<{ userId: string }>("users.restore", { userId }, reason);
+}
+
+export async function purgeAdminUser(
+	userId: string,
+	reason: string,
+	typedConfirmation: string,
+) {
+	return postAdminAction<{ userId: string }>(
+		"users.purge",
+		{ userId, typedConfirmation },
+		reason,
+	);
+}
+
+// --- Bulk action ---
+
+export type BulkUserSubAction = "suspend" | "unsuspend" | "roles.grant" | "roles.revoke";
+
+export type BulkUserResult = {
+	action: BulkUserSubAction;
+	succeeded: number;
+	failed: number;
+	results: Array<{ userId: string; ok: boolean; error?: string }>;
+};
+
+export async function bulkAdminUserAction(
+	action: BulkUserSubAction,
+	userIds: string[],
+	params: Record<string, unknown>,
+	reason: string,
+): Promise<BulkUserResult> {
+	return postAdminAction<BulkUserResult>(
+		"users.bulk",
+		{ action, userIds, params },
+		reason,
+	);
+}
+
+// --- Export URL builder ---
+
+/**
+ * Builds the URL for the streaming CSV export. Browser hits this directly via
+ * an anchor download — Next.js will inject the app secret via the same
+ * proxy/server-component path used elsewhere if this is server-rendered, but
+ * since the export endpoint is on the backend, the toolbar wraps this in a
+ * server action that returns the URL after auth. See app/admin/users/_components/export-button.tsx.
+ */
+export function buildAdminUsersExportUrl(opts: {
+	q?: string;
+	role?: string[];
+	status?: AdminUsersQuery["status"];
+	sort?: string;
+	ids?: string[];
+}): string {
+	const sp = new URLSearchParams();
+	if (opts.q) sp.set("q", opts.q);
+	for (const r of opts.role ?? []) sp.append("role", r);
+	if (opts.status) sp.set("status", opts.status);
+	if (opts.sort) sp.set("sort", opts.sort);
+	if (opts.ids && opts.ids.length > 0) sp.set("ids", opts.ids.join(","));
+	const qs = sp.toString();
+	return `/api/app/admin/users/export.csv${qs ? `?${qs}` : ""}`;
+}
