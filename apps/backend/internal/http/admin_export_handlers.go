@@ -3,12 +3,17 @@ package httpapi
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
+	"rustlens/backend/internal/admin/audit"
 	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/appauth"
 )
@@ -33,8 +38,21 @@ var exportRowColumns = []string{
 	"guild_count", "created_at", "last_login_at",
 }
 
+// auditSink returns the handler's audit store, lazy-initialising it from the
+// postgres pool when the handler was constructed without one (e.g. in tests
+// that build a Handler struct literal directly).
+func (h *Handler) auditSink() *audit.Store {
+	if h.auditStore != nil {
+		return h.auditStore
+	}
+	return audit.NewStore(h.postgres.Pool())
+}
+
 // ExportAdminUsersCSV streams a CSV snapshot of admin users matching the
-// provided filters. Requires the users.export permission.
+// provided filters. Requires the users.export permission. Writes paired
+// users.export.started + users.export.completed audit events so every export
+// attempt is permanently logged with full filter context, even if streaming
+// fails or the client disconnects mid-flight.
 func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 	session := appauth.SessionFromContext(r.Context())
 	if session == nil || session.UserID == "" {
@@ -63,7 +81,6 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 
 	pool := h.postgres.Pool()
 
-	// Count first to enforce the row cap.
 	var total int
 	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM app_users u %s`, whereSQL)
 	if err := pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
@@ -75,6 +92,76 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("row count %d exceeds export cap %d", total, adminUsersExportRowCap))
 		return
 	}
+
+	// Build the started audit event before any bytes leave the server. If
+	// streaming fails halfway through, we still know an export was attempted.
+	exportID := uuid.NewString()
+	filters := extractExportFilters(r.URL.Query())
+	var targetUserID *string
+	if ids, ok := filters["ids"].([]string); ok && len(ids) == 1 {
+		t := ids[0]
+		targetUserID = &t
+	}
+	actorID := session.UserID
+	ip := clientIPForAudit(r)
+	ua := r.Header.Get("User-Agent")
+
+	startedParams, _ := json.Marshal(map[string]any{
+		"exportId":         exportID,
+		"filters":          filters,
+		"expectedRowCount": total,
+	})
+	if err := h.auditSink().Record(ctx, audit.Entry{
+		ActionType:        "users.export.started",
+		ActorUserID:       &actorID,
+		ActorRoleSnapshot: session.Roles,
+		ResourceType:      "user_export",
+		ResourceID:        exportID,
+		TargetUserID:      targetUserID,
+		Params:            startedParams,
+		Result:            "success",
+		IPAddress:         &ip,
+		UserAgent:         &ua,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// completionResult is captured for the paired completion row written below.
+	completionResult := "success"
+	var completionErr *string
+	rowsWritten := 0
+	bytesWritten := 0
+	startedAt := time.Now()
+
+	// Defer the completion row so timeouts, panics during streaming, or
+	// client disconnects still produce a paired event.
+	defer func() {
+		duration := time.Since(startedAt).Milliseconds()
+		// Use a fresh context so we still write completion even if the request
+		// context was cancelled or timed out.
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer bgCancel()
+		completedParams, _ := json.Marshal(map[string]any{
+			"exportId":     exportID,
+			"rowsWritten":  rowsWritten,
+			"bytesWritten": bytesWritten,
+			"durationMs":   duration,
+		})
+		_ = h.auditSink().Record(bgCtx, audit.Entry{
+			ActionType:        "users.export.completed",
+			ActorUserID:       &actorID,
+			ActorRoleSnapshot: session.Roles,
+			ResourceType:      "user_export",
+			ResourceID:        exportID,
+			TargetUserID:      targetUserID,
+			Params:            completedParams,
+			Result:            completionResult,
+			ErrorMessage:      completionErr,
+			IPAddress:         &ip,
+			UserAgent:         &ua,
+		})
+	}()
 
 	// Streaming headers.
 	filename := fmt.Sprintf("users-%s.csv", time.Now().UTC().Format("2006-01-02"))
@@ -106,31 +193,40 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := pool.Query(ctx, listSQL, args...)
 	if err != nil {
+		completionResult = "error"
+		msg := err.Error()
+		completionErr = &msg
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer rows.Close()
 
-	writer := csv.NewWriter(w)
+	cw := &countingWriter{w: w}
+	writer := csv.NewWriter(cw)
 	flusher, _ := w.(http.Flusher)
 
 	if err := writer.Write(exportRowColumns); err != nil {
+		completionResult = "error"
+		msg := err.Error()
+		completionErr = &msg
 		return
 	}
 
-	written := 0
 	for rows.Next() {
 		var (
-			id, name, status                                string
-			discordID, discordName, discordGlobal           string
-			adminRoles                                      []string
-			guildCount                                      int64
-			createdAt, lastLoginAt                          time.Time
+			id, name, status                      string
+			discordID, discordName, discordGlobal string
+			adminRoles                            []string
+			guildCount                            int64
+			createdAt, lastLoginAt                time.Time
 		)
 		if err := rows.Scan(
 			&id, &name, &discordID, &discordName, &discordGlobal, &status,
 			&adminRoles, &guildCount, &createdAt, &lastLoginAt,
 		); err != nil {
+			completionResult = "error"
+			msg := err.Error()
+			completionErr = &msg
 			return
 		}
 		record := []string{
@@ -146,10 +242,13 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 			lastLoginAt.UTC().Format(time.RFC3339),
 		}
 		if err := writer.Write(record); err != nil {
+			completionResult = "error"
+			msg := err.Error()
+			completionErr = &msg
 			return
 		}
-		written++
-		if written%csvFlushInterval == 0 {
+		rowsWritten++
+		if rowsWritten%csvFlushInterval == 0 {
 			writer.Flush()
 			if flusher != nil {
 				flusher.Flush()
@@ -160,5 +259,76 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 	if flusher != nil {
 		flusher.Flush()
 	}
+	if err := rows.Err(); err != nil {
+		completionResult = "error"
+		msg := err.Error()
+		completionErr = &msg
+		return
+	}
+
+	bytesWritten = cw.n
 }
 
+// countingWriter wraps http.ResponseWriter to count bytes written, used for
+// the bytesWritten audit field. It only forwards Write — Header/Flush still go
+// through the underlying ResponseWriter via the original handle.
+type countingWriter struct {
+	w http.ResponseWriter
+	n int
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += n
+	return n, err
+}
+
+// clientIPForAudit returns the request's remote IP suitable for audit
+// logging. RealIP middleware sets r.RemoteAddr to a bare IP when an upstream
+// proxy header is configured; otherwise it's "host:port". Fall back to the
+// raw RemoteAddr value rather than failing the export.
+func clientIPForAudit(r *http.Request) string {
+	addr := r.RemoteAddr
+	if i := strings.LastIndex(addr, ":"); i > 0 && strings.Count(addr, ":") == 1 {
+		return addr[:i]
+	}
+	return addr
+}
+
+// extractExportFilters captures the filter querystring as a structured map for
+// audit logging. Only includes fields that were actually supplied; this keeps
+// audit rows readable and makes JSONB queries (e.g. params -> 'filters' ->
+// 'ids' ? $userId) reliable.
+func extractExportFilters(q url.Values) map[string]any {
+	out := map[string]any{}
+	if v := strings.TrimSpace(q.Get("q")); v != "" {
+		out["q"] = v
+	}
+	if roles, ok := q["role"]; ok && len(roles) > 0 {
+		out["role"] = roles
+	}
+	if v := q.Get("status"); v != "" {
+		out["status"] = v
+	}
+	if v := q.Get("discord"); v != "" {
+		out["discord"] = v
+	}
+	if v := q.Get("steam"); v != "" {
+		out["steam"] = v
+	}
+	if v := q.Get("sort"); v != "" {
+		out["sort"] = v
+	}
+	if rawIDs := strings.TrimSpace(q.Get("ids")); rawIDs != "" {
+		parts := strings.Split(rawIDs, ",")
+		cleaned := make([]string, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				cleaned = append(cleaned, p)
+			}
+		}
+		out["ids"] = cleaned
+	}
+	return out
+}
