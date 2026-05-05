@@ -5,14 +5,6 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import {
-	Pagination,
-	PaginationContent,
-	PaginationItem,
-	PaginationLink,
-	PaginationNext,
-	PaginationPrevious,
-} from "@/components/ui/pagination";
-import {
 	type AdminRoleItem,
 	type AdminUsersPage as AdminUsersPageData,
 	type AdminUsersQuery,
