@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -95,6 +96,11 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 	actorID := session.UserID
 	ip := clientIPForAudit(r)
 	ua := r.Header.Get("User-Agent")
+	var ipPtr *string
+	if parsed := net.ParseIP(ip); parsed != nil {
+		s := parsed.String()
+		ipPtr = &s
+	}
 
 	startedParams, _ := json.Marshal(map[string]any{
 		"exportId":         exportID,
@@ -110,7 +116,7 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 		TargetUserID:      targetUserID,
 		Params:            startedParams,
 		Result:            "success",
-		IPAddress:         &ip,
+		IPAddress:         ipPtr,
 		UserAgent:         &ua,
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -127,6 +133,13 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 	// Defer the completion row so timeouts, panics during streaming, or
 	// client disconnects still produce a paired event.
 	defer func() {
+		if rec := recover(); rec != nil {
+			completionResult = "error"
+			msg := fmt.Sprintf("panic during export: %v", rec)
+			completionErr = &msg
+			// fall through to write the row, then re-panic
+			defer panic(rec)
+		}
 		duration := time.Since(startedAt).Milliseconds()
 		// Use a fresh context so we still write completion even if the request
 		// context was cancelled or timed out.
@@ -148,7 +161,7 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 			Params:            completedParams,
 			Result:            completionResult,
 			ErrorMessage:      completionErr,
-			IPAddress:         &ip,
+			IPAddress:         ipPtr,
 			UserAgent:         &ua,
 		})
 	}()
@@ -271,15 +284,17 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 }
 
 // clientIPForAudit returns the request's remote IP suitable for audit
-// logging. RealIP middleware sets r.RemoteAddr to a bare IP when an upstream
-// proxy header is configured; otherwise it's "host:port". Fall back to the
-// raw RemoteAddr value rather than failing the export.
+// logging. Uses net.SplitHostPort so IPv6 addresses like [::1]:1234 are
+// handled correctly. RealIP middleware can leave RemoteAddr as a bare IP
+// without a port; in that case SplitHostPort returns an error and we return
+// the raw value as-is.
 func clientIPForAudit(r *http.Request) string {
-	addr := r.RemoteAddr
-	if i := strings.LastIndex(addr, ":"); i > 0 && strings.Count(addr, ":") == 1 {
-		return addr[:i]
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		// RealIP middleware can leave RemoteAddr as a bare IP without a port.
+		return r.RemoteAddr
 	}
-	return addr
+	return host
 }
 
 // extractExportFilters captures the filter querystring as a structured map for
