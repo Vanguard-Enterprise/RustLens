@@ -41,7 +41,7 @@ async function withReason<T>(
 	}
 }
 
-export async function assignRoleAction(
+export async function grantRoleAction(
 	userId: string,
 	roleKey: string,
 	reason: string,

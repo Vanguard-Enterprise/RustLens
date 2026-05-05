@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { AdminRoleItem, AdminUserDetail } from "@/lib/rustlens-api";
 
-import { assignRoleAction, revokeRoleAction } from "../actions";
+import { grantRoleAction, revokeRoleAction } from "../actions";
 import { GrantRoleDialog } from "./grant-role-dialog";
 import { RevokeRoleDialog } from "./revoke-role-dialog";
 
@@ -44,7 +44,7 @@ export function RolesSection({
 	const assignableRoles = roles.filter((r) => !currentRoles.includes(r.key));
 
 	const handleGrant = async (userId: string, roleKey: string, reason: string) => {
-		const res = await assignRoleAction(userId, roleKey, reason);
+		const res = await grantRoleAction(userId, roleKey, reason);
 		if (!res.ok) throw new Error(res.error);
 		router.refresh();
 	};
@@ -75,44 +75,45 @@ export function RolesSection({
 							const description = role?.description ?? null;
 							const isSuperadmin = roleKey === "superadmin";
 							return (
-								<Tooltip key={roleKey}>
-									<TooltipTrigger asChild>
-										<Badge
-											variant={isSuperadmin ? "destructive" : "secondary"}
-											className="gap-1"
-										>
-											{name}
-											{isSelf ? (
-												<TooltipProvider>
-													<Tooltip>
-														<TooltipTrigger asChild>
-															<span
-																className="cursor-not-allowed opacity-40"
-																aria-label="You can't revoke your own admin roles"
-																role="img"
-															>
-																<XIcon className="size-3" />
-															</span>
-														</TooltipTrigger>
-														<TooltipContent>
-															You can&apos;t revoke your own admin roles.
-														</TooltipContent>
-													</Tooltip>
-												</TooltipProvider>
-											) : (
-												<button
-													type="button"
-													onClick={() => setRevoking({ key: roleKey, name })}
-													className="rounded hover:bg-foreground/10"
-													aria-label={`Revoke ${name}`}
+								<Badge
+									key={roleKey}
+									variant={isSuperadmin ? "destructive" : "secondary"}
+									className="gap-1"
+								>
+									{description ? (
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<span>{name}</span>
+											</TooltipTrigger>
+											<TooltipContent>{description}</TooltipContent>
+										</Tooltip>
+									) : (
+										<span>{name}</span>
+									)}
+									{isSelf ? (
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<span
+													className="cursor-not-allowed opacity-40"
+													aria-label="You can't revoke your own admin roles"
+													role="img"
 												>
 													<XIcon className="size-3" />
-												</button>
-											)}
-										</Badge>
-									</TooltipTrigger>
-									{description ? <TooltipContent>{description}</TooltipContent> : null}
-								</Tooltip>
+												</span>
+											</TooltipTrigger>
+											<TooltipContent>You can&apos;t revoke your own admin roles.</TooltipContent>
+										</Tooltip>
+									) : (
+										<button
+											type="button"
+											onClick={() => setRevoking({ key: roleKey, name })}
+											className="rounded hover:bg-foreground/10"
+											aria-label={`Revoke ${name}`}
+										>
+											<XIcon className="size-3" />
+										</button>
+									)}
+								</Badge>
 							);
 						})
 					)}
