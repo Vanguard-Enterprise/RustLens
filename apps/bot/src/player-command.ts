@@ -386,13 +386,17 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       return true;
     }
 
-    const isAdmin = await isWebsiteAdmin(interaction.user.id);
+    if (!(await isWebsiteAdmin(interaction.user.id))) {
+      await interaction.editReply({ embeds: [buildWebsiteAdminOnlyEmbed()] });
+      return true;
+    }
+
     try {
       const account = await ensureSteamAccountByBmIDSafely(bmId);
       if (account?.steamId) {
         await runPlatformSyncSafely("steam", account.steamId);
       }
-      const embed = await buildBmOnlyLinksEmbed(bmId, isAdmin);
+      const embed = await buildBmOnlyLinksEmbed(bmId, true);
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       console.error("[bot] failed to load bm links", error);
@@ -413,10 +417,14 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       return true;
     }
 
-    const isAdmin = await isWebsiteAdmin(interaction.user.id);
+    if (!(await isWebsiteAdmin(interaction.user.id))) {
+      await interaction.editReply({ embeds: [buildWebsiteAdminOnlyEmbed()] });
+      return true;
+    }
+
     try {
       await runPlatformSyncSafely("steam", steamId);
-      const embed = await buildSteamLinksEmbed(steamId, isAdmin);
+      const embed = await buildSteamLinksEmbed(steamId, true);
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       console.error("[bot] failed to load steam links", error);
