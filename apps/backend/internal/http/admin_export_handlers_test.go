@@ -3,10 +3,13 @@ package httpapi
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/appauth"
@@ -57,6 +60,49 @@ func newExportHandlerServer(t *testing.T) (*Handler, *store.PostgresStore) {
 
 	h := &Handler{postgres: s, rbacResolver: resolver, rbacStore: rbStore}
 	return h, s
+}
+
+func countAuditByAction(t *testing.T, pool *pgxpool.Pool, actionType string) int {
+	t.Helper()
+	var n int
+	err := pool.QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM audit_events WHERE action_type = $1`, actionType,
+	).Scan(&n)
+	if err != nil {
+		t.Fatalf("count %s: %v", actionType, err)
+	}
+	return n
+}
+
+func fetchAuditRow(t *testing.T, pool *pgxpool.Pool, actionType string) struct {
+	ResourceID   string
+	TargetUserID *string
+	Params       []byte
+	Result       string
+	IPAddress    *string
+	ErrorMessage *string
+} {
+	t.Helper()
+	var row struct {
+		ResourceID   string
+		TargetUserID *string
+		Params       []byte
+		Result       string
+		IPAddress    *string
+		ErrorMessage *string
+	}
+	err := pool.QueryRow(context.Background(),
+		`SELECT COALESCE(resource_id,''), target_user_id::text, params,
+		        result, ip_address::text, error_message
+		 FROM audit_events WHERE action_type = $1
+		 ORDER BY created_at DESC LIMIT 1`,
+		actionType,
+	).Scan(&row.ResourceID, &row.TargetUserID, &row.Params,
+		&row.Result, &row.IPAddress, &row.ErrorMessage)
+	if err != nil {
+		t.Fatalf("fetch %s: %v", actionType, err)
+	}
+	return row
 }
 
 func TestExportAdminUsersCSV_HappyPath(t *testing.T) {
@@ -157,5 +203,128 @@ func TestExportAdminUsersCSV_PermissionDenied(t *testing.T) {
 	h.ExportAdminUsersCSV(rr, req)
 	if rr.Code != 403 {
 		t.Errorf("expected 403, got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestExportAdminUsersCSV_WritesPairedAuditEvents(t *testing.T) {
+	h, s := newExportHandlerServer(t)
+	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{Discord: "alice", DiscordID: "d_alice"})
+
+	// Pre-conditions: zero rows of each event type yet.
+	if got := countAuditByAction(t, s.Pool(), "users.export.started"); got != 0 {
+		t.Fatalf("expected 0 started rows pre-export, got %d", got)
+	}
+	if got := countAuditByAction(t, s.Pool(), "users.export.completed"); got != 0 {
+		t.Fatalf("expected 0 completed rows pre-export, got %d", got)
+	}
+
+	req := httptest.NewRequest("GET", "/api/app/admin/users/export.csv?status=any", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	req.Header.Set("User-Agent", "test-agent")
+	req = req.WithContext(appauth.InjectSessionForTest(req.Context(),
+		&appauth.SessionUser{UserID: "usr_exporter", Roles: []string{"superadmin"}}))
+	rr := httptest.NewRecorder()
+	h.ExportAdminUsersCSV(rr, req)
+
+	if rr.Code != 200 {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	if got := countAuditByAction(t, s.Pool(), "users.export.started"); got != 1 {
+		t.Fatalf("expected 1 started row, got %d", got)
+	}
+	if got := countAuditByAction(t, s.Pool(), "users.export.completed"); got != 1 {
+		t.Fatalf("expected 1 completed row, got %d", got)
+	}
+
+	started := fetchAuditRow(t, s.Pool(), "users.export.started")
+	completed := fetchAuditRow(t, s.Pool(), "users.export.completed")
+
+	if started.ResourceID == "" {
+		t.Fatal("started.resource_id should be a non-empty exportId")
+	}
+	if started.ResourceID != completed.ResourceID {
+		t.Errorf("export pair must share resource_id, got started=%q completed=%q",
+			started.ResourceID, completed.ResourceID)
+	}
+	if started.Result != "success" {
+		t.Errorf("started.result=%q want success", started.Result)
+	}
+	if completed.Result != "success" {
+		t.Errorf("completed.result=%q want success", completed.Result)
+	}
+
+	var startedParams map[string]any
+	if err := json.Unmarshal(started.Params, &startedParams); err != nil {
+		t.Fatalf("unmarshal started params: %v", err)
+	}
+	if _, ok := startedParams["expectedRowCount"]; !ok {
+		t.Errorf("started params missing expectedRowCount: %s", started.Params)
+	}
+	filters, _ := startedParams["filters"].(map[string]any)
+	if filters == nil {
+		t.Fatalf("started params missing filters: %s", started.Params)
+	}
+	if filters["status"] != "any" {
+		t.Errorf("filters.status=%v want \"any\"", filters["status"])
+	}
+
+	var completedParams map[string]any
+	if err := json.Unmarshal(completed.Params, &completedParams); err != nil {
+		t.Fatalf("unmarshal completed params: %v", err)
+	}
+	if _, ok := completedParams["rowsWritten"]; !ok {
+		t.Errorf("completed params missing rowsWritten: %s", completed.Params)
+	}
+	if _, ok := completedParams["durationMs"]; !ok {
+		t.Errorf("completed params missing durationMs: %s", completed.Params)
+	}
+}
+
+func TestExportAdminUsersCSV_SingleIDsTargetsUser(t *testing.T) {
+	h, s := newExportHandlerServer(t)
+	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{Discord: "alice", DiscordID: "d_alice"})
+
+	req := httptest.NewRequest("GET", "/api/app/admin/users/export.csv?ids=usr_a", nil)
+	req = req.WithContext(appauth.InjectSessionForTest(req.Context(),
+		&appauth.SessionUser{UserID: "usr_exporter", Roles: []string{"superadmin"}}))
+	rr := httptest.NewRecorder()
+	h.ExportAdminUsersCSV(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("status=%d", rr.Code)
+	}
+
+	started := fetchAuditRow(t, s.Pool(), "users.export.started")
+	if started.TargetUserID == nil || *started.TargetUserID != "usr_a" {
+		t.Errorf("target_user_id=%v want usr_a", started.TargetUserID)
+	}
+}
+
+func TestExportAdminUsersCSV_MultipleIDsKeepsTargetNullButRecordsIDs(t *testing.T) {
+	h, s := newExportHandlerServer(t)
+	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{Discord: "alice", DiscordID: "d_alice"})
+	seedUser(t, s.Pool(), "usr_b", "Bob", seedOpts{Discord: "bob", DiscordID: "d_bob"})
+
+	req := httptest.NewRequest("GET", "/api/app/admin/users/export.csv?ids=usr_a,usr_b", nil)
+	req = req.WithContext(appauth.InjectSessionForTest(req.Context(),
+		&appauth.SessionUser{UserID: "usr_exporter", Roles: []string{"superadmin"}}))
+	rr := httptest.NewRecorder()
+	h.ExportAdminUsersCSV(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("status=%d", rr.Code)
+	}
+
+	started := fetchAuditRow(t, s.Pool(), "users.export.started")
+	if started.TargetUserID != nil {
+		t.Errorf("target_user_id=%v want nil for multi-id export", *started.TargetUserID)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(started.Params, &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	filters, _ := p["filters"].(map[string]any)
+	ids, _ := filters["ids"].([]any)
+	if len(ids) != 2 {
+		t.Fatalf("filters.ids len=%d want 2: %v", len(ids), ids)
 	}
 }
