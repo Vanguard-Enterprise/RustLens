@@ -83,12 +83,22 @@ export function RolesSection({
 										>
 											{name}
 											{isSelf ? (
-												<span
-													title="You can't revoke your own admin roles."
-													className="cursor-not-allowed opacity-40"
-												>
-													<XIcon className="size-3" />
-												</span>
+												<TooltipProvider>
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<span
+																className="cursor-not-allowed opacity-40"
+																aria-label="You can't revoke your own admin roles"
+																role="img"
+															>
+																<XIcon className="size-3" />
+															</span>
+														</TooltipTrigger>
+														<TooltipContent>
+															You can&apos;t revoke your own admin roles.
+														</TooltipContent>
+													</Tooltip>
+												</TooltipProvider>
 											) : (
 												<button
 													type="button"
@@ -117,7 +127,7 @@ export function RolesSection({
 					disabled={assignableRoles.length === 0}
 				>
 					<PlusIcon className="mr-2 size-4" />
-					Add role...
+					Add role…
 				</Button>
 			</div>
 
