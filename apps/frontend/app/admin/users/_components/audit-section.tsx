@@ -54,7 +54,7 @@ export function AuditSection({ userId, items }: Props) {
 									</Badge>
 								</div>
 								<div className="col-span-3 truncate text-xs text-muted-foreground">
-									{it.reason ?? ""}
+									{it.reason?.trim() ? it.reason : "—"}
 								</div>
 								<div className="col-span-2 text-right text-xs text-muted-foreground">
 									<RelativeTime iso={it.createdAt} />
