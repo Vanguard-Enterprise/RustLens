@@ -15,6 +15,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import type { AdminUserItem } from "@/lib/rustlens-api";
+import { userAvatarUrl } from "@/lib/discord-cdn";
 
 type Props = {
 	items: AdminUserItem[];
@@ -61,16 +62,19 @@ export function UsersTable({ items, selected, onToggle, onToggleAll }: Props) {
 										href={`/admin/users/${it.user.id}`}
 										className="flex items-center gap-2 hover:underline"
 									>
-										{it.user.avatarUrl || it.discordAvatar ? (
-											// eslint-disable-next-line @next/next/no-img-element
-											<img
-												src={it.user.avatarUrl || it.discordAvatar}
-												alt=""
-												className="size-7 rounded-full object-cover"
-											/>
-										) : (
-											<div className="size-7 rounded-full bg-muted" />
-										)}
+										{(() => {
+											const avatarSrc = it.user.avatarUrl || (it.discordId ? userAvatarUrl(it.discordId, it.discordAvatar ?? null) : null) || null;
+											return avatarSrc ? (
+												// eslint-disable-next-line @next/next/no-img-element
+												<img
+													src={avatarSrc}
+													alt=""
+													className="size-7 rounded-full object-cover"
+												/>
+											) : (
+												<div className="size-7 rounded-full bg-muted" />
+											);
+										})()}
 										<div className="flex flex-col">
 											<span className="font-medium">{it.user.displayName}</span>
 											<span className="text-xs text-muted-foreground">

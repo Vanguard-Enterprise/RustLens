@@ -31,19 +31,16 @@ export function UsersPage({ initialPage, roles, initialQuery, pageSizeOptions, p
 	const updateQuery = (patch: Partial<AdminUsersQuery>) => {
 		const sp = new URLSearchParams(searchParams.toString());
 		const apply = (key: string, val: unknown) => {
-			sp.delete(key);
 			if (Array.isArray(val)) {
+				sp.delete(key);
 				for (const v of val) sp.append(key, v);
-			} else if (val !== undefined && val !== null && val !== "") {
+			} else if (val === undefined || val === null || val === "") {
+				sp.delete(key);
+			} else {
 				sp.set(key, String(val));
 			}
 		};
-		apply("q", patch.q ?? initialQuery.q);
-		apply("role", patch.role ?? initialQuery.role);
-		apply("status", patch.status ?? initialQuery.status);
-		apply("sort", patch.sort ?? initialQuery.sort);
-		apply("page", patch.page ?? initialQuery.page);
-		apply("pageSize", patch.pageSize ?? initialQuery.pageSize);
+		for (const [k, v] of Object.entries(patch)) apply(k, v);
 		router.push(`${pathname}?${sp.toString()}`);
 	};
 
