@@ -6,7 +6,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { AdminUserDetail } from "@/lib/rustlens-api";
+import type { AdminUserDetail, EditUserPatch } from "@/lib/rustlens-api";
 
 import { editUserAction } from "../actions";
 
@@ -31,14 +31,17 @@ export function ProfileSection({ detail, canEdit }: Props) {
 	};
 
 	const save = async () => {
+		const patch: EditUserPatch = {};
+		if (displayName !== detail.user.displayName) patch.displayName = displayName;
+		if (avatarUrl !== (detail.user.avatarUrl ?? "")) patch.avatarUrl = avatarUrl;
+		if (Object.keys(patch).length === 0) {
+			setEditing(false);
+			return;
+		}
 		setSubmitting(true);
 		setError(null);
 		try {
-			const res = await editUserAction(
-				detail.user.id,
-				{ displayName, avatarUrl },
-				"",
-			);
+			const res = await editUserAction(detail.user.id, patch, "");
 			if (!res.ok) throw new Error(res.error);
 			router.refresh();
 			setEditing(false);
@@ -73,6 +76,7 @@ export function ProfileSection({ detail, canEdit }: Props) {
 							id="display-name"
 							value={displayName}
 							onChange={(e) => setDisplayName(e.target.value)}
+							maxLength={80}
 						/>
 					) : (
 						<dd className="text-sm">{detail.user.displayName}</dd>
@@ -85,6 +89,7 @@ export function ProfileSection({ detail, canEdit }: Props) {
 							id="avatar-url"
 							value={avatarUrl}
 							onChange={(e) => setAvatarUrl(e.target.value)}
+							maxLength={512}
 						/>
 					) : (
 						<dd className="truncate text-sm text-muted-foreground">
