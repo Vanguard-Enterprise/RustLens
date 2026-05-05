@@ -11,6 +11,7 @@ import {
 	buildAdminUsersExportUrl,
 } from "@/lib/rustlens-api";
 
+import { UsersBulkToolbar } from "./users-bulk-toolbar";
 import { UsersTable } from "./users-table";
 import { UsersToolbar } from "./users-toolbar";
 
@@ -90,6 +91,16 @@ export function UsersPage({ initialPage, roles, initialQuery, pageSizeOptions, p
 				totalRows={initialPage.total}
 				exportUrl={exportUrl}
 				onChange={updateQuery}
+			/>
+			<UsersBulkToolbar
+				selectedIds={Array.from(selected)}
+				roles={roles}
+				permissions={permissions}
+				onClear={() => setSelected(new Set())}
+				onComplete={() => {
+					setSelected(new Set());
+					router.refresh();
+				}}
 			/>
 			<UsersTable
 				items={initialPage.items}
