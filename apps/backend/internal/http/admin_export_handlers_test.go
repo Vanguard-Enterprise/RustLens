@@ -309,6 +309,45 @@ func TestExportAdminUsersCSV_SingleIDsTargetsUser(t *testing.T) {
 	}
 }
 
+func TestExportAdminUsersCSV_WritesErrorCompletionOnStreamFailure(t *testing.T) {
+	h, s := newExportHandlerServer(t)
+	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{Discord: "alice", DiscordID: "d_alice"})
+
+	// Force the streaming SELECT to fail by renaming a column the export query
+	// reads. The COUNT(*) precheck doesn't reference admin_user_roles.role_id,
+	// so it succeeds; then the listSQL scan fails on rows.Next() because the
+	// joined column is gone.
+	pool := s.Pool()
+	if _, err := pool.Exec(context.Background(),
+		`ALTER TABLE admin_user_roles RENAME COLUMN role_id TO role_id_renamed`); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(),
+			`ALTER TABLE admin_user_roles RENAME COLUMN role_id_renamed TO role_id`)
+	})
+
+	req := httptest.NewRequest("GET", "/api/app/admin/users/export.csv", nil)
+	req = req.WithContext(appauth.InjectSessionForTest(req.Context(),
+		&appauth.SessionUser{UserID: "usr_exporter", Roles: []string{"superadmin"}}))
+	rr := httptest.NewRecorder()
+	h.ExportAdminUsersCSV(rr, req)
+
+	// The handler may have already written 200 + Content-Disposition before
+	// the streaming error occurs. We don't assert on rr.Code; we assert on
+	// the audit row.
+	if got := countAuditByAction(t, pool, "users.export.completed"); got != 1 {
+		t.Fatalf("expected 1 completed row, got %d", got)
+	}
+	completed := fetchAuditRow(t, pool, "users.export.completed")
+	if completed.Result != "error" {
+		t.Errorf("completed.result=%q want error", completed.Result)
+	}
+	if completed.ErrorMessage == nil || *completed.ErrorMessage == "" {
+		t.Errorf("completed.error_message empty: %v", completed.ErrorMessage)
+	}
+}
+
 func TestExportAdminUsersCSV_MultipleIDsKeepsTargetNullButRecordsIDs(t *testing.T) {
 	h, s := newExportHandlerServer(t)
 	seedUser(t, s.Pool(), "usr_a", "Alice", seedOpts{Discord: "alice", DiscordID: "d_alice"})

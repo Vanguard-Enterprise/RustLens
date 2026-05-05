@@ -29,6 +29,12 @@ export function UsersPage({ initialPage, roles, initialQuery, pageSizeOptions, p
 	const searchParams = useSearchParams();
 	const [selected, setSelected] = React.useState<Set<string>>(new Set());
 
+	const initialQueryKey = `${initialQuery.q ?? ""}|${(initialQuery.role ?? []).join(",")}|${initialQuery.status ?? ""}|${initialQuery.sort ?? ""}|${initialQuery.page ?? ""}|${initialQuery.pageSize ?? ""}`;
+
+	React.useEffect(() => {
+		setSelected(new Set());
+	}, [initialQueryKey]);
+
 	const updateQuery = (patch: Partial<AdminUsersQuery>) => {
 		const sp = new URLSearchParams(searchParams.toString());
 		const apply = (key: string, val: unknown) => {
