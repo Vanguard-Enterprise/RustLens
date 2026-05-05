@@ -26,7 +26,7 @@ export type AdminNavItem = {
 
 export const ADMIN_NAV: AdminNavItem[] = [
 	{ href: "/admin", label: "Overview", icon: ShieldIcon, permissions: [] },
-	{ href: "/admin/users", label: "Users", icon: UsersIcon, permissions: ["users.suspend", "users.force_unlink_steam"] },
+	{ href: "/admin/users", label: "Users", icon: UsersIcon, permissions: ["users.read"] },
 	{ href: "/admin/links", label: "Link Review", icon: ScanEyeIcon, permissions: ["links.review"] },
 	{ href: "/admin/guilds", label: "Guilds", icon: UserRoundIcon, permissions: ["guilds.untrack_server"] },
 	{ href: "/admin/proxies", label: "Proxies", icon: NetworkIcon, permissions: ["proxies.edit"] },
