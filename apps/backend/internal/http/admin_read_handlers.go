@@ -608,11 +608,17 @@ func fetchUserAudit(ctx context.Context, pool *pgxpool.Pool, userID string, limi
 
 	hasLegacy, _ := tableExists(ctx, pool, "app_audit_events")
 
+	// New audit_events: match by target_user_id OR by params.filters.ids
+	// containing the userId. The latter surfaces export events that targeted
+	// this user via ?ids=<list>.
 	newQ := fmt.Sprintf(`
 		SELECT id::text, COALESCE(actor_user_id::text,''), COALESCE(target_user_id::text,''),
 		       action_type, COALESCE(params,'{}'::jsonb), created_at
 		FROM audit_events
-		WHERE target_user_id::text = $1%s
+		WHERE (
+			target_user_id::text = $1
+			OR (params -> 'filters' -> 'ids') @> to_jsonb($1::text)
+		)%s
 	`, cursorClause)
 
 	var q string
