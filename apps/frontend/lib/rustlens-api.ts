@@ -513,7 +513,7 @@ export async function deleteAdminRole(id: string, reason: string) {
 
 export type AssignRoleResult = { userId: string; roleKey: string };
 
-export async function assignAdminRole(
+export async function grantAdminUserRole(
 	userId: string,
 	roleKey: string,
 	reason: string,
@@ -521,7 +521,7 @@ export async function assignAdminRole(
 	return postAdminAction<AssignRoleResult>("users.roles.grant", { userId, roleKey }, reason);
 }
 
-export async function revokeAdminRole(
+export async function revokeAdminUserRole(
 	userId: string,
 	roleKey: string,
 	reason: string,
