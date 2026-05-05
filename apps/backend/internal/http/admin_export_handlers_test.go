@@ -32,7 +32,7 @@ func newExportHandlerServer(t *testing.T) (*Handler, *store.PostgresStore) {
 		t.Fatalf("ensure schema: %v", err)
 	}
 	if _, err := s.Pool().Exec(ctx, `
-		TRUNCATE admin_user_roles, user_guilds, app_users RESTART IDENTITY CASCADE
+		TRUNCATE audit_events, app_audit_events, admin_user_roles, user_guilds, app_users RESTART IDENTITY CASCADE
 	`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
@@ -294,6 +294,9 @@ func TestExportAdminUsersCSV_SingleIDsTargetsUser(t *testing.T) {
 		t.Fatalf("status=%d", rr.Code)
 	}
 
+	if got := countAuditByAction(t, s.Pool(), "users.export.started"); got != 1 {
+		t.Fatalf("expected exactly 1 started row, got %d", got)
+	}
 	started := fetchAuditRow(t, s.Pool(), "users.export.started")
 	if started.TargetUserID == nil || *started.TargetUserID != "usr_a" {
 		t.Errorf("target_user_id=%v want usr_a", started.TargetUserID)
@@ -314,6 +317,9 @@ func TestExportAdminUsersCSV_MultipleIDsKeepsTargetNullButRecordsIDs(t *testing.
 		t.Fatalf("status=%d", rr.Code)
 	}
 
+	if got := countAuditByAction(t, s.Pool(), "users.export.started"); got != 1 {
+		t.Fatalf("expected exactly 1 started row, got %d", got)
+	}
 	started := fetchAuditRow(t, s.Pool(), "users.export.started")
 	if started.TargetUserID != nil {
 		t.Errorf("target_user_id=%v want nil for multi-id export", *started.TargetUserID)
