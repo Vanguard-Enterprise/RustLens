@@ -38,16 +38,6 @@ var exportRowColumns = []string{
 	"guild_count", "created_at", "last_login_at",
 }
 
-// auditSink returns the handler's audit store, lazy-initialising it from the
-// postgres pool when the handler was constructed without one (e.g. in tests
-// that build a Handler struct literal directly).
-func (h *Handler) auditSink() *audit.Store {
-	if h.auditStore != nil {
-		return h.auditStore
-	}
-	return audit.NewStore(h.postgres.Pool())
-}
-
 // ExportAdminUsersCSV streams a CSV snapshot of admin users matching the
 // provided filters. Requires the users.export permission. Writes paired
 // users.export.started + users.export.completed audit events so every export
@@ -111,7 +101,7 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 		"filters":          filters,
 		"expectedRowCount": total,
 	})
-	if err := h.auditSink().Record(ctx, audit.Entry{
+	if err := h.auditStore.Record(ctx, audit.Entry{
 		ActionType:        "users.export.started",
 		ActorUserID:       &actorID,
 		ActorRoleSnapshot: session.Roles,
@@ -131,8 +121,8 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 	completionResult := "success"
 	var completionErr *string
 	rowsWritten := 0
-	bytesWritten := 0
 	startedAt := time.Now()
+	cw := &countingWriter{w: w}
 
 	// Defer the completion row so timeouts, panics during streaming, or
 	// client disconnects still produce a paired event.
@@ -145,10 +135,10 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 		completedParams, _ := json.Marshal(map[string]any{
 			"exportId":     exportID,
 			"rowsWritten":  rowsWritten,
-			"bytesWritten": bytesWritten,
+			"bytesWritten": cw.n,
 			"durationMs":   duration,
 		})
-		_ = h.auditSink().Record(bgCtx, audit.Entry{
+		_ = h.auditStore.Record(bgCtx, audit.Entry{
 			ActionType:        "users.export.completed",
 			ActorUserID:       &actorID,
 			ActorRoleSnapshot: session.Roles,
@@ -201,7 +191,6 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	cw := &countingWriter{w: w}
 	writer := csv.NewWriter(cw)
 	flusher, _ := w.(http.Flusher)
 
@@ -265,8 +254,6 @@ func (h *Handler) ExportAdminUsersCSV(w http.ResponseWriter, r *http.Request) {
 		completionErr = &msg
 		return
 	}
-
-	bytesWritten = cw.n
 }
 
 // countingWriter wraps http.ResponseWriter to count bytes written, used for

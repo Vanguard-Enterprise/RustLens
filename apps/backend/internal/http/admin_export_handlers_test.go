@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"rustlens/backend/internal/admin/audit"
 	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/store"
@@ -58,7 +59,12 @@ func newExportHandlerServer(t *testing.T) (*Handler, *store.PostgresStore) {
 		t.Fatalf("assign sa: %v", err)
 	}
 
-	h := &Handler{postgres: s, rbacResolver: resolver, rbacStore: rbStore}
+	h := &Handler{
+		postgres:     s,
+		rbacResolver: resolver,
+		rbacStore:    rbStore,
+		auditStore:   audit.NewStore(s.Pool()),
+	}
 	return h, s
 }
 
