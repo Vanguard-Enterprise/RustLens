@@ -13,6 +13,7 @@ import {
 import { bulkUserAction } from "../actions";
 import { BulkRoleDialog } from "./bulk-role-dialog";
 import { BulkSuspendDialog } from "./bulk-suspend-dialog";
+import { ExportButton } from "./export-button";
 
 type Props = {
 	selectedIds: string[];
@@ -87,13 +88,7 @@ export function UsersBulkToolbar({ selectedIds, roles, permissions, onClear, onC
 					</Button>
 				</>
 			) : null}
-			{exportSelectedUrl ? (
-				<a href={exportSelectedUrl} download>
-					<Button size="sm" variant="outline">
-						Export selected
-					</Button>
-				</a>
-			) : null}
+			{exportSelectedUrl ? <ExportButton url={exportSelectedUrl} label="Export selected" /> : null}
 			<div className="ml-auto">
 				<Button size="sm" variant="ghost" onClick={onClear}>
 					Clear

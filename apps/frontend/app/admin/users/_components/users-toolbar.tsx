@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/select";
 import type { AdminRoleItem, AdminUsersQuery } from "@/lib/rustlens-api";
 
+import { ExportButton } from "./export-button";
+
 type Props = {
 	query: AdminUsersQuery;
 	roles: AdminRoleItem[];
@@ -95,13 +97,7 @@ export function UsersToolbar({ query, roles, totalRows, exportUrl, onChange }: P
 					</SelectContent>
 				</Select>
 				<div className="ml-auto">
-					{exportUrl ? (
-						<a href={exportUrl} download>
-							<Button variant="outline" size="sm">
-								Export filtered ({totalRows})
-							</Button>
-						</a>
-					) : null}
+					{exportUrl ? <ExportButton url={exportUrl} label={`Export filtered (${totalRows})`} /> : null}
 				</div>
 			</div>
 			<div className="flex flex-wrap items-center gap-1">
