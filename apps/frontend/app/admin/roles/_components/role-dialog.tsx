@@ -128,7 +128,7 @@ export function RoleDialog({ open, onOpenChange, mode, role, catalog, onSubmit }
     return (
         <>
             <Dialog open={open} onOpenChange={onOpenChange}>
-                <DialogContent className="flex max-h-[85vh] flex-col gap-4 sm:max-w-2xl">
+                <DialogContent className="flex max-h-[85vh] flex-col gap-4 text-left sm:max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>
                             {mode === "create" ? "New role" : isSystem ? `${role?.name} (system)` : `Edit ${role?.name}`}
@@ -201,7 +201,7 @@ export function RoleDialog({ open, onOpenChange, mode, role, catalog, onSubmit }
             </Dialog>
 
             <Dialog open={reasonOpen} onOpenChange={(o) => (submitting ? null : setReasonOpen(o))}>
-                <DialogContent>
+                <DialogContent className="text-left">
                     <DialogHeader>
                         <DialogTitle>Reason for change</DialogTitle>
                         <DialogDescription>
