@@ -1066,7 +1066,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/internal/bot/setup/tracked-servers/{bmID}/player-count-history": map[string]any{
 				"get": map[string]any{
 					"summary":     "Get tracked server player count analytics",
-					"description": "Returns chart-ready BattleMetrics player-count history for a tracked server. The selected timeframe filters the time series; weekday distribution is computed from the cached 90-day window.",
+					"description": "Returns chart-ready BattleMetrics player-count history for a tracked server. The selected timeframe covers completed UTC days ending yesterday; weekday distribution is computed from cached history refreshed daily at 00:01 UTC.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{

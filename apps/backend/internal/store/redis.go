@@ -12,12 +12,13 @@ import (
 )
 
 const (
-	workersKey                 = "rustlens:bot:workers"
-	leaseMapKey                = "rustlens:bot:leases"
-	workerHeartbeatPref        = "rustlens:bot:worker:heartbeat:"
-	workerStatsPref            = "rustlens:bot:worker:stats:"
-	trackNotificationClaimPref = "rustlens:track:notification:claim:"
-	battleMetricsPollerLockKey = "rustlens:battlemetrics:poller:lock"
+	workersKey                    = "rustlens:bot:workers"
+	leaseMapKey                   = "rustlens:bot:leases"
+	workerHeartbeatPref           = "rustlens:bot:worker:heartbeat:"
+	workerStatsPref               = "rustlens:bot:worker:stats:"
+	trackNotificationClaimPref    = "rustlens:track:notification:claim:"
+	battleMetricsPollerLockKey    = "rustlens:battlemetrics:poller:lock"
+	serverAnalyticsRefreshLockKey = "rustlens:server-analytics:refresh:lock"
 )
 
 type RedisStore struct {
@@ -204,6 +205,21 @@ return 0
 `
 
 	return r.client.Eval(ctx, releaseScript, []string{battleMetricsPollerLockKey}, owner).Err()
+}
+
+func (r *RedisStore) TryAcquireServerAnalyticsRefreshLock(ctx context.Context, owner string, ttl time.Duration) (bool, error) {
+	return r.client.SetNX(ctx, serverAnalyticsRefreshLockKey, owner, ttl).Result()
+}
+
+func (r *RedisStore) ReleaseServerAnalyticsRefreshLock(ctx context.Context, owner string) error {
+	const releaseScript = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+	return redis.call("del", KEYS[1])
+end
+return 0
+`
+
+	return r.client.Eval(ctx, releaseScript, []string{serverAnalyticsRefreshLockKey}, owner).Err()
 }
 
 func (r *RedisStore) TryClaimTrackNotification(ctx context.Context, groupID int64, steamID string, isOnline bool, onlineUnix int64, owner string, ttl time.Duration) (bool, error) {

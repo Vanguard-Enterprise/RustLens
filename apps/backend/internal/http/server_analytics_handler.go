@@ -12,11 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"rustlens/backend/internal/battlemetrics"
+	"rustlens/backend/internal/serveranalytics"
 	"rustlens/backend/internal/store"
-)
-
-const (
-	serverAnalyticsCacheTimeframe = 90
 )
 
 var serverAnalyticsTimeframes = map[string]int{
@@ -80,8 +77,8 @@ func (h *Handler) GetServerPlayerCountAnalytics(w http.ResponseWriter, r *http.R
 	}
 
 	now := time.Now().UTC()
-	cacheStart, cacheStop := serverAnalyticsRange(now, serverAnalyticsCacheTimeframe)
-	selectedStart, selectedStop := serverAnalyticsRange(now, days)
+	cacheStart, cacheStop := serveranalytics.CompletedDayRange(now, serveranalytics.CacheDays)
+	selectedStart, selectedStop := serveranalytics.CompletedDayRange(now, days)
 
 	entry, err := h.getServerAnalyticsCache(r, bmID, cacheStart, cacheStop)
 	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
@@ -149,14 +146,6 @@ func (h *Handler) getServerAnalyticsCache(r *http.Request, bmID string, cacheSta
 		return &store.ServerPlayerCountHistoryCacheEntry{ServerBmID: bmID, Points: converted, FetchedAt: now}, nil
 	}
 	return entry, nil
-}
-
-func serverAnalyticsRange(now time.Time, days int) (time.Time, time.Time) {
-	today := now.UTC()
-	stop := time.Date(today.Year(), today.Month(), today.Day(), 23, 59, 59, 0, time.UTC)
-	startDay := stop.AddDate(0, 0, -days)
-	start := time.Date(startDay.Year(), startDay.Month(), startDay.Day(), 0, 0, 0, 0, time.UTC)
-	return start, stop
 }
 
 func convertServerAnalyticsPoints(points []store.ServerPlayerCountPoint) []serverAnalyticsPoint {

@@ -17,6 +17,7 @@ import (
 	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/platformsync"
 	"rustlens/backend/internal/proxycrypto"
+	"rustlens/backend/internal/serveranalytics"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
@@ -106,6 +107,8 @@ func main() {
 	)
 	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
+	serverAnalyticsRefresher := serveranalytics.NewRefresher(battlemetrics.NewClient(outboundProvider), postgresStore, redisStore)
+	serverAnalyticsRefresher.Start(ctx)
 	wipeReactSchedulePoller := wipereactscheduler.NewPoller(postgresStore)
 	wipeReactSchedulePoller.Start(ctx)
 
