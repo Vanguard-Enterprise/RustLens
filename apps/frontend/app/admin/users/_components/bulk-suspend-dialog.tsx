@@ -20,6 +20,7 @@ type Mode = "suspend" | "unsuspend";
 type Props = {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	onSuccess?: () => void;
 	mode: Mode;
 	userIds: string[];
 	onConfirm: (
@@ -30,7 +31,7 @@ type Props = {
 	) => Promise<BulkUserResult>;
 };
 
-export function BulkSuspendDialog({ open, onOpenChange, mode, userIds, onConfirm }: Props) {
+export function BulkSuspendDialog({ open, onOpenChange, onSuccess, mode, userIds, onConfirm }: Props) {
 	const [reason, setReason] = React.useState("");
 	const [submitting, setSubmitting] = React.useState(false);
 	const [result, setResult] = React.useState<BulkUserResult | null>(null);
@@ -53,6 +54,7 @@ export function BulkSuspendDialog({ open, onOpenChange, mode, userIds, onConfirm
 		try {
 			const res = await onConfirm(mode, userIds, {}, reason.trim());
 			setResult(res);
+			onSuccess?.();
 		} catch (err) {
 			setError((err as Error).message);
 		} finally {
@@ -93,6 +95,7 @@ export function BulkSuspendDialog({ open, onOpenChange, mode, userIds, onConfirm
 							placeholder="Reason (audited)"
 							value={reason}
 							onChange={(e) => setReason(e.target.value)}
+							maxLength={500}
 						/>
 						{error ? <div className="text-sm text-destructive">{error}</div> : null}
 					</div>

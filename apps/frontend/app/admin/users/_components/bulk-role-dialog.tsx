@@ -27,6 +27,7 @@ type Mode = "grant" | "revoke";
 type Props = {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	onSuccess?: () => void;
 	mode: Mode;
 	userIds: string[];
 	roles: AdminRoleItem[];
@@ -38,7 +39,7 @@ type Props = {
 	) => Promise<BulkUserResult>;
 };
 
-export function BulkRoleDialog({ open, onOpenChange, mode, userIds, roles, onConfirm }: Props) {
+export function BulkRoleDialog({ open, onOpenChange, onSuccess, mode, userIds, roles, onConfirm }: Props) {
 	const [roleKey, setRoleKey] = React.useState("");
 	const [reason, setReason] = React.useState("");
 	const [submitting, setSubmitting] = React.useState(false);
@@ -67,6 +68,7 @@ export function BulkRoleDialog({ open, onOpenChange, mode, userIds, roles, onCon
 				reason.trim(),
 			);
 			setResult(res);
+			onSuccess?.();
 		} catch (err) {
 			setError((err as Error).message);
 		} finally {
@@ -126,6 +128,7 @@ export function BulkRoleDialog({ open, onOpenChange, mode, userIds, roles, onCon
 								placeholder="Reason (required, audited)"
 								value={reason}
 								onChange={(e) => setReason(e.target.value)}
+								maxLength={500}
 							/>
 						</div>
 						{error ? <div className="text-sm text-destructive">{error}</div> : null}

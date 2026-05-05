@@ -49,7 +49,7 @@ export function UsersBulkToolbar({ selectedIds, roles, permissions, onClear, onC
 	const exportSelectedUrl = canExport ? buildAdminUsersExportUrl({ ids: selectedIds }) : null;
 
 	return (
-		<div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-md border bg-card p-2 shadow-sm">
+		<div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-2 shadow-sm">
 			<span className="text-sm font-medium">{selectedIds.length} selected</span>
 			{canSuspend ? (
 				<>
@@ -103,12 +103,8 @@ export function UsersBulkToolbar({ selectedIds, roles, permissions, onClear, onC
 			{dialog?.kind === "suspend" ? (
 				<BulkSuspendDialog
 					open
-					onOpenChange={(o) => {
-						if (!o) {
-							setDialog(null);
-							onComplete();
-						}
-					}}
+					onOpenChange={(o) => { if (!o) setDialog(null); }}
+					onSuccess={onComplete}
 					mode={dialog.mode}
 					userIds={selectedIds}
 					onConfirm={wrapBulk}
@@ -117,12 +113,8 @@ export function UsersBulkToolbar({ selectedIds, roles, permissions, onClear, onC
 			{dialog?.kind === "role" ? (
 				<BulkRoleDialog
 					open
-					onOpenChange={(o) => {
-						if (!o) {
-							setDialog(null);
-							onComplete();
-						}
-					}}
+					onOpenChange={(o) => { if (!o) setDialog(null); }}
+					onSuccess={onComplete}
 					mode={dialog.mode}
 					userIds={selectedIds}
 					roles={roles}
