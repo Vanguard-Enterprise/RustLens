@@ -3,6 +3,7 @@
 import type { AdminRoleItem, AdminUserAuditItem, AdminUserDetail } from "@/lib/rustlens-api";
 
 import { IdentityHeader } from "./identity-header";
+import { ProfileSection } from "./profile-section";
 import { RolesSection } from "./roles-section";
 
 type Props = {
@@ -16,6 +17,7 @@ type Props = {
 export function UserDetailPage({ detail, roles, actorUserId, permissions }: Props) {
 	const canAssign = permissions.includes("users.roles.assign");
 	const canGrantSuperadmin = permissions.includes("admins.grant");
+	const canEdit = permissions.includes("users.edit");
 	return (
 		<div className="flex flex-col gap-6">
 			<IdentityHeader detail={detail} />
@@ -26,7 +28,8 @@ export function UserDetailPage({ detail, roles, actorUserId, permissions }: Prop
 				canAssign={canAssign}
 				canGrantSuperadmin={canGrantSuperadmin}
 			/>
-			{/* Profile, audit, danger zone added in later tasks */}
+			<ProfileSection detail={detail} canEdit={canEdit} />
+			{/* Audit, danger zone added in later tasks */}
 		</div>
 	);
 }
