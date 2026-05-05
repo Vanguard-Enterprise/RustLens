@@ -76,9 +76,9 @@ export function IdentityHeader({ detail }: Props) {
 							{discordId ? <CopyButton value={discordId} label="discord id" /> : null}
 						</div>
 					</div>
-					{suspendedAt && suspendReason ? (
+					{suspendReason ? (
 						<div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">
-							<strong>Suspended:</strong> {suspendReason}
+							<strong>Reason:</strong> {suspendReason}
 						</div>
 					) : null}
 					<div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">

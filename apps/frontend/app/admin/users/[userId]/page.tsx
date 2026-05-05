@@ -24,8 +24,12 @@ export default async function AdminUserDetailRoute({
 	let userDetail;
 	try {
 		userDetail = await getAdminUser(userId);
-	} catch {
-		notFound();
+	} catch (err) {
+		const msg = (err as Error).message;
+		if (msg.includes("404") || msg === "user_not_found") {
+			notFound();
+		}
+		throw err;
 	}
 
 	const [csrfToken, currentUser, roles, audit] = await Promise.all([
