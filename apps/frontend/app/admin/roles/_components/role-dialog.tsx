@@ -141,7 +141,7 @@ export function RoleDialog({ open, onOpenChange, mode, role, catalog, onSubmit }
                         ) : null}
                     </DialogHeader>
 
-                    <div className="flex flex-col gap-4 overflow-y-auto pr-2">
+                    <div className="flex flex-col gap-4 overflow-y-auto p-1">
                         <div className="grid gap-2">
                             <Label htmlFor="role-key">Key</Label>
                             <Input
