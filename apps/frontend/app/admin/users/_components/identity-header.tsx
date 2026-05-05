@@ -5,6 +5,7 @@ import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { userAvatarUrl } from "@/lib/discord-cdn";
 import type { AdminUserDetail } from "@/lib/rustlens-api";
 import { cn } from "@/lib/utils";
 
@@ -32,13 +33,14 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 
 export function IdentityHeader({ detail }: Props) {
 	const { user, discordId, discordUsername, discordGlobalName, discordAvatar, suspendedAt, deletedAt, suspendReason } = detail;
+	const avatarSrc = user.avatarUrl || (discordId ? userAvatarUrl(discordId, discordAvatar ?? null) : null) || null;
 	return (
 		<div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
 			<div className="flex items-start gap-4">
-				{user.avatarUrl || discordAvatar ? (
+				{avatarSrc ? (
 					// eslint-disable-next-line @next/next/no-img-element
 					<img
-						src={user.avatarUrl || discordAvatar}
+						src={avatarSrc}
 						alt=""
 						className="size-16 rounded-full object-cover"
 					/>
