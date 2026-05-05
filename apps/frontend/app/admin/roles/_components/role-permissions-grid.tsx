@@ -48,7 +48,7 @@ export function RolePermissionsGrid({ catalog, selected, onToggle, disabled = fa
                                         disabled={disabled}
                                         onCheckedChange={(v) => onToggle(p.key, v === true)}
                                     />
-                                    <Label htmlFor={id} className="flex flex-col gap-0.5 leading-tight">
+                                    <Label htmlFor={id} className="flex flex-col items-start gap-0.5 leading-tight">
                                         <code className="text-xs font-mono">{p.key}</code>
                                         <span className="text-xs text-muted-foreground">{p.description}</span>
                                     </Label>
