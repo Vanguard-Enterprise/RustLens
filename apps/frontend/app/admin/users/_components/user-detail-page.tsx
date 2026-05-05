@@ -22,6 +22,8 @@ export function UserDetailPage({ detail, roles, audit, actorUserId, permissions 
 	const canEdit = permissions.includes("users.edit");
 	const canSuspend = permissions.includes("users.suspend");
 	const canDelete = permissions.includes("users.delete");
+	// Purge gates on admins.grant intentionally — there is no dedicated users.purge
+	// permission. Only superadmin-makers can permanently destroy users.
 	const canPurge = permissions.includes("admins.grant");
 	return (
 		<div className="flex flex-col gap-6">
