@@ -296,17 +296,33 @@ Per-(player, server) cache of raw BattleMetrics player session windows used by t
 
 **Index**: `track_analytics_sessions_cache_fetched_idx ON (fetched_at)` for future TTL sweeps.
 
-### `server_player_count_history_cache`
+### `server_player_count_history`
 
-Per-server cache of raw BattleMetrics daily player-count history used by `/analyze server`. Entries are refreshed lazily by `GET /api/internal/bot/setup/tracked-servers/{bmID}/player-count-history` after a 24-hour TTL.
+Per-server historical store of raw BattleMetrics daily player-count history used by `/analyze server`. BattleMetrics only returns up to 90 days per request, so the backend appends/upserts daily points over time and can compute distributions from more than 90 days once enough data has accumulated.
+
+| Column | Type | Notes |
+|---|---|---|
+| `server_bm_id` | `TEXT NOT NULL` | FK to `tracked_servers.bm_id` |
+| `timestamp_unix` | `BIGINT NOT NULL` | Daily data-point timestamp from BattleMetrics |
+| `min` | `INTEGER NOT NULL` | Daily minimum player count |
+| `value` | `DOUBLE PRECISION NOT NULL` | Daily average/value player count |
+| `max` | `INTEGER NOT NULL` | Daily maximum player count |
+| `observed_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last time RustLens observed this exact daily point |
+
+**PK**: `(server_bm_id, timestamp_unix)`.
+
+**Indexes**:
+- `server_player_count_history_server_time_idx ON (server_bm_id, timestamp_unix)`
+- `server_player_count_history_observed_idx ON (observed_at)`
+
+### `server_player_count_history_fetches`
+
+Per-server refresh marker for `/analyze server`. If a server has already been fetched during the current UTC day, the handler serves stored history without calling BattleMetrics; otherwise it fetches the latest 90-day window and upserts those points into `server_player_count_history`.
 
 | Column | Type | Notes |
 |---|---|---|
 | `server_bm_id` | `TEXT` | PK, FK to `tracked_servers.bm_id` |
-| `points` | `JSONB NOT NULL DEFAULT '[]'::jsonb` | Array of `{timestampUnix, min, value, max}` daily rows |
-| `fetched_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last refresh time, drives the 24-hour TTL |
-
-**Index**: `server_player_count_history_cache_fetched_idx ON (fetched_at)` for future TTL sweeps.
+| `fetched_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | Last BattleMetrics refresh attempt that updated the local history |
 
 ### `platform_sync_state`
 

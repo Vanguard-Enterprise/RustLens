@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 )
 
 const (
-	serverAnalyticsCacheTTL       = 24 * time.Hour
 	serverAnalyticsCacheTimeframe = 90
 )
 
@@ -106,17 +106,18 @@ func (h *Handler) GetServerPlayerCountAnalytics(w http.ResponseWriter, r *http.R
 		Points:      selected,
 		Weekdays:    computeServerAnalyticsWeekdays(allPoints),
 		CachedAt:    entry.FetchedAt.UTC().Format(time.RFC3339),
-		CacheWindow: "90d",
+		CacheWindow: serverAnalyticsCacheWindow(allPoints),
 	})
 }
 
 func (h *Handler) getServerAnalyticsCache(r *http.Request, bmID string, cacheStart time.Time, cacheStop time.Time) (*store.ServerPlayerCountHistoryCacheEntry, error) {
-	now := time.Now()
-	entry, err := h.postgres.GetServerPlayerCountHistoryCache(r.Context(), bmID)
+	now := time.Now().UTC()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	entry, err := h.postgres.GetServerPlayerCountHistory(r.Context(), bmID)
 	if err != nil {
 		log.Printf("[backend] server analytics cache lookup failed for server %s: %v", bmID, err)
 	}
-	if entry != nil && now.Sub(entry.FetchedAt) < serverAnalyticsCacheTTL {
+	if entry != nil && !entry.FetchedAt.UTC().Before(dayStart) {
 		return entry, nil
 	}
 
@@ -136,10 +137,18 @@ func (h *Handler) getServerAnalyticsCache(r *http.Request, bmID string, cacheSta
 			Max:           point.Max,
 		})
 	}
-	if err := h.postgres.UpsertServerPlayerCountHistoryCache(r.Context(), bmID, converted); err != nil {
+	if err := h.postgres.UpsertServerPlayerCountHistory(r.Context(), bmID, converted); err != nil {
 		log.Printf("[backend] server analytics cache write failed for server %s: %v", bmID, err)
 	}
-	return &store.ServerPlayerCountHistoryCacheEntry{ServerBmID: bmID, Points: converted, FetchedAt: now}, nil
+	entry, err = h.postgres.GetServerPlayerCountHistory(r.Context(), bmID)
+	if err != nil {
+		log.Printf("[backend] server analytics cache reload failed for server %s: %v", bmID, err)
+		return &store.ServerPlayerCountHistoryCacheEntry{ServerBmID: bmID, Points: converted, FetchedAt: now}, nil
+	}
+	if entry == nil {
+		return &store.ServerPlayerCountHistoryCacheEntry{ServerBmID: bmID, Points: converted, FetchedAt: now}, nil
+	}
+	return entry, nil
 }
 
 func serverAnalyticsRange(now time.Time, days int) (time.Time, time.Time) {
@@ -210,4 +219,25 @@ func computeServerAnalyticsWeekdays(points []serverAnalyticsPoint) []serverAnaly
 		out = append(out, item)
 	}
 	return out
+}
+
+func serverAnalyticsCacheWindow(points []serverAnalyticsPoint) string {
+	if len(points) == 0 {
+		return "0d"
+	}
+	minUnix := points[0].TimestampUnix
+	maxUnix := points[0].TimestampUnix
+	for _, point := range points[1:] {
+		if point.TimestampUnix < minUnix {
+			minUnix = point.TimestampUnix
+		}
+		if point.TimestampUnix > maxUnix {
+			maxUnix = point.TimestampUnix
+		}
+	}
+	days := int(time.Unix(maxUnix, 0).UTC().Sub(time.Unix(minUnix, 0).UTC()).Hours()/24) + 1
+	if days < 1 {
+		days = 1
+	}
+	return strconv.Itoa(days) + "d"
 }
