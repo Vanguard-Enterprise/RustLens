@@ -173,14 +173,14 @@ export async function bulkUserAction(
 	params: Record<string, unknown>,
 	reason: string,
 ): Promise<ActionResult<BulkUserResult>> {
-	if (action === "suspend" || action === "roles.grant" || action === "roles.revoke") {
-		// All three require a reason at the sub-action level.
-		if (!reason.trim()) return { ok: false, error: "reason_required" };
-	}
 	if (action === "suspend" || action === "unsuspend") {
 		await requirePermission("users.suspend");
 	} else {
 		await requirePermission("users.roles.assign");
+	}
+	if (action === "suspend" || action === "roles.grant" || action === "roles.revoke") {
+		// All three require a reason at the sub-action level.
+		if (!reason.trim()) return { ok: false, error: "reason_required" };
 	}
 	if (userIds.length < 1 || userIds.length > 200) {
 		return { ok: false, error: "userIds must be 1..200" };
