@@ -637,6 +637,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS audit_events_resource_idx ON audit_events (resource_type, resource_id, created_at DESC);
 		CREATE INDEX IF NOT EXISTS audit_events_action_idx ON audit_events (action_type, created_at DESC);
 		CREATE INDEX IF NOT EXISTS audit_events_target_user_idx ON audit_events (target_user_id, created_at DESC);
+		CREATE INDEX IF NOT EXISTS audit_events_params_filter_ids_idx ON audit_events USING gin ((params -> 'filters' -> 'ids') jsonb_path_ops);
 	`); err != nil {
 		return err
 	}
