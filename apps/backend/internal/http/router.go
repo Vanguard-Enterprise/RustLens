@@ -232,6 +232,8 @@ func NewRouter(
 			r.Get("/guilds", handler.ListAdminGuilds)
 			r.Get("/servers", handler.ListAdminServers)
 			r.Get("/audit", handler.ListAdminAudit)
+			r.Get("/audit/event-types", handler.ListAdminAuditEventTypes)
+			r.Get("/audit/{id}", handler.GetAdminAuditEvent)
 		})
 	})
 
