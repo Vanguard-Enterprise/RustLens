@@ -3,17 +3,15 @@
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-	type AdminRoleItem,
-	type BulkUserResult,
-	type BulkUserSubAction,
-	buildAdminUsersExportUrl,
+import type {
+	AdminRoleItem,
+	BulkUserResult,
+	BulkUserSubAction,
 } from "@/lib/rustlens-api";
 
 import { bulkUserAction } from "../actions";
 import { BulkRoleDialog } from "./bulk-role-dialog";
 import { BulkSuspendDialog } from "./bulk-suspend-dialog";
-import { ExportButton } from "./export-button";
 
 type Props = {
 	selectedIds: string[];
@@ -32,7 +30,6 @@ export function UsersBulkToolbar({ selectedIds, roles, permissions, onClear, onC
 
 	const canSuspend = permissions.includes("users.suspend");
 	const canRoles = permissions.includes("users.roles.assign");
-	const canExport = permissions.includes("users.export");
 
 	const wrapBulk = async (
 		action: BulkUserSubAction,
@@ -46,8 +43,6 @@ export function UsersBulkToolbar({ selectedIds, roles, permissions, onClear, onC
 	};
 
 	if (selectedIds.length === 0) return null;
-
-	const exportSelectedUrl = canExport ? buildAdminUsersExportUrl({ ids: selectedIds }) : null;
 
 	return (
 		<div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-2 shadow-sm">
@@ -88,7 +83,6 @@ export function UsersBulkToolbar({ selectedIds, roles, permissions, onClear, onC
 					</Button>
 				</>
 			) : null}
-			{exportSelectedUrl ? <ExportButton url={exportSelectedUrl} label="Export selected" /> : null}
 			<div className="ml-auto">
 				<Button size="sm" variant="ghost" onClick={onClear}>
 					Clear

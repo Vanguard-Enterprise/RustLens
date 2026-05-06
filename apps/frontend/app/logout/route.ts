@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { CSRF_FIELD_NAME, validateCsrfRequest } from "@/lib/csrf";
-import { clearSession } from "@/lib/session";
+import { SESSION_COOKIE } from "@/lib/session";
 
 export async function POST(request: Request) {
 	const formData = await request.formData();
@@ -12,7 +12,18 @@ export async function POST(request: Request) {
 		return NextResponse.json({ error: "invalid_csrf" }, { status: 400 });
 	}
 
-	await clearSession();
-
-	return NextResponse.redirect(new URL("/", request.url), { status: 303 });
+	// Match every attribute setSession() used; otherwise the browser may not
+	// match and delete the existing cookie.
+	const response = NextResponse.json({ ok: true });
+	response.cookies.set({
+		name: SESSION_COOKIE,
+		value: "",
+		path: "/",
+		maxAge: 0,
+		httpOnly: true,
+		sameSite: "lax",
+		secure: process.env.NODE_ENV === "production",
+	});
+	response.headers.set("Cache-Control", "no-store");
+	return response;
 }

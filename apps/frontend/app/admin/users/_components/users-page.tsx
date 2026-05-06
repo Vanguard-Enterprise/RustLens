@@ -2,13 +2,27 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
+import {
+	ChevronLeftIcon,
+	ChevronRightIcon,
+	ChevronsLeftIcon,
+	ChevronsRightIcon,
+	FileIcon,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-	type AdminRoleItem,
-	type AdminUsersPage as AdminUsersPageData,
-	type AdminUsersQuery,
-	buildAdminUsersExportUrl,
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import type {
+	AdminRoleItem,
+	AdminUsersPage as AdminUsersPageData,
+	AdminUsersQuery,
 } from "@/lib/rustlens-api";
 
 import { UsersBulkToolbar } from "./users-bulk-toolbar";
@@ -74,28 +88,18 @@ export function UsersPage({ initialPage, roles, initialQuery, pageSizeOptions, p
 		});
 	};
 
-	const exportUrl = permissions.includes("users.export")
-		? buildAdminUsersExportUrl({
-			q: initialQuery.q,
-			role: initialQuery.role,
-			status: initialQuery.status,
-			sort: initialQuery.sort,
-		})
-		: null;
-
-	const totalPages = Math.max(
-		1,
-		Math.ceil(initialPage.total / (initialQuery.pageSize ?? 50)),
-	);
+	const pageSize = initialQuery.pageSize ?? 50;
+	const totalPages = Math.max(1, Math.ceil(initialPage.total / pageSize));
 	const currentPage = initialQuery.page ?? 1;
+	const canPrev = currentPage > 1;
+	const canNext = currentPage < totalPages;
+	const goToPage = (p: number) => updateQuery({ page: p });
 
 	return (
 		<div className="flex flex-col gap-4">
 			<UsersToolbar
 				query={initialQuery}
 				roles={roles}
-				totalRows={initialPage.total}
-				exportUrl={exportUrl}
 				onChange={updateQuery}
 			/>
 			<UsersBulkToolbar
@@ -113,41 +117,84 @@ export function UsersPage({ initialPage, roles, initialQuery, pageSizeOptions, p
 				selected={selected}
 				onToggle={toggle}
 				onToggleAll={toggleAll}
+				sort={initialQuery.sort}
+				onSortChange={(sort) => updateQuery({ sort, page: 1 })}
 			/>
-			<div className="flex items-center justify-between">
-				<div className="text-sm text-muted-foreground">
-					{initialPage.total} users · page {currentPage} of {totalPages}
+			<div className="flex items-center gap-4">
+				<div className="flex flex-1 items-center">
+					<Select
+						value={String(pageSize)}
+						onValueChange={(value) =>
+							updateQuery({ pageSize: Number.parseInt(value, 10), page: 1 })
+						}
+					>
+						<SelectTrigger
+							size="sm"
+							className="w-20"
+							id="rows-per-page"
+							aria-label="Rows per page"
+						>
+							<FileIcon className="size-4 text-muted-foreground" />
+							<SelectValue placeholder={pageSize} />
+						</SelectTrigger>
+						<SelectContent side="top">
+							<SelectGroup>
+								{pageSizeOptions.map((size) => (
+									<SelectItem key={size} value={String(size)}>
+										{size}
+									</SelectItem>
+								))}
+							</SelectGroup>
+						</SelectContent>
+					</Select>
 				</div>
 				<div className="flex items-center gap-2">
-					<select
-						value={initialQuery.pageSize}
-						onChange={(e) =>
-							updateQuery({ pageSize: Number.parseInt(e.target.value, 10), page: 1 })
-						}
-						className="rounded border px-2 py-1 text-sm"
-					>
-						{pageSizeOptions.map((n) => (
-							<option key={n} value={n}>
-								{n}/page
-							</option>
-						))}
-					</select>
 					<Button
 						variant="outline"
-						size="sm"
-						disabled={currentPage <= 1}
-						onClick={() => updateQuery({ page: Math.max(1, currentPage - 1) })}
+						className="hidden size-8 lg:flex"
+						size="icon"
+						onClick={() => goToPage(1)}
+						disabled={!canPrev}
 					>
-						Prev
+						<span className="sr-only">Go to first page</span>
+						<ChevronsLeftIcon />
 					</Button>
 					<Button
 						variant="outline"
-						size="sm"
-						disabled={currentPage >= totalPages}
-						onClick={() => updateQuery({ page: Math.min(totalPages, currentPage + 1) })}
+						className="size-8"
+						size="icon"
+						onClick={() => goToPage(currentPage - 1)}
+						disabled={!canPrev}
 					>
-						Next
+						<span className="sr-only">Go to previous page</span>
+						<ChevronLeftIcon />
 					</Button>
+					<div className="min-w-[7rem] text-center text-sm font-medium">
+						Page {currentPage} of {totalPages}
+					</div>
+					<Button
+						variant="outline"
+						className="size-8"
+						size="icon"
+						onClick={() => goToPage(currentPage + 1)}
+						disabled={!canNext}
+					>
+						<span className="sr-only">Go to next page</span>
+						<ChevronRightIcon />
+					</Button>
+					<Button
+						variant="outline"
+						className="hidden size-8 lg:flex"
+						size="icon"
+						onClick={() => goToPage(totalPages)}
+						disabled={!canNext}
+					>
+						<span className="sr-only">Go to last page</span>
+						<ChevronsRightIcon />
+					</Button>
+				</div>
+				<div className="flex flex-1 justify-end text-sm text-muted-foreground">
+					{initialPage.total} {initialPage.total === 1 ? "user" : "users"}
 				</div>
 			</div>
 		</div>

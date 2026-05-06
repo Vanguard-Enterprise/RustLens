@@ -70,14 +70,26 @@ export function getNavGroups(
 ): SidebarNavGroup[] {
 	if (variant === "admin") {
 		const filtered = filterNavByPermissions(ADMIN_NAV, permissions);
+		const accessHrefs = new Set(["/admin/users", "/admin/roles", "/admin/audit"]);
+		const toItem = (item: AdminNavItem) => ({
+			title: item.label,
+			path: item.href,
+			icon: item.icon,
+		});
 		return [
 			{
 				label: "Operations",
-				items: withActive(pathname, filtered.map((item) => ({
-					title: item.label,
-					path: item.href,
-					icon: item.icon,
-				}))),
+				items: withActive(
+					pathname,
+					filtered.filter((item) => !accessHrefs.has(item.href)).map(toItem),
+				),
+			},
+			{
+				label: "Access",
+				items: withActive(
+					pathname,
+					filtered.filter((item) => accessHrefs.has(item.href)).map(toItem),
+				),
 			},
 			{
 				label: "Admin",
@@ -86,7 +98,7 @@ export function getNavGroups(
 					{ title: "Settings", path: "/admin/settings", icon: SettingsIcon },
 				]),
 			},
-		];
+		].filter((group) => group.items.length > 0);
 	}
 
 	return [

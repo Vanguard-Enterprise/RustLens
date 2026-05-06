@@ -23,6 +23,7 @@ import {
 	SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import {
+	ActivityIcon,
 	CameraIcon,
 	ChartBarIcon,
 	CircleHelpIcon,
@@ -40,6 +41,8 @@ import {
 	UsersIcon,
 	UsersRoundIcon,
 } from "lucide-react";
+
+import type { SidebarNavItem } from "@/components/app-shared";
 
 export type DashboardSidebarArea = "admin" | "dashboard";
 
@@ -195,19 +198,36 @@ export function DashboardAppSidebar({
 								},
 							]}
 						/>
-						{permissions.includes("admins.grant") ? (
-							<NavGroup
-								label="Access"
-								items={[
-									{
-										title: "Roles",
-										path: "/admin/roles",
-										icon: KeyRoundIcon,
-										isActive: pathname === "/admin/roles" || pathname.startsWith("/admin/roles/"),
-									},
-								]}
-							/>
-						) : null}
+						{(() => {
+							const accessItems: SidebarNavItem[] = [];
+							if (permissions.includes("users.read")) {
+								accessItems.push({
+									title: "Users",
+									path: "/admin/users",
+									icon: UsersIcon,
+									isActive: pathname === "/admin/users" || pathname.startsWith("/admin/users/"),
+								});
+							}
+							if (permissions.includes("admins.grant")) {
+								accessItems.push({
+									title: "Roles",
+									path: "/admin/roles",
+									icon: KeyRoundIcon,
+									isActive: pathname === "/admin/roles" || pathname.startsWith("/admin/roles/"),
+								});
+							}
+							if (permissions.includes("audit.read")) {
+								accessItems.push({
+									title: "Audit",
+									path: "/admin/audit",
+									icon: ActivityIcon,
+									isActive: pathname === "/admin/audit" || pathname.startsWith("/admin/audit/"),
+								});
+							}
+							return accessItems.length > 0 ? (
+								<NavGroup label="Access" items={accessItems} />
+							) : null;
+						})()}
 					</>
 				) : (
 					<>
