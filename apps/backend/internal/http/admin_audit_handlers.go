@@ -29,33 +29,30 @@ func resetAuditEventTypesCacheForTest() {
 	auditEventTypesCache.mu.Unlock()
 }
 
-// ListAdminAuditEventTypes: GET /api/app/admin/audit/event-types
 // Returns sorted distinct values from audit_events.action_type
-// UNION app_audit_events.event_type. Cached 60s in-process.
+// UNION app_audit_events.event_type. Cached 60s in-process. The lock
+// is held across the DB call so concurrent miss-path callers don't
+// stampede the DB; the cache is admin-only and the query is fast.
 func (h *Handler) ListAdminAuditEventTypes(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	auditEventTypesCache.mu.Lock()
+	defer auditEventTypesCache.mu.Unlock()
+
 	if !auditEventTypesCache.at.IsZero() && time.Since(auditEventTypesCache.at) < auditEventTypesCacheTTL {
 		out := append([]string(nil), auditEventTypesCache.types...)
-		auditEventTypesCache.mu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{"types": out})
 		return
 	}
-	auditEventTypesCache.mu.Unlock()
 
-	pool := h.postgres.Pool()
-	types, err := loadAuditEventTypes(ctx, pool)
+	types, err := loadAuditEventTypes(ctx, h.postgres.Pool())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	auditEventTypesCache.mu.Lock()
 	auditEventTypesCache.at = time.Now()
 	auditEventTypesCache.types = append([]string(nil), types...)
-	auditEventTypesCache.mu.Unlock()
-
 	writeJSON(w, http.StatusOK, map[string]any{"types": types})
 }
 
