@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // seedAuditEvent inserts a row directly into audit_events. Returns the id (uuid string).
@@ -239,6 +241,46 @@ func TestListAdminAuditEventTypes_CacheServesStale(t *testing.T) {
 	_ = json.Unmarshal(rr2.Body.Bytes(), &out2)
 	if len(out2.Types) != 1 || out2.Types[0] != "users.suspend" {
 		t.Fatalf("cache should have served stale; got %v", out2.Types)
+	}
+}
+
+func TestGetAdminAuditEvent_ReturnsHydratedRow(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	truncateAuditEvents(t, ts)
+	seedUser(t, ts.pool, "11111111-1111-1111-1111-111111111111", "Alice", seedOpts{})
+	seedUser(t, ts.pool, "22222222-2222-2222-2222-222222222222", "Target", seedOpts{})
+	id := seedAuditEvent(t, ts, "users.suspend", "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "success", "abuse", map[string]any{"k": "v"})
+
+	r := chi.NewRouter()
+	r.Get("/audit/{id}", ts.h.GetAdminAuditEvent)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, httptest.NewRequest("GET", "/audit/"+id, nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var item auditEventItem
+	if err := json.Unmarshal(rr.Body.Bytes(), &item); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if item.ID != id || item.EventType != "users.suspend" {
+		t.Errorf("got %+v", item)
+	}
+	if item.ActorDisplayName == nil || *item.ActorDisplayName != "Alice" {
+		t.Errorf("actorDisplayName = %v", item.ActorDisplayName)
+	}
+	if item.TargetDisplayName == nil || *item.TargetDisplayName != "Target" {
+		t.Errorf("targetDisplayName = %v", item.TargetDisplayName)
+	}
+}
+
+func TestGetAdminAuditEvent_NotFound(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	r := chi.NewRouter()
+	r.Get("/audit/{id}", ts.h.GetAdminAuditEvent)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, httptest.NewRequest("GET", "/audit/00000000-0000-0000-0000-000000000000", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status=%d", rr.Code)
 	}
 }
 

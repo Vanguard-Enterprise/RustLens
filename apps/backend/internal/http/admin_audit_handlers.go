@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -80,4 +82,76 @@ func loadAuditEventTypes(ctx context.Context, pool *pgxpool.Pool) ([]string, err
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// GetAdminAuditEvent: GET /api/app/admin/audit/{id}
+// Returns a single hydrated audit event from either audit_events or
+// app_audit_events. Used by the frontend Sheet to support the ?event=
+// deep-link.
+func (h *Handler) GetAdminAuditEvent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing id")
+		return
+	}
+	pool := h.postgres.Pool()
+	hasLegacy, _ := tableExists(ctx, pool, "app_audit_events")
+
+	newQ := `
+		SELECT id::text,
+		       COALESCE(actor_user_id::text, '') AS actor_user_id,
+		       COALESCE(target_user_id::text, '') AS target_user_id,
+		       action_type AS event_type,
+		       COALESCE(params, '{}'::jsonb) AS payload,
+		       NULLIF(result, '') AS result,
+		       reason,
+		       created_at
+		FROM audit_events
+		WHERE id::text = $1
+	`
+	legacyQ := `
+		SELECT id::text,
+		       COALESCE(actor_user_id, '') AS actor_user_id,
+		       COALESCE(target_user_id, '') AS target_user_id,
+		       event_type,
+		       COALESCE(payload, '{}'::jsonb) AS payload,
+		       NULL::text AS result,
+		       NULL::text AS reason,
+		       created_at
+		FROM app_audit_events
+		WHERE id::text = $1
+	`
+	q := newQ
+	if hasLegacy {
+		q = "(" + newQ + ") UNION ALL (" + legacyQ + ") LIMIT 1"
+	}
+	row := pool.QueryRow(ctx, q, id)
+	var (
+		item        auditEventItem
+		payloadJSON []byte
+		result      *string
+		reason      *string
+	)
+	if err := row.Scan(&item.ID, &item.ActorUserID, &item.TargetUserID, &item.EventType, &payloadJSON, &result, &reason, &item.CreatedAt); err != nil {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	item.Payload = map[string]any{}
+	if len(payloadJSON) > 0 {
+		_ = json.Unmarshal(payloadJSON, &item.Payload)
+	}
+	item.Result = result
+	item.Reason = reason
+
+	idSet := map[string]struct{}{}
+	if item.ActorUserID != "" {
+		idSet[item.ActorUserID] = struct{}{}
+	}
+	if item.TargetUserID != "" {
+		idSet[item.TargetUserID] = struct{}{}
+	}
+	items := []auditEventItem{item}
+	hydrateAuditActors(ctx, pool, items, idSet)
+	writeJSON(w, http.StatusOK, items[0])
 }
