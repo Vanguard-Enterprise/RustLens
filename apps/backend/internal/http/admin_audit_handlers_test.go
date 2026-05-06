@@ -194,3 +194,51 @@ func TestListAdminAudit_PaginationCursor(t *testing.T) {
 	}
 }
 
+func TestListAdminAuditEventTypes_SortedDistinctUnion(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	truncateAuditEvents(t, ts)
+	seedUser(t, ts.pool, "11111111-1111-1111-1111-111111111111", "A", seedOpts{})
+	seedUser(t, ts.pool, "22222222-2222-2222-2222-222222222222", "T", seedOpts{})
+	seedAuditEvent(t, ts, "users.suspend", "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "success", "", nil)
+	seedAuditEvent(t, ts, "users.delete", "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "success", "", nil)
+	seedAuditEvent(t, ts, "users.suspend", "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "success", "", nil) // duplicate
+
+	resetAuditEventTypesCacheForTest()
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/audit/event-types", nil)
+	ts.h.ListAdminAuditEventTypes(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var out struct{ Types []string `json:"types"` }
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(out.Types) != 2 || out.Types[0] != "users.delete" || out.Types[1] != "users.suspend" {
+		t.Fatalf("types = %v", out.Types)
+	}
+}
+
+func TestListAdminAuditEventTypes_CacheServesStale(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	truncateAuditEvents(t, ts)
+	seedUser(t, ts.pool, "11111111-1111-1111-1111-111111111111", "A", seedOpts{})
+	seedUser(t, ts.pool, "22222222-2222-2222-2222-222222222222", "T", seedOpts{})
+	seedAuditEvent(t, ts, "users.suspend", "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "success", "", nil)
+
+	resetAuditEventTypesCacheForTest()
+	rr := httptest.NewRecorder()
+	ts.h.ListAdminAuditEventTypes(rr, httptest.NewRequest("GET", "/audit/event-types", nil))
+
+	// Second insert; cache should still serve old result within TTL.
+	seedAuditEvent(t, ts, "users.delete", "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "success", "", nil)
+	rr2 := httptest.NewRecorder()
+	ts.h.ListAdminAuditEventTypes(rr2, httptest.NewRequest("GET", "/audit/event-types", nil))
+	var out2 struct{ Types []string `json:"types"` }
+	_ = json.Unmarshal(rr2.Body.Bytes(), &out2)
+	if len(out2.Types) != 1 || out2.Types[0] != "users.suspend" {
+		t.Fatalf("cache should have served stale; got %v", out2.Types)
+	}
+}
+
