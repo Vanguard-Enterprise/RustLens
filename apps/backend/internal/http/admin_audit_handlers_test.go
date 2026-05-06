@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/go-chi/chi/v5"
 )
 
 // seedAuditEvent inserts a row directly into audit_events. Returns the id (uuid string).
@@ -160,7 +158,7 @@ func TestListAdminAudit_PaginationCursor(t *testing.T) {
 	truncateAuditEvents(t, ts)
 	seedUser(t, ts.pool, "11111111-1111-1111-1111-111111111111", "A", seedOpts{})
 	seedUser(t, ts.pool, "22222222-2222-2222-2222-222222222222", "T", seedOpts{})
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		seedAuditEvent(t, ts, fmt.Sprintf("users.evt.%d", i), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "success", "", nil)
 	}
 
@@ -196,11 +194,3 @@ func TestListAdminAudit_PaginationCursor(t *testing.T) {
 	}
 }
 
-// auditRouter helper used by sibling tests.
-func auditRouter(h *Handler) http.Handler {
-	r := chi.NewRouter()
-	r.Get("/audit", h.ListAdminAudit)
-	return r
-}
-
-var _ = auditRouter
