@@ -3,12 +3,15 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -95,6 +98,10 @@ func (h *Handler) GetAdminAuditEvent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing id")
 		return
 	}
+	if _, err := uuid.Parse(id); err != nil {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
 	pool := h.postgres.Pool()
 	hasLegacy, _ := tableExists(ctx, pool, "app_audit_events")
 
@@ -134,7 +141,11 @@ func (h *Handler) GetAdminAuditEvent(w http.ResponseWriter, r *http.Request) {
 		reason      *string
 	)
 	if err := row.Scan(&item.ID, &item.ActorUserID, &item.TargetUserID, &item.EventType, &payloadJSON, &result, &reason, &item.CreatedAt); err != nil {
-		writeError(w, http.StatusNotFound, "not found")
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	item.Payload = map[string]any{}
