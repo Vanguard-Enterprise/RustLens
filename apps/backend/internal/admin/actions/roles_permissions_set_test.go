@@ -46,7 +46,7 @@ func TestRolesPermissionsSet_HappyPath(t *testing.T) {
 	body := mustJSON(t, map[string]any{
 		"params": map[string]any{
 			"id":          id,
-			"permissions": []string{rbac.PermUsersExport, rbac.PermAuditRead},
+			"permissions": []string{rbac.PermUsersAuditRead, rbac.PermAuditRead},
 		},
 		"reason": "t",
 	})
@@ -56,7 +56,7 @@ func TestRolesPermissionsSet_HappyPath(t *testing.T) {
 	}
 
 	got := currentPerms(t, s, id)
-	want := []string{rbac.PermAuditRead, rbac.PermUsersExport}
+	want := []string{rbac.PermAuditRead, rbac.PermUsersAuditRead}
 	sort.Strings(got)
 	sort.Strings(want)
 	if len(got) != len(want) {
@@ -78,7 +78,7 @@ func TestRolesPermissionsSet_IdempotentReset(t *testing.T) {
 	// DELETE leg of the first call is observable in the final assertion.
 	if _, err := s.Pool().Exec(context.Background(),
 		`INSERT INTO admin_role_permissions (role_id, permission_key) VALUES ($1::uuid, $2)`,
-		id, rbac.PermUsersExport,
+		id, rbac.PermUsersAuditRead,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestRolesPermissionsSet_IdempotentReset(t *testing.T) {
 		"params": map[string]any{"id": id, "permissions": []string{rbac.PermUsersRead}},
 		"reason": "t",
 	})
-	// First call: should clear PermUsersExport and insert PermUsersRead.
+	// First call: should clear the seeded permission and insert PermUsersRead.
 	if r := mustPOST(t, srv.URL+"/api/app/admin/actions/roles.permissions.set", body); r.StatusCode != 200 {
 		t.Fatalf("first call status=%d body=%s", r.StatusCode, readBody(r))
 	}

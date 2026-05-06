@@ -342,7 +342,7 @@ func (h *Handler) ListAdminServers(w http.ResponseWriter, r *http.Request) {
 //
 // Query params:
 //
-//	targetUserId  uuid (matches target_user_id OR params.filters.ids @> [id])
+//	targetUserId  uuid (matches target_user_id)
 //	actorUserId   uuid (matches actor_user_id)
 //	eventType     repeatable string (action_type / event_type IN ANY)
 //	result        success|error (audit_events only; legacy excluded when set)
@@ -395,9 +395,7 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 
 	if targetUserID != "" {
 		idArg := addArg(targetUserID)
-		newClauses = append(newClauses,
-			fmt.Sprintf("(target_user_id::text = %[1]s OR (params -> 'filters' -> 'ids') @> to_jsonb(%[1]s::text))", idArg),
-		)
+		newClauses = append(newClauses, fmt.Sprintf("target_user_id::text = %s", idArg))
 		legacyClauses = append(legacyClauses, fmt.Sprintf("target_user_id = %s", idArg))
 	}
 	if actorUserID != "" {
@@ -716,17 +714,12 @@ func fetchUserAudit(ctx context.Context, pool *pgxpool.Pool, userID string, limi
 
 	hasLegacy, _ := tableExists(ctx, pool, "app_audit_events")
 
-	// New audit_events: match by target_user_id OR by params.filters.ids
-	// containing the userId. The latter surfaces export events that targeted
-	// this user via ?ids=<list>.
+	// New audit_events: match by target_user_id.
 	newQ := fmt.Sprintf(`
 		SELECT id::text, COALESCE(actor_user_id::text,''), COALESCE(target_user_id::text,''),
 		       action_type, COALESCE(params,'{}'::jsonb), created_at
 		FROM audit_events
-		WHERE (
-			target_user_id::text = $1
-			OR (params -> 'filters' -> 'ids') @> to_jsonb($1::text)
-		)%s
+		WHERE target_user_id::text = $1%s
 	`, cursorClause)
 
 	var q string

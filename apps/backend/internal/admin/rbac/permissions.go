@@ -15,7 +15,6 @@ const (
 	PermUsersCreate            = "users.create"
 	PermUsersConnectionsManage = "users.connections.manage"
 	PermUsersDelete            = "users.delete"
-	PermUsersExport            = "users.export"
 	PermUsersAuditRead         = "users.audit.read"
 	PermUsersForceUnlink       = "users.force_unlink_steam"
 
@@ -38,7 +37,6 @@ var permissions = []Permission{
 	{Key: PermUsersCreate, Description: "Create a new user account"},
 	{Key: PermUsersConnectionsManage, Description: "Manage a user's connected external accounts"},
 	{Key: PermUsersDelete, Description: "Soft-delete a user account"},
-	{Key: PermUsersExport, Description: "Export user data (CSV / JSON)"},
 	{Key: PermUsersAuditRead, Description: "Read user-scoped audit trail"},
 	{Key: PermUsersForceUnlink, Description: "Force-unlink a Steam account from a user"},
 	{Key: PermProxiesEdit, Description: "Create, update, or delete outbound proxy providers"},

@@ -76,27 +76,6 @@ func TestListAdminAudit_FilterByTargetUserId(t *testing.T) {
 	}
 }
 
-func TestListAdminAudit_FilterByTargetUserId_MatchesParamsFiltersIds(t *testing.T) {
-	ts := newTestHandlerServer(t)
-	truncateAuditEvents(t, ts)
-	seedUser(t, ts.pool, "11111111-1111-1111-1111-111111111111", "Actor", seedOpts{})
-	seedUser(t, ts.pool, "22222222-2222-2222-2222-222222222222", "Target", seedOpts{})
-	seedAuditEvent(t, ts, "users.export", "11111111-1111-1111-1111-111111111111", "", "success", "", map[string]any{
-		"filters": map[string]any{"ids": []string{"22222222-2222-2222-2222-222222222222"}},
-	})
-
-	rr := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/audit?targetUserId=22222222-2222-2222-2222-222222222222", nil)
-	ts.h.ListAdminAudit(rr, req)
-	got := decodeAuditList(t, rr.Body.Bytes())
-	if len(got.Items) != 1 {
-		t.Fatalf("len(items) = %d, want 1 (export-style)", len(got.Items))
-	}
-	if got.Items[0].EventType != "users.export" {
-		t.Errorf("eventType = %q", got.Items[0].EventType)
-	}
-}
-
 func TestListAdminAudit_FilterByActorUserId(t *testing.T) {
 	ts := newTestHandlerServer(t)
 	truncateAuditEvents(t, ts)
