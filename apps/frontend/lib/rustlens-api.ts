@@ -478,6 +478,66 @@ export async function getAuditEvents(limit = 30) {
 	return payload.items;
 }
 
+export type AdminAuditQuery = {
+	targetUserId?: string;
+	actorUserId?: string;
+	eventType?: string[];
+	result?: "success" | "error";
+	since?: string; // RFC3339; resolved server-side from a preset key
+	before?: string; // RFC3339 cursor
+	pageSize?: number;
+};
+
+export type AdminAuditPage = {
+	items: AuditEventItem[];
+	nextCursor: string | null;
+};
+
+export async function getAdminAudit(params: AdminAuditQuery = {}): Promise<AdminAuditPage> {
+	const sp = new URLSearchParams();
+	if (params.targetUserId) sp.set("targetUserId", params.targetUserId);
+	if (params.actorUserId) sp.set("actorUserId", params.actorUserId);
+	for (const t of params.eventType ?? []) sp.append("eventType", t);
+	if (params.result) sp.set("result", params.result);
+	if (params.since) sp.set("since", params.since);
+	if (params.before) sp.set("before", params.before);
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminAuditPage>(
+		`/api/app/admin/audit${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getAdminAuditEventTypes(): Promise<string[]> {
+	const payload = await backendFetch<{ types: string[] | null }>(
+		"/api/app/admin/audit/event-types",
+		undefined,
+		{ requireSession: true },
+	);
+	return payload.types ?? [];
+}
+
+export async function getAdminAuditEvent(id: string): Promise<AuditEventItem> {
+	return backendFetch<AuditEventItem>(
+		`/api/app/admin/audit/${encodeURIComponent(id)}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+/**
+ * Thin wrapper used by the Audit page's actor/target combobox.
+ * Pinned to status="any" so suspended/deleted users still surface.
+ */
+export async function searchAdminUsers(q: string): Promise<AdminUserItem[]> {
+	const trimmed = q.trim();
+	if (trimmed.length < 2) return [];
+	const page = await getAdminUsers({ q: trimmed, pageSize: 10, status: "any" });
+	return page.items;
+}
+
 export type CreateAdminRoleInput = {
 	key: string;
 	name: string;
@@ -508,3 +568,97 @@ export async function setAdminRolePermissions(id: string, permissions: string[],
 export async function deleteAdminRole(id: string, reason: string) {
 	return postAdminAction<{ id: string }>("roles.delete", { id }, reason);
 }
+
+// --- User actions (single) ---
+
+export type AssignRoleResult = { userId: string; roleKey: string };
+
+export async function grantAdminUserRole(
+	userId: string,
+	roleKey: string,
+	reason: string,
+): Promise<AssignRoleResult> {
+	return postAdminAction<AssignRoleResult>("users.roles.grant", { userId, roleKey }, reason);
+}
+
+export async function revokeAdminUserRole(
+	userId: string,
+	roleKey: string,
+	reason: string,
+): Promise<AssignRoleResult> {
+	return postAdminAction<AssignRoleResult>("users.roles.revoke", { userId, roleKey }, reason);
+}
+
+export type EditUserPatch = {
+	displayName?: string;
+	avatarUrl?: string;
+};
+
+export async function editAdminUser(
+	userId: string,
+	patch: EditUserPatch,
+	reason: string,
+) {
+	return postAdminAction<{ userId: string }>("users.edit", { userId, ...patch }, reason);
+}
+
+export async function suspendAdminUser(userId: string, reason: string) {
+	return postAdminAction<{ userId: string }>("users.suspend", { userId }, reason);
+}
+
+export async function unsuspendAdminUser(userId: string, reason: string) {
+	return postAdminAction<{ userId: string }>("users.unsuspend", { userId }, reason);
+}
+
+export async function deleteAdminUser(
+	userId: string,
+	reason: string,
+	typedConfirmation: string,
+) {
+	return postAdminAction<{ userId: string }>(
+		"users.delete",
+		{ userId, typedConfirmation },
+		reason,
+	);
+}
+
+export async function restoreAdminUser(userId: string, reason: string) {
+	return postAdminAction<{ userId: string }>("users.restore", { userId }, reason);
+}
+
+export async function purgeAdminUser(
+	userId: string,
+	reason: string,
+	typedConfirmation: string,
+) {
+	return postAdminAction<{ userId: string }>(
+		"users.purge",
+		{ userId, typedConfirmation },
+		reason,
+	);
+}
+
+// --- Bulk action ---
+
+export type BulkUserSubAction = "suspend" | "unsuspend" | "roles.grant" | "roles.revoke";
+
+export type BulkUserResult = {
+	action: BulkUserSubAction;
+	succeeded: number;
+	failed: number;
+	results: Array<{ userId: string; ok: boolean; error?: string }>;
+};
+
+export async function bulkAdminUserAction(
+	action: BulkUserSubAction,
+	userIds: string[],
+	params: Record<string, unknown>,
+	reason: string,
+): Promise<BulkUserResult> {
+	return postAdminAction<BulkUserResult>(
+		"users.bulk",
+		{ action, userIds, params },
+		reason,
+	);
+}
+

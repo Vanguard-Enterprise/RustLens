@@ -16,6 +16,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useLogout } from "@/lib/use-logout";
 import { cn } from "@/lib/utils";
 import { LayoutDashboardIcon, LogOutIcon, ShieldCheckIcon } from "lucide-react";
 
@@ -63,7 +64,7 @@ function SimpleAvatar({
 
 export function NavUser({ csrfToken, user }: NavUserProps) {
 	const fallback = user.displayName.charAt(0).toUpperCase();
-	const logoutFormId = "nav-user-logout-form";
+	const { logout, isLoggingOut } = useLogout(csrfToken);
 
 	return (
 		<DropdownMenu>
@@ -117,28 +118,25 @@ export function NavUser({ csrfToken, user }: NavUserProps) {
 						<DropdownMenuItem asChild>
 							<Link href="/admin">
 								<ShieldCheckIcon />
-								Admin panel
+								Open Admin
 							</Link>
 						</DropdownMenuItem>
 					) : null}
 				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>
-					<form action="/logout" id={logoutFormId} method="post">
-						<input name="csrfToken" type="hidden" value={csrfToken} />
-						<DropdownMenuItem
-							className="w-full cursor-pointer"
-							onSelect={(event) => {
-								event.preventDefault();
-								const form = document.getElementById(logoutFormId) as HTMLFormElement | null;
-								form?.requestSubmit();
-							}}
-							variant="destructive"
-						>
-							<LogOutIcon />
-							Log out
-						</DropdownMenuItem>
-					</form>
+					<DropdownMenuItem
+						className="w-full cursor-pointer"
+						disabled={isLoggingOut}
+						onSelect={(event) => {
+							event.preventDefault();
+							logout();
+						}}
+						variant="destructive"
+					>
+						<LogOutIcon />
+						{isLoggingOut ? "Logging out…" : "Log out"}
+					</DropdownMenuItem>
 				</DropdownMenuGroup>
 			</DropdownMenuContent>
 		</DropdownMenu>

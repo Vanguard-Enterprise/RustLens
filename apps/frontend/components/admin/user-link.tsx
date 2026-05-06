@@ -42,7 +42,7 @@ export function UserLink({
 			href={`/admin/users/${userId}`}
 			title={userId}
 			className={cn(
-				"inline-flex items-center gap-2 text-foreground hover:underline",
+				"inline-flex items-center align-middle gap-2 text-foreground hover:underline",
 				className,
 			)}
 		>
@@ -52,10 +52,10 @@ export function UserLink({
 				<img
 					src={avatarUrl}
 					alt=""
-					className="h-5 w-5 rounded-full object-cover"
+					className="block h-5 w-5 rounded-full object-cover"
 				/>
 			) : null}
-			<span className="truncate">{label}</span>
+			<span className="truncate leading-none">{label}</span>
 		</Link>
 	);
 }

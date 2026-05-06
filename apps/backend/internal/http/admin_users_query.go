@@ -8,40 +8,15 @@ import (
 )
 
 // buildUsersQuery constructs the shared WHERE clause, positional args, and
-// ORDER BY for the admin users list + export endpoints. It mirrors the filter
+// ORDER BY for the admin users list endpoint. It mirrors the filter
 // semantics documented on ListAdminUsers.
 //
 // The returned args are positional — any caller must append LIMIT/OFFSET args
 // after those, and reference them as $(len(args)-1) / $(len(args)) in the
 // final SQL.
-//
-// If an "ids" query value is present (comma-separated), it overrides every
-// other predicate (q, role, status, connection filters) and scopes the
-// selection to exactly those app_users.id values. This is used by the bulk
-// toolbar "Export selected" flow.
 func buildUsersQuery(q url.Values) (string, []any, string, error) {
 	args := []any{}
 	where := []string{}
-
-	if ids := strings.TrimSpace(q.Get("ids")); ids != "" {
-		parts := strings.Split(ids, ",")
-		cleaned := make([]string, 0, len(parts))
-		for _, p := range parts {
-			p = strings.TrimSpace(p)
-			if p != "" {
-				cleaned = append(cleaned, p)
-			}
-		}
-		if len(cleaned) == 0 {
-			return "", nil, "", errors.New("ids must contain at least one id")
-		}
-		args = append(args, cleaned)
-		p := fmt.Sprintf("$%d", len(args))
-		where = append(where, fmt.Sprintf(`u.id = ANY(%s::text[])`, p))
-		// Still honour sort but ignore other filters.
-		orderBy := orderByClause(q)
-		return "WHERE " + strings.Join(where, " AND "), args, orderBy, nil
-	}
 
 	status := q.Get("status")
 	if status == "" {

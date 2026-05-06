@@ -21,6 +21,7 @@ import {
 	SidebarMenuItem,
 	useSidebar,
 } from "@/components/ui/sidebar";
+import { useLogout } from "@/lib/use-logout";
 import {
 	EllipsisVerticalIcon,
 	HouseIcon,
@@ -57,7 +58,7 @@ export function SidebarNavUser({ csrfToken, user, variant }: SidebarNavUserProps
 		: user.isInternalAdmin
 			? "Internal admin"
 			: "Member";
-	const logoutFormId = "sidebar-nav-user-logout-form";
+	const { logout, isLoggingOut } = useLogout(csrfToken);
 
 	return (
 		<SidebarMenu>
@@ -128,29 +129,24 @@ export function SidebarNavUser({ csrfToken, user, variant }: SidebarNavUserProps
 								<DropdownMenuItem asChild>
 									<Link href="/admin">
 										<ShieldCheckIcon />
-										Back to admin
+										Open Admin
 									</Link>
 								</DropdownMenuItem>
 							) : null}
 						</DropdownMenuGroup>
 						<DropdownMenuSeparator />
-						<form action="/logout" id={logoutFormId} method="post">
-							<input name="csrfToken" type="hidden" value={csrfToken} />
-							<DropdownMenuItem
-								className="w-full cursor-pointer"
-								onSelect={(event) => {
-									event.preventDefault();
-									const form = document.getElementById(
-										logoutFormId,
-									) as HTMLFormElement | null;
-									form?.requestSubmit();
-								}}
-								variant="destructive"
-							>
-								<LogOutIcon />
-								Log out
-							</DropdownMenuItem>
-						</form>
+						<DropdownMenuItem
+							className="w-full cursor-pointer"
+							disabled={isLoggingOut}
+							onSelect={(event) => {
+								event.preventDefault();
+								logout();
+							}}
+							variant="destructive"
+						>
+							<LogOutIcon />
+							{isLoggingOut ? "Logging out…" : "Log out"}
+						</DropdownMenuItem>
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</SidebarMenuItem>

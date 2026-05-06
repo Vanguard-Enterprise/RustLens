@@ -79,15 +79,15 @@ func SystemRoles() []RoleSeed {
 				PermUsersRolesAssign, PermUsersSuspend,
 				PermUsersSecurityReset, PermUsersEmailManage,
 				PermUsersCreate, PermUsersConnectionsManage,
-				PermUsersDelete, PermUsersExport,
+				PermUsersDelete,
 			},
 		},
 		{
 			Key:         RoleUserAuditor,
 			Name:        "User Auditor",
-			Description: "Read-only users view with export",
+			Description: "Read-only users view with audit trail",
 			IsSystem:    true,
-			Permissions: []string{PermUsersRead, PermUsersAuditRead, PermUsersExport},
+			Permissions: []string{PermUsersRead, PermUsersAuditRead},
 		},
 	}
 }

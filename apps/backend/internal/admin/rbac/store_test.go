@@ -199,7 +199,7 @@ func TestSeedPermissionsAndRoles_InstallsUsersPerms(t *testing.T) {
 	want := []string{
 		"users.read", "users.edit", "users.roles.assign", "users.suspend",
 		"users.security.reset", "users.email.manage", "users.create",
-		"users.connections.manage", "users.delete", "users.export", "users.audit.read",
+		"users.connections.manage", "users.delete", "users.audit.read",
 	}
 	for _, p := range want {
 		var count int

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -144,7 +145,24 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 
 	args = append(args, pageSize, offset)
 	listSQL := fmt.Sprintf(`
-		SELECT u.id, u.display_name, u.avatar_url, u.roles::text,
+		SELECT u.id,
+		       COALESCE(
+		           NULLIF(u.display_name, ''),
+		           NULLIF(u.discord_global_name, ''),
+		           NULLIF(u.discord_username, ''),
+		           ''
+		       ) AS display_name,
+		       COALESCE(
+		           NULLIF(u.avatar_url, ''),
+		           CASE
+		               WHEN NULLIF(u.discord_avatar, '') IS NOT NULL
+		                    AND NULLIF(u.discord_id, '') IS NOT NULL
+		               THEN 'https://cdn.discordapp.com/avatars/'
+		                    || u.discord_id || '/' || u.discord_avatar || '.png'
+		               ELSE ''
+		           END
+		       ) AS avatar_url,
+		       u.roles::text,
 		       u.created_at, u.updated_at, u.last_login_at,
 		       u.suspended_at, u.deleted_at,
 		       COALESCE(u.discord_id, ''),
@@ -320,29 +338,101 @@ func (h *Handler) ListAdminServers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-// ListAdminAudit: GET /api/app/admin/audit?limit=N
-// Returns a unified view over the new RBAC audit_events table (written by the
-// action dispatcher) and the legacy app_audit_events table (used by the
-// vendored frontend). Each row is augmented with the actor's and target's
-// display name and avatar URL in a single extra lookup against app_users so the
-// frontend can render human-readable entries without an N+1 fan-out.
+// ListAdminAudit: GET /api/app/admin/audit
+//
+// Query params:
+//
+//	targetUserId  uuid (matches target_user_id)
+//	actorUserId   uuid (matches actor_user_id)
+//	eventType     repeatable string (action_type / event_type IN ANY)
+//	result        success|error (audit_events only; legacy excluded when set)
+//	since         RFC3339 (created_at >= since)
+//	before        RFC3339 (created_at < before; cursor)
+//	pageSize      int (default 50, capped 200)
+//
+// Response: {"items":[...], "nextCursor": <RFC3339 or null>}
 func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	limit := 50
-	if v := r.URL.Query().Get("limit"); v != "" {
-		// best-effort parse; cap at 500
-		parseLimit(v, &limit)
+	q := r.URL.Query()
+
+	pageSize := 50
+	if v := q.Get("pageSize"); v != "" {
+		parseLimit(v, &pageSize)
 	}
-	if limit <= 0 || limit > 500 {
-		limit = 50
+	// Backward-compat: keep the old ?limit= alias working.
+	if pageSize == 50 {
+		if v := q.Get("limit"); v != "" {
+			parseLimit(v, &pageSize)
+		}
 	}
+	if pageSize <= 0 || pageSize > 200 {
+		pageSize = 50
+	}
+
+	targetUserID := strings.TrimSpace(q.Get("targetUserId"))
+	actorUserID := strings.TrimSpace(q.Get("actorUserId"))
+	eventTypes := q["eventType"]
+	resultFilter := strings.TrimSpace(q.Get("result"))
+	if resultFilter != "" && resultFilter != "success" && resultFilter != "error" {
+		resultFilter = ""
+	}
+	since := strings.TrimSpace(q.Get("since"))
+	before := strings.TrimSpace(q.Get("before"))
+
 	pool := h.postgres.Pool()
-
 	hasLegacy, _ := tableExists(ctx, pool, "app_audit_events")
+	if resultFilter != "" {
+		hasLegacy = false
+	}
 
-	// New RBAC audit_events table: action_type is the event key, params is the
-	// JSON payload, result and reason are first-class columns.
-	newQ := `
+	args := []any{}
+	addArg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	var newClauses, legacyClauses []string
+
+	if targetUserID != "" {
+		idArg := addArg(targetUserID)
+		newClauses = append(newClauses, fmt.Sprintf("target_user_id::text = %s", idArg))
+		legacyClauses = append(legacyClauses, fmt.Sprintf("target_user_id = %s", idArg))
+	}
+	if actorUserID != "" {
+		a := addArg(actorUserID)
+		newClauses = append(newClauses, fmt.Sprintf("actor_user_id::text = %s", a))
+		legacyClauses = append(legacyClauses, fmt.Sprintf("actor_user_id = %s", a))
+	}
+	if len(eventTypes) > 0 {
+		a := addArg(eventTypes)
+		newClauses = append(newClauses, fmt.Sprintf("action_type = ANY(%s::text[])", a))
+		legacyClauses = append(legacyClauses, fmt.Sprintf("event_type = ANY(%s::text[])", a))
+	}
+	if resultFilter != "" {
+		a := addArg(resultFilter)
+		newClauses = append(newClauses, fmt.Sprintf("result = %s", a))
+	}
+	if since != "" {
+		a := addArg(since)
+		newClauses = append(newClauses, fmt.Sprintf("created_at >= %s::timestamptz", a))
+		legacyClauses = append(legacyClauses, fmt.Sprintf("created_at >= %s::timestamptz", a))
+	}
+	if before != "" {
+		a := addArg(before)
+		newClauses = append(newClauses, fmt.Sprintf("created_at < %s::timestamptz", a))
+		legacyClauses = append(legacyClauses, fmt.Sprintf("created_at < %s::timestamptz", a))
+	}
+
+	whereOf := func(cs []string) string {
+		if len(cs) == 0 {
+			return ""
+		}
+		return " WHERE " + strings.Join(cs, " AND ")
+	}
+
+	limitArg := addArg(pageSize + 1)
+
+	newQ := fmt.Sprintf(`
 		SELECT id::text,
 		       COALESCE(actor_user_id::text, '') AS actor_user_id,
 		       COALESCE(target_user_id::text, '') AS target_user_id,
@@ -351,11 +441,10 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 		       NULLIF(result, '') AS result,
 		       reason,
 		       created_at
-		FROM audit_events
-	`
+		FROM audit_events%s
+	`, whereOf(newClauses))
 
-	// Legacy app_audit_events table: no result/reason columns, so pad with NULL.
-	legacyQ := `
+	legacyQ := fmt.Sprintf(`
 		SELECT id::text,
 		       COALESCE(actor_user_id, '') AS actor_user_id,
 		       COALESCE(target_user_id, '') AS target_user_id,
@@ -364,27 +453,17 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 		       NULL::text AS result,
 		       NULL::text AS reason,
 		       created_at
-		FROM app_audit_events
-	`
+		FROM app_audit_events%s
+	`, whereOf(legacyClauses))
 
-	var q string
+	var sql string
 	if hasLegacy {
-		q = fmt.Sprintf(`
-			%s
-			UNION ALL
-			%s
-			ORDER BY created_at DESC
-			LIMIT $1
-		`, newQ, legacyQ)
+		sql = fmt.Sprintf(`SELECT * FROM (%s UNION ALL %s) u ORDER BY created_at DESC LIMIT %s`, newQ, legacyQ, limitArg)
 	} else {
-		q = fmt.Sprintf(`
-			%s
-			ORDER BY created_at DESC
-			LIMIT $1
-		`, newQ)
+		sql = fmt.Sprintf(`SELECT * FROM (%s) u ORDER BY created_at DESC LIMIT %s`, newQ, limitArg)
 	}
 
-	rows, err := pool.Query(ctx, q, limit)
+	rows, err := pool.Query(ctx, sql, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -423,32 +502,61 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Single lookup for actor + target display names.
-	type userLite struct {
-		name   string
-		avatar string
-	}
-	lookup := map[string]userLite{}
-	if len(idSet) > 0 {
-		ids := make([]string, 0, len(idSet))
-		for id := range idSet {
-			ids = append(ids, id)
-		}
-		urows, err := pool.Query(ctx, `
-			SELECT id::text, COALESCE(display_name, ''), COALESCE(avatar_url, '')
-			FROM app_users WHERE id::text = ANY($1)
-		`, ids)
-		if err == nil {
-			for urows.Next() {
-				var id, name, avatar string
-				if err := urows.Scan(&id, &name, &avatar); err == nil {
-					lookup[id] = userLite{name: name, avatar: avatar}
-				}
-			}
-			urows.Close()
-		}
+	var nextCursor *string
+	if len(items) > pageSize {
+		items = items[:pageSize]
+		c := items[len(items)-1].CreatedAt.UTC().Format(time.RFC3339Nano)
+		nextCursor = &c
 	}
 
+	hydrateAuditActors(ctx, pool, items, idSet)
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "nextCursor": nextCursor})
+}
+
+// hydrateAuditActors fills actor/target display name + avatar via one app_users lookup.
+// Extracted so the new single-event handler can reuse it.
+func hydrateAuditActors(ctx context.Context, pool *pgxpool.Pool, items []auditEventItem, idSet map[string]struct{}) {
+	if len(idSet) == 0 {
+		return
+	}
+	type userLite struct{ name, avatar string }
+	lookup := map[string]userLite{}
+	ids := make([]string, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	urows, err := pool.Query(ctx, `
+		SELECT id::text,
+		       COALESCE(
+		           NULLIF(display_name, ''),
+		           NULLIF(discord_global_name, ''),
+		           NULLIF(discord_username, ''),
+		           ''
+		       ),
+		       COALESCE(
+		           NULLIF(avatar_url, ''),
+		           CASE
+		               WHEN NULLIF(discord_avatar, '') IS NOT NULL
+		                    AND NULLIF(discord_id, '') IS NOT NULL
+		               THEN 'https://cdn.discordapp.com/avatars/'
+		                    || discord_id || '/' || discord_avatar || '.png'
+		               ELSE NULL
+		           END,
+		           ''
+		       )
+		FROM app_users WHERE id::text = ANY($1)
+	`, ids)
+	if err != nil {
+		return
+	}
+	defer urows.Close()
+	for urows.Next() {
+		var id, name, avatar string
+		if err := urows.Scan(&id, &name, &avatar); err == nil {
+			lookup[id] = userLite{name: name, avatar: avatar}
+		}
+	}
 	strPtr := func(s string) *string {
 		if s == "" {
 			return nil
@@ -466,8 +574,6 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 			items[i].TargetAvatarURL = strPtr(u.avatar)
 		}
 	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func parseLimit(s string, out *int) {
@@ -608,6 +714,7 @@ func fetchUserAudit(ctx context.Context, pool *pgxpool.Pool, userID string, limi
 
 	hasLegacy, _ := tableExists(ctx, pool, "app_audit_events")
 
+	// New audit_events: match by target_user_id.
 	newQ := fmt.Sprintf(`
 		SELECT id::text, COALESCE(actor_user_id::text,''), COALESCE(target_user_id::text,''),
 		       action_type, COALESCE(params,'{}'::jsonb), created_at

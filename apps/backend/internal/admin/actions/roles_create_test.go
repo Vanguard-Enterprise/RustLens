@@ -76,7 +76,7 @@ func TestRolesCreate_HappyPath(t *testing.T) {
 			"key":         "rcreate_happy",
 			"name":        "Created",
 			"description": "for tests",
-			"permissions": []string{rbac.PermUsersRead, rbac.PermUsersExport},
+			"permissions": []string{rbac.PermUsersRead, rbac.PermUsersAuditRead},
 		},
 		"reason": "test",
 	})

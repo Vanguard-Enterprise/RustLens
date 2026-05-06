@@ -5,7 +5,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { NavDocuments } from "@/components/nav-documents";
 import { NavGroup } from "@/components/nav-group";
 import { NavMain } from "@/components/nav-main";
 import { NavSecondary } from "@/components/nav-secondary";
@@ -23,23 +22,19 @@ import {
 	SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import {
+	ActivityIcon,
 	CameraIcon,
-	ChartBarIcon,
 	CircleHelpIcon,
-	DatabaseIcon,
-	FileChartColumnIcon,
-	FileIcon,
 	FileTextIcon,
-	FolderIcon,
 	KeyRoundIcon,
 	LayoutDashboardIcon,
-	ListIcon,
 	SearchIcon,
 	Settings2Icon,
-	ShieldCheckIcon,
 	UsersIcon,
 	UsersRoundIcon,
 } from "lucide-react";
+
+import type { SidebarNavItem } from "@/components/app-shared";
 
 export type DashboardSidebarArea = "admin" | "dashboard";
 
@@ -58,19 +53,12 @@ const PRIMARY_NAV: Record<DashboardSidebarArea, NavItem> = {
 		pathPrefix: "/dashboard",
 	},
 	admin: {
-		title: "Admin",
+		title: "Dashboard",
 		url: "/admin",
-		icon: <ShieldCheckIcon />,
+		icon: <LayoutDashboardIcon />,
 		pathPrefix: "/admin",
 	},
 };
-
-const SECONDARY_NAV_MAIN: NavItem[] = [
-	{ title: "Lifecycle", url: "#", icon: <ListIcon />, pathPrefix: "" },
-	{ title: "Analytics", url: "#", icon: <ChartBarIcon />, pathPrefix: "" },
-	{ title: "Projects", url: "#", icon: <FolderIcon />, pathPrefix: "" },
-	{ title: "Team", url: "#", icon: <UsersIcon />, pathPrefix: "" },
-];
 
 const NAV_CLOUDS = [
 	{
@@ -109,24 +97,8 @@ const NAV_SECONDARY = [
 	{ title: "Search", url: "#", icon: <SearchIcon /> },
 ];
 
-const DOCUMENTS = [
-	{ name: "Data Library", url: "#", icon: <DatabaseIcon /> },
-	{ name: "Reports", url: "#", icon: <FileChartColumnIcon /> },
-	{ name: "Word Assistant", url: "#", icon: <FileIcon /> },
-];
-
-function buildNavMain(pathname: string, isAdmin: boolean): NavItem[] {
-	const items: NavItem[] = [];
-	for (const key of ["dashboard", "admin"] as const) {
-		const item = PRIMARY_NAV[key];
-		if (key === "admin" && !isAdmin) continue;
-		if (pathname === item.pathPrefix || pathname.startsWith(`${item.pathPrefix}/`)) {
-			continue;
-		}
-		items.push(item);
-	}
-	items.push(...SECONDARY_NAV_MAIN);
-	return items;
+function buildNavMain(area: DashboardSidebarArea): NavItem[] {
+	return [PRIMARY_NAV[area]];
 }
 
 type DashboardAppSidebarProps = Omit<
@@ -151,7 +123,7 @@ export function DashboardAppSidebar({
 	...props
 }: DashboardAppSidebarProps) {
 	const pathname = usePathname() ?? "";
-	const navMain = buildNavMain(pathname, user.isInternalAdmin);
+	const navMain = buildNavMain(area);
 	const homeHref = area === "admin" ? "/admin" : "/dashboard";
 
 	return (
@@ -195,25 +167,39 @@ export function DashboardAppSidebar({
 								},
 							]}
 						/>
-						{permissions.includes("admins.grant") ? (
-							<NavGroup
-								label="Access"
-								items={[
-									{
-										title: "Roles",
-										path: "/admin/roles",
-										icon: KeyRoundIcon,
-										isActive: pathname === "/admin/roles" || pathname.startsWith("/admin/roles/"),
-									},
-								]}
-							/>
-						) : null}
+						{(() => {
+							const accessItems: SidebarNavItem[] = [];
+							if (permissions.includes("users.read")) {
+								accessItems.push({
+									title: "Users",
+									path: "/admin/users",
+									icon: UsersIcon,
+									isActive: pathname === "/admin/users" || pathname.startsWith("/admin/users/"),
+								});
+							}
+							if (permissions.includes("admins.grant")) {
+								accessItems.push({
+									title: "Roles",
+									path: "/admin/roles",
+									icon: KeyRoundIcon,
+									isActive: pathname === "/admin/roles" || pathname.startsWith("/admin/roles/"),
+								});
+							}
+							if (permissions.includes("audit.read")) {
+								accessItems.push({
+									title: "Audit",
+									path: "/admin/audit",
+									icon: ActivityIcon,
+									isActive: pathname === "/admin/audit" || pathname.startsWith("/admin/audit/"),
+								});
+							}
+							return accessItems.length > 0 ? (
+								<NavGroup label="Access" items={accessItems} />
+							) : null;
+						})()}
 					</>
 				) : (
-					<>
-						<NavDocuments items={DOCUMENTS} />
-						<NavSecondary items={NAV_SECONDARY} className="mt-auto" />
-					</>
+					<NavSecondary items={NAV_SECONDARY} className="mt-auto" />
 				)}
 			</SidebarContent>
 			<SidebarFooter>
