@@ -145,7 +145,24 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 
 	args = append(args, pageSize, offset)
 	listSQL := fmt.Sprintf(`
-		SELECT u.id, u.display_name, u.avatar_url, u.roles::text,
+		SELECT u.id,
+		       COALESCE(
+		           NULLIF(u.display_name, ''),
+		           NULLIF(u.discord_global_name, ''),
+		           NULLIF(u.discord_username, ''),
+		           ''
+		       ) AS display_name,
+		       COALESCE(
+		           NULLIF(u.avatar_url, ''),
+		           CASE
+		               WHEN NULLIF(u.discord_avatar, '') IS NOT NULL
+		                    AND NULLIF(u.discord_id, '') IS NOT NULL
+		               THEN 'https://cdn.discordapp.com/avatars/'
+		                    || u.discord_id || '/' || u.discord_avatar || '.png'
+		               ELSE ''
+		           END
+		       ) AS avatar_url,
+		       u.roles::text,
 		       u.created_at, u.updated_at, u.last_login_at,
 		       u.suspended_at, u.deleted_at,
 		       COALESCE(u.discord_id, ''),

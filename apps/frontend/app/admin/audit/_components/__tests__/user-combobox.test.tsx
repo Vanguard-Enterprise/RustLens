@@ -5,8 +5,8 @@ import { UserCombobox } from "../user-combobox";
 
 const search = vi.fn();
 
-vi.mock("@/lib/rustlens-api", async () => ({
-	searchAdminUsers: (q: string) => search(q),
+vi.mock("../../actions", async () => ({
+	searchAdminUsersAction: (q: string) => search(q),
 }));
 
 beforeEach(() => {
