@@ -512,7 +512,24 @@ func hydrateAuditActors(ctx context.Context, pool *pgxpool.Pool, items []auditEv
 		ids = append(ids, id)
 	}
 	urows, err := pool.Query(ctx, `
-		SELECT id::text, COALESCE(display_name, ''), COALESCE(avatar_url, '')
+		SELECT id::text,
+		       COALESCE(
+		           NULLIF(display_name, ''),
+		           NULLIF(discord_global_name, ''),
+		           NULLIF(discord_username, ''),
+		           ''
+		       ),
+		       COALESCE(
+		           NULLIF(avatar_url, ''),
+		           CASE
+		               WHEN NULLIF(discord_avatar, '') IS NOT NULL
+		                    AND NULLIF(discord_id, '') IS NOT NULL
+		               THEN 'https://cdn.discordapp.com/avatars/'
+		                    || discord_id || '/' || discord_avatar || '.png'
+		               ELSE NULL
+		           END,
+		           ''
+		       )
 		FROM app_users WHERE id::text = ANY($1)
 	`, ids)
 	if err != nil {

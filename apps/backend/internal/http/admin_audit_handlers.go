@@ -45,7 +45,7 @@ func (h *Handler) ListAdminAuditEventTypes(w http.ResponseWriter, r *http.Reques
 	defer auditEventTypesCache.mu.Unlock()
 
 	if !auditEventTypesCache.at.IsZero() && time.Since(auditEventTypesCache.at) < auditEventTypesCacheTTL {
-		out := append([]string(nil), auditEventTypesCache.types...)
+		out := append([]string{}, auditEventTypesCache.types...)
 		writeJSON(w, http.StatusOK, map[string]any{"types": out})
 		return
 	}
@@ -55,9 +55,12 @@ func (h *Handler) ListAdminAuditEventTypes(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if types == nil {
+		types = []string{}
+	}
 
 	auditEventTypesCache.at = time.Now()
-	auditEventTypesCache.types = append([]string(nil), types...)
+	auditEventTypesCache.types = append([]string{}, types...)
 	writeJSON(w, http.StatusOK, map[string]any{"types": types})
 }
 
