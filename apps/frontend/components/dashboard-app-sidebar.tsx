@@ -5,7 +5,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { NavDocuments } from "@/components/nav-documents";
 import { NavGroup } from "@/components/nav-group";
 import { NavMain } from "@/components/nav-main";
 import { NavSecondary } from "@/components/nav-secondary";
@@ -25,19 +24,12 @@ import {
 import {
 	ActivityIcon,
 	CameraIcon,
-	ChartBarIcon,
 	CircleHelpIcon,
-	DatabaseIcon,
-	FileChartColumnIcon,
-	FileIcon,
 	FileTextIcon,
-	FolderIcon,
 	KeyRoundIcon,
 	LayoutDashboardIcon,
-	ListIcon,
 	SearchIcon,
 	Settings2Icon,
-	ShieldCheckIcon,
 	UsersIcon,
 	UsersRoundIcon,
 } from "lucide-react";
@@ -61,19 +53,12 @@ const PRIMARY_NAV: Record<DashboardSidebarArea, NavItem> = {
 		pathPrefix: "/dashboard",
 	},
 	admin: {
-		title: "Admin",
+		title: "Dashboard",
 		url: "/admin",
-		icon: <ShieldCheckIcon />,
+		icon: <LayoutDashboardIcon />,
 		pathPrefix: "/admin",
 	},
 };
-
-const SECONDARY_NAV_MAIN: NavItem[] = [
-	{ title: "Lifecycle", url: "#", icon: <ListIcon />, pathPrefix: "" },
-	{ title: "Analytics", url: "#", icon: <ChartBarIcon />, pathPrefix: "" },
-	{ title: "Projects", url: "#", icon: <FolderIcon />, pathPrefix: "" },
-	{ title: "Team", url: "#", icon: <UsersIcon />, pathPrefix: "" },
-];
 
 const NAV_CLOUDS = [
 	{
@@ -112,24 +97,8 @@ const NAV_SECONDARY = [
 	{ title: "Search", url: "#", icon: <SearchIcon /> },
 ];
 
-const DOCUMENTS = [
-	{ name: "Data Library", url: "#", icon: <DatabaseIcon /> },
-	{ name: "Reports", url: "#", icon: <FileChartColumnIcon /> },
-	{ name: "Word Assistant", url: "#", icon: <FileIcon /> },
-];
-
-function buildNavMain(pathname: string, isAdmin: boolean): NavItem[] {
-	const items: NavItem[] = [];
-	for (const key of ["dashboard", "admin"] as const) {
-		const item = PRIMARY_NAV[key];
-		if (key === "admin" && !isAdmin) continue;
-		if (pathname === item.pathPrefix || pathname.startsWith(`${item.pathPrefix}/`)) {
-			continue;
-		}
-		items.push(item);
-	}
-	items.push(...SECONDARY_NAV_MAIN);
-	return items;
+function buildNavMain(area: DashboardSidebarArea): NavItem[] {
+	return [PRIMARY_NAV[area]];
 }
 
 type DashboardAppSidebarProps = Omit<
@@ -154,7 +123,7 @@ export function DashboardAppSidebar({
 	...props
 }: DashboardAppSidebarProps) {
 	const pathname = usePathname() ?? "";
-	const navMain = buildNavMain(pathname, user.isInternalAdmin);
+	const navMain = buildNavMain(area);
 	const homeHref = area === "admin" ? "/admin" : "/dashboard";
 
 	return (
@@ -230,10 +199,7 @@ export function DashboardAppSidebar({
 						})()}
 					</>
 				) : (
-					<>
-						<NavDocuments items={DOCUMENTS} />
-						<NavSecondary items={NAV_SECONDARY} className="mt-auto" />
-					</>
+					<NavSecondary items={NAV_SECONDARY} className="mt-auto" />
 				)}
 			</SidebarContent>
 			<SidebarFooter>
