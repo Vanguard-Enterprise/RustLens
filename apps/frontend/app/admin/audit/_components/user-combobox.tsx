@@ -13,7 +13,8 @@ import {
 	CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { searchAdminUsers, type AdminUserItem } from "@/lib/rustlens-api";
+import type { AdminUserItem } from "@/lib/rustlens-api";
+import { searchAdminUsersAction } from "../actions";
 
 export type UserComboboxValue = {
 	id: string;
@@ -38,7 +39,7 @@ export function UserCombobox({ label, value, onSelect, onClear }: Props) {
 		const t = setTimeout(async () => {
 			setError(false);
 			try {
-				setResults(await searchAdminUsers(text));
+				setResults(await searchAdminUsersAction(text));
 			} catch {
 				setResults([]);
 				setError(true);

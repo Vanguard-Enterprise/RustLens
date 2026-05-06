@@ -5,6 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
 	ChevronLeftIcon,
 	ChevronRightIcon,
+	ChevronsLeftIcon,
+	ChevronsRightIcon,
 	FileIcon,
 } from "lucide-react";
 
@@ -17,11 +19,11 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import {
-	getAdminAuditEvent,
-	type AdminAuditPage as AdminAuditPageData,
-	type AuditEventItem,
+import type {
+	AdminAuditPage as AdminAuditPageData,
+	AuditEventItem,
 } from "@/lib/rustlens-api";
+import { getAuditEventAction } from "../actions";
 
 import { AuditDetailSheet } from "./audit-detail-sheet";
 import { AuditTable } from "./audit-table";
@@ -44,6 +46,7 @@ export type AuditInitialQuery = {
 	targetUserId: string | undefined;
 	pageSize: number;
 	before: string | undefined;
+	cursors: string[];
 	event: string | undefined;
 };
 
@@ -57,12 +60,16 @@ type Props = {
 	initialTarget: UserComboboxValue | null;
 };
 
-function applyClientSearch(items: AuditEventItem[], q: string | undefined): AuditEventItem[] {
+function applyClientSearch(
+	items: AuditEventItem[],
+	q: string | undefined,
+): AuditEventItem[] {
 	if (!q) return items;
 	const needle = q.toLowerCase();
-	return items.filter((it) =>
-		it.eventType.toLowerCase().includes(needle) ||
-		(it.reason ?? "").toLowerCase().includes(needle),
+	return items.filter(
+		(it) =>
+			it.eventType.toLowerCase().includes(needle) ||
+			(it.reason ?? "").toLowerCase().includes(needle),
 	);
 }
 
@@ -106,7 +113,7 @@ export function AuditPage({
 	);
 
 	const handleToolbarChange = (patch: AuditToolbarPatch) => {
-		const out: Record<string, unknown> = { before: undefined };
+		const out: Record<string, unknown> = { before: undefined, cursors: undefined };
 		if ("q" in patch) out.q = patch.q;
 		if ("since" in patch) out.since = patch.since;
 		if ("result" in patch) out.result = patch.result;
@@ -144,11 +151,11 @@ export function AuditPage({
 		} else {
 			setSheetEvent(null);
 			setSheetStatus("loading");
-			try {
-				const e = await getAdminAuditEvent(id);
-				setSheetEvent(e);
+			const res = await getAuditEventAction(id);
+			if (res.ok) {
+				setSheetEvent(res.result);
 				setSheetStatus("ok");
-			} catch {
+			} else {
 				setSheetStatus("not-found");
 			}
 		}
@@ -170,17 +177,36 @@ export function AuditPage({
 			actorUserId: undefined,
 			targetUserId: undefined,
 			before: undefined,
+			cursors: undefined,
 		});
 		setActor(null);
 		setTarget(null);
 	};
 
-	const goNewer = () => updateQuery({ before: undefined });
-	const goOlder = () => {
-		if (initialPage.nextCursor) updateQuery({ before: initialPage.nextCursor });
+	// Cursor-based pagination, presented in the page-style layout from
+	// /admin/users. URL holds the stack of cursors visited so "Prev" can
+	// reconstruct the previous page; "Last" stays disabled because the API
+	// does not return a total.
+	const cursors = initialQuery.cursors;
+	const currentPage = cursors.length + 1;
+	const canPrev = currentPage > 1;
+	const canNext = !!initialPage.nextCursor;
+
+	const goFirst = () => updateQuery({ before: undefined, cursors: undefined });
+	const goPrev = () => {
+		if (!canPrev) return;
+		const next = cursors.slice(0, -1);
+		const prevCursor = next[next.length - 1];
+		updateQuery({
+			before: prevCursor ?? undefined,
+			cursors: next.length ? next : undefined,
+		});
 	};
-	const canNewer = !!initialQuery.before;
-	const canOlder = !!initialPage.nextCursor;
+	const goNext = () => {
+		if (!canNext) return;
+		const next = [...cursors, initialPage.nextCursor as string];
+		updateQuery({ before: initialPage.nextCursor, cursors: next });
+	};
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -197,7 +223,11 @@ export function AuditPage({
 					<Select
 						value={String(initialQuery.pageSize)}
 						onValueChange={(value) =>
-							updateQuery({ pageSize: Number.parseInt(value, 10), before: undefined })
+							updateQuery({
+								pageSize: Number.parseInt(value, 10),
+								before: undefined,
+								cursors: undefined,
+							})
 						}
 					>
 						<SelectTrigger size="sm" className="w-20" id="rows-per-page" aria-label="Rows per page">
@@ -216,13 +246,47 @@ export function AuditPage({
 					</Select>
 				</div>
 				<div className="flex items-center gap-2">
-					<Button variant="outline" size="sm" onClick={goNewer} disabled={!canNewer}>
-						<ChevronLeftIcon className="size-4" />
-						Newer
+					<Button
+						variant="outline"
+						className="hidden size-8 lg:flex"
+						size="icon"
+						onClick={goFirst}
+						disabled={!canPrev}
+					>
+						<span className="sr-only">Go to first page</span>
+						<ChevronsLeftIcon />
 					</Button>
-					<Button variant="outline" size="sm" onClick={goOlder} disabled={!canOlder}>
-						Older
-						<ChevronRightIcon className="size-4" />
+					<Button
+						variant="outline"
+						className="size-8"
+						size="icon"
+						onClick={goPrev}
+						disabled={!canPrev}
+					>
+						<span className="sr-only">Go to previous page</span>
+						<ChevronLeftIcon />
+					</Button>
+					<div className="min-w-[5rem] text-center text-sm font-medium">
+						Page {currentPage}
+					</div>
+					<Button
+						variant="outline"
+						className="size-8"
+						size="icon"
+						onClick={goNext}
+						disabled={!canNext}
+					>
+						<span className="sr-only">Go to next page</span>
+						<ChevronRightIcon />
+					</Button>
+					<Button
+						variant="outline"
+						className="hidden size-8 lg:flex"
+						size="icon"
+						disabled
+					>
+						<span className="sr-only">Go to last page</span>
+						<ChevronsRightIcon />
 					</Button>
 				</div>
 				<div className="flex flex-1 justify-end text-sm text-muted-foreground">

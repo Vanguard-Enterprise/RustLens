@@ -25,7 +25,7 @@ describe("AuditTable", () => {
 		render(
 			<AuditTable items={[sample]} selectedId={null} onSelect={onSelect} hasFilters={false} onClearFilters={() => {}} />,
 		);
-		fireEvent.click(screen.getByText("users.suspend"));
+		fireEvent.click(screen.getByText("Users · Suspend"));
 		expect(onSelect).toHaveBeenCalledWith("evt_1");
 	});
 

@@ -64,3 +64,43 @@ export function formatAbsolute(iso: string): string {
 	}
 	return new Date(t).toLocaleString();
 }
+
+/**
+ * Formats an ISO timestamp with a friendly day label and a precise time
+ * of day. Examples: "Today at 4:00:39 PM", "Yesterday at 11:42:00 AM",
+ * "Mon 3 at 9:15:02 AM", "Apr 3, 2025 at 9:15:02 AM".
+ */
+export function formatDayTime(iso: string, now: number = Date.now()): string {
+	const t = Date.parse(iso);
+	if (Number.isNaN(t)) {
+		return iso;
+	}
+	const d = new Date(t);
+	const nowDate = new Date(now);
+	const time = d.toLocaleTimeString(undefined, {
+		hour: "numeric",
+		minute: "2-digit",
+		second: "2-digit",
+	});
+
+	const startOfDay = (x: Date) =>
+		new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+	const dayDiff = Math.round((startOfDay(nowDate) - startOfDay(d)) / DAY);
+
+	if (dayDiff === 0) return `Today at ${time}`;
+	if (dayDiff === 1) return `Yesterday at ${time}`;
+	if (dayDiff > 1 && dayDiff < 7) {
+		const weekday = d.toLocaleDateString(undefined, { weekday: "short" });
+		return `${weekday} at ${time}`;
+	}
+	if (d.getFullYear() === nowDate.getFullYear()) {
+		const md = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+		return `${md} at ${time}`;
+	}
+	const full = d.toLocaleDateString(undefined, {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
+	return `${full} at ${time}`;
+}

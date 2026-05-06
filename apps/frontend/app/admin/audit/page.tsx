@@ -85,6 +85,7 @@ export default async function AdminAuditRoute({
 		targetUserId: pickStr(sp.targetUserId),
 		pageSize,
 		before: pickStr(sp.before),
+		cursors: pickArr(sp.cursors).filter((c) => c.length > 0),
 		event: pickStr(sp.event),
 	};
 

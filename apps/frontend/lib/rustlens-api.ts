@@ -511,12 +511,12 @@ export async function getAdminAudit(params: AdminAuditQuery = {}): Promise<Admin
 }
 
 export async function getAdminAuditEventTypes(): Promise<string[]> {
-	const payload = await backendFetch<{ types: string[] }>(
+	const payload = await backendFetch<{ types: string[] | null }>(
 		"/api/app/admin/audit/event-types",
 		undefined,
 		{ requireSession: true },
 	);
-	return payload.types;
+	return payload.types ?? [];
 }
 
 export async function getAdminAuditEvent(id: string): Promise<AuditEventItem> {

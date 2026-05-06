@@ -1,10 +1,16 @@
 "use client";
 
 import * as React from "react";
+import { MessageSquareTextIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RelativeTime } from "@/components/admin/relative-time";
+import { DayTime } from "@/components/admin/day-time";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import { UserLink } from "@/components/admin/user-link";
 import {
 	Table,
@@ -27,23 +33,85 @@ type Props = {
 
 function ResultBadge({ result }: { result: AuditEventItem["result"] }) {
 	if (!result) return <span className="text-xs text-muted-foreground">—</span>;
+	const isError = result === "error";
 	return (
-		<Badge variant={result === "error" ? "destructive" : "secondary"}>{result}</Badge>
+		<Badge
+			variant={isError ? "destructive" : "secondary"}
+			className={cn(
+				"capitalize",
+				!isError &&
+					"bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
+			)}
+		>
+			{isError ? "Failure" : result}
+		</Badge>
 	);
 }
 
-export function AuditTable({ items, selectedId, onSelect, hasFilters, onClearFilters }: Props) {
+function humanizeEvent(eventType: string): string {
+	return eventType
+		.split(".")
+		.map((part) =>
+			part
+				.replace(/[_-]/g, " ")
+				.split(" ")
+				.filter(Boolean)
+				.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+				.join(" "),
+		)
+		.join(" · ");
+}
+
+function ReasonCell({ reason }: { reason: string | null | undefined }) {
+	const trimmed = reason?.trim();
+	if (!trimmed) {
+		return <span className="text-xs text-muted-foreground">—</span>;
+	}
+	return (
+		<Popover>
+			<PopoverTrigger asChild>
+				<Button
+					variant="ghost"
+					size="icon"
+					className="size-7"
+					aria-label="View reason"
+					onClick={(e) => e.stopPropagation()}
+				>
+					<MessageSquareTextIcon className="size-4" />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent
+				align="end"
+				className="w-80"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+					Reason
+				</div>
+				<p className="text-sm whitespace-pre-wrap break-words">{trimmed}</p>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
+export function AuditTable({
+	items,
+	selectedId,
+	onSelect,
+	hasFilters,
+	onClearFilters,
+}: Props) {
 	return (
 		<div className="overflow-hidden rounded-lg border">
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead className="w-[12%]">Time</TableHead>
 						<TableHead className="w-[18%]">Actor</TableHead>
 						<TableHead className="w-[18%]">Target</TableHead>
-						<TableHead className="w-[30%]">Event</TableHead>
-						<TableHead className="w-[8%]">Result</TableHead>
-						<TableHead className="w-[14%]">Reason</TableHead>
+						<TableHead className="w-[28%]">Event</TableHead>
+						<TableHead className="w-[10%]">Result</TableHead>
+						<TableHead className="w-[20%]">Date / Time</TableHead>
+						<TableHead className="w-[6%] text-right">Reason</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -66,12 +134,12 @@ export function AuditTable({ items, selectedId, onSelect, hasFilters, onClearFil
 						items.map((it) => (
 							<TableRow
 								key={it.id}
-								className={cn("cursor-pointer hover:bg-muted/50", selectedId === it.id && "bg-accent")}
+								className={cn(
+									"cursor-pointer hover:bg-muted/50",
+									selectedId === it.id && "bg-accent",
+								)}
 								onClick={() => onSelect(it.id)}
 							>
-								<TableCell>
-									<RelativeTime iso={it.createdAt} />
-								</TableCell>
 								<TableCell>
 									{it.actorUserId ? (
 										<UserLink
@@ -80,7 +148,7 @@ export function AuditTable({ items, selectedId, onSelect, hasFilters, onClearFil
 											avatarUrl={it.actorAvatarUrl}
 										/>
 									) : (
-										<span className="text-xs text-muted-foreground">—</span>
+										<span className="text-muted-foreground">System</span>
 									)}
 								</TableCell>
 								<TableCell>
@@ -95,15 +163,18 @@ export function AuditTable({ items, selectedId, onSelect, hasFilters, onClearFil
 									)}
 								</TableCell>
 								<TableCell>
-									<code className="rounded bg-muted px-1 py-0.5 text-xs">{it.eventType}</code>
+									<span className="font-medium" title={it.eventType}>
+										{humanizeEvent(it.eventType)}
+									</span>
 								</TableCell>
 								<TableCell>
 									<ResultBadge result={it.result ?? null} />
 								</TableCell>
-								<TableCell>
-									<span className="block truncate text-xs text-muted-foreground" title={it.reason ?? undefined}>
-										{it.reason?.trim() ? it.reason : "—"}
-									</span>
+								<TableCell className="text-sm text-muted-foreground">
+									<DayTime iso={it.createdAt} />
+								</TableCell>
+								<TableCell className="text-right">
+									<ReasonCell reason={it.reason} />
 								</TableCell>
 							</TableRow>
 						))
