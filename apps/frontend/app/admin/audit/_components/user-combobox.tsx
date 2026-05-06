@@ -35,57 +35,51 @@ const MIN_QUERY_LEN = 1;
 export function UserCombobox({ label, value, onSelect, onClear }: Props) {
 	const [open, setOpen] = React.useState(false);
 	const [text, setText] = React.useState("");
-	const [results, setResults] = React.useState<AdminUserItem[]>([]);
-	const [error, setError] = React.useState(false);
-	const [loading, setLoading] = React.useState(false);
-
 	// Per-instance cache so retyping or backspacing into a previous query
 	// renders instantly. Cleared when the popover is closed.
-	const cacheRef = React.useRef<Map<string, AdminUserItem[]>>(new Map());
+	const [cache, setCache] = React.useState<Map<string, AdminUserItem[]>>(
+		() => new Map(),
+	);
+	const [errorQuery, setErrorQuery] = React.useState<string | null>(null);
+	const [loadingQuery, setLoadingQuery] = React.useState<string | null>(null);
 	const reqIdRef = React.useRef(0);
 
+	const trimmed = text.trim();
+	const tooShort = trimmed.length < MIN_QUERY_LEN;
+	const cached = !tooShort ? cache.get(trimmed) : undefined;
+	const displayResults: AdminUserItem[] = tooShort ? [] : cached ?? [];
+	const displayLoading = !tooShort && !cached && loadingQuery === trimmed;
+	const displayError = !tooShort && !cached && errorQuery === trimmed;
+
 	React.useEffect(() => {
-		if (!open) return;
-		const trimmed = text.trim();
-		if (trimmed.length < MIN_QUERY_LEN) {
-			setResults([]);
-			setLoading(false);
-			setError(false);
-			return;
-		}
-		const cached = cacheRef.current.get(trimmed);
-		if (cached) {
-			setResults(cached);
-			setLoading(false);
-			setError(false);
-			return;
-		}
-		setLoading(true);
+		if (!open || tooShort || cached) return;
 		const myReq = ++reqIdRef.current;
 		const t = setTimeout(async () => {
+			setLoadingQuery(trimmed);
 			try {
 				const res = await searchAdminUsersAction(trimmed);
 				if (myReq !== reqIdRef.current) return;
-				cacheRef.current.set(trimmed, res);
-				setResults(res);
-				setError(false);
+				setCache((prev) => new Map(prev).set(trimmed, res));
+				setErrorQuery((prev) => (prev === trimmed ? null : prev));
 			} catch {
 				if (myReq !== reqIdRef.current) return;
-				setResults([]);
-				setError(true);
+				setErrorQuery(trimmed);
 			} finally {
-				if (myReq === reqIdRef.current) setLoading(false);
+				if (myReq === reqIdRef.current) {
+					setLoadingQuery((prev) => (prev === trimmed ? null : prev));
+				}
 			}
 		}, DEBOUNCE_MS);
 		return () => clearTimeout(t);
-	}, [text, open]);
+	}, [trimmed, open, tooShort, cached]);
 
 	const handleOpenChange = (next: boolean) => {
 		setOpen(next);
 		if (!next) {
 			setText("");
-			setResults([]);
-			cacheRef.current.clear();
+			setCache(new Map());
+			setErrorQuery(null);
+			setLoadingQuery(null);
 		}
 	};
 
@@ -133,26 +127,26 @@ export function UserCombobox({ label, value, onSelect, onClear }: Props) {
 							value={text}
 							onValueChange={setText}
 						/>
-						{loading ? (
+						{displayLoading ? (
 							<Loader2Icon className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
 						) : null}
 					</div>
 					<CommandList className="max-h-80">
-						{error ? (
+						{displayError ? (
 							<div className="p-3 text-xs text-muted-foreground">
 								Search unavailable — try again.
 							</div>
 						) : (
 							<>
 								<CommandEmpty>
-									{text.trim().length < MIN_QUERY_LEN
+									{tooShort
 										? "Type to search…"
-										: loading
+										: displayLoading
 										? "Searching…"
 										: "No matches."}
 								</CommandEmpty>
 								<CommandGroup>
-									{results.map((it) => {
+									{displayResults.map((it) => {
 										const handle = it.discordUsername;
 										return (
 											<CommandItem

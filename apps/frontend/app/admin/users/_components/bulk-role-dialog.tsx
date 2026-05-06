@@ -45,8 +45,10 @@ export function BulkRoleDialog({ open, onOpenChange, onSuccess, mode, userIds, r
 	const [submitting, setSubmitting] = React.useState(false);
 	const [result, setResult] = React.useState<BulkUserResult | null>(null);
 	const [error, setError] = React.useState<string | null>(null);
+	const [prevOpen, setPrevOpen] = React.useState(open);
 
-	React.useEffect(() => {
+	if (prevOpen !== open) {
+		setPrevOpen(open);
 		if (!open) {
 			setRoleKey("");
 			setReason("");
@@ -54,7 +56,7 @@ export function BulkRoleDialog({ open, onOpenChange, onSuccess, mode, userIds, r
 			setError(null);
 			setSubmitting(false);
 		}
-	}, [open]);
+	}
 
 	const submit = async () => {
 		if (!roleKey || !reason.trim()) return;

@@ -30,6 +30,10 @@ const STATUSES: Array<NonNullable<AdminUsersQuery["status"]>> = [
 export function UsersToolbar({ query, roles, onChange }: Props) {
 	const [text, setText] = React.useState(query.q ?? "");
 	React.useEffect(() => {
+		// Don't fire onChange when text already matches the URL query — that's
+		// either the first render or an external (URL-driven) sync. Without this
+		// guard we'd reset to page=1 on mount, breaking pagination deep-links.
+		if ((text || undefined) === (query.q || undefined)) return;
 		const id = setTimeout(() => {
 			onChange({ q: text || undefined, page: 1 });
 		}, 300);
@@ -41,10 +45,11 @@ export function UsersToolbar({ query, roles, onChange }: Props) {
 		() => new Set(query.role ?? []),
 	);
 	const queryRoleKey = (query.role ?? []).slice().sort().join(",");
-	React.useEffect(() => {
+	const [prevQueryRoleKey, setPrevQueryRoleKey] = React.useState(queryRoleKey);
+	if (prevQueryRoleKey !== queryRoleKey) {
+		setPrevQueryRoleKey(queryRoleKey);
 		setSelectedRoles(new Set(query.role ?? []));
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [queryRoleKey]);
+	}
 	const toggleRole = (key: string) => {
 		const next = new Set(selectedRoles);
 		if (next.has(key)) next.delete(key);

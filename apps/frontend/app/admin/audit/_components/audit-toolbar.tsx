@@ -55,6 +55,10 @@ const RESULTS: Array<{ key: "any" | "success" | "error"; label: string }> = [
 export function AuditToolbar({ query, eventTypes, onChange }: Props) {
 	const [text, setText] = React.useState(query.q ?? "");
 	React.useEffect(() => {
+		// Don't fire onChange when text already matches the URL query — that's
+		// either the first render or an external (URL-driven) sync. Without this
+		// guard we'd reset cursor pagination on mount.
+		if ((text || undefined) === (query.q || undefined)) return;
 		const id = setTimeout(() => onChange({ q: text || undefined }), 300);
 		return () => clearTimeout(id);
 		// eslint-disable-next-line react-hooks/exhaustive-deps

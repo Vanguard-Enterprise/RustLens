@@ -34,14 +34,16 @@ export function RevokeRoleDialog({
 	const [reason, setReason] = React.useState("");
 	const [submitting, setSubmitting] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
+	const [prevOpen, setPrevOpen] = React.useState(open);
 
-	React.useEffect(() => {
+	if (prevOpen !== open) {
+		setPrevOpen(open);
 		if (!open) {
 			setReason("");
 			setError(null);
 			setSubmitting(false);
 		}
-	}, [open]);
+	}
 
 	const submit = async () => {
 		if (!reason.trim()) return;

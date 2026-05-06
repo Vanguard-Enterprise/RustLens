@@ -44,10 +44,12 @@ export function UsersPage({ initialPage, roles, initialQuery, pageSizeOptions, p
 	const [selected, setSelected] = React.useState<Set<string>>(new Set());
 
 	const initialQueryKey = `${initialQuery.q ?? ""}|${(initialQuery.role ?? []).join(",")}|${initialQuery.status ?? ""}|${initialQuery.sort ?? ""}|${initialQuery.page ?? ""}|${initialQuery.pageSize ?? ""}`;
+	const [prevQueryKey, setPrevQueryKey] = React.useState(initialQueryKey);
 
-	React.useEffect(() => {
+	if (prevQueryKey !== initialQueryKey) {
+		setPrevQueryKey(initialQueryKey);
 		setSelected(new Set());
-	}, [initialQueryKey]);
+	}
 
 	const updateQuery = (patch: Partial<AdminUsersQuery>) => {
 		const sp = new URLSearchParams(searchParams.toString());

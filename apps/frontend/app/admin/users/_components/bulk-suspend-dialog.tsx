@@ -36,15 +36,17 @@ export function BulkSuspendDialog({ open, onOpenChange, onSuccess, mode, userIds
 	const [submitting, setSubmitting] = React.useState(false);
 	const [result, setResult] = React.useState<BulkUserResult | null>(null);
 	const [error, setError] = React.useState<string | null>(null);
+	const [prevOpen, setPrevOpen] = React.useState(open);
 
-	React.useEffect(() => {
+	if (prevOpen !== open) {
+		setPrevOpen(open);
 		if (!open) {
 			setReason("");
 			setResult(null);
 			setError(null);
 			setSubmitting(false);
 		}
-	}, [open]);
+	}
 
 	const reasonRequired = mode === "suspend";
 	const submit = async () => {

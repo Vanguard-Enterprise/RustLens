@@ -27,15 +27,17 @@ export function PurgeDialog({ open, onOpenChange, userId, displayName, onConfirm
 	const [typed, setTyped] = React.useState("");
 	const [submitting, setSubmitting] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
+	const [prevOpen, setPrevOpen] = React.useState(open);
 
-	React.useEffect(() => {
+	if (prevOpen !== open) {
+		setPrevOpen(open);
 		if (!open) {
 			setReason("");
 			setTyped("");
 			setError(null);
 			setSubmitting(false);
 		}
-	}, [open]);
+	}
 
 	const submit = async () => {
 		if (!reason.trim() || typed !== userId) return;
