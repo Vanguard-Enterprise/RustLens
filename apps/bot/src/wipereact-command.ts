@@ -48,6 +48,8 @@ import {
   RUSTLENS_EMBED_ICON_URL,
   type ModalComponentNode,
   getFieldValues,
+  logDiscordCatch,
+  logDiscordError,
   replyEphemeral,
 } from "./shared.js";
 
@@ -1555,7 +1557,11 @@ async function fetchWipeReactMessage(
     return null;
   }
 
-  return channel.messages.fetch(messageId).catch(() => null);
+  return channel.messages.fetch(messageId).catch(logDiscordCatch("fetch wipe react message", null, {
+    guildId: guild.id,
+    channelId,
+    messageId,
+  }));
 }
 
 async function syncPersistedWipeReactMessage(guild: Guild, record: WipeReact) {
@@ -1637,7 +1643,11 @@ async function disableScheduledWipeReact(message: Message) {
     return;
   }
 
-  const latestMessage = await message.channel.messages.fetch(message.id).catch(() => null);
+  const latestMessage = await message.channel.messages.fetch(message.id).catch(logDiscordCatch("fetch latest wipe react message", null, {
+    guildId: message.guildId,
+    channelId: message.channelId,
+    messageId: message.id,
+  }));
   if (!latestMessage) {
     return;
   }
@@ -1657,7 +1667,11 @@ async function disableScheduledWipeReact(message: Message) {
       scheduleWipeReactExpiry(latestMessage, legacyState.scheduledUnix);
       return;
     }
-    await disableExpiredWipeReact(latestMessage, legacyState).catch(() => undefined);
+    await disableExpiredWipeReact(latestMessage, legacyState).catch(logDiscordCatch("disable legacy expired wipe react", undefined, {
+      guildId: latestMessage.guildId,
+      channelId: latestMessage.channelId,
+      messageId: latestMessage.id,
+    }));
     return;
   }
 
@@ -1667,7 +1681,11 @@ async function disableScheduledWipeReact(message: Message) {
     return;
   }
 
-  await disableExpiredWipeReact(latestMessage, toWipeReactState(record)).catch(() => undefined);
+  await disableExpiredWipeReact(latestMessage, toWipeReactState(record)).catch(logDiscordCatch("disable expired wipe react", undefined, {
+    guildId: latestMessage.guildId,
+    channelId: latestMessage.channelId,
+    messageId: latestMessage.id,
+  }));
 }
 
 function scheduleWipeReactExpiry(message: Message, scheduledUnix: number) {
@@ -1715,7 +1733,11 @@ async function processWipeReactAction(
 
   const state = toWipeReactState(record);
   if (record.scheduledUnix <= Math.floor(Date.now() / 1000)) {
-    await disableExpiredWipeReact(message, state).catch(() => undefined);
+    await disableExpiredWipeReact(message, state).catch(logDiscordCatch("disable expired wipe react during action", undefined, {
+      guildId: interaction.guildId,
+      channelId: message.channelId,
+      messageId: message.id,
+    }));
     await replyEphemeral(interaction, "This wipe react has already closed.");
     return true;
   }
@@ -1825,7 +1847,11 @@ export async function rehydratePersistedWipeReacts(client: Client) {
           }
 
           if (record.scheduledUnix <= Math.floor(Date.now() / 1000)) {
-            await disableExpiredWipeReact(message, toWipeReactState(record)).catch(() => undefined);
+            await disableExpiredWipeReact(message, toWipeReactState(record)).catch(logDiscordCatch("disable expired wipe react during rehydrate", undefined, {
+              guildId: guild.id,
+              channelId: message.channelId,
+              messageId: message.id,
+            }));
             return;
           }
 
@@ -1932,7 +1958,12 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     if (message) {
       try {
         await message.delete();
-      } catch {
+      } catch (error) {
+        logDiscordError("delete wipe react message", error, {
+          guildId: interaction.guildId,
+          channelId: record.channelId,
+          messageId: record.messageId,
+        });
         await replyEphemeral(interaction, "RustLens could not delete that wipe react.");
         return true;
       }
@@ -1983,7 +2014,10 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
     let members;
     try {
       members = await getGuildMembers(guild);
-    } catch {
+    } catch (error) {
+      logDiscordError("fetch guild members for wipe react missing", error, {
+        guildId: interaction.guildId,
+      });
       await replyEphemeral(
         interaction,
         "RustLens could not load the members for that role. Make sure the bot has the Guild Members intent enabled.",
@@ -2022,7 +2056,12 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
           try {
             await recipients[idx].send({ embeds: [dmEmbed], components: [] });
             sent += 1;
-          } catch {
+          } catch (error) {
+            logDiscordError("send wipe react missing DM", error, {
+              guildId: interaction.guildId,
+              discordId: recipients[idx].id,
+              messageId: wipeReactMessage.id,
+            });
             failed += 1;
           }
         }
@@ -2233,7 +2272,11 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
 
     if (record.scheduledUnix <= Math.floor(Date.now() / 1000)) {
       await deferEphemeral(interaction);
-      await disableExpiredWipeReact(interaction.message, toWipeReactState(record)).catch(() => undefined);
+      await disableExpiredWipeReact(interaction.message, toWipeReactState(record)).catch(logDiscordCatch("disable expired wipe react button", undefined, {
+        guildId: interaction.guildId,
+        channelId: interaction.message.channelId,
+        messageId: interaction.message.id,
+      }));
       await replyEphemeral(interaction, "This wipe react has already closed.");
       return true;
     }
@@ -2365,7 +2408,11 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
 
   if (record.scheduledUnix <= Math.floor(Date.now() / 1000)) {
     await deferEphemeral(interaction);
-    await disableExpiredWipeReact(interaction.message, toWipeReactState(record)).catch(() => undefined);
+    await disableExpiredWipeReact(interaction.message, toWipeReactState(record)).catch(logDiscordCatch("disable expired wipe react edit button", undefined, {
+      guildId: interaction.guildId,
+      channelId: interaction.message.channelId,
+      messageId: interaction.message.id,
+    }));
     await replyEphemeral(interaction, "This wipe react has already closed.");
     return true;
   }
@@ -2548,7 +2595,11 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
         ),
       );
     } catch {
-      await createdMessage.delete().catch(() => undefined);
+      await createdMessage.delete().catch(logDiscordCatch("delete unpersisted wipe react message", undefined, {
+        guildId: interaction.guildId,
+        channelId: createdMessage.channelId,
+        messageId: createdMessage.id,
+      }));
       await interaction.followUp({
         content: "RustLens could not persist that wipe react.",
         flags: MessageFlags.Ephemeral,
@@ -2584,7 +2635,11 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
     }
 
     if (existing.scheduledUnix <= Math.floor(Date.now() / 1000)) {
-      await disableExpiredWipeReact(message, toWipeReactState(existing)).catch(() => undefined);
+      await disableExpiredWipeReact(message, toWipeReactState(existing)).catch(logDiscordCatch("disable expired wipe react during edit", undefined, {
+        guildId: interaction.guildId,
+        channelId: message.channelId,
+        messageId: message.id,
+      }));
       await replyEphemeral(interaction, "This wipe react has already closed.");
       return true;
     }
@@ -2704,7 +2759,11 @@ export function startWipeReactScheduler(client: Client): NodeJS.Timeout {
 
   async function processSchedulePost(guild: Guild, post: import("./backend-client.js").WipeReactSchedulePost) {
     const channel = guild.channels.cache.get(post.channelId) ??
-      await guild.channels.fetch(post.channelId).catch(() => null);
+      await guild.channels.fetch(post.channelId).catch(logDiscordCatch("fetch scheduled wipe react channel", null, {
+        guildId: guild.id,
+        channelId: post.channelId,
+        postId: post.id,
+      }));
     if (!channel?.isTextBased() || !("send" in channel)) {
       await getBackend().releaseWipeReactSchedulePost(workerID, guild.id, post.id).catch(() => undefined);
       return;
@@ -2742,7 +2801,12 @@ export function startWipeReactScheduler(client: Client): NodeJS.Timeout {
         postId: post.id,
         error,
       });
-      await message.delete().catch(() => undefined);
+      await message.delete().catch(logDiscordCatch("delete failed scheduled wipe react message", undefined, {
+        guildId: guild.id,
+        channelId: message.channelId,
+        messageId: message.id,
+        postId: post.id,
+      }));
       await getBackend().releaseWipeReactSchedulePost(workerID, guild.id, post.id).catch(() => undefined);
       return;
     }

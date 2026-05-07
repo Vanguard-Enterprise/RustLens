@@ -23,7 +23,7 @@ import { StringSelectBuilder, ModalV2Builder } from "./builders/index.js";
 import { BackendClient, type GuildSettingsPatch } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, updateGuildSettings } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL, getFieldValues } from "./shared.js";
+import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL, getFieldValues, logDiscordCatch } from "./shared.js";
 
 export const SETTINGS_COMMAND_NAME = "settings";
 
@@ -126,7 +126,10 @@ async function formatCategoryValue(guild: Guild, categoryId: string) {
 
   const category =
     guild.channels.cache.get(categoryId) ??
-    (await guild.channels.fetch(categoryId).catch(() => null));
+    (await guild.channels.fetch(categoryId).catch(logDiscordCatch("fetch settings category display", null, {
+      guildId: guild.id,
+      channelId: categoryId,
+    })));
 
   if (!category || category.type !== ChannelType.GuildCategory) {
     return "`Not set`";
@@ -610,7 +613,10 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
     if (selectedValue) {
       channel =
         interaction.guild.channels.cache.get(selectedValue) ??
-        (await interaction.guild.channels.fetch(selectedValue).catch(() => null));
+        (await interaction.guild.channels.fetch(selectedValue).catch(logDiscordCatch("fetch settings selected channel", null, {
+          guildId: interaction.guildId,
+          channelId: selectedValue,
+        })));
 
       if (!isValidGuildChannel(channel, selectedValue)) {
         await interaction.reply({
@@ -656,7 +662,10 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
       if (!category) {
         category =
           interaction.guild.channels.cache.get(selectedValue) ??
-          (await interaction.guild.channels.fetch(selectedValue).catch(() => null));
+          (await interaction.guild.channels.fetch(selectedValue).catch(logDiscordCatch("fetch settings selected category", null, {
+            guildId: interaction.guildId,
+            channelId: selectedValue,
+          })));
       }
 
       if (!category || category.id !== valueToSave || category.type !== ChannelType.GuildCategory) {
@@ -686,7 +695,10 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
   if (selectedValue) {
     role =
       interaction.guild.roles.cache.get(selectedValue) ??
-      (await interaction.guild.roles.fetch(selectedValue).catch(() => null));
+      (await interaction.guild.roles.fetch(selectedValue).catch(logDiscordCatch("fetch settings selected role", null, {
+        guildId: interaction.guildId,
+        roleId: selectedValue,
+      })));
 
     if (!isValidGuildRole(role, selectedValue)) {
       await interaction.reply({

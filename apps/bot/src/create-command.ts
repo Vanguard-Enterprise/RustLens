@@ -18,7 +18,7 @@ import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { isGuildTooLargeForDms, replyDmLimitError } from "./dm-limit.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL, replyEphemeral } from "./shared.js";
+import { logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL, replyEphemeral } from "./shared.js";
 
 export const CREATE_COMMAND_NAME = "create";
 
@@ -255,7 +255,10 @@ async function handleRequestInviteButton(interaction: ButtonInteraction) {
 
   const member =
     (interaction.member as GuildMember | null) ??
-    (await interaction.guild.members.fetch(interaction.user.id).catch(() => null));
+    (await interaction.guild.members.fetch(interaction.user.id).catch(logDiscordCatch("fetch create invite requester member", null, {
+      guildId: interaction.guildId,
+      discordId: interaction.user.id,
+    })));
 
   if (requiredRoleId && !memberHasRole(member, requiredRoleId)) {
     await replyEphemeral(
@@ -315,7 +318,10 @@ async function handleRequestInviteButton(interaction: ButtonInteraction) {
     throw error;
   }
 
-  const replyMessage = await interaction.fetchReply().catch(() => null);
+  const replyMessage = await interaction.fetchReply().catch(logDiscordCatch("fetch create invite reply", null, {
+    guildId: interaction.guildId,
+    discordId: interaction.user.id,
+  }));
   const existing = pendingInvites.get(pendingKey);
   if (replyMessage && existing) {
     pendingInvites.set(pendingKey, {
@@ -353,7 +359,10 @@ async function handleAcceptInviteButton(interaction: ButtonInteraction) {
 
   const accepterMember =
     (interaction.member as GuildMember | null) ??
-    (await interaction.guild.members.fetch(interaction.user.id).catch(() => null));
+    (await interaction.guild.members.fetch(interaction.user.id).catch(logDiscordCatch("fetch create invite accepter member", null, {
+      guildId: interaction.guildId,
+      discordId: interaction.user.id,
+    })));
   const accepterDisplayName =
     accepterMember?.displayName ?? interaction.user.globalName ?? interaction.user.username;
 
@@ -363,11 +372,19 @@ async function handleAcceptInviteButton(interaction: ButtonInteraction) {
   try {
     const requester = await interaction.client.users.fetch(requesterId);
     await requester.send({ embeds: [dmEmbed] });
-  } catch {
+  } catch (error) {
+    logDiscordError("send create invite accepted DM", error, {
+      guildId: interaction.guildId,
+      discordId: requesterId,
+    });
     dmFailed = true;
   }
 
-  await interaction.message.delete().catch(() => undefined);
+  await interaction.message.delete().catch(logDiscordCatch("delete accepted create invite message", undefined, {
+    guildId: interaction.guildId,
+    channelId: interaction.message.channelId,
+    messageId: interaction.message.id,
+  }));
 
   pendingInvites.delete(pendingInviteKey(interaction.guildId, requesterId));
 

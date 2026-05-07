@@ -9,6 +9,7 @@ import type {
 import { PermissionFlagsBits } from "discord.js";
 import { BackendClient, type GuildSettingsPatch } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { logDiscordCatch } from "./shared.js";
 
 const shardID = process.env.SHARD_ID ?? "0";
 
@@ -87,7 +88,10 @@ export async function hasGuildAdminAccess(interaction: GuildAdminInteraction) {
     return cachedRoleMatch;
   }
 
-  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  const member = await interaction.guild.members.fetch(interaction.user.id).catch(logDiscordCatch("fetch guild admin member", null, {
+    guildId: interaction.guildId,
+    discordId: interaction.user.id,
+  }));
   return member?.roles.cache.has(settings.adminRoleId) ?? false;
 }
 
@@ -101,7 +105,10 @@ export async function resolveConfiguredGuildChannel(
 
   const channel =
     guild.channels.cache.get(channelId) ??
-    (await guild.channels.fetch(channelId).catch(() => null));
+    (await guild.channels.fetch(channelId).catch(logDiscordCatch("fetch configured guild channel", null, {
+      guildId: guild.id,
+      channelId,
+    })));
 
   if (!channel?.isTextBased() || !("send" in channel)) {
     return null;

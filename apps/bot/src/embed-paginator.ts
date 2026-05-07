@@ -9,6 +9,7 @@ import {
   type Message,
   type RepliableInteraction,
 } from "discord.js";
+import { logDiscordCatch } from "./shared.js";
 
 export const PAGINATOR_PREV_ID = "embed-paginator:prev";
 export const PAGINATOR_NEXT_ID = "embed-paginator:next";
@@ -199,7 +200,10 @@ function attachPaginatorCollector(
   });
 
   collector.on("end", () => {
-    interaction.editReply({ components: [] }).catch(() => undefined);
+    interaction.editReply({ components: [] }).catch(logDiscordCatch("clear paginator components", undefined, {
+      guildId: interaction.guildId,
+      discordId: interaction.user.id,
+    }));
   });
 }
 

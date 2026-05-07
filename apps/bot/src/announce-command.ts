@@ -3,7 +3,7 @@ import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, Messa
 import { isGuildTooLargeForDms, replyDmLimitError } from "./dm-limit.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const ANNOUNCE_COMMAND_NAME = "announce";
 
@@ -137,7 +137,11 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
       try {
         await target.send({ embeds: [embed] });
         sent++;
-      } catch {
+      } catch (error) {
+        logDiscordError("/announce send DM", error, {
+          guildId: interaction.guildId,
+          discordId: target.id,
+        });
         failed++;
       }
     }),

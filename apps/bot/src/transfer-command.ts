@@ -20,7 +20,7 @@ import {
 } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { logDiscordCatch, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const TRANSFER_COMMAND_NAME = "transfer";
 
@@ -259,7 +259,11 @@ export async function handleTransferModalSubmit(interaction: ModalSubmitInteract
   const seenPairs = new Set<string>();
 
   for (const messageId of messageIds) {
-    const message = await channel.messages.fetch(messageId).catch(() => null);
+    const message = await channel.messages.fetch(messageId).catch(logDiscordCatch("fetch transfer source message", null, {
+      guildId: interaction.guildId,
+      channelId: channel.id,
+      messageId,
+    }));
     if (!message) {
       continue;
     }
@@ -282,7 +286,10 @@ export async function handleTransferModalSubmit(interaction: ModalSubmitInteract
 
   const linkOne = async (pair: LinkPair) => {
     try {
-      const member = await guild.members.fetch(pair.discordId).catch(() => null);
+      const member = await guild.members.fetch(pair.discordId).catch(logDiscordCatch("fetch transfer target member", null, {
+        guildId: interaction.guildId,
+        discordId: pair.discordId,
+      }));
       if (!member) {
         failed++;
         return;

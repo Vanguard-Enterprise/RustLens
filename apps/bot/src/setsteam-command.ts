@@ -3,7 +3,7 @@ import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, Messa
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { logDiscordCatch, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 import { resolveSteamInputErrorMessage } from "./steam-input.js";
 import { buildProfileButtons, buildUserEmbed } from "./view-command.js";
 
@@ -52,7 +52,10 @@ function buildEmbed(title: string, description: string) {
 
 async function replyEphemeralEmbed(interaction: ChatInputCommandInteraction, embed: EmbedBuilder) {
   if (interaction.deferred) {
-    await interaction.deleteReply().catch(() => undefined);
+    await interaction.deleteReply().catch(logDiscordCatch("delete deferred /setsteam reply", undefined, {
+      guildId: interaction.guildId,
+      discordId: interaction.user.id,
+    }));
     await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
     return;
   }
@@ -202,7 +205,11 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     if (channel?.isTextBased() && "send" in channel) {
       await channel.send({
         embeds: [buildLinkingLogEmbed(interaction, steamId, steamAccount?.bmId ?? null)],
-      }).catch(() => undefined);
+      }).catch(logDiscordCatch("send /setsteam linking log", undefined, {
+        guildId: interaction.guildId,
+        channelId: channel.id,
+        discordId: interaction.user.id,
+      }));
     }
   }
 

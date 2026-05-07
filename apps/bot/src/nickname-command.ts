@@ -4,7 +4,7 @@ import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const NICKNAME_COMMAND_NAME = "nickname";
 
@@ -20,6 +20,7 @@ const NICKNAME_FAILURE_REASON_MISSING_PERMISSIONS = "Missing required permission
 const NICKNAME_FAILURE_REASON_ROLE_BELOW = "Bot's role is below the user's role.";
 const NICKNAME_FAILURE_REASON_MISSING_BM_ID = "Missing BM ID.";
 const NICKNAME_FAILURE_REASON_MISSING_BM_NAME = "Missing BM name.";
+const NICKNAME_FAILURE_REASON_MEMBER_NOT_FOUND = "Discord member was not found in the guild member cache.";
 const NICKNAME_FAILURE_REASON_INTERNAL = "Internal error, this issue has been reported to the developers.";
 
 const nicknameCommand = new SlashCommandBuilder()
@@ -123,7 +124,8 @@ function formatOutcomeLines(items: readonly NicknameOutcome[]) {
 }
 
 function buildCompletionEmbed(
-  successCount: number,
+  changedCount: number,
+  unchangedCount: number,
   failedCount: number,
   totalCount: number,
   failedItems: readonly NicknameOutcome[],
@@ -140,7 +142,12 @@ function buildCompletionEmbed(
         inline: false,
       },
       {
-        name: `✅ Changed: ${successCount}`,
+        name: `✅ Changed: ${changedCount}`,
+        value: EMBED_FIELD_VALUE_FALLBACK,
+        inline: false,
+      },
+      {
+        name: `➖ Already Correct: ${unchangedCount}`,
         value: EMBED_FIELD_VALUE_FALLBACK,
         inline: false,
       },
@@ -172,7 +179,9 @@ async function resolveBotMember(interaction: ChatInputCommandInteraction) {
     return null;
   }
 
-  return interaction.guild.members.me ?? interaction.guild.members.fetchMe().catch(() => null);
+  return interaction.guild.members.me ?? interaction.guild.members.fetchMe().catch(logDiscordCatch("fetch bot guild member", null, {
+    guildId: interaction.guild.id,
+  }));
 }
 
 function resolveNicknameFailureReason(
@@ -238,7 +247,8 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
   const { items } = await getBackend().listGuildNicknameTargets(getWorkerID(), interaction.guildId);
   const members = await getGuildMembers(interaction.guild);
   const botMember = await resolveBotMember(interaction);
-  let successCount = 0;
+  let changedCount = 0;
+  let unchangedCount = 0;
   let failedCount = 0;
   const failedItems: NicknameOutcome[] = [];
 
@@ -262,7 +272,7 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
     const member = members.get(item.discordId);
     if (!member) {
       failedCount += 1;
-      const outcome = { discordId: item.discordId, reason: NICKNAME_FAILURE_REASON_INTERNAL };
+      const outcome = { discordId: item.discordId, reason: NICKNAME_FAILURE_REASON_MEMBER_NOT_FOUND };
       failedItems.push(outcome);
       continue;
     }
@@ -279,11 +289,21 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
     }
 
     try {
-      if (member.manageable && member.nickname !== targetNickname) {
-        await member.setNickname(targetNickname, "RustLens /nickname sync");
+      if (member.nickname === targetNickname) {
+        unchangedCount += 1;
+        continue;
       }
-      successCount += 1;
-    } catch {
+
+      await member.setNickname(targetNickname, "RustLens /nickname sync");
+      changedCount += 1;
+    } catch (error) {
+      logDiscordError("/nickname set nickname", error, {
+        guildId: interaction.guildId,
+        discordId: item.discordId,
+        steamId: item.steamId,
+        bmId,
+        targetNickname,
+      });
       failedCount += 1;
       const outcome = { discordId: item.discordId, reason: NICKNAME_FAILURE_REASON_INTERNAL };
       failedItems.push(outcome);
@@ -292,7 +312,7 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
 
   await replyEphemeralEmbed(
     interaction,
-    buildCompletionEmbed(successCount, failedCount, items.length, failedItems),
+    buildCompletionEmbed(changedCount, unchangedCount, failedCount, items.length, failedItems),
   );
   return true;
 }

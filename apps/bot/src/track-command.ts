@@ -36,7 +36,7 @@ import { loadConfig } from "./config.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "./embed-paginator.js";
 import { fetchGuildSettings, hasGuildAdminAccess } from "./guild-settings.js";
 import { buildNextBestOfflineFieldValue, computeNextBestOfflineWindow } from "./next-best-offline.js";
-import { getFieldValues, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { getFieldValues, logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 import { renderTrackAnalyticsChart } from "./track-analytics-chart.js";
 import { isWebsiteAdmin } from "./website-admin.js";
 
@@ -527,7 +527,11 @@ export async function handleTrackAutocomplete(interaction: AutocompleteInteracti
         value: item.bmId,
       }));
     await interaction.respond(filtered);
-  } catch {
+  } catch (error) {
+    logDiscordError("respond to /track autocomplete", error, {
+      guildId: interaction.guildId,
+      discordId: interaction.user.id,
+    });
     await interaction.respond([]);
   }
   return true;
@@ -593,7 +597,10 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
 
   const category = await interaction.guild.channels
     .fetch(settings.trackedUsersCategoryId)
-    .catch(() => null);
+    .catch(logDiscordCatch("fetch tracked users category", null, {
+      guildId: interaction.guildId,
+      channelId: settings.trackedUsersCategoryId,
+    }));
   if (!category || category.type !== ChannelType.GuildCategory) {
     await interaction.editReply({
       embeds: [buildErrorEmbed("The configured Tracked users category is missing. Update /settings.")],
@@ -630,7 +637,10 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
       createdBy: interaction.user.id,
     });
   } catch (error) {
-    await channel.delete("track group create failed").catch(() => null);
+    await channel.delete("track group create failed").catch(logDiscordCatch("delete failed track group channel", null, {
+      guildId: interaction.guildId,
+      channelId: channel.id,
+    }));
     const status = (error as { status?: number }).status;
     const description = status === 409
       ? `A track group named **${groupName}** already exists in this guild.`
@@ -644,7 +654,11 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
   pendingInitialPosts.add(group.id);
   try {
     const message = await channel.send({ embeds, components });
-    await message.pin().catch(() => null);
+    await message.pin().catch(logDiscordCatch("pin track group message", null, {
+      guildId: interaction.guildId,
+      channelId: channel.id,
+      messageId: message.id,
+    }));
 
     await getBackend().updateTrackGroup(getWorkerID(), interaction.guildId, group.id, {
       messageId: message.id,
@@ -691,7 +705,11 @@ async function handleTrackDeleteChatInput(interaction: ChatInputCommandInteracti
     return true;
   }
 
-  const channel = await interaction.guild.channels.fetch(group.channelId).catch(() => null);
+  const channel = await interaction.guild.channels.fetch(group.channelId).catch(logDiscordCatch("fetch track group channel for delete", null, {
+    guildId: interaction.guildId,
+    channelId: group.channelId,
+    groupId: group.id,
+  }));
   await getBackend().deleteTrackGroup(getWorkerID(), interaction.guildId, group.id);
   previousSnapshots.delete(group.id);
 
@@ -707,7 +725,11 @@ async function handleTrackDeleteChatInput(interaction: ChatInputCommandInteracti
   });
 
   if (channel) {
-    await channel.delete(`/track delete ${group.name}`).catch(() => null);
+    await channel.delete(`/track delete ${group.name}`).catch(logDiscordCatch("delete track group channel", null, {
+      guildId: interaction.guildId,
+      channelId: channel.id,
+      groupId: group.id,
+    }));
   }
   return true;
 }
@@ -1350,7 +1372,11 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
     return;
   }
 
-  const channel = await guild.channels.fetch(group.channelId).catch(() => null);
+  const channel = await guild.channels.fetch(group.channelId).catch(logDiscordCatch("fetch track group channel", null, {
+    guildId: guild.id,
+    channelId: group.channelId,
+    groupId: group.id,
+  }));
   if (!channel || channel.type !== ChannelType.GuildText) {
     await getBackend().deleteTrackGroup(getWorkerID(), guild.id, group.id).catch(() => null);
     previousSnapshots.delete(group.id);
@@ -1359,7 +1385,12 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   const textChannel = channel as TextChannel;
 
   let message = group.messageId
-    ? await textChannel.messages.fetch(group.messageId).catch(() => null)
+    ? await textChannel.messages.fetch(group.messageId).catch(logDiscordCatch("fetch track group message", null, {
+      guildId: guild.id,
+      channelId: textChannel.id,
+      messageId: group.messageId,
+      groupId: group.id,
+    }))
     : null;
 
   const mode = requestedMode ?? trackViewModes.get(group.id) ?? "online";
@@ -1389,11 +1420,20 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   }
 
   if (!message) {
-    const sent = await textChannel.send({ embeds, components }).catch(() => null);
+    const sent = await textChannel.send({ embeds, components }).catch(logDiscordCatch("send track group message", null, {
+      guildId: guild.id,
+      channelId: textChannel.id,
+      groupId: group.id,
+    }));
     if (!sent) {
       return;
     }
-    await sent.pin().catch(() => null);
+    await sent.pin().catch(logDiscordCatch("pin track group message", null, {
+      guildId: guild.id,
+      channelId: textChannel.id,
+      messageId: sent.id,
+      groupId: group.id,
+    }));
     await getBackend().updateTrackGroup(getWorkerID(), guild.id, group.id, {
       messageId: sent.id,
     });
@@ -1408,7 +1448,12 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   if (group.onlineCount !== onlineCount) {
     const desiredName = buildChannelName(group.name, onlineCount);
     if (textChannel.name !== desiredName) {
-      await textChannel.setName(desiredName).catch(() => null);
+      await textChannel.setName(desiredName).catch(logDiscordCatch("rename track group channel", null, {
+        guildId: guild.id,
+        channelId: textChannel.id,
+        groupId: group.id,
+        desiredName,
+      }));
     }
     await getBackend().updateTrackGroup(getWorkerID(), guild.id, group.id, {
       onlineCount,
@@ -1417,7 +1462,11 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
 
   const desiredTopic = buildChannelTopic(group.name);
   if (textChannel.topic !== desiredTopic) {
-    await textChannel.setTopic(desiredTopic).catch(() => null);
+    await textChannel.setTopic(desiredTopic).catch(logDiscordCatch("update track group channel topic", null, {
+      guildId: guild.id,
+      channelId: textChannel.id,
+      groupId: group.id,
+    }));
   }
 
   // Post change updates if enabled.
@@ -1438,7 +1487,13 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
         continue;
       }
       const updateEmbed = buildJoinLeaveEmbed(change.row, change.isOnline, serverName);
-      await textChannel.send({ embeds: [updateEmbed] }).catch(() => null);
+      await textChannel.send({ embeds: [updateEmbed] }).catch(logDiscordCatch("send track group join/leave update", null, {
+        guildId: guild.id,
+        channelId: textChannel.id,
+        groupId: group.id,
+        steamId: change.row.steamId,
+        isOnline: change.isOnline,
+      }));
     }
   }
 
@@ -1470,7 +1525,11 @@ async function refreshTrackGroupById(guild: Guild, guildId: string, groupId: num
 
 async function findExistingTrackMessage(textChannel: TextChannel, group: TrackGroup, serverName: string) {
   const expectedTitle = `${group.name} - ${serverName}`;
-  const messages = await textChannel.messages.fetch({ limit: 25 }).catch(() => null);
+  const messages = await textChannel.messages.fetch({ limit: 25 }).catch(logDiscordCatch("fetch recent track messages", null, {
+    guildId: textChannel.guildId,
+    channelId: textChannel.id,
+    groupId: group.id,
+  }));
   return messages?.find((message) =>
     message.author.id === textChannel.client.user?.id &&
     message.embeds.some((embed) => embed.title === expectedTitle),

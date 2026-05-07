@@ -13,7 +13,7 @@ import {
 } from "discord.js";
 import { BackendClient, type GuildTrackedServer, type TrackedServer } from "./backend-client.js";
 import { loadConfig } from "./config.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const SERVER_COMMAND_NAME = "server";
 
@@ -204,7 +204,11 @@ export async function handleServerAutocomplete(interaction: AutocompleteInteract
         value: server.bmId,
       }));
     await interaction.respond(filtered);
-  } catch {
+  } catch (error) {
+    logDiscordError("respond to /manage server autocomplete", error, {
+      guildId: interaction.guildId,
+      discordId: interaction.user.id,
+    });
     await interaction.respond([]);
   }
 

@@ -2,6 +2,7 @@ import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
+import { logDiscordCatch, logDiscordError } from "./shared.js";
 
 export const SUMMON_COMMAND_NAME = "summon";
 
@@ -67,7 +68,10 @@ export async function handleSummonChatInput(interaction: ChatInputCommandInterac
     return true;
   }
 
-  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  const member = await guild.members.fetch(interaction.user.id).catch(logDiscordCatch("fetch /summon invoker member", null, {
+    guildId: interaction.guildId,
+    discordId: interaction.user.id,
+  }));
   const voiceChannel = member?.voice.channel;
 
   if (!voiceChannel) {
@@ -99,7 +103,12 @@ export async function handleSummonChatInput(interaction: ChatInputCommandInterac
       try {
         await target.voice.setChannel(voiceChannel);
         moved++;
-      } catch {
+      } catch (error) {
+        logDiscordError("/summon move member voice channel", error, {
+          guildId: interaction.guildId,
+          discordId: target.id,
+          channelId: voiceChannel.id,
+        });
         failed++;
       }
     }),

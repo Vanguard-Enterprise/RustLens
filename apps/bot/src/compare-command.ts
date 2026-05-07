@@ -15,7 +15,7 @@ import { loadConfig } from "./config.js";
 import { paginateSections, replyPaginatedEmbeds, type PaginatedSection } from "./embed-paginator.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { logDiscordCatch, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const COMPARE_COMMAND_NAME = "compare";
 
@@ -214,7 +214,10 @@ async function fetchComparisonMembers(interaction: ChatInputCommandInteraction) 
     return null;
   }
 
-  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  const member = await guild.members.fetch(interaction.user.id).catch(logDiscordCatch("fetch /compare invoker member", null, {
+    guildId: interaction.guildId,
+    discordId: interaction.user.id,
+  }));
   const voiceChannel = member?.voice.channel;
   if (voiceChannel) {
     return [...voiceChannel.members.values()].filter((voiceMember) => !voiceMember.user.bot);
@@ -230,7 +233,10 @@ async function fetchInvokerVoiceMembers(interaction: ChatInputCommandInteraction
     return null;
   }
 
-  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  const member = await guild.members.fetch(interaction.user.id).catch(logDiscordCatch("fetch /compare invoker voice member", null, {
+    guildId: interaction.guildId,
+    discordId: interaction.user.id,
+  }));
   const voiceChannel = member?.voice.channel;
   if (!voiceChannel) {
     return [] as GuildMember[];

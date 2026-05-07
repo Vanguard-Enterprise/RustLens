@@ -146,6 +146,14 @@ const client = new Client({
 registerUserGuildSync(client);
 registerBotGuildSync(client, shardID, shardCount);
 
+client.on("error", (error) => {
+  console.error("[bot] Discord client error", error);
+});
+
+client.on("shardError", (error, failedShardID) => {
+  console.error("[bot] Discord shard error", { shardId: failedShardID, error });
+});
+
 async function updateSteamAccountPresence() {
   const response = await backend.steamAccountCount(statusWorkerID);
   const formattedCount = response.count.toLocaleString("en-US");
@@ -212,15 +220,6 @@ client.once("clientReady", () => {
   });
 });
 
-function isIgnorableInteractionReplyError(error: unknown) {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return false;
-  }
-
-  const code = (error as { code?: unknown }).code;
-  return code === 10008 || code === 10062 || code === 40060;
-}
-
 function isUnknownInteractionError(error: unknown) {
   if (typeof error !== "object" || error === null || !("code" in error)) {
     return false;
@@ -257,8 +256,8 @@ function interactionKind(interaction: Interaction) {
   return interaction.type;
 }
 
-function logUnknownInteraction(interaction: Interaction) {
-  console.warn("[bot] skipped unknown interaction", {
+function logUnknownInteraction(interaction: Interaction, error: unknown) {
+  console.error("[bot] Discord interaction error: unknown interaction", {
     kind: interactionKind(interaction),
     id: interaction.id,
     ageMs: Date.now() - interaction.createdTimestamp,
@@ -266,11 +265,12 @@ function logUnknownInteraction(interaction: Interaction) {
     shardId: shardID,
     shardCount,
     pid: process.pid,
+    error,
   });
 }
 
-function logAlreadyAcknowledgedInteraction(interaction: Interaction) {
-  console.warn("[bot] skipped already acknowledged interaction", {
+function logAlreadyAcknowledgedInteraction(interaction: Interaction, error: unknown) {
+  console.error("[bot] Discord interaction error: already acknowledged", {
     kind: interactionKind(interaction),
     id: interaction.id,
     ageMs: Date.now() - interaction.createdTimestamp,
@@ -278,6 +278,7 @@ function logAlreadyAcknowledgedInteraction(interaction: Interaction) {
     shardId: shardID,
     shardCount,
     pid: process.pid,
+    error,
   });
 }
 
@@ -506,12 +507,12 @@ client.on("interactionCreate", async (interaction) => {
     }
   } catch (error) {
     if (isUnknownInteractionError(error)) {
-      logUnknownInteraction(interaction);
+      logUnknownInteraction(interaction, error);
       return;
     }
 
     if (isAlreadyAcknowledgedInteractionError(error)) {
-      logAlreadyAcknowledgedInteraction(interaction);
+      logAlreadyAcknowledgedInteraction(interaction, error);
       return;
     }
 
@@ -530,9 +531,7 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
       } catch (replyError) {
-        if (!isIgnorableInteractionReplyError(replyError)) {
-          console.error("[bot] failed to send interaction error reply", replyError);
-        }
+        console.error("[bot] failed to send interaction error reply", replyError);
       }
     }
   }

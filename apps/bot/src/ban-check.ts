@@ -9,6 +9,7 @@ import { EmbedBuilder, MessageFlags } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import type { BanCategory } from "./ban-categories.js";
 import { loadConfig } from "./config.js";
+import { logDiscordError } from "./shared.js";
 
 const BANNED_EMBED_COLOR = 0xd31239;
 const CACHE_TTL_MS = 30_000;
@@ -155,8 +156,11 @@ export async function enforceBanForAutocomplete(
     });
     try {
       await interaction.respond([]);
-    } catch {
-      // autocomplete can silently fail if Discord already timed out
+    } catch (error) {
+      logDiscordError("respond to banned autocomplete after lookup failure", error, {
+        discordId: interaction.user.id,
+        category,
+      });
     }
     return true;
   }
@@ -175,8 +179,11 @@ export async function enforceBanForAutocomplete(
   }
   try {
     await interaction.respond([]);
-  } catch {
-    // autocomplete can silently fail if Discord already timed out
+  } catch (error) {
+    logDiscordError("respond to banned autocomplete", error, {
+      discordId: interaction.user.id,
+      category,
+    });
   }
   return true;
 }

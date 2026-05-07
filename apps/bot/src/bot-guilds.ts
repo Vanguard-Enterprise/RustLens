@@ -1,6 +1,7 @@
 import type { Client, Guild, User } from "discord.js";
 import { BackendClient, type UpsertBotGuildPayload } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { logDiscordError } from "./shared.js";
 
 const MEMBERS_RESYNC_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const MEMBER_BATCH_SIZE = 1000;
@@ -53,7 +54,10 @@ function chunk<T>(items: T[], size: number): T[][] {
 async function resolveOwner(guild: Guild): Promise<User | null> {
   try {
     return await guild.fetchOwner().then((m) => m.user);
-  } catch {
+  } catch (error) {
+    logDiscordError("fetch guild owner", error, {
+      guildId: guild.id,
+    });
     return null;
   }
 }

@@ -5,6 +5,28 @@ export const RUSTLENS_EMBED_COLOR = 14582045;
 export const RUSTLENS_EMBED_ICON_URL =
   "https://i.ibb.co/n8MWVLDN/1ee153f3c14d7decaeb6cb62c28fb5b4.webp";
 
+export function logDiscordError(
+  context: string,
+  error: unknown,
+  details?: Record<string, unknown>,
+) {
+  console.error(`[bot] Discord error: ${context}`, {
+    ...details,
+    error,
+  });
+}
+
+export function logDiscordCatch<T>(
+  context: string,
+  fallback: T,
+  details?: Record<string, unknown>,
+) {
+  return (error: unknown) => {
+    logDiscordError(context, error, details);
+    return fallback;
+  };
+}
+
 export function buildWebsiteAdminOnlyEmbed() {
   return new EmbedBuilder()
     .setTitle("Error")
