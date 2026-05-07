@@ -32,8 +32,9 @@ describe("nickname-command", () => {
     const embed = __testables.buildCompletionEmbed(
       7,
       3,
+      1,
       2,
-      12,
+      13,
       [
         { discordId: "111", reason: "Bot's role is below the user's role." },
         { discordId: "222", reason: "Bot's role is below the user's role." },
@@ -41,12 +42,13 @@ describe("nickname-command", () => {
     ).toJSON();
 
     expect(embed.title).toBe("Nickname Change Complete");
-    expect(embed.fields?.[0]?.name).toBe("👥 Processed: 12");
+    expect(embed.fields?.[0]?.name).toBe("👥 Processed: 13");
     expect(embed.fields?.[0]?.value).toBe("\u200b");
     expect(embed.fields?.[1]?.name).toBe("✅ Changed: 7");
     expect(embed.fields?.[2]?.name).toBe("➖ Already Correct: 3");
-    expect(embed.fields?.[3]?.name).toBe("❌ Failed: 2");
-    expect(embed.fields?.[3]?.value).toContain("Bot's role is below the user's role. (2)");
-    expect(embed.fields?.[3]?.value).not.toContain("<@111>");
+    expect(embed.fields?.[3]?.name).toBe("🧹 Cleaned Up: 1");
+    expect(embed.fields?.[4]?.name).toBe("❌ Failed: 2");
+    expect(embed.fields?.[4]?.value).toContain("Bot's role is below the user's role. (2)");
+    expect(embed.fields?.[4]?.value).not.toContain("<@111>");
   });
 });

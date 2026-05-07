@@ -21,6 +21,7 @@ const NICKNAME_FAILURE_REASON_ROLE_BELOW = "Bot's role is below the user's role.
 const NICKNAME_FAILURE_REASON_MISSING_BM_ID = "Missing BM ID.";
 const NICKNAME_FAILURE_REASON_MISSING_BM_NAME = "Missing BM name.";
 const NICKNAME_FAILURE_REASON_MEMBER_NOT_FOUND = "Discord member was not found in the guild member cache.";
+const NICKNAME_CLEANUP_REASON_LEFT_GUILD = "Removed stale guild link for user no longer in guild.";
 const NICKNAME_FAILURE_REASON_INTERNAL = "Internal error, this issue has been reported to the developers.";
 
 const nicknameCommand = new SlashCommandBuilder()
@@ -126,6 +127,7 @@ function formatOutcomeLines(items: readonly NicknameOutcome[]) {
 function buildCompletionEmbed(
   changedCount: number,
   unchangedCount: number,
+  cleanedCount: number,
   failedCount: number,
   totalCount: number,
   failedItems: readonly NicknameOutcome[],
@@ -148,6 +150,11 @@ function buildCompletionEmbed(
       },
       {
         name: `➖ Already Correct: ${unchangedCount}`,
+        value: EMBED_FIELD_VALUE_FALLBACK,
+        inline: false,
+      },
+      {
+        name: `🧹 Cleaned Up: ${cleanedCount}`,
         value: EMBED_FIELD_VALUE_FALLBACK,
         inline: false,
       },
@@ -249,8 +256,10 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
   const botMember = await resolveBotMember(interaction);
   let changedCount = 0;
   let unchangedCount = 0;
+  let cleanedCount = 0;
   let failedCount = 0;
   const failedItems: NicknameOutcome[] = [];
+  const cleanedDiscordIds = new Set<string>();
 
   for (const item of items) {
     const bmId = item.bmId?.trim() ?? "";
@@ -271,6 +280,33 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
 
     const member = members.get(item.discordId);
     if (!member) {
+      if (cleanedDiscordIds.has(item.discordId)) {
+        continue;
+      }
+
+      try {
+        const links = await getBackend().listGuildLinksByDiscord(getWorkerID(), interaction.guildId, item.discordId);
+        for (const link of links.items) {
+          await getBackend().deleteGuildLink(getWorkerID(), interaction.guildId, item.discordId, link.steamId);
+        }
+        cleanedDiscordIds.add(item.discordId);
+        cleanedCount += 1;
+        console.log("[bot] /nickname removed stale guild links", {
+          guildId: interaction.guildId,
+          discordId: item.discordId,
+          removedLinks: links.items.length,
+          reason: NICKNAME_CLEANUP_REASON_LEFT_GUILD,
+        });
+        continue;
+      } catch (error) {
+        console.error("[bot] /nickname failed to remove stale guild links", {
+          guildId: interaction.guildId,
+          discordId: item.discordId,
+          steamId: item.steamId,
+          error,
+        });
+      }
+
       failedCount += 1;
       const outcome = { discordId: item.discordId, reason: NICKNAME_FAILURE_REASON_MEMBER_NOT_FOUND };
       failedItems.push(outcome);
@@ -312,7 +348,7 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
 
   await replyEphemeralEmbed(
     interaction,
-    buildCompletionEmbed(changedCount, unchangedCount, failedCount, items.length, failedItems),
+    buildCompletionEmbed(changedCount, unchangedCount, cleanedCount, failedCount, items.length, failedItems),
   );
   return true;
 }
