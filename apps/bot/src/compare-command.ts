@@ -15,7 +15,7 @@ import { loadConfig } from "./config.js";
 import { paginateSections, replyPaginatedEmbeds, type PaginatedSection } from "./embed-paginator.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { logDiscordCatch, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 
 export const COMPARE_COMMAND_NAME = "compare";
 
@@ -25,7 +25,7 @@ const FOOTER_TEXT = "RustLens.com";
 
 const compareCommand = new SlashCommandBuilder()
   .setName(COMPARE_COMMAND_NAME)
-  .setDescription("Compare your current voice channel against a wipe react or tracked server")
+  .setDescription("Compare guild voice channels against a wipe react or tracked server")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
   .setContexts(InteractionContextType.Guild)
@@ -208,41 +208,38 @@ async function resolveSelectedWipeReact(guildId: string, messageId: string | nul
   return mostRecentPassed;
 }
 
+function getGuildVoiceMembers(interaction: ChatInputCommandInteraction) {
+  const guild = interaction.guild;
+  if (!guild) {
+    return null;
+  }
+
+  const voiceMembers = new Map<string, GuildMember>();
+  for (const voiceState of guild.voiceStates.cache.values()) {
+    const member = voiceState.member;
+    if (!member || member.user.bot || !voiceState.channelId) {
+      continue;
+    }
+
+    voiceMembers.set(member.id, member);
+  }
+
+  return [...voiceMembers.values()];
+}
+
 async function fetchComparisonMembers(interaction: ChatInputCommandInteraction) {
   const guild = interaction.guild;
   if (!guild) {
     return null;
   }
 
-  const member = await guild.members.fetch(interaction.user.id).catch(logDiscordCatch("fetch /compare invoker member", null, {
-    guildId: interaction.guildId,
-    discordId: interaction.user.id,
-  }));
-  const voiceChannel = member?.voice.channel;
-  if (voiceChannel) {
-    return [...voiceChannel.members.values()].filter((voiceMember) => !voiceMember.user.bot);
+  const voiceMembers = getGuildVoiceMembers(interaction);
+  if (voiceMembers && voiceMembers.length > 0) {
+    return voiceMembers;
   }
 
   const members = await getGuildMembers(guild);
   return [...members.values()].filter((guildMember) => !guildMember.user.bot);
-}
-
-async function fetchInvokerVoiceMembers(interaction: ChatInputCommandInteraction) {
-  const guild = interaction.guild;
-  if (!guild) {
-    return null;
-  }
-
-  const member = await guild.members.fetch(interaction.user.id).catch(logDiscordCatch("fetch /compare invoker voice member", null, {
-    guildId: interaction.guildId,
-    discordId: interaction.user.id,
-  }));
-  const voiceChannel = member?.voice.channel;
-  if (!voiceChannel) {
-    return [] as GuildMember[];
-  }
-
-  return [...voiceChannel.members.values()].filter((voiceMember) => !voiceMember.user.bot);
 }
 
 type GuildMappings = {
@@ -538,7 +535,7 @@ export async function handleCompareChatInput(interaction: ChatInputCommandIntera
     return handleWipeReactComparison(interaction, comparisonMembers, wipeReactMessageId);
   }
 
-  const voiceMembers = await fetchInvokerVoiceMembers(interaction);
+  const voiceMembers = getGuildVoiceMembers(interaction);
   if (!voiceMembers) {
     await interaction.editReply({
       content: "RustLens could not load members for this server.",
