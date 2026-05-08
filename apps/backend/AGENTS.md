@@ -353,6 +353,19 @@ Guild-scoped Steam-Discord associations managed by guild admins.
 - `guild_steam_discord_links_guild_discord_idx ON (guild_id, discord_id)` — lookup by guild + Discord user.
 - `guild_steam_discord_links_guild_steam_idx ON (guild_id, steam_id)` — lookup by guild + Steam account.
 
+### `user_notification_preferences`
+
+Per-user notification toggle state. Both flags default to `TRUE` (opt-out). Storage-only at this point — no delivery system reads them yet.
+
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | `TEXT` | PK, FK to `app_users.id` ON DELETE CASCADE |
+| `notify_in_app` | `BOOLEAN NOT NULL DEFAULT TRUE` | Future in-app notification centre |
+| `notify_discord_announcements` | `BOOLEAN NOT NULL DEFAULT TRUE` | Future bot DM announcements |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+Lazily upserted on first `GET /api/app/me/preferences` so handlers never see a missing-row case.
+
 ## Background services
 
 `cmd/server/main.go` starts three long-running goroutines, each cancelled by the root `ctx` on SIGINT/SIGTERM:

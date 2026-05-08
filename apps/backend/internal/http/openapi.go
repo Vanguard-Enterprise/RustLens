@@ -2060,6 +2060,49 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/app/me/preferences": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get the current user's notification preferences",
+					"description": "Returns the signed-in user's notification preferences. Lazily creates a default row (both flags true) if none exists.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Preferences returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/NotificationPreferences"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"patch": map[string]any{
+					"summary":     "Update the current user's notification preferences",
+					"description": "Applies a partial update. Absent fields are unchanged. Unknown fields and non-boolean values return 400.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/NotificationPreferencesPatch"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Updated preferences returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/NotificationPreferences"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/app/me/connections": map[string]any{
 				"get": map[string]any{
 					"summary":     "Get current app user connections",
@@ -3128,6 +3171,22 @@ func buildOpenAPIDocument() map[string]any {
 						"discordAccount": map[string]any{"$ref": "#/components/schemas/ConnectedAccount"},
 					},
 					"required": []string{"emails", "steamAccounts"},
+				},
+				"NotificationPreferences": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"notifyInApp":                map[string]any{"type": "boolean"},
+						"notifyDiscordAnnouncements": map[string]any{"type": "boolean"},
+					},
+					"required": []string{"notifyInApp", "notifyDiscordAnnouncements"},
+				},
+				"NotificationPreferencesPatch": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"notifyInApp":                map[string]any{"type": "boolean"},
+						"notifyDiscordAnnouncements": map[string]any{"type": "boolean"},
+					},
+					"additionalProperties": false,
 				},
 				"UserGuildMembershipListResponse": map[string]any{
 					"type": "object",
