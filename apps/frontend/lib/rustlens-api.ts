@@ -205,6 +205,13 @@ export type TokenResponse = {
 	debugToken?: string;
 };
 
+export type NotificationPreferences = {
+	notifyInApp: boolean;
+	notifyDiscordAnnouncements: boolean;
+};
+
+export type NotificationPreferencesPatch = Partial<NotificationPreferences>;
+
 /**
  * Envelope returned by /api/app/admin/actions/{type} on success. `result` is
  * whatever the action's Execute() put in ActionResult.Payload.
@@ -359,6 +366,22 @@ export async function getCurrentUserSafe() {
 	} catch {
 		return null;
 	}
+}
+
+export function getNotificationPreferences() {
+	return backendFetch<NotificationPreferences>(
+		"/api/app/me/preferences",
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export function updateNotificationPreferences(patch: NotificationPreferencesPatch) {
+	return backendFetch<NotificationPreferences>(
+		"/api/app/me/preferences",
+		{ method: "PATCH", body: JSON.stringify(patch) },
+		{ requireSession: true },
+	);
 }
 
 /**
