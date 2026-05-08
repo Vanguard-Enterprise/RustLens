@@ -42,9 +42,14 @@ export function AccountSettingsDialog({
 	const [loadState, setLoadState] = React.useState<LoadState>({ status: "idle" });
 	const [saveState, setSaveState] = React.useState<SaveState>({ status: "idle" });
 
+	const loadingNonceRef = React.useRef(0);
+
 	const load = React.useCallback(async () => {
+		const myNonce = ++loadingNonceRef.current;
 		setLoadState({ status: "loading" });
 		const result = await loadNotificationPreferencesAction();
+		// If a newer load (or a close-then-reopen) has bumped the nonce, drop this response.
+		if (myNonce !== loadingNonceRef.current) return;
 		if (!result.ok) {
 			setLoadState({ status: "error", message: result.error });
 			return;
@@ -62,6 +67,8 @@ export function AccountSettingsDialog({
 			void load();
 			setSaveState({ status: "idle" });
 		} else {
+			// Bumping the nonce invalidates any in-flight response from the previous open.
+			loadingNonceRef.current++;
 			setLoadState({ status: "idle" });
 		}
 	}, [open, load]);
@@ -113,11 +120,9 @@ export function AccountSettingsDialog({
 				</DialogHeader>
 
 				<section aria-labelledby="notifications-heading" className="space-y-4">
-					<div>
-						<h3 id="notifications-heading" className="text-sm font-medium">
-							Notifications
-						</h3>
-					</div>
+					<h3 id="notifications-heading" className="text-sm font-medium">
+						Notifications
+					</h3>
 
 					{loadState.status === "loading" || loadState.status === "idle" ? (
 						<div className="text-sm text-muted-foreground">Loading…</div>
