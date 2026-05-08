@@ -12,6 +12,7 @@ type AppSidebarProps = Omit<React.ComponentProps<typeof Sidebar>, "variant"> & {
 	user: SidebarNavUser;
 	csrfToken: string;
 	variant?: React.ComponentProps<typeof Sidebar>["variant"];
+	installBotUrl?: string;
 };
 
 export function AppSidebar({ variant, ...props }: AppSidebarProps) {

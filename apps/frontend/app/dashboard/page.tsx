@@ -24,6 +24,11 @@ export default async function Page() {
       session.roles.includes("internal_admin"),
   }
 
+  const discordClientId = process.env.DISCORD_CLIENT_ID
+  const installBotUrl = discordClientId
+    ? `https://discord.com/oauth2/authorize?client_id=${discordClientId}&permissions=8&scope=bot+applications.commands`
+    : undefined
+
   return (
     <SidebarProvider
       style={
@@ -33,7 +38,12 @@ export default async function Page() {
         } as React.CSSProperties
       }
     >
-      <AppSidebar csrfToken={csrfToken} user={user} variant="inset" />
+      <AppSidebar
+        csrfToken={csrfToken}
+        installBotUrl={installBotUrl}
+        user={user}
+        variant="inset"
+      />
       <SidebarInset>
         <SiteHeader />
         <div className="flex flex-1 flex-col">

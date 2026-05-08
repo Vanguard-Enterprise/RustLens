@@ -112,11 +112,14 @@ type DashboardAppSidebarProps = Omit<
 	permissions?: string[];
 	/** Optional override for the underlying shadcn Sidebar visual variant. */
 	sidebarVariant?: React.ComponentProps<typeof Sidebar>["variant"];
+	/** Discord OAuth URL that adds the bot to a guild with admin permissions. */
+	installBotUrl?: string;
 };
 
 export function DashboardAppSidebar({
 	area,
 	csrfToken,
+	installBotUrl,
 	permissions = [],
 	sidebarVariant,
 	user,
@@ -153,7 +156,7 @@ export function DashboardAppSidebar({
 				</SidebarMenu>
 			</SidebarHeader>
 			<SidebarContent>
-				<NavMain items={navMain} />
+				<NavMain items={navMain} installBotUrl={installBotUrl} />
 				{area === "admin" ? (
 					<>
 						<NavGroup

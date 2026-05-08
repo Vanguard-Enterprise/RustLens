@@ -384,7 +384,7 @@ The BattleMetrics public API client is unauthenticated; there is no `BATTLEMETRI
 | `BOT_OWNER_GUILD_ID` / `BOT_OWNER_DISCORD_IDS` | required for owner-only `/manage` |
 | `PROXY_ENABLED` / `PROXY_ENDPOINTS` | `false` / `` (controls bot-side proxied request concurrency) |
 
-**Frontend** expects `APP_SESSION_SECRET` and `APP_API_INTERNAL_SECRET` (shared with backend), and usually `RUSTLENS_API_URL`. `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be the canonical external origin used for Discord OAuth callbacks. Auth-handler rate limiting uses `REDIS_URL` (or `RATE_LIMIT_REDIS_URL`) via `lib/rate-limit.ts`. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects a dedicated canonical client-IP header configured via `TRUST_PROXY_IP_HEADER` for the rate limiter.
+**Frontend** expects `APP_SESSION_SECRET` and `APP_API_INTERNAL_SECRET` (shared with backend), and usually `RUSTLENS_API_URL`. `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be the canonical external origin used for Discord OAuth callbacks. `DISCORD_CLIENT_ID` (server-side, shared with backend) is read by the dashboard to render the "Install Bot" sidebar link; if unset, the link is hidden. Auth-handler rate limiting uses `REDIS_URL` (or `RATE_LIMIT_REDIS_URL`) via `lib/rate-limit.ts`. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects a dedicated canonical client-IP header configured via `TRUST_PROXY_IP_HEADER` for the rate limiter.
 
 `/wipereact missing` requires the Discord Guild Members privileged intent because the shard worker requests `GatewayIntentBits.GuildMembers` (alongside `Guilds` and `GuildVoiceStates`).
 

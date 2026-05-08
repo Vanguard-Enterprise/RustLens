@@ -2,7 +2,6 @@
 
 import Link from "next/link"
 
-import { Button } from "@/components/ui/button"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -10,41 +9,42 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { CirclePlusIcon, MailIcon } from "lucide-react"
+import { BotIcon } from "lucide-react"
 
 export function NavMain({
   items,
+  installBotUrl,
 }: {
   items: {
     title: string
     url: string
     icon?: React.ReactNode
   }[]
+  installBotUrl?: string
 }) {
   return (
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-2">
-        <SidebarMenu>
-          <SidebarMenuItem className="flex items-center gap-2">
-            <SidebarMenuButton
-              tooltip="Quick Create"
-              className="min-w-8 bg-primary text-primary-foreground duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
-            >
-              <CirclePlusIcon
-              />
-              <span>Quick Create</span>
-            </SidebarMenuButton>
-            <Button
-              size="icon"
-              className="size-8 group-data-[collapsible=icon]:opacity-0"
-              variant="outline"
-            >
-              <MailIcon
-              />
-              <span className="sr-only">Inbox</span>
-            </Button>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        {installBotUrl ? (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                tooltip="Install Bot"
+                className="min-w-8 bg-primary text-primary-foreground duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
+              >
+                <a
+                  href={installBotUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <BotIcon />
+                  <span>Install Bot</span>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        ) : null}
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
