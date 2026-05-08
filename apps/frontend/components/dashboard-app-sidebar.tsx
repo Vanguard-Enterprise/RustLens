@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { NavGroup } from "@/components/nav-group";
 import { NavMain } from "@/components/nav-main";
 import { NavSecondary } from "@/components/nav-secondary";
+import { AccountSettingsDialog } from "@/components/account-settings-dialog";
 import {
 	SidebarNavUser,
 	type SidebarNavUser as SidebarNavUserData,
@@ -91,12 +92,6 @@ const NAV_CLOUDS = [
 	},
 ];
 
-const NAV_SECONDARY = [
-	{ title: "Settings", url: "#", icon: <Settings2Icon /> },
-	{ title: "Get Help", url: "#", icon: <CircleHelpIcon /> },
-	{ title: "Search", url: "#", icon: <SearchIcon /> },
-];
-
 function buildNavMain(area: DashboardSidebarArea): NavItem[] {
 	return [PRIMARY_NAV[area]];
 }
@@ -129,7 +124,23 @@ export function DashboardAppSidebar({
 	const navMain = buildNavMain(area);
 	const homeHref = area === "admin" ? "/admin" : "/dashboard";
 
+	const [settingsOpen, setSettingsOpen] = React.useState(false);
+
+	const navSecondary = React.useMemo(
+		() => [
+			{
+				title: "Settings",
+				icon: <Settings2Icon />,
+				onSelect: () => setSettingsOpen(true),
+			},
+			{ title: "Get Help", icon: <CircleHelpIcon />, url: "#" },
+			{ title: "Search", icon: <SearchIcon />, url: "#" },
+		],
+		[],
+	);
+
 	return (
+		<>
 		<Sidebar collapsible="icon" variant={sidebarVariant} {...props}>
 			<SidebarHeader>
 				<SidebarMenu>
@@ -202,13 +213,15 @@ export function DashboardAppSidebar({
 						})()}
 					</>
 				) : (
-					<NavSecondary items={NAV_SECONDARY} className="mt-auto" />
+					<NavSecondary items={navSecondary} className="mt-auto" />
 				)}
 			</SidebarContent>
 			<SidebarFooter>
 				<SidebarNavUser csrfToken={csrfToken} user={user} variant={area} />
 			</SidebarFooter>
 		</Sidebar>
+		<AccountSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+		</>
 	);
 }
 
