@@ -209,6 +209,8 @@ func NewRouter(
 		r.Group(func(r chi.Router) {
 			r.Use(requireSession)
 			r.Get("/me", appAuthHandler.Me)
+			r.Get("/me/preferences", appAuthHandler.Preferences)
+			r.Patch("/me/preferences", appAuthHandler.UpdatePreferences)
 		})
 
 		r.Group(func(r chi.Router) {
