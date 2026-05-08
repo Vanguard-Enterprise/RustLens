@@ -57,11 +57,11 @@ func TestRepo_UpsertNotificationPreferences_PartialPatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	if got.NotifyInApp != false {
-		t.Errorf("NotifyInApp: got %v, want false", got.NotifyInApp)
+	if got.NotifyInApp {
+		t.Errorf("NotifyInApp: got true, want false")
 	}
-	if got.NotifyDiscordAnnouncements != true {
-		t.Errorf("NotifyDiscordAnnouncements: got %v, want true (default preserved)", got.NotifyDiscordAnnouncements)
+	if !got.NotifyDiscordAnnouncements {
+		t.Errorf("NotifyDiscordAnnouncements: got false, want true (default preserved)")
 	}
 
 	// Now patch the announcements flag too; in-app must remain false.
@@ -72,11 +72,11 @@ func TestRepo_UpsertNotificationPreferences_PartialPatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert 2: %v", err)
 	}
-	if got.NotifyInApp != false {
-		t.Errorf("after second patch NotifyInApp: got %v, want false", got.NotifyInApp)
+	if got.NotifyInApp {
+		t.Errorf("after second patch NotifyInApp: got true, want false")
 	}
-	if got.NotifyDiscordAnnouncements != true {
-		t.Errorf("after second patch NotifyDiscordAnnouncements: got %v, want true", got.NotifyDiscordAnnouncements)
+	if !got.NotifyDiscordAnnouncements {
+		t.Errorf("after second patch NotifyDiscordAnnouncements: got false, want true")
 	}
 }
 

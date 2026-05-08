@@ -2,9 +2,6 @@ package appauth
 
 import (
 	"context"
-	"errors"
-
-	"github.com/jackc/pgx/v5"
 )
 
 // NotificationPreferences is the per-user notification toggle state.
@@ -33,9 +30,6 @@ func (r *Repo) LoadNotificationPreferences(ctx context.Context, userID string) (
 		ON CONFLICT (user_id) DO UPDATE SET user_id = EXCLUDED.user_id
 		RETURNING notify_in_app, notify_discord_announcements
 	`, userID).Scan(&prefs.NotifyInApp, &prefs.NotifyDiscordAnnouncements)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return NotificationPreferences{}, ErrUserNotFound
-	}
 	if err != nil {
 		return NotificationPreferences{}, err
 	}
