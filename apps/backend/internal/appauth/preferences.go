@@ -2,6 +2,10 @@ package appauth
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
 )
 
 // NotificationPreferences is the per-user notification toggle state.
@@ -59,4 +63,52 @@ func (r *Repo) UpsertNotificationPreferences(ctx context.Context, userID string,
 		return NotificationPreferences{}, err
 	}
 	return prefs, nil
+}
+
+// Preferences handles GET /api/app/me/preferences. Requires RequireSession.
+// Lazily creates a default row if none exists.
+func (h *Handler) Preferences(w http.ResponseWriter, r *http.Request) {
+	session := SessionFromContext(r.Context())
+	if session == nil {
+		writeJSONError(w, http.StatusUnauthorized, "session_required")
+		return
+	}
+	prefs, err := h.repo.LoadNotificationPreferences(r.Context(), session.UserID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	writeJSON(w, http.StatusOK, prefs)
+}
+
+// UpdatePreferences handles PATCH /api/app/me/preferences. Requires
+// RequireSession. Body is a strict-decoded subset of NotificationPreferences;
+// absent fields are unchanged. Unknown fields and non-boolean values produce 400.
+func (h *Handler) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
+	session := SessionFromContext(r.Context())
+	if session == nil {
+		writeJSONError(w, http.StatusUnauthorized, "session_required")
+		return
+	}
+
+	var raw struct {
+		NotifyInApp                *bool `json:"notifyInApp"`
+		NotifyDiscordAnnouncements *bool `json:"notifyDiscordAnnouncements"`
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&raw); err != nil && !errors.Is(err, io.EOF) {
+		writeJSONError(w, http.StatusBadRequest, "bad_request")
+		return
+	}
+
+	prefs, err := h.repo.UpsertNotificationPreferences(r.Context(), session.UserID, NotificationPreferencesPatch{
+		NotifyInApp:                raw.NotifyInApp,
+		NotifyDiscordAnnouncements: raw.NotifyDiscordAnnouncements,
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	writeJSON(w, http.StatusOK, prefs)
 }
