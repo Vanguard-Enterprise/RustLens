@@ -208,6 +208,32 @@ func TestHandler_Preferences_Patch_RejectsNonBoolean(t *testing.T) {
 	}
 }
 
+func TestHandler_Preferences_Patch_EmptyBodyIsNoOp(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		 VALUES ($1, 'discord-prefs-h5', 'prefs_h5', 'P5')`, prefsTestUserID); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	h := appauth.NewHandler(appauth.NewRepo(pool))
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/app/me/preferences", nil)
+	rec := httptest.NewRecorder()
+	withSession(prefsTestUserID, h.UpdatePreferences)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var got appauth.NotificationPreferences
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !got.NotifyInApp || !got.NotifyDiscordAnnouncements {
+		t.Errorf("empty-body PATCH must leave defaults intact, got %+v", got)
+	}
+}
+
 func TestHandler_Preferences_NoSession_401(t *testing.T) {
 	pool := testPool(t)
 	h := appauth.NewHandler(appauth.NewRepo(pool))
