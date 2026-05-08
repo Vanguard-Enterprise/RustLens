@@ -313,14 +313,14 @@ function buildStatusField(profile: SteamProfile | null) {
   if (status.isOnline && status.onlineUnix) {
     return {
       name: "Status",
-      value: `${VIEW_EMOJIS.online} **Online** on ${serverLink} for <t:${status.onlineUnix}:R>`,
+      value: `${VIEW_EMOJIS.online} **Online** on ${serverLink} since <t:${status.onlineUnix}:R>`,
     };
   }
 
   if (!status.isOnline && status.offlineUnix) {
     return {
       name: "Status",
-      value: `${VIEW_EMOJIS.offline} **Offline** for <t:${status.offlineUnix}:R>\nLast online on: ${serverLink}`,
+      value: `${VIEW_EMOJIS.offline} **Offline** since <t:${status.offlineUnix}:R>\nLast online on: ${serverLink}`,
     };
   }
 

@@ -108,7 +108,7 @@ describe("view-command", () => {
     }).toJSON();
 
     expect(embed.fields?.[1]?.name).toBe("Status");
-    expect(embed.fields?.[1]?.value).toBe("<:online:1497993468981805076> **Online** on [Vital 10x](https://www.battlemetrics.com/servers/rust/16741517) for <t:1767225600:R>");
+    expect(embed.fields?.[1]?.value).toBe("<:online:1497993468981805076> **Online** on [Vital 10x](https://www.battlemetrics.com/servers/rust/16741517) since <t:1767225600:R>");
   });
 
   it("adds offline status with the last tracked server", () => {
@@ -124,7 +124,7 @@ describe("view-command", () => {
 
     expect(field).toEqual({
       name: "Status",
-      value: "<:offline:1497993467660599476> **Offline** for <t:1767225600:R>\nLast online on: [Vital 10x](https://www.battlemetrics.com/servers/rust/16741517)",
+      value: "<:offline:1497993467660599476> **Offline** since <t:1767225600:R>\nLast online on: [Vital 10x](https://www.battlemetrics.com/servers/rust/16741517)",
     });
   });
 
