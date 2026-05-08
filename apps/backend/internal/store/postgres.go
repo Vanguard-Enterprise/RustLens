@@ -794,6 +794,19 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create app_users_active_idx: %w", err)
 	}
 
+	// user_notification_preferences — per-user notification flags.
+	// Flags are storage-only at this point; no delivery system reads them yet.
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS user_notification_preferences (
+			user_id                       TEXT PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
+			notify_in_app                 BOOLEAN     NOT NULL DEFAULT TRUE,
+			notify_discord_announcements  BOOLEAN     NOT NULL DEFAULT TRUE,
+			updated_at                    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`); err != nil {
+		return fmt.Errorf("create user_notification_preferences: %w", err)
+	}
+
 	if _, err := p.pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS user_emails (
 			email TEXT PRIMARY KEY,
