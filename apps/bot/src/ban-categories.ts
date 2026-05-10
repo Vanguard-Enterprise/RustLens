@@ -57,6 +57,9 @@ export function resolveCustomIdCategory(customId: string): BanCategory | null {
   if (customId.startsWith("settings:") || customId.startsWith("transfer:")) {
     return "setup";
   }
+  if (customId.startsWith("setsteam:")) {
+    return "linking";
+  }
   if (customId.startsWith("track:") || customId.startsWith("track_modal:") || customId.startsWith("track_select:")) {
     return "activity";
   }

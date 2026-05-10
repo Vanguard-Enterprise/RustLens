@@ -22,6 +22,7 @@ src/
   backend-client.ts     # HTTP client for backend shard API (JWT auth)
   config.ts             # Env config loader
   admin-command.ts      # /admin setsteam|removesteam registration + guild-link admin flow
+  setsteam-command.ts   # /setsteam — opens a v2 modal with the user's prior linked accounts (StringSelect) plus a free-text fallback; on submit creates a soft link + per-guild link
   settings-command.ts   # /settings embed + select-menu/modal flow for guild settings
   bind-command.ts       # /bind fullkit/turret/rocket/c4 registration + modal flow
   wipereact-command.ts  # /wipereact create/delete/notreacted/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, logs embeds, and backend-queued schedule post claiming
