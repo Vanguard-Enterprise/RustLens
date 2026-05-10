@@ -1,5 +1,7 @@
 "use server";
 
+import { unstable_rethrow } from "next/navigation";
+
 import {
 	getNotificationPreferences,
 	updateNotificationPreferences,
@@ -22,6 +24,9 @@ export async function loadNotificationPreferencesAction(): Promise<LoadPreferenc
 		const preferences = await getNotificationPreferences();
 		return { ok: true, preferences };
 	} catch (err) {
+		// Let Next.js redirect/notFound exceptions propagate so that a revoked
+		// session redirect from backendFetch reaches the framework.
+		unstable_rethrow(err);
 		return { ok: false, error: (err as Error).message };
 	}
 }
@@ -34,6 +39,7 @@ export async function saveNotificationPreferencesAction(
 		const preferences = await updateNotificationPreferences(patch);
 		return { ok: true, preferences };
 	} catch (err) {
+		unstable_rethrow(err);
 		return { ok: false, error: (err as Error).message };
 	}
 }
