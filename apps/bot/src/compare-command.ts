@@ -15,7 +15,7 @@ import { loadConfig } from "./config.js";
 import { paginateSections, replyPaginatedEmbeds, type PaginatedSection } from "./embed-paginator.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { buildFooter, RUSTLENS_EMBED_COLOR } from "./shared.js";
+import { createEmbed } from "./shared.js";
 
 export const COMPARE_COMMAND_NAME = "compare";
 
@@ -68,12 +68,9 @@ function getWorkerID() {
 }
 
 function buildBaseEmbed(title: string, description: string) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle(title)
-    .setDescription(description)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+    .setDescription(description);
 }
 
 function userLines(userIds: readonly string[]): string[] {

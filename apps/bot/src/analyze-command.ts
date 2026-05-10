@@ -2,7 +2,6 @@ import type { AutocompleteInteraction, ChatInputCommandInteraction, Client } fro
 import {
   ApplicationIntegrationType,
   AttachmentBuilder,
-  EmbedBuilder,
   InteractionContextType,
   SlashCommandBuilder,
 } from "discord.js";
@@ -16,7 +15,7 @@ import {
 import { extractBmID } from "./bm-input.js";
 import { loadConfig } from "./config.js";
 import { buildNextBestOfflineFieldValue, computeNextBestOfflineWindow } from "./next-best-offline.js";
-import { buildFooter, RUSTLENS_EMBED_COLOR } from "./shared.js";
+import { createEmbed, buildFooter, RUSTLENS_EMBED_COLOR } from "./shared.js";
 import { resolveSteamInputErrorMessage, resolveSteamProfileInput } from "./steam-input.js";
 import { renderServerAnalyticsChart } from "./server-analytics-chart.js";
 import { renderTrackAnalyticsChart } from "./track-analytics-chart.js";
@@ -100,16 +99,13 @@ function getWorkerID() {
 }
 
 function buildErrorEmbed(description: string) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Error")
-    .setDescription(description)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+    .setDescription(description);
 }
 
 function buildOfflineAnalyticsEmbed(analytics: TrackGroupAnalyticsResponse) {
-  const embed = new EmbedBuilder()
+  const embed = createEmbed()
     .setTitle(`Offline Analytics - ${analytics.groupName}`)
     .setDescription(`**${analytics.serverName}**`)
     .setColor(RUSTLENS_EMBED_COLOR)
@@ -128,7 +124,7 @@ function buildOfflineAnalyticsEmbed(analytics: TrackGroupAnalyticsResponse) {
 }
 
 function buildServerAnalyticsEmbed(analytics: ServerAnalyticsResponse) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle(`Server Analytics - ${analytics.serverName}`)
     .setDescription(`Trend: **${analytics.timeframe}** | Weekday distribution: **${analytics.cacheWindow} average**`)
     .setColor(RUSTLENS_EMBED_COLOR)

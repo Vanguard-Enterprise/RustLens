@@ -9,7 +9,6 @@ import {
   ApplicationIntegrationType,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
   InteractionContextType,
   MessageFlags,
   ModalBuilder,
@@ -20,7 +19,7 @@ import {
 } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
-import { buildFooter, logDiscordCatch, RUSTLENS_EMBED_COLOR } from "./shared.js";
+import { createEmbed, logDiscordCatch } from "./shared.js";
 
 export const TRANSFER_COMMAND_NAME = "transfer";
 
@@ -61,20 +60,14 @@ function getWorkerID() {
 }
 
 function buildTransferEmbed(title: string, description: string) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle(title)
-    .setDescription(description)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+    .setDescription(description);
 }
 
 function buildInstructionsEmbed() {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Instructions")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter())
     .addFields({
       name: "Hexaytron",
       value:

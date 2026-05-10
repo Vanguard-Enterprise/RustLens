@@ -3,7 +3,7 @@ import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, Messa
 import { BackendClient, type GuildOnlineSummaryItem } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { replyPaginatedEmbeds } from "./embed-paginator.js";
-import { buildFooter, FOOTER_TEXT, RUSTLENS_EMBED_COLOR } from "./shared.js";
+import { createEmbed, FOOTER_TEXT } from "./shared.js";
 
 export const ONLINE_COMMAND_NAME = "online";
 
@@ -128,32 +128,23 @@ function splitFieldValues(serverName: string, lines: string[]): APIEmbedField[] 
 function buildPagedEmbeds(items: GuildOnlineSummaryItem[]) {
   if (items.length === 0) {
     return [
-      new EmbedBuilder()
+      createEmbed()
         .setTitle(ONLINE_SUMMARY_TITLE)
-        .setDescription("No linked users are currently online on tracked servers.")
-        .setColor(RUSTLENS_EMBED_COLOR)
-        .setTimestamp()
-        .setFooter(buildFooter()),
+        .setDescription("No linked users are currently online on tracked servers."),
     ];
   }
 
   const fields = groupSummaryItems(items).flatMap((group) => splitFieldValues(group.serverName, group.lines));
   const embeds: EmbedBuilder[] = [];
-  let currentEmbed = new EmbedBuilder()
-    .setTitle(ONLINE_SUMMARY_TITLE)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+  let currentEmbed = createEmbed()
+    .setTitle(ONLINE_SUMMARY_TITLE);
   let currentCharCount = ONLINE_SUMMARY_TITLE.length + FOOTER_TEXT.length;
   let currentFieldCount = 0;
 
   const pushCurrent = () => {
     embeds.push(currentEmbed);
-    currentEmbed = new EmbedBuilder()
-      .setTitle(ONLINE_SUMMARY_CONT_TITLE)
-      .setColor(RUSTLENS_EMBED_COLOR)
-      .setTimestamp()
-      .setFooter(buildFooter());
+    currentEmbed = createEmbed()
+      .setTitle(ONLINE_SUMMARY_CONT_TITLE);
     currentCharCount = ONLINE_SUMMARY_CONT_TITLE.length + FOOTER_TEXT.length;
     currentFieldCount = 0;
   };

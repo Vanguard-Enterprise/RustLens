@@ -11,7 +11,6 @@ import {
   ActionRowBuilder,
   ApplicationIntegrationType,
   ChannelType,
-  EmbedBuilder,
   InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
@@ -23,7 +22,7 @@ import { StringSelectBuilder, ModalV2Builder } from "./builders/index.js";
 import { BackendClient, type GuildSettingsPatch } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, updateGuildSettings } from "./guild-settings.js";
-import { buildFooter, RUSTLENS_EMBED_COLOR, getFieldValues, logDiscordCatch } from "./shared.js";
+import { createEmbed, getFieldValues, logDiscordCatch } from "./shared.js";
 
 export const SETTINGS_COMMAND_NAME = "settings";
 
@@ -146,14 +145,11 @@ async function buildSettingsPayload(guild: Guild) {
   const settings = await fetchGuildSettings(guild.id);
   const trackedUsersCategoryValue = await formatCategoryValue(guild, settings.trackedUsersCategoryId);
 
-  const embed = new EmbedBuilder()
+  const embed = createEmbed()
     .setTitle("Server Settings")
     .setDescription(
       "You can edit various settings related to your guild in here.\nRun `/server` to configure tracked servers for this guild.",
     )
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter())
     .addFields(
       {
         name: "📜 Wipe React Logs",

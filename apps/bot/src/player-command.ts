@@ -10,8 +10,7 @@ import {
 import { extractBmID } from "./bm-input.js";
 import { loadConfig } from "./config.js";
 import {
-  RUSTLENS_EMBED_COLOR,
-  buildFooter,
+  createEmbed,
   buildWebsiteAdminOnlyEmbed,
 } from "./shared.js";
 import {
@@ -275,12 +274,9 @@ function isBmPrivateProfileError(error: unknown) {
 }
 
 function buildPrivateProfileEmbed(steamId: string, bmId: string | null) {
-  const embed = new EmbedBuilder()
+  const embed = createEmbed()
     .setTitle("Error")
-    .setDescription("BM profile private")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+    .setDescription("BM profile private");
 
   const info: string[] = [
     `${PLAYER_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`,
@@ -563,11 +559,8 @@ async function buildBmOnlyLinksEmbed(bmId: string, isAdmin: boolean): Promise<Em
     return buildSteamLinksEmbed(account.steamId, isAdmin);
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle(account?.bmName ? `Links - ${account.bmName}` : "Links")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+  const embed = createEmbed()
+    .setTitle(account?.bmName ? `Links - ${account.bmName}` : "Links");
 
   embed.addFields({
     name: "Information",
@@ -593,11 +586,8 @@ async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<
   const { strong, soft } = partitionLinksByDiscord(links);
 
   const title = account?.bmName ? `Links - ${account.bmName}` : "Links";
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+  const embed = createEmbed()
+    .setTitle(title);
 
   if (account?.avatarImage) {
     embed.setThumbnail(account.avatarImage);
@@ -701,11 +691,8 @@ async function buildDiscordLinksEmbed(discordUser: User): Promise<{
   ]);
 
   const discordName = discordUser.displayName ?? discordUser.username ?? discordUser.tag;
-  const embed = new EmbedBuilder()
-    .setTitle(`Links - ${discordName}`)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+  const embed = createEmbed()
+    .setTitle(`Links - ${discordName}`);
 
   const avatarUrl = discordUser.displayAvatarURL({ size: 256 });
   if (avatarUrl) {
@@ -838,11 +825,8 @@ function formatGapDurationDays(fromUnix: number, toUnix: number) {
 
 export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
   const title = analytics.bmName ? `Analytics - ${analytics.bmName}` : "Analytics";
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+  const embed = createEmbed()
+    .setTitle(title);
 
   if (analytics.avatarImage) {
     embed.setThumbnail(analytics.avatarImage);

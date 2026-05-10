@@ -14,6 +14,13 @@ export function buildRawFooter(text: string = FOOTER_TEXT) {
   return { text, icon_url: RUSTLENS_EMBED_ICON_URL };
 }
 
+export function createEmbed() {
+  return new EmbedBuilder()
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter(buildFooter());
+}
+
 export function logDiscordError(
   context: string,
   error: unknown,
@@ -37,12 +44,9 @@ export function logDiscordCatch<T>(
 }
 
 export function buildWebsiteAdminOnlyEmbed() {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Error")
-    .setDescription("This is locked to website admins only.")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+    .setDescription("This is locked to website admins only.");
 }
 
 export type ModalComponentNode = {

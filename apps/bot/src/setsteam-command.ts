@@ -4,7 +4,7 @@ import { BackendClient, type SetSteamCandidate } from "./backend-client.js";
 import { ModalV2Builder, StringSelectBuilder, TextInputBuilder, TextInputStyle } from "./builders/index.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
-import { buildFooter, getFieldValues, logDiscordCatch, RUSTLENS_EMBED_COLOR } from "./shared.js";
+import { createEmbed, buildFooter, getFieldValues, logDiscordCatch, RUSTLENS_EMBED_COLOR } from "./shared.js";
 import { resolveSteamInputErrorMessage } from "./steam-input.js";
 import { buildProfileButtons, buildUserEmbed } from "./view-command.js";
 
@@ -38,12 +38,9 @@ function getWorkerID() {
 }
 
 function buildErrorEmbed(title: string, description: string) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle(title)
-    .setDescription(description)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+    .setDescription(description);
 }
 
 async function replyEphemeralEmbed(
@@ -88,7 +85,7 @@ function buildLinkingLogEmbed(
   steamId: string,
   bmId: string | null,
 ) {
-  const embed = new EmbedBuilder()
+  const embed = createEmbed()
     .setTitle("Steam account linked")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()

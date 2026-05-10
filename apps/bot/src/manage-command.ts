@@ -34,7 +34,7 @@ import {
   parseOwnerProxyInput,
   proxyChoiceLabel,
 } from "./owner-command.js";
-import { buildFooter, FOOTER_TEXT, getFieldValues, RUSTLENS_EMBED_COLOR } from "./shared.js";
+import { createEmbed, buildFooter, FOOTER_TEXT, getFieldValues } from "./shared.js";
 
 export const MANAGE_COMMAND_NAME = "manage";
 
@@ -189,12 +189,9 @@ function buildTrackedServerChoiceName(server: Pick<TrackedServer, "bmId" | "name
 }
 
 function buildEmbed(title: string, description: string) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle(title)
-    .setDescription(description)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+    .setDescription(description);
 }
 
 function buildTrackedServerModal(server?: TrackedServer) {

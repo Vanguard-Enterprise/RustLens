@@ -47,7 +47,6 @@ import {
   buildRawFooter,
   FOOTER_TEXT,
   RUSTLENS_EMBED_COLOR,
-  type ModalComponentNode,
   getFieldValues,
   logDiscordCatch,
   logDiscordError,

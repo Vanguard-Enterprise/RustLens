@@ -13,7 +13,7 @@ import {
 } from "discord.js";
 import { BackendClient, type GuildTrackedServer, type TrackedServer } from "./backend-client.js";
 import { loadConfig } from "./config.js";
-import { buildFooter, logDiscordError, RUSTLENS_EMBED_COLOR } from "./shared.js";
+import { createEmbed, logDiscordError } from "./shared.js";
 
 export const SERVER_COMMAND_NAME = "server";
 
@@ -82,12 +82,9 @@ function getWorkerID() {
 }
 
 function buildServerEmbed(title: string, description: string) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle(title)
-    .setDescription(description)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+    .setDescription(description);
 }
 
 function trimChoiceLabel(value: string, maxLength = 100) {

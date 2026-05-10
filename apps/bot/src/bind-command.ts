@@ -28,7 +28,6 @@ import { loadConfig } from "./config.js";
 import {
   buildRawFooter,
   RUSTLENS_EMBED_COLOR,
-  type ModalComponentNode,
   getFieldValues,
   replyEphemeral,
 } from "./shared.js";

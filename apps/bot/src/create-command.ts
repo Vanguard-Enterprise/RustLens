@@ -9,7 +9,6 @@ import {
   ApplicationIntegrationType,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
   InteractionContextType,
   MessageFlags,
   SlashCommandBuilder,
@@ -18,7 +17,7 @@ import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { isGuildTooLargeForDms, replyDmLimitError } from "./dm-limit.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { buildFooter, logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR, replyEphemeral } from "./shared.js";
+import { createEmbed, logDiscordCatch, logDiscordError, replyEphemeral } from "./shared.js";
 
 export const CREATE_COMMAND_NAME = "create";
 
@@ -108,12 +107,9 @@ function buildInviteEmbed(pingRoleId: string, requiredRoleId: string | null) {
     ? `> * Must have steam ID set via \`/setsteam\`\n> * Must have <@&${requiredRoleId}>`
     : "> * Must have steam ID set via `/setsteam`";
 
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Clan Invite")
     .setDescription("Press the button below to request a clan invite!")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter())
     .addFields(
       { name: "Prerequisites:", value: prerequisites },
       { name: "Information", value: `> * Pings: <@&${pingRoleId}>` },
@@ -147,11 +143,8 @@ function buildClanInviteEmbed(
   requesterDisplayName: string,
   requesterAvatarURL: string | null,
 ) {
-  const embed = new EmbedBuilder()
-    .setDescription(`\n\`\`\`\n/clan invite ${steamId}\`\`\``)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+  const embed = createEmbed()
+    .setDescription(`\n\`\`\`\n/clan invite ${steamId}\`\`\``);
 
   embed.setAuthor({
     name: requesterDisplayName,
@@ -162,14 +155,11 @@ function buildClanInviteEmbed(
 }
 
 function buildAcceptedDmEmbed(accepterId: string, accepterDisplayName: string) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Clan Invite Pending")
     .setDescription(
       `<@${accepterId}> (${accepterDisplayName}) has accepted your clan invite request.`,
-    )
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter(buildFooter());
+    );
 }
 
 export async function ensureCreateCommand(client: Client, shardID: number) {
