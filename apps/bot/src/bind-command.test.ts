@@ -424,7 +424,7 @@ describe("bind command", () => {
       "craft.add 1 2",
       "craft.add 2 1",
     ]);
-    const embed = __testables.buildFullkitBindEmbed(command);
+    const embed = __testables.buildFullkitBindEmbed(command).data;
 
     expect(command).toBe('bind f "craft.add 1 2;craft.add 2 1"');
     expect(embed.color).toBe(14582045);
@@ -458,7 +458,7 @@ describe("bind command", () => {
   });
 
   it("builds the turret bind embed", () => {
-    const embed = __testables.buildTurretBindEmbed('bind t "craft.add 1 1"');
+    const embed = __testables.buildTurretBindEmbed('bind t "craft.add 1 1"').data;
 
     expect(embed.title).toBe("Turret bind");
     expect(embed.description).toBe('```\nbind t "craft.add 1 1"\n```');
@@ -480,7 +480,7 @@ describe("bind command", () => {
   });
 
   it("builds the rocket bind embed", () => {
-    const embed = __testables.buildRocketBindEmbed('bind r "craft.add 1 1"');
+    const embed = __testables.buildRocketBindEmbed('bind r "craft.add 1 1"').data;
 
     expect(embed.title).toBe("Rocket bind");
     expect(embed.description).toBe('```\nbind r "craft.add 1 1"\n```');
@@ -501,7 +501,7 @@ describe("bind command", () => {
   });
 
   it("builds the c4 bind embed", () => {
-    const embed = __testables.buildC4BindEmbed('bind c "craft.add 1 1"');
+    const embed = __testables.buildC4BindEmbed('bind c "craft.add 1 1"').data;
 
     expect(embed.title).toBe("C4 bind");
     expect(embed.description).toBe('```\nbind c "craft.add 1 1"\n```');

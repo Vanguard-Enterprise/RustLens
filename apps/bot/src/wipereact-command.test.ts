@@ -161,9 +161,9 @@ describe("wipereact command", () => {
       declinedUserIds: [],
       lateUserIds: [],
       embedTimestamp: "2026-03-02T20:44:18.917Z",
-    });
+    }).data;
 
-    expect(embed).not.toHaveProperty("description");
+    expect(embed.description).toBeUndefined();
   });
 
   it("parses the wipe react message state from embeds and buttons", () => {
@@ -237,7 +237,7 @@ describe("wipereact command", () => {
         embedTimestamp: "2026-03-02T20:44:18.917Z",
       },
       ["111", "222"],
-    );
+    ).data;
 
     expect(embed.title).toBe("Missing reactants");
     expect(embed.fields?.[0]?.name).toBe("Users");

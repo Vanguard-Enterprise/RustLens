@@ -26,8 +26,7 @@ import {
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import {
-  buildRawFooter,
-  RUSTLENS_EMBED_COLOR,
+  createEmbed,
   getFieldValues,
   replyEphemeral,
 } from "./shared.js";
@@ -758,13 +757,9 @@ function buildC4BindEmbed(command: string) {
 }
 
 function buildBindEmbed(title: string, command: string) {
-  return {
-    color: RUSTLENS_EMBED_COLOR,
-    title,
-    description: `\`\`\`\n${command}\n\`\`\``,
-    footer: buildRawFooter(),
-    timestamp: new Date().toISOString(),
-  };
+  return createEmbed()
+    .setTitle(title)
+    .setDescription(`\`\`\`\n${command}\n\`\`\``);
 }
 
 

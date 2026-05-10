@@ -44,9 +44,9 @@ import {
   resolveConfiguredGuildChannel,
 } from "./guild-settings.js";
 import {
-  buildRawFooter,
+  createEmbed,
   FOOTER_TEXT,
-  RUSTLENS_EMBED_COLOR,
+  buildFooter,
   getFieldValues,
   logDiscordCatch,
   logDiscordError,
@@ -620,13 +620,10 @@ function buildStatusField(prefix: string, userIds: readonly string[]) {
 }
 
 function buildWipeReactEmbed(state: WipeReactMessageState) {
-  return {
-    title: state.name,
-    ...(state.description.length > 0 ? { description: state.description } : {}),
-    color: RUSTLENS_EMBED_COLOR,
-    timestamp: state.embedTimestamp,
-    footer: buildRawFooter(),
-    fields: [
+  const embed = createEmbed()
+    .setTitle(state.name)
+    .setTimestamp(new Date(state.embedTimestamp))
+    .addFields(
       {
         name: WIPE_REACT_TIMEZONE_FIELD_NAME,
         value: state.timeZone,
@@ -638,8 +635,9 @@ function buildWipeReactEmbed(state: WipeReactMessageState) {
       buildStatusField(WIPE_REACT_ACCEPTED_FIELD_PREFIX, state.acceptedUserIds),
       buildStatusField(WIPE_REACT_DECLINED_FIELD_PREFIX, state.declinedUserIds),
       buildStatusField(WIPE_REACT_LATE_FIELD_PREFIX, state.lateUserIds),
-    ],
-  };
+    );
+  if (state.description.length > 0) embed.setDescription(state.description);
+  return embed;
 }
 
 function createWipeReactButtons(
@@ -1034,18 +1032,15 @@ function buildScheduleStepTwoModal(
 }
 
 function buildScheduleConfirmEmbed(config: ScheduleWipeReactConfig) {
-  return {
-    title: `Schedule: ${config.name}`,
-    ...(config.description.length > 0 ? { description: config.description } : {}),
-    color: RUSTLENS_EMBED_COLOR,
-    fields: [
+  const embed = createEmbed()
+    .setTitle(`Schedule: ${config.name}`)
+    .addFields(
       { name: "Schedule", value: formatScheduleSummary(config) },
       { name: "Ask late reason", value: config.askLateReason ? "Yes" : "No", inline: true },
       { name: "Ask declined reason", value: config.askDeclinedReason ? "Yes" : "No", inline: true },
-    ],
-    footer: buildRawFooter(),
-    timestamp: new Date().toISOString(),
-  };
+    );
+  if (config.description.length > 0) embed.setDescription(config.description);
+  return embed;
 }
 
 function createScheduleConfirmButtons(draftId: string, disabled = false) {
@@ -1345,13 +1340,11 @@ function buildReactionLogEmbed(
   user: { tag: string; id: string; displayAvatarURL: (options?: { size?: number }) => string },
   reason?: string,
 ) {
-  return {
-    color: actionLogColor(action),
-    author: {
-      name: user.tag,
-      icon_url: user.displayAvatarURL({ size: 128 }),
-    },
-    fields: [
+  const embed = createEmbed()
+    .setColor(actionLogColor(action))
+    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ size: 128 }) })
+    .setFooter(buildFooter(`${FOOTER_TEXT} • ${state.name}`))
+    .addFields(
       {
         name: "Reacted with",
         value: `${actionLabel(action)}\n${actionEmoji(action)}`,
@@ -1360,18 +1353,9 @@ function buildReactionLogEmbed(
         name: "Discord",
         value: `<@${user.id}>`,
       },
-      ...(reason
-        ? [
-            {
-              name: "Reason",
-              value: reason,
-            },
-          ]
-        : []),
-    ],
-    footer: buildRawFooter(`${FOOTER_TEXT} • ${state.name}`),
-    timestamp: new Date().toISOString(),
-  };
+    );
+  if (reason) embed.addFields({ name: "Reason", value: reason });
+  return embed;
 }
 
 function buildReactionRemovalLogEmbed(
@@ -1380,13 +1364,11 @@ function buildReactionRemovalLogEmbed(
   user: { tag: string; id: string; displayAvatarURL: (options?: { size?: number }) => string },
   reason: string,
 ) {
-  return {
-    color: LOG_REMOVED_COLOR,
-    author: {
-      name: user.tag,
-      icon_url: user.displayAvatarURL({ size: 128 }),
-    },
-    fields: [
+  return createEmbed()
+    .setColor(LOG_REMOVED_COLOR)
+    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ size: 128 }) })
+    .setFooter(buildFooter(`${FOOTER_TEXT} • ${state.name}`))
+    .addFields(
       {
         name: "Removed reaction",
         value: `${actionLabel(action)}\n${actionEmoji(action)}`,
@@ -1399,10 +1381,7 @@ function buildReactionRemovalLogEmbed(
         name: "Reason",
         value: reason,
       },
-    ],
-    footer: buildRawFooter(`${FOOTER_TEXT} • ${state.name}`),
-    timestamp: new Date().toISOString(),
-  };
+    );
 }
 
 function buildMissingReactantsEmbed(
@@ -1429,23 +1408,15 @@ function buildMissingReactantsEmbed(
         : "> * None",
   });
 
-  return {
-    title: "Missing reactants",
-    color: RUSTLENS_EMBED_COLOR,
-    footer: buildRawFooter(),
-    timestamp: new Date().toISOString(),
-    fields,
-  };
+  return createEmbed()
+    .setTitle("Missing reactants")
+    .addFields(...fields);
 }
 
 function buildNotReactedDmEmbed(message: string, wipeReactURL: string) {
-  return {
-    title: "You have not reacted to the wipe react",
-    description: `${message}\n\n${wipeReactURL}`,
-    timestamp: new Date().toISOString(),
-    color: RUSTLENS_EMBED_COLOR,
-    footer: buildRawFooter(),
-  };
+  return createEmbed()
+    .setTitle("You have not reacted to the wipe react")
+    .setDescription(`${message}\n\n${wipeReactURL}`);
 }
 
 function buildPersistedWipeReact(

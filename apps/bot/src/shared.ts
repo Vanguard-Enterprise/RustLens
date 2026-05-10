@@ -10,10 +10,6 @@ export function buildFooter(text: string = FOOTER_TEXT) {
   return { text, iconURL: RUSTLENS_EMBED_ICON_URL };
 }
 
-export function buildRawFooter(text: string = FOOTER_TEXT) {
-  return { text, icon_url: RUSTLENS_EMBED_ICON_URL };
-}
-
 export function createEmbed() {
   return new EmbedBuilder()
     .setColor(RUSTLENS_EMBED_COLOR)
