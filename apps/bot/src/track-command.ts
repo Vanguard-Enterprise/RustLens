@@ -36,7 +36,7 @@ import { loadConfig } from "./config.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "./embed-paginator.js";
 import { fetchGuildSettings, hasGuildAdminAccess } from "./guild-settings.js";
 import { buildNextBestOfflineFieldValue, computeNextBestOfflineWindow } from "./next-best-offline.js";
-import { getFieldValues, logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { createEmbed, buildFooter, getFieldValues, logDiscordCatch, logDiscordError } from "./shared.js";
 import { renderTrackAnalyticsChart } from "./track-analytics-chart.js";
 import { isWebsiteAdmin } from "./website-admin.js";
 
@@ -287,12 +287,12 @@ export function buildTrackEmbeds(
   const lines = visible.length > 0 ? visible.map(lineBuilder) : ["> * None"];
 
   return chunkDescriptionLines(lines).map((description, index) =>
-    new EmbedBuilder()
+    createEmbed()
       .setTitle(index === 0 ? `${emoji} ${visible.length} - ${group.name} - ${group.serverName}` : `${emoji} ${visible.length} - ${group.name} - ${group.serverName} cont.`)
       .setDescription(description)
       .setColor(TRACK_EMBED_COLOR)
       .setTimestamp()
-      .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+      .setFooter(buildFooter()),
   );
 }
 
@@ -331,12 +331,9 @@ export function buildTrackButtons(groupId: number, mode: TrackViewMode = "online
 }
 
 function buildErrorEmbed(description: string) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Error")
-    .setDescription(description)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setDescription(description);
 }
 
 function buildStatusEmbed(successful: number, unsuccessful: number, failedIds: string[]) {
@@ -345,12 +342,9 @@ function buildStatusEmbed(successful: number, unsuccessful: number, failedIds: s
     lines.push("");
     lines.push(failedIds.map((id) => `> - \`${id}\``).join("\n"));
   }
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Tracking Status")
-    .setDescription(lines.join("\n"))
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setDescription(lines.join("\n"));
 }
 
 function buildPlayerSelectEmbed(playerName: string) {
@@ -403,12 +397,9 @@ function buildPlayerSelectComponents(action: "add" | "remove", groupId: number, 
 }
 
 function buildRemoveStatusEmbed(removedCount: number) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Tracking Status")
-    .setDescription(`> * Removed: ${removedCount}`)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setDescription(`> * Removed: ${removedCount}`);
 }
 
 function refreshTrackGroupInBackground(guild: Guild, guildId: string, groupId: number, context: string) {
@@ -669,12 +660,9 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
 
   await interaction.editReply({
     embeds: [
-      new EmbedBuilder()
+      createEmbed()
         .setTitle("Track Group Created")
-        .setDescription(`Created <#${channel.id}> for **${group.name}** on **${server.name}**.`)
-        .setColor(RUSTLENS_EMBED_COLOR)
-        .setTimestamp()
-        .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+        .setDescription(`Created <#${channel.id}> for **${group.name}** on **${server.name}**.`),
     ],
   });
 
@@ -715,12 +703,9 @@ async function handleTrackDeleteChatInput(interaction: ChatInputCommandInteracti
 
   await interaction.editReply({
     embeds: [
-      new EmbedBuilder()
+      createEmbed()
         .setTitle("Track Group Deleted")
-        .setDescription(`Deleted **${group.name}**.`)
-        .setColor(RUSTLENS_EMBED_COLOR)
-        .setTimestamp()
-        .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+        .setDescription(`Deleted **${group.name}**.`),
       ],
   });
 
@@ -1550,12 +1535,12 @@ function buildJoinLeaveEmbed(row: TrackGroupOnlineRow, isOnline: boolean, server
     lines.push(`${EMOJIS.discord} <@${row.discordId}>`);
   }
 
-  const embed = new EmbedBuilder()
+  const embed = createEmbed()
     .setTitle(`${label} has ${action} ${serverName}`)
     .setColor(color)
     .addFields({ name: "Information", value: lines.join("\n") })
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   if (row.avatarImage) {
     embed.setThumbnail(row.avatarImage);
@@ -1679,13 +1664,13 @@ async function handleAnalyticsPage(
 }
 
 function buildAnalyticsChartEmbed(analytics: TrackGroupAnalyticsResponse) {
-  const embed = new EmbedBuilder()
+  const embed = createEmbed()
     .setTitle(`Analytics - ${analytics.groupName}`)
     .setDescription(`**${analytics.serverName}**`)
     .setColor(ANALYTICS_EMBED_COLOR)
     .setImage("attachment://track-analytics.png")
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   const window = computeNextBestOfflineWindow(analytics);
   if (window) {
@@ -1748,12 +1733,12 @@ function buildAnalyticsPages(
       return;
     }
     pages.push(
-      new EmbedBuilder()
+      createEmbed()
         .setTitle(title)
         .setColor(ANALYTICS_EMBED_COLOR)
         .addFields(currentFields)
         .setTimestamp()
-        .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+        .setFooter(buildFooter()),
     );
     currentFields = [];
     currentLength = titleLength;

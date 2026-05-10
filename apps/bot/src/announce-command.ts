@@ -1,9 +1,9 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { isGuildTooLargeForDms, replyDmLimitError } from "./dm-limit.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { createEmbed, logDiscordError } from "./shared.js";
 
 export const ANNOUNCE_COMMAND_NAME = "announce";
 
@@ -27,20 +27,14 @@ const announceCommand = new SlashCommandBuilder()
   );
 
 function buildOutboundDmEmbed(title: string, description: string) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle(title)
-    .setDescription(description)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setDescription(description);
 }
 
 function buildAnnouncementStatusEmbed(sent: number, failed: number) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Announcement status")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
     .addFields({
       name: "Message status",
       value:

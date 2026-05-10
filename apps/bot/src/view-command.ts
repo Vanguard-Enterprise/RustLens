@@ -17,7 +17,7 @@ import { loadConfig } from "./config.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "./embed-paginator.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { createEmbed, buildFooter, FOOTER_TEXT, RUSTLENS_EMBED_COLOR } from "./shared.js";
 import {
   resolveSteamInputErrorMessage,
   resolveSteamProfileInput,
@@ -409,11 +409,11 @@ function buildViewAllPage(items: ReadonlyArray<{ discordId: string; steamId: str
     return `> * ${line}`;
   }).join("\n");
 
-  const embed = new EmbedBuilder()
+  const embed = createEmbed()
     .setTitle("Links summary")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: `RustLens.com • Page ${normalizedPage + 1}/${totalPages}`, iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setFooter(buildFooter(`${FOOTER_TEXT} • Page ${normalizedPage + 1}/${totalPages}`))
     .setDescription(description);
 
   return { embed, totalPages, page: normalizedPage };
@@ -445,11 +445,8 @@ export function buildUserEmbed(
   discordId?: string,
   includeRiskFactor = true,
 ): EmbedBuilder {
-  const embed = new EmbedBuilder()
-    .setTitle(profile?.bmName || profile?.personaName || "Player Profile")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+  const embed = createEmbed()
+    .setTitle(profile?.bmName || profile?.personaName || "Player Profile");
 
   if (profile?.avatarImage) {
     embed.setThumbnail(profile.avatarImage);
@@ -592,12 +589,9 @@ function buildNoSteamEmbed(userIds: readonly string[]) {
   if (description.length > 4096) {
     description = `${description.slice(0, 4093)}...`;
   }
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Unlinked Users")
-    .setDescription(description)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setDescription(description);
 }
 
 function sortMembers(left: GuildMember, right: GuildMember) {

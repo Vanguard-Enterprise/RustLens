@@ -1,12 +1,11 @@
 import {
   ActionRowBuilder,
-  EmbedBuilder,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
 } from "discord.js";
 import type { OwnerProxy, OwnerStatsResponse, ShardStatSnapshot } from "./backend-client.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { createEmbed } from "./shared.js";
 
 export const OWNER_PROXY_ADD_MODAL_CUSTOM_ID = "owner_proxy_add_modal";
 export const OWNER_PROXY_ADD_FIELD_CUSTOM_ID = "owner_proxy_add_endpoints";
@@ -85,12 +84,9 @@ export function buildOwnerProxyListEmbed(proxies: OwnerProxy[]) {
       return `${index + 1}. **${status}** · \`${proxyChoiceLabel(proxy)}\``;
     }).join("\n");
 
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Outbound Proxies")
-    .setDescription(description.length <= 4096 ? description : `${description.slice(0, 4093)}...`)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setDescription(description.length <= 4096 ? description : `${description.slice(0, 4093)}...`);
 }
 
 export function buildOwnerProxyAddModal() {
@@ -125,11 +121,8 @@ export function buildOwnerStatsEmbed(stats: OwnerStatsResponse) {
   const totalRSS = stats.workers.reduce((sum, worker) => sum + worker.rssBytes, 0);
   const maxUptime = stats.workers.reduce((max, worker) => Math.max(max, worker.uptimeSec), 0);
 
-  const embed = new EmbedBuilder()
+  const embed = createEmbed()
     .setTitle("Bot Statistics")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
     .addFields(
       {
         name: "📊 Servers",

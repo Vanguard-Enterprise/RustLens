@@ -26,9 +26,7 @@ import {
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import {
-  RUSTLENS_EMBED_COLOR,
-  RUSTLENS_EMBED_ICON_URL,
-  type ModalComponentNode,
+  createEmbed,
   getFieldValues,
   replyEphemeral,
 } from "./shared.js";
@@ -759,16 +757,9 @@ function buildC4BindEmbed(command: string) {
 }
 
 function buildBindEmbed(title: string, command: string) {
-  return {
-    color: RUSTLENS_EMBED_COLOR,
-    title,
-    description: `\`\`\`\n${command}\n\`\`\``,
-    footer: {
-      text: "RustLens",
-      icon_url: RUSTLENS_EMBED_ICON_URL,
-    },
-    timestamp: new Date().toISOString(),
-  };
+  return createEmbed()
+    .setTitle(title)
+    .setDescription(`\`\`\`\n${command}\n\`\`\``);
 }
 
 

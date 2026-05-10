@@ -3,7 +3,7 @@ import { EmbedBuilder } from "discord.js";
 import { BackendClient, type TrackedServerLogEvent } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
-import { RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter } from "./shared.js";
 
 const POLL_INTERVAL_MS = 20_000;
 const JOIN_COLOR = 1233708;
@@ -114,7 +114,7 @@ export function buildLogEmbed(event: TrackedServerLogEvent) {
     .setTitle(title)
     .setColor(color)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setFooter(buildFooter())
     .addFields({ name: "Information", value: lines.join("\n") });
 
   if (event.avatarImage) {

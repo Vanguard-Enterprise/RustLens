@@ -5,7 +5,6 @@ import type {
 } from "discord.js";
 import {
   ApplicationIntegrationType,
-  EmbedBuilder,
   InteractionContextType,
   MessageFlags,
   SlashCommandBuilder,
@@ -17,8 +16,7 @@ import {
 } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import {
-  RUSTLENS_EMBED_COLOR,
-  RUSTLENS_EMBED_ICON_URL,
+  createEmbed,
   buildWebsiteAdminOnlyEmbed,
 } from "./shared.js";
 import {
@@ -97,12 +95,9 @@ function getWorkerID() {
 }
 
 function buildSearchEmbed(title: string, description: string) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle(title)
-    .setDescription(description)
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setDescription(description);
 }
 
 function refreshTrackedServerAutocompleteCache() {

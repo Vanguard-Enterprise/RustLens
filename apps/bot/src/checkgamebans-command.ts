@@ -1,9 +1,9 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
-import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { ApplicationIntegrationType, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { BackendClient, type GuildRecentGameBan } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { createEmbed } from "./shared.js";
 
 export const CHECK_GAME_BANS_COMMAND_NAME = "checkgamebans";
 
@@ -37,11 +37,8 @@ function buildGameBanLine(item: GuildRecentGameBan) {
 }
 
 function buildGameBansEmbed(items: GuildRecentGameBan[]) {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Gamebans < 90 days")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
     .setDescription(
       items.length > 0
         ? items.map(buildGameBanLine).join("\n")
