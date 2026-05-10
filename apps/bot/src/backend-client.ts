@@ -242,6 +242,17 @@ export type GuildSteamDiscordLinkListResponse = {
   items: GuildSteamDiscordLink[];
 };
 
+export type SetSteamCandidate = {
+  steamId: string;
+  type: "soft" | "hard";
+  displayName: string;
+  createdAt: string;
+};
+
+export type SetSteamCandidateListResponse = {
+  items: SetSteamCandidate[];
+};
+
 export type GuildNicknameTarget = {
   guildId: string;
   discordId: string;
@@ -1123,6 +1134,14 @@ export class BackendClient {
     return this.call<GuildSteamDiscordLinkListResponse>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/discord/${discordId}/links`,
+      "GET",
+    );
+  }
+
+  listSetSteamCandidates(workerId: string, discordId: string) {
+    return this.call<SetSteamCandidateListResponse>(
+      workerId,
+      `/api/internal/bot/setup/discord/${discordId}/setsteam-candidates`,
       "GET",
     );
   }

@@ -1,28 +1,24 @@
-import type { ActionRowBuilder, ButtonBuilder, ChatInputCommandInteraction, Client } from "discord.js";
+import type { ActionRowBuilder, ButtonBuilder, ChatInputCommandInteraction, Client, ModalSubmitInteraction } from "discord.js";
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
-import { BackendClient } from "./backend-client.js";
+import { BackendClient, type SetSteamCandidate } from "./backend-client.js";
+import { ModalV2Builder, StringSelectBuilder, TextInputBuilder, TextInputStyle } from "./builders/index.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
-import { logDiscordCatch, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { getFieldValues, logDiscordCatch, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
 import { resolveSteamInputErrorMessage } from "./steam-input.js";
 import { buildProfileButtons, buildUserEmbed } from "./view-command.js";
 
 export const SETSTEAM_COMMAND_NAME = "setsteam";
-
-const SETSTEAM_STEAM_ID_OPTION_NAME = "steam_id";
+export const SETSTEAM_MODAL_CUSTOM_ID = "setsteam:modal";
+const SETSTEAM_SELECT_CUSTOM_ID = "setsteam:select";
+const SETSTEAM_INPUT_CUSTOM_ID = "setsteam:input";
 
 const setSteamCommand = new SlashCommandBuilder()
   .setName(SETSTEAM_COMMAND_NAME)
-  .setDescription("Set your Steam ID for this guild")
+  .setDescription("Link your Steam account in this server")
   .setDMPermission(false)
   .setContexts(InteractionContextType.Guild)
-  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
-  .addStringOption((option) =>
-    option
-      .setName(SETSTEAM_STEAM_ID_OPTION_NAME)
-      .setDescription("Your 17-digit Steam ID or steamcommunity.com profile URL")
-      .setRequired(true),
-  );
+  .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
 
 let _backend: BackendClient | undefined;
 let _workerID: string | undefined;
@@ -41,7 +37,7 @@ function getWorkerID() {
   return _workerID!;
 }
 
-function buildEmbed(title: string, description: string) {
+function buildErrorEmbed(title: string, description: string) {
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
@@ -50,7 +46,10 @@ function buildEmbed(title: string, description: string) {
     .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
 }
 
-async function replyEphemeralEmbed(interaction: ChatInputCommandInteraction, embed: EmbedBuilder) {
+async function replyEphemeralEmbed(
+  interaction: ChatInputCommandInteraction | ModalSubmitInteraction,
+  embed: EmbedBuilder,
+) {
   if (interaction.deferred) {
     await interaction.deleteReply().catch(logDiscordCatch("delete deferred /setsteam reply", undefined, {
       guildId: interaction.guildId,
@@ -72,7 +71,7 @@ async function replyEphemeralEmbed(interaction: ChatInputCommandInteraction, emb
 }
 
 async function replyPublicEmbed(
-  interaction: ChatInputCommandInteraction,
+  interaction: ModalSubmitInteraction,
   embed: EmbedBuilder,
   components?: ActionRowBuilder<ButtonBuilder>[],
 ) {
@@ -85,7 +84,7 @@ async function replyPublicEmbed(
 }
 
 function buildLinkingLogEmbed(
-  interaction: ChatInputCommandInteraction,
+  interaction: ModalSubmitInteraction,
   steamId: string,
   bmId: string | null,
 ) {
@@ -108,6 +107,50 @@ function buildLinkingLogEmbed(
   }
 
   return embed;
+}
+
+function truncate(value: string, max: number) {
+  if (value.length <= max) {
+    return value;
+  }
+  return value.slice(0, Math.max(0, max - 1)) + "…";
+}
+
+function buildSetSteamModal(candidates: SetSteamCandidate[]) {
+  const modal = new ModalV2Builder()
+    .setTitle("Link a Steam account")
+    .setCustomId(SETSTEAM_MODAL_CUSTOM_ID);
+
+  if (candidates.length > 0) {
+    const select = new StringSelectBuilder()
+      .setCustomId(SETSTEAM_SELECT_CUSTOM_ID)
+      .setPlaceholder("Select a linked Steam account")
+      .setRequired(false)
+      .setMinValues(0)
+      .setMaxValues(1);
+
+    for (const candidate of candidates) {
+      select.addOption({
+        label: truncate(candidate.displayName, 100),
+        value: candidate.steamId,
+        description: truncate(`Steam ID: ${candidate.steamId}`, 100),
+      });
+    }
+
+    modal.addComponent("Linked Steam accounts", select);
+  }
+
+  modal.addComponent(
+    "Or enter a new Steam identifier",
+    new TextInputBuilder()
+      .setCustomId(SETSTEAM_INPUT_CUSTOM_ID)
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder("steamcommunity.com/id/username")
+      .setRequired(false)
+      .setMaxLength(200),
+  );
+
+  return modal;
 }
 
 export async function ensureSetSteamCommand(client: Client, shardID: number) {
@@ -141,16 +184,25 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
-  await interaction.deferReply();
-
   const backend = getBackend();
   const workerId = getWorkerID();
-  const existingLinks = await backend.listGuildLinksByDiscord(workerId, interaction.guildId, interaction.user.id);
+
+  const [existingLinks, candidatesResult] = await Promise.all([
+    backend.listGuildLinksByDiscord(workerId, interaction.guildId, interaction.user.id),
+    backend.listSetSteamCandidates(workerId, interaction.user.id).catch((error) => {
+      logDiscordCatch("list /setsteam candidates", undefined, {
+        guildId: interaction.guildId!,
+        discordId: interaction.user.id,
+      })(error);
+      return { items: [] as SetSteamCandidate[] };
+    }),
+  ]);
+
   if (existingLinks.items.length > 0) {
     const existingSteamId = existingLinks.items[0].steamId;
     await replyEphemeralEmbed(
       interaction,
-      buildEmbed(
+      buildErrorEmbed(
         "Error",
         `You have already linked your Discord to \`${existingSteamId}\`. Please contact an administrator to change it for you.`,
       ),
@@ -158,15 +210,62 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
-  const rawInput = interaction.options.getString(SETSTEAM_STEAM_ID_OPTION_NAME, true).trim();
-  let steamId: string;
-  try {
-    const resolved = await backend.resolveSteamID(workerId, rawInput);
-    steamId = resolved.steamId;
-  } catch (error) {
+  await interaction.showModal(buildSetSteamModal(candidatesResult.items).toJSON() as any);
+  return true;
+}
+
+export async function handleSetSteamModalSubmit(interaction: ModalSubmitInteraction) {
+  if (interaction.customId !== SETSTEAM_MODAL_CUSTOM_ID) {
+    return false;
+  }
+
+  if (!interaction.inGuild() || !interaction.guildId) {
+    await interaction.reply({
+      content: "This command can only be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  await interaction.deferReply();
+
+  const backend = getBackend();
+  const workerId = getWorkerID();
+
+  const existingLinks = await backend.listGuildLinksByDiscord(workerId, interaction.guildId, interaction.user.id);
+  if (existingLinks.items.length > 0) {
+    const existingSteamId = existingLinks.items[0].steamId;
     await replyEphemeralEmbed(
       interaction,
-      buildEmbed("Error", resolveSteamInputErrorMessage(error)),
+      buildErrorEmbed(
+        "Error",
+        `You have already linked your Discord to \`${existingSteamId}\`. Please contact an administrator to change it for you.`,
+      ),
+    );
+    return true;
+  }
+
+  const selectedSteamId = getFieldValues(interaction, SETSTEAM_SELECT_CUSTOM_ID)[0]?.trim() ?? "";
+  const rawInput = getFieldValues(interaction, SETSTEAM_INPUT_CUSTOM_ID)[0]?.trim() ?? "";
+
+  let steamId: string;
+  if (selectedSteamId.length > 0) {
+    steamId = selectedSteamId;
+  } else if (rawInput.length > 0) {
+    try {
+      const resolved = await backend.resolveSteamID(workerId, rawInput);
+      steamId = resolved.steamId;
+    } catch (error) {
+      await replyEphemeralEmbed(
+        interaction,
+        buildErrorEmbed("Error", resolveSteamInputErrorMessage(error)),
+      );
+      return true;
+    }
+  } else {
+    await replyEphemeralEmbed(
+      interaction,
+      buildErrorEmbed("Error", "Pick a linked account or enter a Steam identifier."),
     );
     return true;
   }
@@ -178,7 +277,7 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     if (status !== 409) {
       await replyEphemeralEmbed(
         interaction,
-        buildEmbed("Error", "RustLens could not save your Steam ID."),
+        buildErrorEmbed("Error", "RustLens could not save your Steam ID."),
       );
       return true;
     }
@@ -189,7 +288,7 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
   } catch {
     await replyEphemeralEmbed(
       interaction,
-      buildEmbed("Error", "RustLens could not link your Steam ID in this guild."),
+      buildErrorEmbed("Error", "RustLens could not link your Steam ID in this guild."),
     );
     return true;
   }

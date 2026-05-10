@@ -70,6 +70,7 @@ import {
 import {
   ensureSetSteamCommand,
   handleSetSteamChatInput,
+  handleSetSteamModalSubmit,
 } from "./setsteam-command.js";
 import {
   ensureSearchCommand,
@@ -444,6 +445,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleBindModalSubmit(interaction)) {
+        return;
+      }
+
+      if (await handleSetSteamModalSubmit(interaction)) {
         return;
       }
 
