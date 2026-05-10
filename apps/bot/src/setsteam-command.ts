@@ -145,7 +145,7 @@ function buildSetSteamModal(candidates: SetSteamCandidate[]) {
     new TextInputBuilder()
       .setCustomId(SETSTEAM_INPUT_CUSTOM_ID)
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder("steamcommunity.com/id/username")
+      .setPlaceholder("17-digit Steam ID or steamcommunity.com profile URL")
       .setRequired(false)
       .setMaxLength(200),
   );
