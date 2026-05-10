@@ -1,5 +1,5 @@
-import type { ButtonInteraction, ChatInputCommandInteraction, Client, User } from "discord.js";
-import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
+import type { ButtonBuilder, ButtonInteraction, ChatInputCommandInteraction, Client, StringSelectMenuInteraction, User } from "discord.js";
+import { ActionRowBuilder, ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder, StringSelectMenuBuilder } from "discord.js";
 import {
   BackendClient,
   type SteamAccount,
@@ -22,6 +22,8 @@ import { buildProfileButtons, buildUserEmbed, fetchSteamProfileForView } from ".
 import { isWebsiteAdmin } from "./website-admin.js";
 
 export const PLAYER_COMMAND_NAME = "player";
+
+const PLAYER_SELECT_LINKED_CUSTOM_ID = "player:select:linked";
 
 const DISCORD_UNKNOWN_INTERACTION = 10062;
 
@@ -114,8 +116,8 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
     }
 
     await runPlatformSyncSafely("discord", discordUser.id);
-    const embed = await buildDiscordLinksEmbed(discordUser);
-    await interaction.editReply({ embeds: [embed] });
+    const { embed, components } = await buildDiscordLinksEmbed(discordUser);
+    await interaction.editReply({ embeds: [embed], components });
     return true;
   }
 
@@ -162,6 +164,54 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
       embeds: [buildUserEmbed(bmProfile.steamId ?? "", bmProfile)],
       components: buildProfileButtons(bmProfile.steamId ?? "", bmProfile.bmId ?? lookup.bmId),
     });
+    return true;
+  }
+
+  const account = lookup.account;
+  const profileResult = await fetchPlayerProfile(account.steamId);
+  if (profileResult.privateProfile) {
+    await interaction.editReply({ embeds: [buildPrivateProfileEmbed(account.steamId, account.bmId)] });
+    return true;
+  }
+
+  await interaction.editReply({
+    embeds: [buildUserEmbed(account.steamId, profileResult.profile)],
+    components: buildProfileButtons(account.steamId),
+  });
+  return true;
+}
+
+export async function handlePlayerSelectInteraction(interaction: StringSelectMenuInteraction) {
+  if (interaction.customId !== PLAYER_SELECT_LINKED_CUSTOM_ID) {
+    return false;
+  }
+
+  const steamId = interaction.values[0]?.trim();
+  if (!steamId || !steamIDPattern.test(steamId)) {
+    await interaction.reply({
+      content: "Invalid selection.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  try {
+    await interaction.deferReply();
+  } catch (error) {
+    if (isUnknownInteractionError(error)) {
+      logExpiredInteraction("/player select", interaction.id, interaction.createdTimestamp);
+      return true;
+    }
+    throw error;
+  }
+
+  const lookup = await lookupAccountByIdentifier(steamId);
+  if (lookup.kind === "error") {
+    await interaction.editReply({ content: "RustLens could not look up that player right now. Try again shortly." });
+    return true;
+  }
+  if (lookup.kind === "not-found" || lookup.kind === "bm-only") {
+    await interaction.editReply({ content: "No record found for that Steam ID." });
     return true;
   }
 
@@ -632,7 +682,10 @@ async function ensureSteamAccountWithBm(steamId: string): Promise<SteamAccount |
   }
 }
 
-async function buildDiscordLinksEmbed(discordUser: User): Promise<EmbedBuilder> {
+async function buildDiscordLinksEmbed(discordUser: User): Promise<{
+  embed: EmbedBuilder;
+  components: ActionRowBuilder<StringSelectMenuBuilder>[];
+}> {
   const { backend, workerId } = getBackend();
 
   const linksResponse = await backend
@@ -673,7 +726,66 @@ async function buildDiscordLinksEmbed(discordUser: User): Promise<EmbedBuilder> 
     value: "> * A **strong link** is a link that is certainly valid\n> * A **soft link** is a link that is usually valid, but can also be invalid",
   });
 
-  return embed;
+  const accountBySteamId = new Map<string, SteamAccount | null>();
+  for (let i = 0; i < strongSteamIds.length; i++) {
+    accountBySteamId.set(strongSteamIds[i], strongAccounts[i]);
+  }
+  for (let i = 0; i < softSteamIds.length; i++) {
+    if (!accountBySteamId.has(softSteamIds[i])) {
+      accountBySteamId.set(softSteamIds[i], softAccounts[i]);
+    }
+  }
+  const components = buildLinkedAccountsSelect(links, accountBySteamId);
+
+  return { embed, components };
+}
+
+function buildLinkedAccountsSelect(
+  links: readonly SteamDiscordLink[],
+  accountBySteamId: ReadonlyMap<string, SteamAccount | null>,
+): ActionRowBuilder<StringSelectMenuBuilder>[] {
+  const winnerByStream = new Map<string, SteamDiscordLink>();
+  for (const link of links) {
+    const existing = winnerByStream.get(link.steamId);
+    if (!existing) {
+      winnerByStream.set(link.steamId, link);
+      continue;
+    }
+    const upgrade =
+      (existing.type === "soft" && link.type === "hard") ||
+      (existing.type === link.type && link.createdAt > existing.createdAt);
+    if (upgrade) {
+      winnerByStream.set(link.steamId, link);
+    }
+  }
+
+  const recent = [...winnerByStream.values()]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 25);
+
+  if (recent.length === 0) {
+    return [];
+  }
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(PLAYER_SELECT_LINKED_CUSTOM_ID)
+    .setPlaceholder("Look up a linked Steam account")
+    .addOptions(
+      recent.map((link) => ({
+        label: truncateOption(accountBySteamId.get(link.steamId)?.bmName || link.steamId, 100),
+        value: link.steamId,
+        description: truncateOption(`Steam ID: ${link.steamId}`, 100),
+      })),
+    );
+
+  return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)];
+}
+
+function truncateOption(value: string, max: number) {
+  if (value.length <= max) {
+    return value;
+  }
+  return value.slice(0, Math.max(0, max - 1)) + "…";
 }
 
 function partitionLinksBySteam(links: readonly SteamDiscordLink[]) {

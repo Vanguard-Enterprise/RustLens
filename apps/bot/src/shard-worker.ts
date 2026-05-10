@@ -61,6 +61,7 @@ import {
   ensurePlayerCommand,
   handlePlayerButtonInteraction,
   handlePlayerChatInput,
+  handlePlayerSelectInteraction,
   PLAYER_COMMAND_NAME,
 } from "./player-command.js";
 import {
@@ -427,6 +428,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (await handleTrackSelectInteraction(interaction)) {
+        return;
+      }
+
+      if (await handlePlayerSelectInteraction(interaction)) {
         return;
       }
 
