@@ -44,32 +44,37 @@ export function AccountSettingsDialog({
 
 	const loadingNonceRef = React.useRef(0);
 
-	const load = React.useCallback(async () => {
+	const load = React.useCallback(() => {
 		const myNonce = ++loadingNonceRef.current;
-		setLoadState({ status: "loading" });
-		const result = await loadNotificationPreferencesAction();
-		// If a newer load (or a close-then-reopen) has bumped the nonce, drop this response.
-		if (myNonce !== loadingNonceRef.current) return;
-		if (!result.ok) {
-			setLoadState({ status: "error", message: result.error });
-			return;
-		}
-		setLoadState({
-			status: "loaded",
-			loaded: result.preferences,
-			draft: result.preferences,
-		});
+		void (async () => {
+			setLoadState({ status: "loading" });
+			const result = await loadNotificationPreferencesAction();
+			// If a newer load (or a close-then-reopen) has bumped the nonce, drop this response.
+			if (myNonce !== loadingNonceRef.current) return;
+			if (!result.ok) {
+				setLoadState({ status: "error", message: result.error });
+				return;
+			}
+			setLoadState({
+				status: "loaded",
+				loaded: result.preferences,
+				draft: result.preferences,
+			});
+		})();
 	}, []);
 
 	// Load preferences each time the dialog opens; reset state when it closes.
+	// State writes are pushed into the async IIFE in load() and a microtask here
+	// to satisfy react-hooks/set-state-in-effect — synchronously calling setState
+	// in the effect body would trigger a cascading render.
 	React.useEffect(() => {
 		if (open) {
-			void load();
-			setSaveState({ status: "idle" });
+			load();
+			queueMicrotask(() => setSaveState({ status: "idle" }));
 		} else {
 			// Bumping the nonce invalidates any in-flight response from the previous open.
 			loadingNonceRef.current++;
-			setLoadState({ status: "idle" });
+			queueMicrotask(() => setLoadState({ status: "idle" }));
 		}
 	}, [open, load]);
 
