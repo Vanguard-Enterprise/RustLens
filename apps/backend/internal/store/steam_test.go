@@ -169,10 +169,17 @@ func TestListSetSteamCandidates(t *testing.T) {
 		}
 	}
 
+	foundDedup := false
 	for _, c := range candidates {
-		if c.SteamID == dedupSteam && c.Type != "hard" {
-			t.Fatalf("dedup steam should resolve to hard, got %q", c.Type)
+		if c.SteamID == dedupSteam {
+			foundDedup = true
+			if c.Type != "hard" {
+				t.Fatalf("dedup steam should resolve to hard, got %q", c.Type)
+			}
 		}
+	}
+	if !foundDedup {
+		t.Fatalf("dedup steam missing from candidates")
 	}
 
 	softTimes := make([]time.Time, 0, 5)
@@ -200,5 +207,40 @@ func TestListSetSteamCandidates(t *testing.T) {
 	}
 	if len(hidden) != 0 {
 		t.Fatalf("expected 0 candidates after hide, got %d", len(hidden))
+	}
+}
+
+func TestListSetSteamCandidatesCapsAt25(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+
+	suffix := time.Now().UnixNano() % 1_000_000_000
+	discordID := fmt.Sprintf("100000002%09d", suffix)
+	now := time.Now().UTC()
+
+	for i := range 30 {
+		steamID := fmt.Sprintf("76561199%08d%d", suffix%100_000_000, i)
+		if _, err := s.pool.Exec(ctx, `INSERT INTO steam_accounts (steam_id) VALUES ($1) ON CONFLICT DO NOTHING`, steamID); err != nil {
+			t.Fatalf("insert steam_account: %v", err)
+		}
+		if _, err := s.pool.Exec(ctx,
+			`INSERT INTO steam_discord_links (steam_id, discord_id, type, source, created_at) VALUES ($1, $2, 'hard', 'battlemetrics', $3)`,
+			steamID, discordID, now.Add(-time.Duration(i)*time.Hour),
+		); err != nil {
+			t.Fatalf("insert hard link: %v", err)
+		}
+	}
+
+	candidates, err := s.ListSetSteamCandidates(ctx, discordID)
+	if err != nil {
+		t.Fatalf("ListSetSteamCandidates: %v", err)
+	}
+	if len(candidates) != 25 {
+		t.Fatalf("expected 25 candidates (cap), got %d", len(candidates))
+	}
+	for _, c := range candidates {
+		if c.Type != "hard" {
+			t.Fatalf("expected hard-only result set, got %q", c.Type)
+		}
 	}
 }

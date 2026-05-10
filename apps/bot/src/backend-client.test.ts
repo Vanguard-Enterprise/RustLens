@@ -356,7 +356,6 @@ describe("BackendClient", () => {
           {
             steamId: "76561198000000000",
             type: "hard",
-            source: "battlemetrics",
             displayName: "Sem",
             createdAt: "2026-04-01T10:00:00.000Z",
           },

@@ -245,7 +245,6 @@ export type GuildSteamDiscordLinkListResponse = {
 export type SetSteamCandidate = {
   steamId: string;
   type: "soft" | "hard";
-  source: string;
   displayName: string;
   createdAt: string;
 };

@@ -2525,7 +2525,6 @@ func setSteamCandidateToMap(candidate store.SetSteamCandidate) map[string]any {
 	return map[string]any{
 		"steamId":     candidate.SteamID,
 		"type":        candidate.Type,
-		"source":      candidate.Source,
 		"displayName": candidate.DisplayName,
 		"createdAt":   candidate.CreatedAt,
 	}

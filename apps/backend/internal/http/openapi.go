@@ -1474,7 +1474,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/internal/bot/setup/discord/{discordID}/setsteam-candidates": map[string]any{
 				"get": map[string]any{
 					"summary":     "List /setsteam picker candidates",
-					"description": "Returns Steam accounts to surface in the /setsteam modal: all hard links, plus the most recent five soft links from the last 90 days. Hidden discord identities return an empty list.",
+					"description": "Returns Steam accounts to surface in the /setsteam modal: all hard links, plus the most recent five soft links from the last 90 days. Each Steam ID appears at most once (hard supersedes soft). The total result is capped at 25 (Discord's StringSelectMenu limit), preferring hard then most-recent soft. Hidden discord identities return an empty list.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -2853,11 +2853,10 @@ func buildOpenAPIDocument() map[string]any {
 					"properties": map[string]any{
 						"steamId":     map[string]any{"type": "string"},
 						"type":        map[string]any{"type": "string", "enum": []string{"soft", "hard"}},
-						"source":      map[string]any{"type": "string"},
 						"displayName": map[string]any{"type": "string"},
 						"createdAt":   map[string]any{"type": "string", "format": "date-time"},
 					},
-					"required": []string{"steamId", "type", "source", "displayName", "createdAt"},
+					"required": []string{"steamId", "type", "displayName", "createdAt"},
 				},
 				"SetSteamCandidateList": map[string]any{
 					"type": "object",

@@ -104,7 +104,6 @@ type HiddenDiscordLinkIdentity struct {
 type SetSteamCandidate struct {
 	SteamID     string
 	Type        string
-	Source      string
 	DisplayName string
 	CreatedAt   time.Time
 }
@@ -578,12 +577,14 @@ func (p *PostgresStore) ListLinksByDiscordID(ctx context.Context, discordID stri
 // ListSetSteamCandidates returns the Steam accounts to surface in the /setsteam
 // modal picker for a given Discord user. All hard links are kept; soft links
 // are limited to the most recent 5 created within the last 90 days. Per
-// steam_id, hard supersedes soft. Hidden discord identities yield no rows.
-// DisplayName falls back: bm_name → persona_name → steam_id.
+// steam_id, hard supersedes soft. The total result is capped at 25 (Discord's
+// StringSelectMenu limit), preferring hard then most-recent soft. Hidden
+// discord identities yield no rows. DisplayName falls back:
+// bm_name → persona_name → steam_id.
 func (p *PostgresStore) ListSetSteamCandidates(ctx context.Context, discordID string) ([]SetSteamCandidate, error) {
 	rows, err := p.pool.Query(ctx, `
 		WITH visible AS (
-			SELECT sdl.steam_id, sdl.type, sdl.source, sdl.created_at
+			SELECT sdl.steam_id, sdl.type, sdl.created_at
 			FROM steam_discord_links sdl
 			WHERE sdl.discord_id = $1
 				AND NOT EXISTS (
@@ -594,32 +595,37 @@ func (p *PostgresStore) ListSetSteamCandidates(ctx context.Context, discordID st
 				AND (sdl.type = 'hard' OR sdl.created_at >= NOW() - INTERVAL '90 days')
 		),
 		deduped AS (
-			SELECT DISTINCT ON (steam_id) steam_id, type, source, created_at
+			SELECT DISTINCT ON (steam_id) steam_id, type, created_at
 			FROM visible
 			ORDER BY steam_id, (type = 'hard') DESC, created_at DESC
 		),
 		ranked AS (
 			SELECT
-				steam_id, type, source, created_at,
+				steam_id, type, created_at,
 				ROW_NUMBER() OVER (PARTITION BY type ORDER BY created_at DESC) AS type_rn
 			FROM deduped
 		),
 		filtered AS (
-			SELECT steam_id, type, source, created_at
+			SELECT steam_id, type, created_at
 			FROM ranked
 			WHERE type = 'hard' OR type_rn <= 5
+		),
+		capped AS (
+			SELECT steam_id, type, created_at,
+				ROW_NUMBER() OVER (ORDER BY (type = 'hard') DESC, created_at DESC) AS overall_rn
+			FROM filtered
 		)
 		SELECT
-			f.steam_id,
-			f.type,
-			f.source,
-			f.created_at,
-			COALESCE(NULLIF(bpc.bm_name, ''), NULLIF(sac.persona_name, ''), f.steam_id) AS display_name
-		FROM filtered f
-		LEFT JOIN steam_accounts sa ON sa.steam_id = f.steam_id
+			c.steam_id,
+			c.type,
+			c.created_at,
+			COALESCE(NULLIF(bpc.bm_name, ''), NULLIF(sac.persona_name, ''), c.steam_id) AS display_name
+		FROM capped c
+		LEFT JOIN steam_accounts sa ON sa.steam_id = c.steam_id
 		LEFT JOIN bm_profile_cache bpc ON bpc.bm_id = sa.bm_id
-		LEFT JOIN steam_account_cache sac ON sac.steam_id = f.steam_id
-		ORDER BY (f.type = 'hard') DESC, f.created_at DESC
+		LEFT JOIN steam_account_cache sac ON sac.steam_id = c.steam_id
+		WHERE c.overall_rn <= 25
+		ORDER BY c.overall_rn
 	`, discordID)
 	if err != nil {
 		return nil, err
@@ -629,7 +635,7 @@ func (p *PostgresStore) ListSetSteamCandidates(ctx context.Context, discordID st
 	records := make([]SetSteamCandidate, 0)
 	for rows.Next() {
 		var record SetSteamCandidate
-		if err := rows.Scan(&record.SteamID, &record.Type, &record.Source, &record.CreatedAt, &record.DisplayName); err != nil {
+		if err := rows.Scan(&record.SteamID, &record.Type, &record.CreatedAt, &record.DisplayName); err != nil {
 			return nil, err
 		}
 		records = append(records, record)
