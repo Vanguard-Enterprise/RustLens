@@ -17,7 +17,7 @@ import { loadConfig } from "./config.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "./embed-paginator.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, FOOTER_TEXT, RUSTLENS_EMBED_COLOR } from "./shared.js";
 import {
   resolveSteamInputErrorMessage,
   resolveSteamProfileInput,
@@ -413,7 +413,7 @@ function buildViewAllPage(items: ReadonlyArray<{ discordId: string; steamId: str
     .setTitle("Links summary")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: `RustLens.com • Page ${normalizedPage + 1}/${totalPages}`, iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setFooter(buildFooter(`${FOOTER_TEXT} • Page ${normalizedPage + 1}/${totalPages}`))
     .setDescription(description);
 
   return { embed, totalPages, page: normalizedPage };
@@ -449,7 +449,7 @@ export function buildUserEmbed(
     .setTitle(profile?.bmName || profile?.personaName || "Player Profile")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   if (profile?.avatarImage) {
     embed.setThumbnail(profile.avatarImage);
@@ -597,7 +597,7 @@ function buildNoSteamEmbed(userIds: readonly string[]) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function sortMembers(left: GuildMember, right: GuildMember) {

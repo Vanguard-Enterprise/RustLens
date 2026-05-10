@@ -18,7 +18,7 @@ import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { isGuildTooLargeForDms, replyDmLimitError } from "./dm-limit.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL, replyEphemeral } from "./shared.js";
+import { buildFooter, logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR, replyEphemeral } from "./shared.js";
 
 export const CREATE_COMMAND_NAME = "create";
 
@@ -113,7 +113,7 @@ function buildInviteEmbed(pingRoleId: string, requiredRoleId: string | null) {
     .setDescription("Press the button below to request a clan invite!")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setFooter(buildFooter())
     .addFields(
       { name: "Prerequisites:", value: prerequisites },
       { name: "Information", value: `> * Pings: <@&${pingRoleId}>` },
@@ -151,7 +151,7 @@ function buildClanInviteEmbed(
     .setDescription(`\n\`\`\`\n/clan invite ${steamId}\`\`\``)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   embed.setAuthor({
     name: requesterDisplayName,
@@ -169,7 +169,7 @@ function buildAcceptedDmEmbed(accepterId: string, accepterDisplayName: string) {
     )
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 export async function ensureCreateCommand(client: Client, shardID: number) {

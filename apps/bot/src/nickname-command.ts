@@ -4,11 +4,10 @@ import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 export const NICKNAME_COMMAND_NAME = "nickname";
 
-const FOOTER_TEXT = "RustLens.com";
 const DISCORD_NICKNAME_MAX_LENGTH = 32;
 const NICKNAME_SEPARATOR = " - ";
 const EMBED_FIELD_VALUE_FALLBACK = "\u200b";
@@ -136,7 +135,7 @@ function buildCompletionEmbed(
     .setTitle("Nickname Change Complete")
     .setTimestamp()
     .setColor(RUSTLENS_EMBED_COLOR)
-    .setFooter({ text: FOOTER_TEXT, iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setFooter(buildFooter())
     .addFields(
       {
         name: `👥 Processed: ${totalCount}`,

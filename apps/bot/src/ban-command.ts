@@ -1,7 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 import { BAN_CATEGORIES, labelForCategory, type BanCategory } from "./ban-categories.js";
 import { CheckboxGroupBuilder, ModalV2Builder } from "./builders/index.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 export const BAN_MODAL_PREFIX = "ban_modal:";
 export const BAN_CATEGORIES_FIELD_CUSTOM_ID = "ban_categories";
@@ -12,7 +12,7 @@ export function buildBanEmbed(title: string, description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 export function buildBanModal(targetDiscordID: string, currentCategories: ReadonlySet<string>) {

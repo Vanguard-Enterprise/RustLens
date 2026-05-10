@@ -20,7 +20,7 @@ import {
 } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
-import { logDiscordCatch, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, logDiscordCatch, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 export const TRANSFER_COMMAND_NAME = "transfer";
 
@@ -66,7 +66,7 @@ function buildTransferEmbed(title: string, description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function buildInstructionsEmbed() {
@@ -74,7 +74,7 @@ function buildInstructionsEmbed() {
     .setTitle("Instructions")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setFooter(buildFooter())
     .addFields({
       name: "Hexaytron",
       value:

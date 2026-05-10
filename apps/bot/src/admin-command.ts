@@ -3,7 +3,7 @@ import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, Messa
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, RUSTLENS_EMBED_COLOR } from "./shared.js";
 import { resolveSteamInputErrorMessage } from "./steam-input.js";
 
 export const ADMIN_COMMAND_NAME = "admin";
@@ -79,7 +79,7 @@ function buildAdminSteamEmbed(title: string, description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 async function replyEphemeralEmbed(

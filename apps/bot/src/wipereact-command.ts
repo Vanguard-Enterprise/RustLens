@@ -44,8 +44,9 @@ import {
   resolveConfiguredGuildChannel,
 } from "./guild-settings.js";
 import {
+  buildRawFooter,
+  FOOTER_TEXT,
   RUSTLENS_EMBED_COLOR,
-  RUSTLENS_EMBED_ICON_URL,
   type ModalComponentNode,
   getFieldValues,
   logDiscordCatch,
@@ -625,10 +626,7 @@ function buildWipeReactEmbed(state: WipeReactMessageState) {
     ...(state.description.length > 0 ? { description: state.description } : {}),
     color: RUSTLENS_EMBED_COLOR,
     timestamp: state.embedTimestamp,
-    footer: {
-      text: "RustLens",
-      icon_url: RUSTLENS_EMBED_ICON_URL,
-    },
+    footer: buildRawFooter(),
     fields: [
       {
         name: WIPE_REACT_TIMEZONE_FIELD_NAME,
@@ -1046,10 +1044,7 @@ function buildScheduleConfirmEmbed(config: ScheduleWipeReactConfig) {
       { name: "Ask late reason", value: config.askLateReason ? "Yes" : "No", inline: true },
       { name: "Ask declined reason", value: config.askDeclinedReason ? "Yes" : "No", inline: true },
     ],
-    footer: {
-      text: "RustLens",
-      icon_url: RUSTLENS_EMBED_ICON_URL,
-    },
+    footer: buildRawFooter(),
     timestamp: new Date().toISOString(),
   };
 }
@@ -1375,10 +1370,7 @@ function buildReactionLogEmbed(
           ]
         : []),
     ],
-    footer: {
-      text: `RustLens | ${state.name}`,
-      icon_url: RUSTLENS_EMBED_ICON_URL,
-    },
+    footer: buildRawFooter(`${FOOTER_TEXT} | ${state.name}`),
     timestamp: new Date().toISOString(),
   };
 }
@@ -1409,10 +1401,7 @@ function buildReactionRemovalLogEmbed(
         value: reason,
       },
     ],
-    footer: {
-      text: `RustLens | ${state.name}`,
-      icon_url: RUSTLENS_EMBED_ICON_URL,
-    },
+    footer: buildRawFooter(`${FOOTER_TEXT} | ${state.name}`),
     timestamp: new Date().toISOString(),
   };
 }
@@ -1444,10 +1433,7 @@ function buildMissingReactantsEmbed(
   return {
     title: "Missing reactants",
     color: RUSTLENS_EMBED_COLOR,
-    footer: {
-      text: "RustLens.com",
-      icon_url: RUSTLENS_EMBED_ICON_URL,
-    },
+    footer: buildRawFooter(),
     timestamp: new Date().toISOString(),
     thumbnail: {
       url: "",
@@ -1462,10 +1448,7 @@ function buildNotReactedDmEmbed(message: string, wipeReactURL: string) {
     description: `${message}\n\n${wipeReactURL}`,
     timestamp: new Date().toISOString(),
     color: RUSTLENS_EMBED_COLOR,
-    footer: {
-      text: "RustLens.com",
-      icon_url: RUSTLENS_EMBED_ICON_URL,
-    },
+    footer: buildRawFooter(),
     image: {
       url: "",
     },

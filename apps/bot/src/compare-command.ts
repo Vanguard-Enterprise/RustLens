@@ -15,13 +15,12 @@ import { loadConfig } from "./config.js";
 import { paginateSections, replyPaginatedEmbeds, type PaginatedSection } from "./embed-paginator.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 export const COMPARE_COMMAND_NAME = "compare";
 
 const COMPARE_SERVER_OPTION_NAME = "server";
 const COMPARE_WIPEREACT_OPTION_NAME = "wipereact";
-const FOOTER_TEXT = "RustLens.com";
 
 const compareCommand = new SlashCommandBuilder()
   .setName(COMPARE_COMMAND_NAME)
@@ -74,7 +73,7 @@ function buildBaseEmbed(title: string, description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: FOOTER_TEXT, iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function userLines(userIds: readonly string[]): string[] {

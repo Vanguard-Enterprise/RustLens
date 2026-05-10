@@ -11,7 +11,7 @@ import { extractBmID } from "./bm-input.js";
 import { loadConfig } from "./config.js";
 import {
   RUSTLENS_EMBED_COLOR,
-  RUSTLENS_EMBED_ICON_URL,
+  buildFooter,
   buildWebsiteAdminOnlyEmbed,
 } from "./shared.js";
 import {
@@ -280,7 +280,7 @@ function buildPrivateProfileEmbed(steamId: string, bmId: string | null) {
     .setDescription("BM profile private")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   const info: string[] = [
     `${PLAYER_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`,
@@ -567,7 +567,7 @@ async function buildBmOnlyLinksEmbed(bmId: string, isAdmin: boolean): Promise<Em
     .setTitle(account?.bmName ? `Links - ${account.bmName}` : "Links")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   embed.addFields({
     name: "Information",
@@ -597,7 +597,7 @@ async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<
     .setTitle(title)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   if (account?.avatarImage) {
     embed.setThumbnail(account.avatarImage);
@@ -705,7 +705,7 @@ async function buildDiscordLinksEmbed(discordUser: User): Promise<{
     .setTitle(`Links - ${discordName}`)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   const avatarUrl = discordUser.displayAvatarURL({ size: 256 });
   if (avatarUrl) {
@@ -842,7 +842,7 @@ export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
     .setTitle(title)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   if (analytics.avatarImage) {
     embed.setThumbnail(analytics.avatarImage);

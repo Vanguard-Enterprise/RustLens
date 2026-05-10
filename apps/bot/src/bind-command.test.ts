@@ -431,7 +431,7 @@ describe("bind command", () => {
     expect(embed.title).toBe("Fullkit bind");
     expect(embed.description).toBe('```\nbind f "craft.add 1 2;craft.add 2 1"\n```');
     expect(embed.footer).toEqual({
-      text: "RustLens",
+      text: "RustLens.com",
       icon_url:
         "https://i.ibb.co/n8MWVLDN/1ee153f3c14d7decaeb6cb62c28fb5b4.webp",
     });

@@ -16,7 +16,7 @@ import {
 import { extractBmID } from "./bm-input.js";
 import { loadConfig } from "./config.js";
 import { buildNextBestOfflineFieldValue, computeNextBestOfflineWindow } from "./next-best-offline.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, RUSTLENS_EMBED_COLOR } from "./shared.js";
 import { resolveSteamInputErrorMessage, resolveSteamProfileInput } from "./steam-input.js";
 import { renderServerAnalyticsChart } from "./server-analytics-chart.js";
 import { renderTrackAnalyticsChart } from "./track-analytics-chart.js";
@@ -105,7 +105,7 @@ function buildErrorEmbed(description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function buildOfflineAnalyticsEmbed(analytics: TrackGroupAnalyticsResponse) {
@@ -115,7 +115,7 @@ function buildOfflineAnalyticsEmbed(analytics: TrackGroupAnalyticsResponse) {
     .setColor(RUSTLENS_EMBED_COLOR)
     .setImage("attachment://offline-analytics.png")
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   const window = computeNextBestOfflineWindow(analytics);
   if (window) {
@@ -134,7 +134,7 @@ function buildServerAnalyticsEmbed(analytics: ServerAnalyticsResponse) {
     .setColor(RUSTLENS_EMBED_COLOR)
     .setImage("attachment://server-analytics.png")
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function refreshTrackedServerAutocompleteCache() {

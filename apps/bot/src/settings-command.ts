@@ -23,7 +23,7 @@ import { StringSelectBuilder, ModalV2Builder } from "./builders/index.js";
 import { BackendClient, type GuildSettingsPatch } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, updateGuildSettings } from "./guild-settings.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL, getFieldValues, logDiscordCatch } from "./shared.js";
+import { buildFooter, RUSTLENS_EMBED_COLOR, getFieldValues, logDiscordCatch } from "./shared.js";
 
 export const SETTINGS_COMMAND_NAME = "settings";
 
@@ -153,7 +153,7 @@ async function buildSettingsPayload(guild: Guild) {
     )
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setFooter(buildFooter())
     .addFields(
       {
         name: "📜 Wipe React Logs",

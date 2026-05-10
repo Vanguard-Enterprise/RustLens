@@ -26,8 +26,8 @@ import {
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import {
+  buildRawFooter,
   RUSTLENS_EMBED_COLOR,
-  RUSTLENS_EMBED_ICON_URL,
   type ModalComponentNode,
   getFieldValues,
   replyEphemeral,
@@ -763,10 +763,7 @@ function buildBindEmbed(title: string, command: string) {
     color: RUSTLENS_EMBED_COLOR,
     title,
     description: `\`\`\`\n${command}\n\`\`\``,
-    footer: {
-      text: "RustLens",
-      icon_url: RUSTLENS_EMBED_ICON_URL,
-    },
+    footer: buildRawFooter(),
     timestamp: new Date().toISOString(),
   };
 }

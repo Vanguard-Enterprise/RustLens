@@ -34,7 +34,7 @@ import {
   parseOwnerProxyInput,
   proxyChoiceLabel,
 } from "./owner-command.js";
-import { getFieldValues, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, FOOTER_TEXT, getFieldValues, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 export const MANAGE_COMMAND_NAME = "manage";
 
@@ -194,7 +194,7 @@ function buildEmbed(title: string, description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function buildTrackedServerModal(server?: TrackedServer) {
@@ -328,7 +328,7 @@ function buildTrackedServerListEmbed(items: TrackedServer[], page: number) {
   const pageItems = items.slice(start, start + SERVER_LIST_PAGE_SIZE);
 
   return buildEmbed("Tracked Servers", buildTrackedServerListDescription(pageItems, normalizedPage))
-    .setFooter({ text: `RustLens.com • Page ${normalizedPage + 1}/${totalPages}`, iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter(`${FOOTER_TEXT} • Page ${normalizedPage + 1}/${totalPages}`));
 }
 
 function buildTrackedServerListButtons(page: number, totalPages: number) {

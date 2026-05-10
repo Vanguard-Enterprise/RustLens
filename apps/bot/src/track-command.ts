@@ -36,7 +36,7 @@ import { loadConfig } from "./config.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "./embed-paginator.js";
 import { fetchGuildSettings, hasGuildAdminAccess } from "./guild-settings.js";
 import { buildNextBestOfflineFieldValue, computeNextBestOfflineWindow } from "./next-best-offline.js";
-import { getFieldValues, logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, getFieldValues, logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR } from "./shared.js";
 import { renderTrackAnalyticsChart } from "./track-analytics-chart.js";
 import { isWebsiteAdmin } from "./website-admin.js";
 
@@ -292,7 +292,7 @@ export function buildTrackEmbeds(
       .setDescription(description)
       .setColor(TRACK_EMBED_COLOR)
       .setTimestamp()
-      .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+      .setFooter(buildFooter()),
   );
 }
 
@@ -336,7 +336,7 @@ function buildErrorEmbed(description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function buildStatusEmbed(successful: number, unsuccessful: number, failedIds: string[]) {
@@ -350,7 +350,7 @@ function buildStatusEmbed(successful: number, unsuccessful: number, failedIds: s
     .setDescription(lines.join("\n"))
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function buildPlayerSelectEmbed(playerName: string) {
@@ -408,7 +408,7 @@ function buildRemoveStatusEmbed(removedCount: number) {
     .setDescription(`> * Removed: ${removedCount}`)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function refreshTrackGroupInBackground(guild: Guild, guildId: string, groupId: number, context: string) {
@@ -674,7 +674,7 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
         .setDescription(`Created <#${channel.id}> for **${group.name}** on **${server.name}**.`)
         .setColor(RUSTLENS_EMBED_COLOR)
         .setTimestamp()
-        .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+        .setFooter(buildFooter()),
     ],
   });
 
@@ -720,7 +720,7 @@ async function handleTrackDeleteChatInput(interaction: ChatInputCommandInteracti
         .setDescription(`Deleted **${group.name}**.`)
         .setColor(RUSTLENS_EMBED_COLOR)
         .setTimestamp()
-        .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+        .setFooter(buildFooter()),
       ],
   });
 
@@ -1555,7 +1555,7 @@ function buildJoinLeaveEmbed(row: TrackGroupOnlineRow, isOnline: boolean, server
     .setColor(color)
     .addFields({ name: "Information", value: lines.join("\n") })
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   if (row.avatarImage) {
     embed.setThumbnail(row.avatarImage);
@@ -1685,7 +1685,7 @@ function buildAnalyticsChartEmbed(analytics: TrackGroupAnalyticsResponse) {
     .setColor(ANALYTICS_EMBED_COLOR)
     .setImage("attachment://track-analytics.png")
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 
   const window = computeNextBestOfflineWindow(analytics);
   if (window) {
@@ -1753,7 +1753,7 @@ function buildAnalyticsPages(
         .setColor(ANALYTICS_EMBED_COLOR)
         .addFields(currentFields)
         .setTimestamp()
-        .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL }),
+        .setFooter(buildFooter()),
     );
     currentFields = [];
     currentLength = titleLength;

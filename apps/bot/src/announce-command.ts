@@ -3,7 +3,7 @@ import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, Messa
 import { isGuildTooLargeForDms, replyDmLimitError } from "./dm-limit.js";
 import { getGuildMembers } from "./guild-member-cache.js";
 import { hasGuildAdminAccess } from "./guild-settings.js";
-import { logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, logDiscordError, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 export const ANNOUNCE_COMMAND_NAME = "announce";
 
@@ -32,7 +32,7 @@ function buildOutboundDmEmbed(title: string, description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function buildAnnouncementStatusEmbed(sent: number, failed: number) {
@@ -40,7 +40,7 @@ function buildAnnouncementStatusEmbed(sent: number, failed: number) {
     .setTitle("Announcement status")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setFooter(buildFooter())
     .addFields({
       name: "Message status",
       value:

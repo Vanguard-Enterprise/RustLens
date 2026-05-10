@@ -4,6 +4,15 @@ import { ActionRowBuilder, ButtonBuilder, EmbedBuilder, MessageFlags } from "dis
 export const RUSTLENS_EMBED_COLOR = 14582045;
 export const RUSTLENS_EMBED_ICON_URL =
   "https://i.ibb.co/n8MWVLDN/1ee153f3c14d7decaeb6cb62c28fb5b4.webp";
+export const FOOTER_TEXT = "RustLens.com";
+
+export function buildFooter(text: string = FOOTER_TEXT) {
+  return { text, iconURL: RUSTLENS_EMBED_ICON_URL };
+}
+
+export function buildRawFooter(text: string = FOOTER_TEXT) {
+  return { text, icon_url: RUSTLENS_EMBED_ICON_URL };
+}
 
 export function logDiscordError(
   context: string,
@@ -33,7 +42,7 @@ export function buildWebsiteAdminOnlyEmbed() {
     .setDescription("This is locked to website admins only.")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 export type ModalComponentNode = {

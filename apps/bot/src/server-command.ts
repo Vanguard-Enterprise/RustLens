@@ -13,7 +13,7 @@ import {
 } from "discord.js";
 import { BackendClient, type GuildTrackedServer, type TrackedServer } from "./backend-client.js";
 import { loadConfig } from "./config.js";
-import { logDiscordError, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, logDiscordError, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 export const SERVER_COMMAND_NAME = "server";
 
@@ -87,7 +87,7 @@ function buildServerEmbed(title: string, description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function trimChoiceLabel(value: string, maxLength = 100) {

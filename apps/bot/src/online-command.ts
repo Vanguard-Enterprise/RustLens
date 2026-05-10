@@ -3,7 +3,7 @@ import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, Messa
 import { BackendClient, type GuildOnlineSummaryItem } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { replyPaginatedEmbeds } from "./embed-paginator.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, FOOTER_TEXT, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 export const ONLINE_COMMAND_NAME = "online";
 
@@ -13,7 +13,6 @@ const MAX_EMBED_FIELDS = 25;
 const MAX_FIELD_VALUE_LENGTH = 1024;
 const MAX_FIELD_NAME_LENGTH = 256;
 const MAX_EMBED_BODY_LENGTH = 5800;
-const FOOTER_TEXT = "RustLens.com";
 
 const onlineCommand = new SlashCommandBuilder()
   .setName(ONLINE_COMMAND_NAME)
@@ -134,7 +133,7 @@ function buildPagedEmbeds(items: GuildOnlineSummaryItem[]) {
         .setDescription("No linked users are currently online on tracked servers.")
         .setColor(RUSTLENS_EMBED_COLOR)
         .setTimestamp()
-        .setFooter({ text: FOOTER_TEXT, iconURL: RUSTLENS_EMBED_ICON_URL }),
+        .setFooter(buildFooter()),
     ];
   }
 
@@ -144,7 +143,7 @@ function buildPagedEmbeds(items: GuildOnlineSummaryItem[]) {
     .setTitle(ONLINE_SUMMARY_TITLE)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: FOOTER_TEXT, iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
   let currentCharCount = ONLINE_SUMMARY_TITLE.length + FOOTER_TEXT.length;
   let currentFieldCount = 0;
 
@@ -154,7 +153,7 @@ function buildPagedEmbeds(items: GuildOnlineSummaryItem[]) {
       .setTitle(ONLINE_SUMMARY_CONT_TITLE)
       .setColor(RUSTLENS_EMBED_COLOR)
       .setTimestamp()
-      .setFooter({ text: FOOTER_TEXT, iconURL: RUSTLENS_EMBED_ICON_URL });
+      .setFooter(buildFooter());
     currentCharCount = ONLINE_SUMMARY_CONT_TITLE.length + FOOTER_TEXT.length;
     currentFieldCount = 0;
   };

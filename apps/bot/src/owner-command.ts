@@ -6,7 +6,7 @@ import {
   TextInputStyle,
 } from "discord.js";
 import type { OwnerProxy, OwnerStatsResponse, ShardStatSnapshot } from "./backend-client.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 export const OWNER_PROXY_ADD_MODAL_CUSTOM_ID = "owner_proxy_add_modal";
 export const OWNER_PROXY_ADD_FIELD_CUSTOM_ID = "owner_proxy_add_endpoints";
@@ -90,7 +90,7 @@ export function buildOwnerProxyListEmbed(proxies: OwnerProxy[]) {
     .setDescription(description.length <= 4096 ? description : `${description.slice(0, 4093)}...`)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 export function buildOwnerProxyAddModal() {
@@ -129,7 +129,7 @@ export function buildOwnerStatsEmbed(stats: OwnerStatsResponse) {
     .setTitle("Bot Statistics")
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setFooter(buildFooter())
     .addFields(
       {
         name: "📊 Servers",

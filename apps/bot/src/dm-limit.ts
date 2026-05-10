@@ -1,6 +1,6 @@
 import type { ButtonInteraction, ChatInputCommandInteraction, Guild } from "discord.js";
 import { EmbedBuilder, MessageFlags } from "discord.js";
-import { RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 export const DM_GUILD_MEMBER_LIMIT = 100;
 
@@ -16,7 +16,7 @@ export function buildDmLimitEmbed(guild: Guild) {
     )
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 export async function replyDmLimitError(

@@ -4,7 +4,7 @@ import { BackendClient, type SetSteamCandidate } from "./backend-client.js";
 import { ModalV2Builder, StringSelectBuilder, TextInputBuilder, TextInputStyle } from "./builders/index.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
-import { getFieldValues, logDiscordCatch, RUSTLENS_EMBED_COLOR, RUSTLENS_EMBED_ICON_URL } from "./shared.js";
+import { buildFooter, getFieldValues, logDiscordCatch, RUSTLENS_EMBED_COLOR } from "./shared.js";
 import { resolveSteamInputErrorMessage } from "./steam-input.js";
 import { buildProfileButtons, buildUserEmbed } from "./view-command.js";
 
@@ -43,7 +43,7 @@ function buildErrorEmbed(title: string, description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 async function replyEphemeralEmbed(
@@ -96,7 +96,7 @@ function buildLinkingLogEmbed(
       name: interaction.user.tag,
       iconURL: interaction.user.displayAvatarURL({ size: 128 }),
     })
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL })
+    .setFooter(buildFooter())
     .addFields(
       { name: "Steam ID", value: `\`${steamId}\``, inline: true },
       { name: "Discord", value: `<@${interaction.user.id}>`, inline: true },

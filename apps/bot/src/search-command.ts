@@ -18,7 +18,7 @@ import {
 import { loadConfig } from "./config.js";
 import {
   RUSTLENS_EMBED_COLOR,
-  RUSTLENS_EMBED_ICON_URL,
+  buildFooter,
   buildWebsiteAdminOnlyEmbed,
 } from "./shared.js";
 import {
@@ -102,7 +102,7 @@ function buildSearchEmbed(title: string, description: string) {
     .setDescription(description)
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setFooter(buildFooter());
 }
 
 function refreshTrackedServerAutocompleteCache() {
