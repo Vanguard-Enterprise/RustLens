@@ -187,7 +187,17 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
   const backend = getBackend();
   const workerId = getWorkerID();
 
-  const existingLinks = await backend.listGuildLinksByDiscord(workerId, interaction.guildId, interaction.user.id);
+  const [existingLinks, candidatesResult] = await Promise.all([
+    backend.listGuildLinksByDiscord(workerId, interaction.guildId, interaction.user.id),
+    backend.listSetSteamCandidates(workerId, interaction.user.id).catch((error) => {
+      logDiscordCatch("list /setsteam candidates", undefined, {
+        guildId: interaction.guildId!,
+        discordId: interaction.user.id,
+      })(error);
+      return { items: [] as SetSteamCandidate[] };
+    }),
+  ]);
+
   if (existingLinks.items.length > 0) {
     const existingSteamId = existingLinks.items[0].steamId;
     await replyEphemeralEmbed(
@@ -200,18 +210,7 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
     return true;
   }
 
-  let candidates: SetSteamCandidate[] = [];
-  try {
-    const result = await backend.listSetSteamCandidates(workerId, interaction.user.id);
-    candidates = result.items;
-  } catch (error) {
-    logDiscordCatch("list /setsteam candidates", undefined, {
-      guildId: interaction.guildId,
-      discordId: interaction.user.id,
-    })(error);
-  }
-
-  await interaction.showModal(buildSetSteamModal(candidates).toJSON() as any);
+  await interaction.showModal(buildSetSteamModal(candidatesResult.items).toJSON() as any);
   return true;
 }
 
