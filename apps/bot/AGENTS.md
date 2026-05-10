@@ -71,6 +71,22 @@ Key design decisions:
 - **No base class** — builders are independent; they share almost no behavior.
 - V2 component raw API reference is at `docs/discord-modal-v2-components.md` (repo root).
 
+## Embeds
+
+All RustLens-styled embeds come from `createEmbed()` in `src/shared.ts`. It pre-applies the brand color, current timestamp, and the standard footer (`"RustLens.com"` + icon).
+
+```ts
+import { createEmbed } from "./shared.js";
+
+const embed = createEmbed()
+  .setTitle("Server bound")
+  .setDescription(`Bound to **${name}**`);
+```
+
+- Always use `createEmbed()` instead of `new EmbedBuilder()` so color/footer/timestamp stay consistent. The one exception is `ban-command.ts`, which intentionally uses a different color.
+- Override the footer text via `setFooter(buildFooter("Custom text"))` — `buildFooter()` keeps the standard icon. Use `" • "` as the separator (e.g., `RustLens.com • Reactions`) to match the pagination style.
+- Don't pass empty-string `url`/`thumbnail`/`image` fields. Discord silently strips them; omit instead.
+
 ## Conventions
 
 - Use `type` aliases, not `interface`
