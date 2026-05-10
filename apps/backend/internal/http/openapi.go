@@ -1471,6 +1471,34 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/discord/{discordID}/setsteam-candidates": map[string]any{
+				"get": map[string]any{
+					"summary":     "List /setsteam picker candidates",
+					"description": "Returns Steam accounts to surface in the /setsteam modal: all hard links, plus the most recent five soft links from the last 90 days. Hidden discord identities return an empty list.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Candidates returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/SetSteamCandidateList"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/discord/{discordID}/link-visibility-hidden": map[string]any{
 				"put": map[string]any{
 					"summary":     "Hide Discord link identity",
@@ -2816,6 +2844,27 @@ func buildOpenAPIDocument() map[string]any {
 						"items": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"$ref": "#/components/schemas/SteamDiscordLink"},
+						},
+					},
+					"required": []string{"items"},
+				},
+				"SetSteamCandidate": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steamId":     map[string]any{"type": "string"},
+						"type":        map[string]any{"type": "string", "enum": []string{"soft", "hard"}},
+						"source":      map[string]any{"type": "string"},
+						"displayName": map[string]any{"type": "string"},
+						"createdAt":   map[string]any{"type": "string", "format": "date-time"},
+					},
+					"required": []string{"steamId", "type", "source", "displayName", "createdAt"},
+				},
+				"SetSteamCandidateList": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/SetSteamCandidate"},
 						},
 					},
 					"required": []string{"items"},
