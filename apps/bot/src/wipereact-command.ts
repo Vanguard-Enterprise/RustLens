@@ -1369,7 +1369,7 @@ function buildReactionLogEmbed(
           ]
         : []),
     ],
-    footer: buildRawFooter(`${FOOTER_TEXT} | ${state.name}`),
+    footer: buildRawFooter(`${FOOTER_TEXT} • ${state.name}`),
     timestamp: new Date().toISOString(),
   };
 }
@@ -1400,7 +1400,7 @@ function buildReactionRemovalLogEmbed(
         value: reason,
       },
     ],
-    footer: buildRawFooter(`${FOOTER_TEXT} | ${state.name}`),
+    footer: buildRawFooter(`${FOOTER_TEXT} • ${state.name}`),
     timestamp: new Date().toISOString(),
   };
 }
