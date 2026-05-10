@@ -21,16 +21,17 @@ src/
   shards.ts             # Shard delta computation
   backend-client.ts     # HTTP client for backend shard API (JWT auth)
   config.ts             # Env config loader
-  admin-command.ts      # /admin setsteam|removesteam registration + guild-link admin flow
-  setsteam-command.ts   # /setsteam — opens a v2 modal with the user's prior linked accounts (StringSelect) plus a free-text fallback; on submit creates a soft link + per-guild link
-  settings-command.ts   # /settings embed + select-menu/modal flow for guild settings
-  bind-command.ts       # /bind fullkit/turret/rocket/c4 registration + modal flow
-  wipereact-command.ts  # /wipereact create/delete/notreacted/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, logs embeds, and backend-queued schedule post claiming
-  checkgamebans-command.ts # /checkgamebans guild admin scan of linked Steam IDs for recent game bans, replied ephemerally
-  summon-command.ts     # /summon {scope} — move voice-connected members of a role (or @everyone) into invoker's VC (admin-only)
-  announce-command.ts   # /announce {scope} {message} — DM an embed announcement to all members of a role except the invoker (admin-only)
-  analyze-command.ts    # /analyze offline {identifier} and /analyze server {server} {timeframe} analytics commands
-  view-command.ts       # /view user {discord_user|identifier} and /view all — view guild-linked steam/discord accounts; identifier accepts Steam IDs, supported steamcommunity.com profile URLs, BattleMetrics IDs, and Discord IDs
+  commands/             # Slash command modules (one file per top-level command)
+    admin.ts            # /admin setsteam|removesteam registration + guild-link admin flow
+    setsteam.ts         # /setsteam — opens a v2 modal with the user's prior linked accounts (StringSelect) plus a free-text fallback; on submit creates a soft link + per-guild link
+    settings.ts         # /settings embed + select-menu/modal flow for guild settings
+    bind.ts             # /bind fullkit/turret/rocket/c4 registration + modal flow
+    wipereact.ts        # /wipereact create/delete/notreacted/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, logs embeds, and backend-queued schedule post claiming
+    checkgamebans.ts    # /checkgamebans guild admin scan of linked Steam IDs for recent game bans, replied ephemerally
+    summon.ts           # /summon {scope} — move voice-connected members of a role (or @everyone) into invoker's VC (admin-only)
+    announce.ts         # /announce {scope} {message} — DM an embed announcement to all members of a role except the invoker (admin-only)
+    analyze.ts          # /analyze offline {identifier} and /analyze server {server} {timeframe} analytics commands
+    view.ts             # /view user {discord_user|identifier} and /view all — view guild-linked steam/discord accounts; identifier accepts Steam IDs, supported steamcommunity.com profile URLs, BattleMetrics IDs, and Discord IDs
   builders/             # Custom v2 modal component builders
 ```
 
@@ -83,7 +84,7 @@ const embed = createEmbed()
   .setDescription(`Bound to **${name}**`);
 ```
 
-- Always use `createEmbed()` instead of `new EmbedBuilder()` so color/footer/timestamp stay consistent. The one exception is `ban-command.ts`, which intentionally uses a different color.
+- Always use `createEmbed()` instead of `new EmbedBuilder()` so color/footer/timestamp stay consistent. The one exception is `commands/ban.ts`, which intentionally uses a different color.
 - Override the footer text via `setFooter(buildFooter("Custom text"))` — `buildFooter()` keeps the standard icon. Use `" • "` as the separator (e.g., `RustLens.com • Reactions`) to match the pagination style.
 - Don't pass empty-string `url`/`thumbnail`/`image` fields. Discord silently strips them; omit instead.
 
