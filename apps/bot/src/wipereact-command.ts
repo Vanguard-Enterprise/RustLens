@@ -1434,9 +1434,6 @@ function buildMissingReactantsEmbed(
     color: RUSTLENS_EMBED_COLOR,
     footer: buildRawFooter(),
     timestamp: new Date().toISOString(),
-    thumbnail: {
-      url: "",
-    },
     fields,
   };
 }
@@ -1448,13 +1445,6 @@ function buildNotReactedDmEmbed(message: string, wipeReactURL: string) {
     timestamp: new Date().toISOString(),
     color: RUSTLENS_EMBED_COLOR,
     footer: buildRawFooter(),
-    image: {
-      url: "",
-    },
-    thumbnail: {
-      url: "",
-    },
-    fields: [],
   };
 }
 
