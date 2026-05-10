@@ -5,16 +5,16 @@ import { loadConfig } from "./config.js";
 import {
   ensureAdminCommand,
   handleAdminChatInput,
-} from "./admin-command.js";
+} from "./commands/admin.js";
 import {
   ensureAnnounceCommand,
   handleAnnounceChatInput,
-} from "./announce-command.js";
+} from "./commands/announce.js";
 import {
   ensureAnalyzeCommand,
   handleAnalyzeAutocomplete,
   handleAnalyzeChatInput,
-} from "./analyze-command.js";
+} from "./commands/analyze.js";
 import {
   resolveCommandCategory,
   resolveCustomIdCategory,
@@ -28,25 +28,25 @@ import {
   handleBindButtonInteraction,
   handleBindChatInput,
   handleBindModalSubmit,
-} from "./bind-command.js";
+} from "./commands/bind.js";
 import {
   ensureCheckGameBansCommand,
   handleCheckGameBansChatInput,
-} from "./checkgamebans-command.js";
+} from "./commands/checkgamebans.js";
 import {
   ensureCreateCommand,
   handleCreateButtonInteraction,
   handleCreateChatInput,
-} from "./create-command.js";
+} from "./commands/create.js";
 import {
   ensureCompareCommand,
   handleCompareAutocomplete,
   handleCompareChatInput,
-} from "./compare-command.js";
+} from "./commands/compare.js";
 import {
   ensureOnlineCommand,
   handleOnlineChatInput,
-} from "./online-command.js";
+} from "./commands/online.js";
 import {
   ensureManageCommand,
   handleManageAutocomplete,
@@ -54,7 +54,7 @@ import {
   handleManageChatInput,
   handleManageModalSubmit,
   MANAGE_COMMAND_NAME,
-} from "./manage-command.js";
+} from "./commands/manage.js";
 import {
   deferPlayerChatInput,
   deferPlayerButton,
@@ -63,36 +63,36 @@ import {
   handlePlayerChatInput,
   handlePlayerSelectInteraction,
   PLAYER_COMMAND_NAME,
-} from "./player-command.js";
+} from "./commands/player.js";
 import {
   ensureNicknameCommand,
   handleNicknameChatInput,
-} from "./nickname-command.js";
+} from "./commands/nickname.js";
 import {
   ensureSetSteamCommand,
   handleSetSteamChatInput,
   handleSetSteamModalSubmit,
-} from "./setsteam-command.js";
+} from "./commands/setsteam.js";
 import {
   ensureSearchCommand,
   handleSearchAutocomplete,
   handleSearchChatInput,
-} from "./search-command.js";
+} from "./commands/search.js";
 import {
   ensureServerCommand,
   handleServerAutocomplete,
   handleServerChatInput,
-} from "./server-command.js";
+} from "./commands/server.js";
 import {
   ensureSettingsCommand,
   handleSettingsChatInput,
   handleSettingsModalSubmit,
   handleSettingsSelect,
-} from "./settings-command.js";
+} from "./commands/settings.js";
 import {
   ensureSummonCommand,
   handleSummonChatInput,
-} from "./summon-command.js";
+} from "./commands/summon.js";
 import {
   ensureTrackCommand,
   handleTrackAutocomplete,
@@ -101,18 +101,18 @@ import {
   handleTrackModalSubmit,
   handleTrackSelectInteraction,
   startTrackGroupPoller,
-} from "./track-command.js";
+} from "./commands/track.js";
 import {
   ensureTransferCommand,
   handleTransferButtonInteraction,
   handleTransferChatInput,
   handleTransferModalSubmit,
-} from "./transfer-command.js";
+} from "./commands/transfer.js";
 import {
   ensureViewCommand,
   handleViewButtonInteraction,
   handleViewChatInput,
-} from "./view-command.js";
+} from "./commands/view.js";
 import {
   ensureWipeReactCommand,
   handleWipeReactAutocomplete,
@@ -121,7 +121,7 @@ import {
   handleWipeReactModalSubmit,
   rehydratePersistedWipeReacts,
   startWipeReactScheduler,
-} from "./wipereact-command.js";
+} from "./commands/wipereact.js";
 import { startTrackedServerLogPoller } from "./tracked-server-logs.js";
 import { registerUserGuildSync } from "./user-guilds.js";
 import { registerBotGuildSync } from "./bot-guilds.js";
