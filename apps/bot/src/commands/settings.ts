@@ -39,6 +39,7 @@ const SETTINGS_OPTION_WIPE_REACT_LOGS = "wipe_react_logs";
 const SETTINGS_OPTION_LINKING_LOGS = "linking_logs";
 const SETTINGS_OPTION_TRACKED_SERVER_LOGS = "tracked_server_logs";
 const SETTINGS_OPTION_ADMIN_ROLE = "admin_role";
+const SETTINGS_OPTION_ALERT_ROLE = "alert_role";
 const SETTINGS_OPTION_TRACKED_USERS = "tracked_users";
 
 const guildSettingsCommand = new SlashCommandBuilder()
@@ -82,6 +83,12 @@ const settingsChoices: readonly SettingsChoice[] = [
     value: SETTINGS_OPTION_ADMIN_ROLE,
     description: "Set the admin role for protected commands",
     emoji: "🗝️",
+  },
+  {
+    label: "Alert Role",
+    value: SETTINGS_OPTION_ALERT_ROLE,
+    description: "Set the role pinged for alerts",
+    emoji: "🚨",
   },
   {
     label: "Tracked users",
@@ -169,6 +176,11 @@ async function buildSettingsPayload(guild: Guild) {
       {
         name: "🗝️ Admin Role",
         value: `Can run administrator-only commands.\n${formatRoleValue(settings.adminRoleId)}`,
+        inline: true,
+      },
+      {
+        name: "🚨 Alert Role",
+        value: `Pinged by enabled track alerts.\n${formatRoleValue(settings.alertRoleId)}`,
         inline: true,
       },
       {
@@ -369,14 +381,16 @@ function buildCategorySettingsModal(
 }
 
 function buildRoleSettingsModal(
+  fieldKey: keyof Pick<GuildSettingsPatch, "adminRoleId" | "alertRoleId">,
+  label: string,
   roles: Role[],
   currentRoleId: string,
 ) {
   const modal = new ModalV2Builder()
     .setTitle("Server Settings")
-    .setCustomId(`${SETTINGS_ROLE_MODAL_PREFIX}adminRoleId`)
+    .setCustomId(`${SETTINGS_ROLE_MODAL_PREFIX}${fieldKey}`)
     .addComponent(
-      "Admin Role",
+      label,
       new StringSelectBuilder()
         .setCustomId(SETTINGS_SELECT_FIELD_CUSTOM_ID)
         .setRequired(true)
@@ -507,7 +521,15 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
   if (selected === SETTINGS_OPTION_ADMIN_ROLE) {
     const roles = await fetchGuildRoleOptions(interaction.guild);
     await interaction.showModal(
-      buildRoleSettingsModal(roles, settings.adminRoleId).toJSON() as any,
+      buildRoleSettingsModal("adminRoleId", "Admin Role", roles, settings.adminRoleId).toJSON() as any,
+    );
+    return true;
+  }
+
+  if (selected === SETTINGS_OPTION_ALERT_ROLE) {
+    const roles = await fetchGuildRoleOptions(interaction.guild);
+    await interaction.showModal(
+      buildRoleSettingsModal("alertRoleId", "Alert Role", roles, settings.alertRoleId).toJSON() as any,
     );
     return true;
   }
@@ -679,7 +701,8 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
   }
 
   const roleField = interaction.customId.slice(SETTINGS_ROLE_MODAL_PREFIX.length);
-  if (roleField !== "adminRoleId") {
+  const validRoleFields = new Set(["adminRoleId", "alertRoleId"]);
+  if (!validRoleFields.has(roleField)) {
     await interaction.reply({
       content: "That setting is not valid.",
       flags: MessageFlags.Ephemeral,
@@ -705,7 +728,10 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
     }
   }
 
-  await updateGuildSettings(interaction.guildId, { [roleField]: selectedValue ?? undefined });
+  const patch: GuildSettingsPatch = roleField === "adminRoleId"
+    ? { adminRoleId: selectedValue ?? undefined }
+    : { alertRoleId: selectedValue ?? undefined };
+  await updateGuildSettings(interaction.guildId, patch);
   await refreshSettingsMessage(interaction, interaction.guild);
   return true;
 }

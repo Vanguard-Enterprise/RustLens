@@ -67,6 +67,7 @@ const TRACK_FIELD_IDS = "track_ids";
 const TRACK_FIELD_PLAYER_NAME = "track_player_name";
 const TRACK_FIELD_NOTIFY_OPTIONS = "track_notify_options";
 const TRACK_NOTIFY_SEND_UPDATES = "send_updates";
+const TRACK_NOTIFY_PING_ALERT_ROLE_ON_EMPTY = "ping_alert_role_on_empty";
 
 const TRACK_TEAM_NAME_MAX = 12;
 const TRACK_EMBED_COLOR = 0xde811d;
@@ -624,6 +625,7 @@ export async function handleTrackChatInput(interaction: ChatInputCommandInteract
       channelId: channel.id,
       messageId: "",
       sendUpdates: false,
+      pingAlertRoleOnEmpty: false,
       onlineCount: 0,
       createdBy: interaction.user.id,
     });
@@ -950,12 +952,17 @@ function buildNotifyModal(group: TrackGroup) {
         .setCustomId(TRACK_FIELD_NOTIFY_OPTIONS)
         .setRequired(false)
         .setMinValues(0)
-        .setMaxValues(1)
+        .setMaxValues(2)
         .addOptions({
           label: "Send updates",
           value: TRACK_NOTIFY_SEND_UPDATES,
           description: "Post a join/leave embed in this channel when state changes.",
           default: group.sendUpdates,
+        }, {
+          label: "Ping alert role on empty",
+          value: TRACK_NOTIFY_PING_ALERT_ROLE_ON_EMPTY,
+          description: "Ping the configured Alert Role when nobody from this track is online.",
+          default: group.pingAlertRoleOnEmpty,
         }),
     );
 }
@@ -991,9 +998,13 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
     }
     const selected = getFieldValues(interaction, TRACK_FIELD_NOTIFY_OPTIONS);
     const sendUpdates = selected.includes(TRACK_NOTIFY_SEND_UPDATES);
-    await getBackend().updateTrackGroup(getWorkerID(), interaction.guildId, groupId, { sendUpdates });
+    const pingAlertRoleOnEmpty = selected.includes(TRACK_NOTIFY_PING_ALERT_ROLE_ON_EMPTY);
+    await getBackend().updateTrackGroup(getWorkerID(), interaction.guildId, groupId, {
+      sendUpdates,
+      pingAlertRoleOnEmpty,
+    });
     await interaction.reply({
-      content: `Notifications ${sendUpdates ? "enabled" : "disabled"} for this track group.`,
+      content: "Notification settings updated for this track group.",
       flags: MessageFlags.Ephemeral,
     });
     return true;
@@ -1458,7 +1469,7 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   const previous = previousSnapshots.get(group.id);
   const current: Snapshot = new Map(rows.map((row) => [row.steamId, row.isOnline]));
 
-  if (previous && group.sendUpdates) {
+  if (previous && (group.sendUpdates || group.pingAlertRoleOnEmpty)) {
     const changes: { row: TrackGroupOnlineRow; isOnline: boolean }[] = [];
     for (const row of rows) {
       const prev = previous.get(row.steamId);
@@ -1466,23 +1477,63 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
         changes.push({ row, isOnline: row.isOnline });
       }
     }
-    for (const change of changes) {
-      const claimed = await claimTrackNotification(guild.id, group.id, change.row, change.isOnline);
-      if (!claimed) {
-        continue;
+    if (group.sendUpdates) {
+      for (const change of changes) {
+        const claimed = await claimTrackNotification(guild.id, group.id, change.row, change.isOnline);
+        if (!claimed) {
+          continue;
+        }
+        const updateEmbed = buildJoinLeaveEmbed(change.row, change.isOnline, serverName);
+        await textChannel.send({ embeds: [updateEmbed] }).catch(logDiscordCatch("send track group join/leave update", null, {
+          guildId: guild.id,
+          channelId: textChannel.id,
+          groupId: group.id,
+          steamId: change.row.steamId,
+          isOnline: change.isOnline,
+        }));
       }
-      const updateEmbed = buildJoinLeaveEmbed(change.row, change.isOnline, serverName);
-      await textChannel.send({ embeds: [updateEmbed] }).catch(logDiscordCatch("send track group join/leave update", null, {
-        guildId: guild.id,
-        channelId: textChannel.id,
-        groupId: group.id,
-        steamId: change.row.steamId,
-        isOnline: change.isOnline,
-      }));
+    }
+
+    if (group.pingAlertRoleOnEmpty && onlineCount === 0 && [...previous.values()].some(Boolean)) {
+      await sendTrackEmptyAlert(guild, textChannel, group, serverName);
     }
   }
 
   previousSnapshots.set(group.id, current);
+}
+
+async function sendTrackEmptyAlert(guild: Guild, textChannel: TextChannel, group: TrackGroup, serverName: string) {
+  const settings = await fetchGuildSettings(guild.id).catch(() => null);
+  if (!settings?.alertRoleId) {
+    return;
+  }
+
+  const role = guild.roles.cache.get(settings.alertRoleId) ??
+    (await guild.roles.fetch(settings.alertRoleId).catch(logDiscordCatch("fetch alert role", null, {
+      guildId: guild.id,
+      roleId: settings.alertRoleId,
+    })));
+  if (!role) {
+    return;
+  }
+
+  const embed = createEmbed()
+    .setColor(LEAVE_COLOR)
+    .setTitle("No tracked users online")
+    .setDescription(
+      `Alert triggered because **${group.name}** now has **0** tracked users online on **${serverName}**.`,
+    );
+
+  await textChannel.send({
+    content: `<@&${settings.alertRoleId}>`,
+    embeds: [embed],
+    allowedMentions: { roles: [settings.alertRoleId] },
+  }).catch(logDiscordCatch("send track empty alert", null, {
+    guildId: guild.id,
+    channelId: textChannel.id,
+    groupId: group.id,
+    roleId: settings.alertRoleId,
+  }));
 }
 
 async function claimTrackNotification(guildId: string, groupId: number, row: TrackGroupOnlineRow, isOnline: boolean) {
