@@ -347,3 +347,23 @@ func (p *PostgresStore) RecordTrackedServerPollResult(ctx context.Context, bmID 
 	`, bmID, polledAt, pollError)
 	return err
 }
+
+func (p *PostgresStore) IncrementTrackedServerEmptyPolls(ctx context.Context, bmID string) (int, error) {
+	var count int
+	err := p.pool.QueryRow(ctx, `
+		UPDATE tracked_servers
+		SET empty_player_poll_count = empty_player_poll_count + 1
+		WHERE bm_id = $1
+		RETURNING empty_player_poll_count
+	`, bmID).Scan(&count)
+	return count, err
+}
+
+func (p *PostgresStore) ResetTrackedServerEmptyPolls(ctx context.Context, bmID string) error {
+	_, err := p.pool.Exec(ctx, `
+		UPDATE tracked_servers
+		SET empty_player_poll_count = 0
+		WHERE bm_id = $1 AND empty_player_poll_count <> 0
+	`, bmID)
+	return err
+}

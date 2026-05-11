@@ -373,7 +373,8 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			is_build BOOLEAN NOT NULL DEFAULT FALSE,
 			high_frequency BOOLEAN NOT NULL DEFAULT FALSE,
 			last_polled_at TIMESTAMPTZ,
-			last_poll_error TEXT NOT NULL DEFAULT ''
+			last_poll_error TEXT NOT NULL DEFAULT '',
+			empty_player_poll_count INTEGER NOT NULL DEFAULT 0
 		);
 
 		ALTER TABLE tracked_servers DROP COLUMN IF EXISTS include_in_guild_settings;
@@ -386,6 +387,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS high_frequency BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_polled_at TIMESTAMPTZ;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_poll_error TEXT NOT NULL DEFAULT '';
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS empty_player_poll_count INTEGER NOT NULL DEFAULT 0;
 
 		CREATE TABLE IF NOT EXISTS outbound_proxies (
 			id BIGSERIAL PRIMARY KEY,
