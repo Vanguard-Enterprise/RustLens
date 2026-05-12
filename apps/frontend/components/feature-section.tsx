@@ -1,24 +1,15 @@
-import { cn } from "@/lib/utils";
 import { landingFeatures } from "@/lib/site-content";
 
 export function FeatureSection() {
 	return (
 		<section className="mx-auto w-full max-w-5xl px-4 py-8 md:px-6">
 			<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-				{landingFeatures.map((feature, index) => {
+				{landingFeatures.map((feature) => {
 					const Icon = feature.icon;
 
 					return (
 						<div
-							className={cn(
-								"relative flex flex-col items-center justify-center p-2",
-								"after:absolute after:inset-y-0 after:right-0 after:h-full after:w-px after:bg-linear-to-b after:from-foreground/6 after:via-foreground/25 after:to-foreground/6",
-								"[&_svg]:size-6 [&_svg]:text-muted-foreground",
-								{
-									"after:hidden": index === landingFeatures.length - 1,
-									"after:hidden after:md:block": index === 1,
-								}
-							)}
+							className="flex flex-col items-center justify-center p-2 [&_svg]:size-6 [&_svg]:text-muted-foreground"
 							key={feature.title}
 						>
 							<Icon />

@@ -411,6 +411,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
 		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS auto_disabled_at TIMESTAMPTZ;
 
 		CREATE INDEX IF NOT EXISTS outbound_proxies_enabled_idx
 		ON outbound_proxies (enabled, id);

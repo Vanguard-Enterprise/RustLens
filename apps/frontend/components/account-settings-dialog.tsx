@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useTheme } from "next-themes";
+import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 
 import {
 	Dialog,
@@ -14,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import {
 	loadNotificationPreferencesAction,
@@ -41,6 +44,12 @@ export function AccountSettingsDialog({
 }) {
 	const [loadState, setLoadState] = React.useState<LoadState>({ status: "idle" });
 	const [saveState, setSaveState] = React.useState<SaveState>({ status: "idle" });
+	const { theme, setTheme } = useTheme();
+	const themeMounted = React.useSyncExternalStore(
+		() => () => {},
+		() => true,
+		() => false,
+	);
 
 	const loadingNonceRef = React.useRef(0);
 
@@ -123,6 +132,40 @@ export function AccountSettingsDialog({
 						Manage how RustLens contacts you.
 					</DialogDescription>
 				</DialogHeader>
+
+				<section aria-labelledby="appearance-heading" className="space-y-3">
+					<h3 id="appearance-heading" className="text-sm font-medium">
+						Appearance
+					</h3>
+					<div className="flex items-start justify-between gap-4">
+						<div className="space-y-1">
+							<Label>Theme</Label>
+							<p className="text-xs text-muted-foreground">
+								Overrides your system preference for this browser.
+							</p>
+						</div>
+						<ToggleGroup
+							type="single"
+							variant="outline"
+							size="sm"
+							value={themeMounted ? theme ?? "system" : "system"}
+							onValueChange={(v) => {
+								if (v) setTheme(v);
+							}}
+							aria-label="Theme"
+						>
+							<ToggleGroupItem value="light" aria-label="Light">
+								<SunIcon aria-hidden="true" />
+							</ToggleGroupItem>
+							<ToggleGroupItem value="dark" aria-label="Dark">
+								<MoonIcon aria-hidden="true" />
+							</ToggleGroupItem>
+							<ToggleGroupItem value="system" aria-label="System">
+								<MonitorIcon aria-hidden="true" />
+							</ToggleGroupItem>
+						</ToggleGroup>
+					</div>
+				</section>
 
 				<section aria-labelledby="notifications-heading" className="space-y-4">
 					<h3 id="notifications-heading" className="text-sm font-medium">

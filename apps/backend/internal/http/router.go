@@ -242,6 +242,11 @@ func NewRouter(
 			r.Get("/audit", handler.ListAdminAudit)
 			r.Get("/audit/event-types", handler.ListAdminAuditEventTypes)
 			r.Get("/audit/{id}", handler.GetAdminAuditEvent)
+			r.Get("/proxies", handler.ListAdminProxies)
+			r.Post("/proxies", handler.CreateAdminProxy)
+			r.Post("/proxies/bulk", handler.BulkAdminProxies)
+			r.Patch("/proxies/{proxyID}", handler.UpdateAdminProxy)
+			r.Delete("/proxies/{proxyID}", handler.DeleteAdminProxy)
 		})
 	})
 
