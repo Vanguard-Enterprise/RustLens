@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const bodyFont = IBM_Plex_Sans({
@@ -52,6 +53,7 @@ export default function RootLayout({
 					}}
 				/>
 				<TooltipProvider>{children}</TooltipProvider>
+				<Toaster />
 			</body>
 		</html>
 	);
