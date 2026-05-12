@@ -3,7 +3,6 @@ package events_test
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -117,8 +116,16 @@ func TestHub_ContextCancelUnsubscribes(t *testing.T) {
 	}
 
 	cancel()
-	// Give the goroutine a moment to react to ctx.Done().
-	time.Sleep(50 * time.Millisecond)
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if h.Snapshot("user-1") == 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if h.Snapshot("user-1") != 0 {
+		t.Fatal("unsub goroutine did not run within 500ms of ctx cancel")
+	}
 	h.Publish("user-1", events.Event{Type: events.TypeRolesChanged})
 
 	select {
@@ -190,5 +197,4 @@ func TestHub_FullBufferDropsOldest(t *testing.T) {
 		for range ch {
 		}
 	}()
-	_ = sync.Mutex{} // keep import
 }

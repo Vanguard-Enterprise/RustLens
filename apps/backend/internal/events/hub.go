@@ -31,8 +31,9 @@ func NewHub() *Hub {
 }
 
 // Subscribe registers a new subscriber for userID. The returned channel emits
-// events until either unsub is called or ctx is done. The returned channel is
-// closed exactly once when the subscription ends.
+// events until either unsub is called or ctx is done. Receivers should detect
+// teardown via their own ctx; the Hub stops delivering once ctx is done or
+// unsub is called, but does not close the channel.
 func (h *Hub) Subscribe(ctx context.Context, userID string) (<-chan Event, func(), error) {
 	h.mu.Lock()
 	if len(h.subs[userID]) >= MaxConnectionsPerUser {
@@ -99,7 +100,6 @@ func (h *Hub) remove(userID string, target chan Event) {
 	for i, ch := range chans {
 		if ch == target {
 			h.subs[userID] = append(chans[:i], chans[i+1:]...)
-			close(ch)
 			break
 		}
 	}
