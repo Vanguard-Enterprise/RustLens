@@ -4,9 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
+
+// redisPublishTimeout caps a single PublishWithFanout's Redis call so a stalled
+// connection cannot block the caller for the underlying TCP timeout.
+const redisPublishTimeout = 5 * time.Second
 
 // RedisChannel is the pub/sub channel name used to fan events across backend
 // pods. Both publishers and subscribers in this binary use it; remote pods
@@ -79,7 +84,7 @@ func (b *RedisBridge) PublishWithFanout(userID string, e Event) {
 		log.Printf("[events] bridge: encode payload: %v", err)
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), redisPublishTimeout)
 	defer cancel()
 	if err := b.rdb.Publish(ctx, RedisChannel, payload).Err(); err != nil {
 		log.Printf("[events] bridge: redis publish: %v", err)
