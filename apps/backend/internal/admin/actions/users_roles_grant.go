@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/events"
 )
 
 type UsersRoleAssignParams struct {
@@ -20,13 +21,14 @@ type UsersRoleAssignParams struct {
 type usersRolesGrantAction struct {
 	pool     *pgxpool.Pool
 	resolver *rbac.Resolver
+	pub      events.Publisher
 }
 
 // NewUsersRolesGrantAction grants an admin role to a user. Granting the
 // "superadmin" role requires the actor to hold the admins.grant permission
 // in addition to the base users.roles.assign permission.
-func NewUsersRolesGrantAction(pool *pgxpool.Pool, resolver *rbac.Resolver) AdminAction {
-	return &usersRolesGrantAction{pool: pool, resolver: resolver}
+func NewUsersRolesGrantAction(pool *pgxpool.Pool, resolver *rbac.Resolver, pub events.Publisher) AdminAction {
+	return &usersRolesGrantAction{pool: pool, resolver: resolver, pub: pub}
 }
 
 func (a *usersRolesGrantAction) Type() string                 { return "users.roles.grant" }
@@ -81,6 +83,10 @@ func (a *usersRolesGrantAction) Execute(ctx context.Context, in ActionInput) (Ac
 		VALUES ($1, $2, $3) ON CONFLICT DO NOTHING
 	`, p.UserID, roleID, in.ActorUserID); err != nil {
 		return ActionResult{}, err
+	}
+
+	if a.pub != nil {
+		a.pub.PublishWithFanout(p.UserID, events.Event{Type: events.TypeRolesChanged, Reason: events.ReasonGrant})
 	}
 
 	target := p.UserID

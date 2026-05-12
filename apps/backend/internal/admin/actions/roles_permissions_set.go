@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/events"
 )
 
 // RolesPermissionsSetParams holds the validated input for roles.permissions.set.
@@ -17,12 +18,15 @@ type RolesPermissionsSetParams struct {
 	Permissions []string `json:"permissions"`
 }
 
-type rolesPermissionsSetAction struct{ pool *pgxpool.Pool }
+type rolesPermissionsSetAction struct {
+	pool *pgxpool.Pool
+	pub  events.Publisher
+}
 
 // NewRolesPermissionsSetAction replaces the entire permission set on a
 // non-system role. Operates as DELETE-all + bulk INSERT in one transaction.
-func NewRolesPermissionsSetAction(pool *pgxpool.Pool) AdminAction {
-	return &rolesPermissionsSetAction{pool: pool}
+func NewRolesPermissionsSetAction(pool *pgxpool.Pool, pub events.Publisher) AdminAction {
+	return &rolesPermissionsSetAction{pool: pool, pub: pub}
 }
 
 func (a *rolesPermissionsSetAction) Type() string                 { return "roles.permissions.set" }
@@ -84,6 +88,23 @@ func (a *rolesPermissionsSetAction) Execute(ctx context.Context, in ActionInput)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return ActionResult{}, err
+	}
+
+	if a.pub != nil {
+		rows, qerr := a.pool.Query(ctx,
+			`SELECT user_id FROM admin_user_roles WHERE role_id::text = $1`,
+			p.ID,
+		)
+		if qerr == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var uid string
+				if scanErr := rows.Scan(&uid); scanErr != nil {
+					continue
+				}
+				a.pub.PublishWithFanout(uid, events.Event{Type: events.TypeRolesChanged, Reason: events.ReasonRolePermsUpdated})
+			}
+		}
 	}
 
 	return ActionResult{

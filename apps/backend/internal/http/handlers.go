@@ -23,6 +23,7 @@ import (
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/bmmatch"
 	"rustlens/backend/internal/config"
+	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/platformsync"
 	"rustlens/backend/internal/proxycrypto"
@@ -60,6 +61,7 @@ type Handler struct {
 	actionDispatcher    *actions.Dispatcher
 	outboundProvider    *outboundhttp.Provider
 	proxyCrypto         *proxycrypto.Crypto
+	publisher           events.Publisher
 }
 
 func NewHandler(
@@ -74,7 +76,11 @@ func NewHandler(
 	platformSync *platformsync.Client,
 	outboundProvider *outboundhttp.Provider,
 	proxyCrypto *proxycrypto.Crypto,
+	publisher events.Publisher,
 ) *Handler {
+	if publisher == nil {
+		publisher = events.NopPublisher{}
+	}
 	rbacStore := rbac.NewStore(postgres.Pool())
 	if err := rbacStore.SeedPermissionsAndRoles(context.Background()); err != nil {
 		panic(fmt.Errorf("rbac seed: %w", err))
@@ -82,7 +88,7 @@ func NewHandler(
 	resolver := rbac.NewResolver(rbacStore)
 	auditStore := audit.NewStore(postgres.Pool())
 	registry := actions.NewRegistry(rbac.IsValidPermission)
-	if err := registerAdminActions(registry, postgres.Pool(), resolver, cfg.AppBaseURL); err != nil {
+	if err := registerAdminActions(registry, postgres.Pool(), resolver, publisher, cfg.AppBaseURL); err != nil {
 		panic(fmt.Errorf("register admin actions: %w", err))
 	}
 	dispatcher := actions.NewDispatcher(registry, resolver, auditSinkAdapter{auditStore}, appSessionActor)
@@ -111,6 +117,7 @@ func NewHandler(
 		actionDispatcher:    dispatcher,
 		outboundProvider:    outboundProvider,
 		proxyCrypto:         proxyCrypto,
+		publisher:           publisher,
 	}
 }
 

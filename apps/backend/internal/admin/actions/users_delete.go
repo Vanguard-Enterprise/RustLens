@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/events"
 )
 
 type UsersDeleteParams struct {
@@ -17,12 +18,15 @@ type UsersDeleteParams struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-type usersDeleteAction struct{ pool *pgxpool.Pool }
+type usersDeleteAction struct {
+	pool *pgxpool.Pool
+	pub  events.Publisher
+}
 
 // NewUsersDeleteAction soft-deletes a user (sets deleted_at/deleted_by) and
 // bumps session_epoch to invalidate any active sessions.
-func NewUsersDeleteAction(pool *pgxpool.Pool) AdminAction {
-	return &usersDeleteAction{pool: pool}
+func NewUsersDeleteAction(pool *pgxpool.Pool, pub events.Publisher) AdminAction {
+	return &usersDeleteAction{pool: pool, pub: pub}
 }
 
 func (a *usersDeleteAction) Type() string                 { return "users.delete" }
@@ -87,6 +91,10 @@ func (a *usersDeleteAction) Execute(ctx context.Context, in ActionInput) (Action
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return ActionResult{}, err
+	}
+
+	if a.pub != nil {
+		a.pub.PublishWithFanout(p.UserID, events.Event{Type: events.TypeSessionRevoked, Reason: events.ReasonDeleted})
 	}
 
 	target := p.UserID

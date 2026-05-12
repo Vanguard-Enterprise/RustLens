@@ -10,17 +10,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/events"
 )
 
 type usersRolesRevokeAction struct {
 	pool *pgxpool.Pool
+	pub  events.Publisher
 }
 
 // NewUsersRolesRevokeAction revokes an admin role from a user. Revoking the
 // last remaining "superadmin" is blocked with a 409 conflict so the system
 // cannot be locked out of elevated access.
-func NewUsersRolesRevokeAction(pool *pgxpool.Pool) AdminAction {
-	return &usersRolesRevokeAction{pool: pool}
+func NewUsersRolesRevokeAction(pool *pgxpool.Pool, pub events.Publisher) AdminAction {
+	return &usersRolesRevokeAction{pool: pool, pub: pub}
 }
 
 func (a *usersRolesRevokeAction) Type() string                 { return "users.roles.revoke" }
@@ -78,6 +80,10 @@ func (a *usersRolesRevokeAction) Execute(ctx context.Context, in ActionInput) (A
 		DELETE FROM admin_user_roles WHERE user_id=$1 AND role_id=$2
 	`, p.UserID, roleID); err != nil {
 		return ActionResult{}, err
+	}
+
+	if a.pub != nil {
+		a.pub.PublishWithFanout(p.UserID, events.Event{Type: events.TypeRolesChanged, Reason: events.ReasonRevoke})
 	}
 
 	target := p.UserID

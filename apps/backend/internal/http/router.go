@@ -58,8 +58,12 @@ func NewRouter(
 	outboundProvider *outboundhttp.Provider,
 	proxyCrypto *proxycrypto.Crypto,
 	eventsHub *events.Hub,
+	publisher events.Publisher,
 ) http.Handler {
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto)
+	if publisher == nil {
+		publisher = events.NopPublisher{}
+	}
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)

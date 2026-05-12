@@ -12,13 +12,14 @@ import (
 	"rustlens/backend/internal/admin/actions"
 	"rustlens/backend/internal/admin/audit"
 	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/store"
 )
 
 // newRolesHarness wires the real rbac.Resolver (so grant's admins.grant
 // self-check is real) plus a fake dispatcher-level permission resolver
 // whose `allow` map we can toggle per test.
-func newRolesHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, *rbac.Store, func(map[string]bool)) {
+func newRolesHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, *rbac.Store, func(map[string]bool), *events.RecordingPublisher) {
 	t.Helper()
 	dsn := os.Getenv("TEST_POSTGRES_URL")
 	if dsn == "" {
@@ -42,12 +43,13 @@ func newRolesHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, *rba
 	realResolver := rbac.NewResolver(rb)
 	au := audit.NewStore(s.Pool())
 
+	pub := &events.RecordingPublisher{}
 	perms := &fakePermResolver{allow: map[string]bool{}}
 	reg := actions.NewRegistry(rbac.IsValidPermission)
-	if err := reg.Register(actions.NewUsersRolesGrantAction(s.Pool(), realResolver)); err != nil {
+	if err := reg.Register(actions.NewUsersRolesGrantAction(s.Pool(), realResolver, pub)); err != nil {
 		t.Fatalf("register grant: %v", err)
 	}
-	if err := reg.Register(actions.NewUsersRolesRevokeAction(s.Pool())); err != nil {
+	if err := reg.Register(actions.NewUsersRolesRevokeAction(s.Pool(), pub)); err != nil {
 		t.Fatalf("register revoke: %v", err)
 	}
 
@@ -56,7 +58,7 @@ func newRolesHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, *rba
 	r.Post("/api/app/admin/actions/{type}", disp.ServeHTTP)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
-	return srv, s, rb, func(a map[string]bool) { perms.allow = a }
+	return srv, s, rb, func(a map[string]bool) { perms.allow = a }, pub
 }
 
 func assignRole(t *testing.T, rb *rbac.Store, userID, roleKey string) {
@@ -84,7 +86,7 @@ func countRoles(t *testing.T, s *store.PostgresStore, userID, roleKey string) in
 }
 
 func TestUsersRolesGrant_HappyPathAndIdempotent(t *testing.T) {
-	srv, s, _, setPerms := newRolesHarness(t)
+	srv, s, _, setPerms, _ := newRolesHarness(t)
 	setPerms(map[string]bool{rbac.PermUsersRolesAssign: true})
 	seedAppUser(t, s, "usr_test_actor", "Actor", false)
 	seedAppUser(t, s, "usr_target", "Target", false)
@@ -112,7 +114,7 @@ func TestUsersRolesGrant_HappyPathAndIdempotent(t *testing.T) {
 }
 
 func TestUsersRolesGrant_UnknownRole(t *testing.T) {
-	srv, s, _, setPerms := newRolesHarness(t)
+	srv, s, _, setPerms, _ := newRolesHarness(t)
 	setPerms(map[string]bool{rbac.PermUsersRolesAssign: true})
 	seedAppUser(t, s, "usr_test_actor", "Actor", false)
 	seedAppUser(t, s, "usr_target", "Target", false)
@@ -128,7 +130,7 @@ func TestUsersRolesGrant_UnknownRole(t *testing.T) {
 }
 
 func TestUsersRolesGrant_SuperadminRequiresAdminsGrant(t *testing.T) {
-	srv, s, _, setPerms := newRolesHarness(t)
+	srv, s, _, setPerms, _ := newRolesHarness(t)
 	// Dispatcher-level perm OK, but real resolver will say actor lacks admins.grant.
 	setPerms(map[string]bool{rbac.PermUsersRolesAssign: true})
 	seedAppUser(t, s, "usr_test_actor", "Actor", false)
@@ -145,7 +147,7 @@ func TestUsersRolesGrant_SuperadminRequiresAdminsGrant(t *testing.T) {
 }
 
 func TestUsersRolesGrant_SuperadminAllowedWhenActorIsSuperadmin(t *testing.T) {
-	srv, s, rb, setPerms := newRolesHarness(t)
+	srv, s, rb, setPerms, _ := newRolesHarness(t)
 	setPerms(map[string]bool{rbac.PermUsersRolesAssign: true})
 	seedAppUser(t, s, "usr_test_actor", "Actor", false)
 	seedAppUser(t, s, "usr_target", "Target", false)
@@ -166,7 +168,7 @@ func TestUsersRolesGrant_SuperadminAllowedWhenActorIsSuperadmin(t *testing.T) {
 }
 
 func TestUsersRolesRevoke_HappyPath(t *testing.T) {
-	srv, s, rb, setPerms := newRolesHarness(t)
+	srv, s, rb, setPerms, _ := newRolesHarness(t)
 	setPerms(map[string]bool{rbac.PermUsersRolesAssign: true})
 	seedAppUser(t, s, "usr_test_actor", "Actor", false)
 	seedAppUser(t, s, "usr_target", "Target", false)
@@ -186,7 +188,7 @@ func TestUsersRolesRevoke_HappyPath(t *testing.T) {
 }
 
 func TestUsersRolesRevoke_LastSuperadminBlocked(t *testing.T) {
-	srv, s, rb, setPerms := newRolesHarness(t)
+	srv, s, rb, setPerms, _ := newRolesHarness(t)
 	setPerms(map[string]bool{rbac.PermUsersRolesAssign: true})
 	// Purge all existing superadmin assignments so "only one" actually holds.
 	if _, err := s.Pool().Exec(context.Background(),
@@ -208,5 +210,32 @@ func TestUsersRolesRevoke_LastSuperadminBlocked(t *testing.T) {
 	}
 	if n := countRoles(t, s, "usr_the_only_sa", rbac.RoleSuperadmin); n != 1 {
 		t.Errorf("superadmin still there expected; count=%d", n)
+	}
+}
+
+func TestUsersRolesGrant_PublishesRolesChangedEvent(t *testing.T) {
+	srv, s, _, setPerms, pub := newRolesHarness(t)
+	setPerms(map[string]bool{rbac.PermUsersRolesAssign: true})
+	seedAppUser(t, s, "usr_test_actor", "Actor", false)
+	seedAppUser(t, s, "usr_pub_target", "Target", false)
+
+	body := mustJSON(t, map[string]any{
+		"params": map[string]any{"userId": "usr_pub_target", "roleKey": rbac.RoleModerator},
+		"reason": "promotion",
+	})
+	resp := mustPOST(t, srv.URL+"/api/app/admin/actions/users.roles.grant", body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("grant status=%d body=%s", resp.StatusCode, readBody(resp))
+	}
+
+	recs := pub.Snapshot()
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 publish, got %d", len(recs))
+	}
+	if recs[0].UserID != "usr_pub_target" {
+		t.Fatalf("publish userID = %q", recs[0].UserID)
+	}
+	if recs[0].Event.Type != events.TypeRolesChanged || recs[0].Event.Reason != events.ReasonGrant {
+		t.Fatalf("publish event = %+v", recs[0].Event)
 	}
 }
