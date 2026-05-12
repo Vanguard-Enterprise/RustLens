@@ -28,7 +28,7 @@ Append-only log of shard worker lifecycle events.
 
 ### `guild_settings`
 
-Per-guild bot settings for logs, the tracked-users category, and command authorization.
+Per-guild bot settings for logs, the tracked-users category, command authorization, and alert pings.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -38,6 +38,7 @@ Per-guild bot settings for logs, the tracked-users category, and command authori
 | `tracked_server_log_channel_id` | `TEXT NOT NULL DEFAULT ''` | Channel snowflake |
 | `tracked_users_category_id` | `TEXT NOT NULL DEFAULT ''` | Discord category snowflake — parent for /track group channels. Replaces the legacy `alerts_channel_id` column, which is dropped on migration. |
 | `admin_role_id` | `TEXT NOT NULL DEFAULT ''` | Role snowflake |
+| `alert_role_id` | `TEXT NOT NULL DEFAULT ''` | Role snowflake pinged by enabled alert notifications. |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 
@@ -189,6 +190,7 @@ Global BattleMetrics servers the bot should track.
 | `high_frequency` | `BOOLEAN NOT NULL DEFAULT FALSE` | Poller subset flag; high-frequency servers are selected for three poll ticks before one low-frequency tick. |
 | `last_polled_at` | `TIMESTAMPTZ` | Nullable, last successful or failed poll attempt time |
 | `last_poll_error` | `TEXT NOT NULL DEFAULT ''` | Most recent poll error, empty on success |
+| `empty_player_poll_count` | `INTEGER NOT NULL DEFAULT 0` | Consecutive successful zero-player BattleMetrics polls while the server still has online `player_states`; the poller waits for 3 before marking everyone offline. |
 
 ### `outbound_proxies`
 
@@ -392,7 +394,7 @@ The OpenAPI spec is built programmatically in `internal/http/openapi.go` as a Go
 - Sentinel errors (e.g. `ErrWipeReactNotFound`) mapped to HTTP 404 in handlers
 - Reaction mutations use `SELECT ... FOR UPDATE` row locking to prevent races
 - `cmd/server/main.go` imports `github.com/joho/godotenv/autoload`, so local backend runs automatically read `apps/backend/.env` before config loading.
-- The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval (unauthenticated, through the proxy pool), selecting three `tracked_servers.high_frequency=true` servers followed by one low-frequency server when both subsets exist, and updates `player_states` inside a single store transaction per server.
+- The BattleMetrics poller queries `GET https://api.battlemetrics.com/servers/{server_id}?include=player` on a rolling interval (unauthenticated, through the proxy pool), selecting three `tracked_servers.high_frequency=true` servers followed by one low-frequency server when both subsets exist, and updates `player_states` inside a single store transaction per server. If BattleMetrics returns a successful zero-player response while that server still has online rows, the poller skips the mass-offline update until the third consecutive empty poll; any non-empty poll resets the counter and syncs normally.
 - Steam profile resolution lives in `internal/steamapi/`. The bot uses `POST /api/internal/bot/setup/steam/resolve` to turn a raw 17-digit Steam ID or a supported `steamcommunity.com/profiles/...` / `steamcommunity.com/id/...` URL into a canonical Steam ID. Vanity URLs are resolved live through `STEAM_API_KEY`, are not cached separately, and always go direct without using the backend proxy pool.
 - Steam ↔ BattleMetrics matching is delegated to an external service in `internal/bmmatch/` configured via `BM_MATCH_URL` + `BM_MATCH_TOKEN`. It exposes `GET /steam-to-bm/{steam_id}` and `GET /bm-to-steam/{bm_id}`; both return a single-string-value JSON object, are sent **directly** (never proxied), and authenticate with a static Bearer token. When unconfigured, backfill resolvers return `ErrSteamAccountNotFound` instead of failing.
 - Platform-identity sync is delegated to `internal/platformsync/`, a thin client for the external `https://link.platformsync.io/api.php` service (URL is hard-coded; only `PLATFORMSYNC_TOKEN` is configurable). Requests are sent **directly** (never proxied). The handler at `POST /api/internal/bot/setup/platform-sync/{platform}/{id}` enforces a 14-day cool-down via `platform_sync_state` and bulk-upserts every discovered `(steam_id, discord_id)` pair (including `previous_*_ids`) into `steam_discord_links` as hard links with `source='platformsync'`. Only the queried side is recorded in `platform_sync_state` so future syncs of discovered counterparts still hit the upstream.

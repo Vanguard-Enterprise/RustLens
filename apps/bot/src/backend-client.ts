@@ -68,6 +68,7 @@ export type GuildSettings = {
   trackedServerLogChannelId: string;
   trackedUsersCategoryId: string;
   adminRoleId: string;
+  alertRoleId: string;
 };
 
 export type GuildSettingsPatch = Partial<Omit<GuildSettings, "guildId">>;
@@ -439,6 +440,7 @@ export type TrackGroup = {
   channelId: string;
   messageId: string;
   sendUpdates: boolean;
+  pingAlertRoleOnEmpty: boolean;
   onlineCount: number;
   createdBy: string;
   createdAt: string;
@@ -1188,6 +1190,7 @@ export class BackendClient {
       channelId: string;
       messageId: string;
       sendUpdates: boolean;
+      pingAlertRoleOnEmpty: boolean;
       onlineCount: number;
       createdBy: string;
     },
@@ -1216,6 +1219,7 @@ export class BackendClient {
       channelId?: string;
       messageId?: string;
       sendUpdates?: boolean;
+      pingAlertRoleOnEmpty?: boolean;
       onlineCount?: number;
     },
   ) {

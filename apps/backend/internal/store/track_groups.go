@@ -14,17 +14,18 @@ var ErrTrackGroupNotFound = errors.New("track group not found")
 var ErrTrackGroupNameTaken = errors.New("track group name already used in guild")
 
 type TrackGroup struct {
-	ID          int64
-	GuildID     string
-	Name        string
-	ServerBmID  string
-	ChannelID   string
-	MessageID   string
-	SendUpdates bool
-	OnlineCount int
-	CreatedBy   string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                   int64
+	GuildID              string
+	Name                 string
+	ServerBmID           string
+	ChannelID            string
+	MessageID            string
+	SendUpdates          bool
+	PingAlertRoleOnEmpty bool
+	OnlineCount          int
+	CreatedBy            string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type TrackGroupMember struct {
@@ -54,6 +55,7 @@ func scanTrackGroup(scanner rowScanner) (TrackGroup, error) {
 		&record.ChannelID,
 		&record.MessageID,
 		&record.SendUpdates,
+		&record.PingAlertRoleOnEmpty,
 		&record.OnlineCount,
 		&record.CreatedBy,
 		&record.CreatedAt,
@@ -64,9 +66,9 @@ func scanTrackGroup(scanner rowScanner) (TrackGroup, error) {
 
 func (p *PostgresStore) CreateTrackGroup(ctx context.Context, group TrackGroup) (TrackGroup, error) {
 	row := p.pool.QueryRow(ctx, `
-		INSERT INTO track_groups (guild_id, name, server_bm_id, channel_id, message_id, send_updates, online_count, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		RETURNING id, guild_id, name, server_bm_id, channel_id, message_id, send_updates, online_count, created_by, created_at, updated_at
+		INSERT INTO track_groups (guild_id, name, server_bm_id, channel_id, message_id, send_updates, ping_alert_role_on_empty, online_count, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id, guild_id, name, server_bm_id, channel_id, message_id, send_updates, ping_alert_role_on_empty, online_count, created_by, created_at, updated_at
 	`,
 		group.GuildID,
 		group.Name,
@@ -74,6 +76,7 @@ func (p *PostgresStore) CreateTrackGroup(ctx context.Context, group TrackGroup) 
 		group.ChannelID,
 		group.MessageID,
 		group.SendUpdates,
+		group.PingAlertRoleOnEmpty,
 		group.OnlineCount,
 		group.CreatedBy,
 	)
@@ -91,7 +94,7 @@ func (p *PostgresStore) CreateTrackGroup(ctx context.Context, group TrackGroup) 
 
 func (p *PostgresStore) ListTrackGroups(ctx context.Context, guildID string) ([]TrackGroup, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT id, guild_id, name, server_bm_id, channel_id, message_id, send_updates, online_count, created_by, created_at, updated_at
+		SELECT id, guild_id, name, server_bm_id, channel_id, message_id, send_updates, ping_alert_role_on_empty, online_count, created_by, created_at, updated_at
 		FROM track_groups
 		WHERE guild_id = $1
 		ORDER BY name ASC, id ASC
@@ -115,7 +118,7 @@ func (p *PostgresStore) ListTrackGroups(ctx context.Context, guildID string) ([]
 
 func (p *PostgresStore) ListAllTrackGroups(ctx context.Context) ([]TrackGroup, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT id, guild_id, name, server_bm_id, channel_id, message_id, send_updates, online_count, created_by, created_at, updated_at
+		SELECT id, guild_id, name, server_bm_id, channel_id, message_id, send_updates, ping_alert_role_on_empty, online_count, created_by, created_at, updated_at
 		FROM track_groups
 		ORDER BY guild_id ASC, id ASC
 	`)
@@ -138,7 +141,7 @@ func (p *PostgresStore) ListAllTrackGroups(ctx context.Context) ([]TrackGroup, e
 
 func (p *PostgresStore) GetTrackGroup(ctx context.Context, guildID string, id int64) (TrackGroup, error) {
 	row := p.pool.QueryRow(ctx, `
-		SELECT id, guild_id, name, server_bm_id, channel_id, message_id, send_updates, online_count, created_by, created_at, updated_at
+		SELECT id, guild_id, name, server_bm_id, channel_id, message_id, send_updates, ping_alert_role_on_empty, online_count, created_by, created_at, updated_at
 		FROM track_groups
 		WHERE guild_id = $1 AND id = $2
 	`, guildID, id)
@@ -150,10 +153,11 @@ func (p *PostgresStore) GetTrackGroup(ctx context.Context, guildID string, id in
 }
 
 type TrackGroupPatch struct {
-	ChannelID   *string
-	MessageID   *string
-	SendUpdates *bool
-	OnlineCount *int
+	ChannelID            *string
+	MessageID            *string
+	SendUpdates          *bool
+	PingAlertRoleOnEmpty *bool
+	OnlineCount          *int
 }
 
 func (p *PostgresStore) UpdateTrackGroup(ctx context.Context, guildID string, id int64, patch TrackGroupPatch) (TrackGroup, error) {
@@ -162,16 +166,18 @@ func (p *PostgresStore) UpdateTrackGroup(ctx context.Context, guildID string, id
 		SET channel_id = COALESCE($3, channel_id),
 			message_id = COALESCE($4, message_id),
 			send_updates = COALESCE($5, send_updates),
-			online_count = COALESCE($6, online_count),
+			ping_alert_role_on_empty = COALESCE($6, ping_alert_role_on_empty),
+			online_count = COALESCE($7, online_count),
 			updated_at = NOW()
 		WHERE guild_id = $1 AND id = $2
-		RETURNING id, guild_id, name, server_bm_id, channel_id, message_id, send_updates, online_count, created_by, created_at, updated_at
+		RETURNING id, guild_id, name, server_bm_id, channel_id, message_id, send_updates, ping_alert_role_on_empty, online_count, created_by, created_at, updated_at
 	`,
 		guildID,
 		id,
 		patch.ChannelID,
 		patch.MessageID,
 		patch.SendUpdates,
+		patch.PingAlertRoleOnEmpty,
 		patch.OnlineCount,
 	)
 	group, err := scanTrackGroup(row)

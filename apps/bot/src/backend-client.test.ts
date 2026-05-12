@@ -33,6 +33,7 @@ describe("BackendClient", () => {
         trackedServerLogChannelId: "",
         trackedUsersCategoryId: "",
         adminRoleId: "",
+        alertRoleId: "",
       }),
     } as Response;
 

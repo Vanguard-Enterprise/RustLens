@@ -24,7 +24,7 @@ src/
   commands/             # Slash command modules (one file per top-level command)
     admin.ts            # /admin setsteam|removesteam registration + guild-link admin flow
     setsteam.ts         # /setsteam — opens a v2 modal with the user's prior linked accounts (StringSelect) plus a free-text fallback; on submit creates a soft link + per-guild link
-    settings.ts         # /settings embed + select-menu/modal flow for guild settings
+    settings.ts         # /settings embed + select-menu/modal flow for guild settings, including admin and alert roles
     bind.ts             # /bind fullkit/turret/rocket/c4 registration + modal flow
     wipereact.ts        # /wipereact create/delete/notreacted/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, logs embeds, and backend-queued schedule post claiming
     checkgamebans.ts    # /checkgamebans guild admin scan of linked Steam IDs for recent game bans, replied ephemerally
