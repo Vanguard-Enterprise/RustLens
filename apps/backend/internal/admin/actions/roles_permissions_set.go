@@ -91,6 +91,10 @@ func (a *rolesPermissionsSetAction) Execute(ctx context.Context, in ActionInput)
 	}
 
 	if a.pub != nil {
+		// Best-effort fan-out: query and per-row scan errors are intentionally
+		// swallowed. A missed roles.changed event surfaces on the next page nav
+		// (admin shells re-fetch /api/app/me on every render); failing the
+		// action because we couldn't notify would be worse than a silent drop.
 		rows, qerr := a.pool.Query(ctx,
 			`SELECT user_id FROM admin_user_roles WHERE role_id::text = $1`,
 			p.ID,
