@@ -30,6 +30,9 @@ func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *r
 	if err := reg.Register(actions.NewUsersEditAction(pool)); err != nil {
 		return err
 	}
+	if err := reg.Register(actions.NewUsersForceLogoutAction(pool, pub)); err != nil {
+		return err
+	}
 	if err := reg.Register(actions.NewUsersRolesGrantAction(pool, resolver, pub)); err != nil {
 		return err
 	}
