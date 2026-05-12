@@ -1,5 +1,5 @@
 import { AppSidebar } from "../_components/app-sidebar";
-import { RolesPage } from "./_components/roles-page";
+import { RolesPage, type RolesInitialQuery } from "./_components/roles-page";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getCsrfToken } from "@/lib/csrf";
@@ -10,8 +10,35 @@ import {
 } from "@/lib/rustlens-api";
 import { requirePermission } from "@/lib/session";
 
-export default async function AdminRolesPage() {
+const DEFAULT_PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50];
+
+function pickStr(v: string | string[] | undefined): string | undefined {
+	if (Array.isArray(v)) return v[0];
+	return v;
+}
+
+function parsePositiveInt(v: string | undefined, fallback: number): number {
+	if (!v) return fallback;
+	const n = Number.parseInt(v, 10);
+	return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+export default async function AdminRolesPage({
+	searchParams,
+}: {
+	searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
 	const session = await requirePermission("admins.grant");
+	const sp = await searchParams;
+
+	const requestedSize = parsePositiveInt(pickStr(sp.pageSize), DEFAULT_PAGE_SIZE);
+	const query: RolesInitialQuery = {
+		q: pickStr(sp.q),
+		sort: pickStr(sp.sort),
+		page: parsePositiveInt(pickStr(sp.page), 1),
+		pageSize: PAGE_SIZE_OPTIONS.includes(requestedSize) ? requestedSize : DEFAULT_PAGE_SIZE,
+	};
 
 	const [csrfToken, currentUser, roles, permissionsCatalog] = await Promise.all([
 		getCsrfToken(),
@@ -55,7 +82,12 @@ export default async function AdminRolesPage() {
 									Create and manage admin roles. System roles are read-only.
 								</p>
 							</div>
-							<RolesPage initialRoles={roles} permissionsCatalog={permissionsCatalog} />
+							<RolesPage
+								initialRoles={roles}
+								permissionsCatalog={permissionsCatalog}
+								initialQuery={query}
+								pageSizeOptions={PAGE_SIZE_OPTIONS}
+							/>
 						</div>
 					</div>
 				</div>

@@ -2091,6 +2091,129 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/app/admin/proxies": map[string]any{
+				"get": map[string]any{
+					"summary":     "List outbound proxies (admin web)",
+					"description": "Returns owner-managed outbound proxies with credentials redacted. Requires proxies.read.",
+					"tags":        []string{"admin"},
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Proxies returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/OutboundProxyListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+					},
+				},
+				"post": map[string]any{
+					"summary":     "Create outbound proxy (admin web)",
+					"description": "Stores a full proxy URL encrypted at rest and returns only a credential-free endpoint. Requires proxies.edit.",
+					"tags":        []string{"admin"},
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateOutboundProxyRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Proxy created",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/OutboundProxy"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+						"409": map[string]any{"$ref": "#/components/responses/Conflict"},
+					},
+				},
+			},
+			"/api/app/admin/proxies/bulk": map[string]any{
+				"post": map[string]any{
+					"summary":     "Bulk update outbound proxies (admin web)",
+					"description": "Applies enable/disable/delete to up to 200 proxy IDs. Requires proxies.edit.",
+					"tags":        []string{"admin"},
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Bulk applied"},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+					},
+				},
+			},
+			"/api/app/admin/proxies/{proxyID}": map[string]any{
+				"patch": map[string]any{
+					"summary":     "Update outbound proxy (admin web)",
+					"description": "Enables or disables a proxy and reloads the runtime provider. Requires proxies.edit.",
+					"tags":        []string{"admin"},
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "proxyID",
+							"in":          "path",
+							"required":    true,
+							"description": "Outbound proxy ID.",
+							"schema":      map[string]any{"type": "integer"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/UpdateOutboundProxyRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Proxy updated",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/OutboundProxy"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+				"delete": map[string]any{
+					"summary":     "Delete outbound proxy (admin web)",
+					"description": "Deletes a proxy and reloads the runtime provider. Requires proxies.edit.",
+					"tags":        []string{"admin"},
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "proxyID",
+							"in":          "path",
+							"required":    true,
+							"description": "Outbound proxy ID.",
+							"schema":      map[string]any{"type": "integer"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{"$ref": "#/components/responses/OKStatus"},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
 			"/api/app/admin/permissions": map[string]any{
 				"get": map[string]any{
 					"summary":     "List the canonical admin permission catalog",

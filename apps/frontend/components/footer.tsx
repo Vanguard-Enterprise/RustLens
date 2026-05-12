@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import Link from "next/link";
 import Image from "next/image";
 import { FaDiscord } from "react-icons/fa6";
@@ -48,6 +49,7 @@ export function Footer() {
 								</a>
 							</Button>
 						))}
+						<ThemeToggle />
 					</div>
 				</div>
 

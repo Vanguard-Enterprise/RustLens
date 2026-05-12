@@ -29,6 +29,7 @@ import {
 	FileTextIcon,
 	KeyRoundIcon,
 	LayoutDashboardIcon,
+	NetworkIcon,
 	SearchIcon,
 	Settings2Icon,
 	UsersIcon,
@@ -211,10 +212,23 @@ export function DashboardAppSidebar({
 								<NavGroup label="Access" items={accessItems} />
 							) : null;
 						})()}
+						{(() => {
+							const infraItems: SidebarNavItem[] = [];
+							if (permissions.includes("proxies.read")) {
+								infraItems.push({
+									title: "Proxies",
+									path: "/admin/proxies",
+									icon: NetworkIcon,
+									isActive: pathname === "/admin/proxies" || pathname.startsWith("/admin/proxies/"),
+								});
+							}
+							return infraItems.length > 0 ? (
+								<NavGroup label="Infrastructure" items={infraItems} />
+							) : null;
+						})()}
 					</>
-				) : (
-					<NavSecondary items={navSecondary} className="mt-auto" />
-				)}
+				) : null}
+				<NavSecondary items={navSecondary} className="mt-auto" />
 			</SidebarContent>
 			<SidebarFooter>
 				<SidebarNavUser csrfToken={csrfToken} user={user} variant={area} />

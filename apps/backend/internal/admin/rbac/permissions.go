@@ -18,6 +18,7 @@ const (
 	PermUsersForceUnlink       = "users.force_unlink_steam"
 
 	PermAdminsGrant            = "admins.grant"
+	PermProxiesRead            = "proxies.read"
 	PermProxiesEdit            = "proxies.edit"
 	PermProxiesRotateCreds     = "proxies.rotate_credentials"
 	PermLinksReview            = "links.review"
@@ -37,6 +38,7 @@ var permissions = []Permission{
 	{Key: PermUsersDelete, Description: "Soft-delete a user account"},
 	{Key: PermUsersAuditRead, Description: "Read user-scoped audit trail"},
 	{Key: PermUsersForceUnlink, Description: "Force-unlink a Steam account from a user"},
+	{Key: PermProxiesRead, Description: "View the outbound proxy provider list"},
 	{Key: PermProxiesEdit, Description: "Create, update, or delete outbound proxy providers"},
 	{Key: PermProxiesRotateCreds, Description: "Rotate outbound proxy provider credentials"},
 	{Key: PermLinksReview, Description: "View the Steam-Discord link review queue"},

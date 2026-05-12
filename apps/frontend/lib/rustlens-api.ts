@@ -507,6 +507,106 @@ export async function searchAdminUsers(q: string): Promise<AdminUserItem[]> {
 	return page.items;
 }
 
+// --- Outbound proxies ---
+
+export type AdminProxyStatus = "active" | "paused" | "broken";
+
+export type AdminProxyItem = {
+	id: number;
+	endpoint: string;
+	enabled: boolean;
+	status: AdminProxyStatus;
+	autoDisabledAt?: string;
+	createdAt?: string;
+	updatedAt?: string;
+};
+
+export type AdminProxiesQuery = {
+	q?: string;
+	status?: AdminProxyStatus;
+	page?: number;
+	pageSize?: number;
+};
+
+export type AdminProxiesPage = {
+	items: AdminProxyItem[];
+	total: number;
+	page: number;
+	pageSize: number;
+};
+
+export async function getAdminProxies(
+	params: AdminProxiesQuery = {},
+): Promise<AdminProxiesPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	if (params.status) sp.set("status", params.status);
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminProxiesPage>(
+		`/api/app/admin/proxies${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function createAdminProxy(
+	endpoint: string,
+	reason: string,
+): Promise<AdminProxyItem> {
+	return backendFetch<AdminProxyItem>(
+		"/api/app/admin/proxies",
+		{ method: "POST", body: JSON.stringify({ endpoint, reason }) },
+		{ requireSession: true },
+	);
+}
+
+export async function updateAdminProxy(
+	id: number,
+	enabled: boolean,
+	reason: string,
+): Promise<AdminProxyItem> {
+	return backendFetch<AdminProxyItem>(
+		`/api/app/admin/proxies/${id}`,
+		{ method: "PATCH", body: JSON.stringify({ enabled, reason }) },
+		{ requireSession: true },
+	);
+}
+
+export async function deleteAdminProxy(
+	id: number,
+	reason: string,
+): Promise<{ status: string }> {
+	const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+	return backendFetch<{ status: string }>(
+		`/api/app/admin/proxies/${id}${qs}`,
+		{ method: "DELETE" },
+		{ requireSession: true },
+	);
+}
+
+export type BulkProxyAction = "enable" | "disable" | "delete" | "clear_broken";
+
+export type BulkProxyResult = {
+	action: BulkProxyAction;
+	succeeded: number;
+	failed: number;
+	results: Array<{ id: number; ok: boolean; error?: string }>;
+};
+
+export async function bulkAdminProxies(
+	action: BulkProxyAction,
+	ids: number[],
+	reason: string,
+): Promise<BulkProxyResult> {
+	return backendFetch<BulkProxyResult>(
+		"/api/app/admin/proxies/bulk",
+		{ method: "POST", body: JSON.stringify({ action, ids, reason }) },
+		{ requireSession: true },
+	);
+}
+
 export type CreateAdminRoleInput = {
 	key: string;
 	name: string;

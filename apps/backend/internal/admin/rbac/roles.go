@@ -44,6 +44,7 @@ func SystemRoles() []RoleSeed {
 			Name:        "Infrastructure Admin",
 			Description: "Manage outbound proxies and infrastructure configuration.",
 			Permissions: []string{
+				"proxies.read",
 				"proxies.edit",
 				"proxies.rotate_credentials",
 				"audit.read",
