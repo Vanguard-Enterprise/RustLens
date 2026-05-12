@@ -230,3 +230,10 @@ func (r *RedisStore) TryClaimTrackNotification(ctx context.Context, groupID int6
 	key := fmt.Sprintf("%s%d:%s:%s:%d", trackNotificationClaimPref, groupID, steamID, state, onlineUnix)
 	return r.client.SetNX(ctx, key, owner, ttl).Result()
 }
+
+// Client returns the underlying go-redis client. Used by callers that need
+// direct pub/sub access; the typed wrapper methods on RedisStore are still
+// preferred for storage-style operations.
+func (r *RedisStore) Client() *redis.Client {
+	return r.client
+}
