@@ -104,6 +104,7 @@ func main() {
 		platformSyncClient,
 		outboundProvider,
 		proxyCrypto,
+		nil, // events hub — wired in main.go in a follow-up task
 	)
 	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
