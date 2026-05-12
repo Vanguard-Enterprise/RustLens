@@ -1913,162 +1913,6 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
-			"/api/app/auth/register": map[string]any{
-				"post": map[string]any{
-					"summary":     "Register a password user",
-					"description": "Creates a new email and password browser account and returns the signed-in user payload.",
-					"security":    []map[string][]string{{"appSecretAuth": {}}},
-					"requestBody": map[string]any{
-						"required": true,
-						"content": map[string]any{
-							"application/json": map[string]any{
-								"schema": map[string]any{"$ref": "#/components/schemas/PasswordRegisterRequest"},
-							},
-						},
-					},
-					"responses": map[string]any{
-						"201": map[string]any{
-							"description": "User registered",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-						"409": map[string]any{"$ref": "#/components/responses/Conflict"},
-					},
-				},
-			},
-			"/api/app/auth/login": map[string]any{
-				"post": map[string]any{
-					"summary":     "Log in with email and password",
-					"description": "Authenticates a browser app user with email and password and returns the current user payload.",
-					"security":    []map[string][]string{{"appSecretAuth": {}}},
-					"requestBody": map[string]any{
-						"required": true,
-						"content": map[string]any{
-							"application/json": map[string]any{
-								"schema": map[string]any{"$ref": "#/components/schemas/PasswordLoginRequest"},
-							},
-						},
-					},
-					"responses": map[string]any{
-						"200": map[string]any{
-							"description": "User authenticated",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-					},
-				},
-			},
-			"/api/app/auth/password/reset/request": map[string]any{
-				"post": map[string]any{
-					"summary":     "Request a password reset",
-					"description": "Creates a password reset token for a linked email address and optionally returns a debug token in local debug mode.",
-					"security":    []map[string][]string{{"appSecretAuth": {}}},
-					"requestBody": map[string]any{
-						"required": true,
-						"content": map[string]any{
-							"application/json": map[string]any{
-								"schema": map[string]any{"$ref": "#/components/schemas/PasswordResetRequest"},
-							},
-						},
-					},
-					"responses": map[string]any{
-						"200": map[string]any{
-							"description": "Password reset request handled",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/PasswordResetRequestResponse"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-					},
-				},
-			},
-			"/api/app/auth/password/reset/consume": map[string]any{
-				"post": map[string]any{
-					"summary":     "Consume a password reset token",
-					"description": "Resets a password with a one-time token and returns the current user payload.",
-					"security":    []map[string][]string{{"appSecretAuth": {}}},
-					"requestBody": map[string]any{
-						"required": true,
-						"content": map[string]any{
-							"application/json": map[string]any{
-								"schema": map[string]any{"$ref": "#/components/schemas/ConsumePasswordResetRequest"},
-							},
-						},
-					},
-					"responses": map[string]any{
-						"200": map[string]any{
-							"description": "Password reset consumed",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-					},
-				},
-			},
-			"/api/app/auth/email/verify/consume": map[string]any{
-				"post": map[string]any{
-					"summary":     "Consume an email verification token",
-					"description": "Marks the primary email as verified using a one-time token and returns the current user payload.",
-					"security":    []map[string][]string{{"appSecretAuth": {}}},
-					"requestBody": map[string]any{
-						"required": true,
-						"content": map[string]any{
-							"application/json": map[string]any{
-								"schema": map[string]any{"$ref": "#/components/schemas/ConsumeEmailVerificationRequest"},
-							},
-						},
-					},
-					"responses": map[string]any{
-						"200": map[string]any{
-							"description": "Email verified",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/CurrentUserResponse"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-					},
-				},
-			},
-			"/api/app/auth/email/verify/request": map[string]any{
-				"post": map[string]any{
-					"summary":     "Request email verification",
-					"description": "Creates an email verification token for the signed-in app user and optionally returns a debug token in local debug mode.",
-					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
-					"responses": map[string]any{
-						"200": map[string]any{
-							"description": "Email verification request handled",
-							"content": map[string]any{
-								"application/json": map[string]any{
-									"schema": map[string]any{"$ref": "#/components/schemas/EmailVerificationRequestResponse"},
-								},
-							},
-						},
-						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
-						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
-						"409": map[string]any{"$ref": "#/components/responses/Conflict"},
-					},
-				},
-			},
 			"/api/app/me": map[string]any{
 				"get": map[string]any{
 					"summary":     "Get the current app user",
@@ -2085,6 +1929,49 @@ func buildOpenAPIDocument() map[string]any {
 						},
 						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
 						"404": map[string]any{"$ref": "#/components/responses/NotFound"},
+					},
+				},
+			},
+			"/api/app/me/preferences": map[string]any{
+				"get": map[string]any{
+					"summary":     "Get the current user's notification preferences",
+					"description": "Returns the signed-in user's notification preferences. Lazily creates a default row (both flags true) if none exists.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Preferences returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/NotificationPreferences"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+				"patch": map[string]any{
+					"summary":     "Update the current user's notification preferences",
+					"description": "Applies a partial update. Absent fields are unchanged. Unknown fields and non-boolean values return 400.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/NotificationPreferencesPatch"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Updated preferences returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/NotificationPreferences"},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
 					},
 				},
 			},
@@ -3048,17 +2935,6 @@ func buildOpenAPIDocument() map[string]any {
 					},
 					"required": []string{"provider", "providerAccountId", "username", "displayName", "avatarUrl", "profileEmail", "createdAt", "updatedAt"},
 				},
-				"UserEmail": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"email":      map[string]any{"type": "string", "format": "email"},
-						"isPrimary":  map[string]any{"type": "boolean"},
-						"isVerified": map[string]any{"type": "boolean"},
-						"createdAt":  map[string]any{"type": "string", "format": "date-time"},
-						"updatedAt":  map[string]any{"type": "string", "format": "date-time"},
-					},
-					"required": []string{"email", "isPrimary", "isVerified", "createdAt", "updatedAt"},
-				},
 				"LinkedSteamAccount": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
@@ -3086,10 +2962,6 @@ func buildOpenAPIDocument() map[string]any {
 					"type": "object",
 					"properties": map[string]any{
 						"user": map[string]any{"$ref": "#/components/schemas/AppUser"},
-						"emails": map[string]any{
-							"type":  "array",
-							"items": map[string]any{"$ref": "#/components/schemas/UserEmail"},
-						},
 						"steamAccounts": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"$ref": "#/components/schemas/LinkedSteamAccount"},
@@ -3102,83 +2974,35 @@ func buildOpenAPIDocument() map[string]any {
 							"allOf":    []map[string]any{{"$ref": "#/components/schemas/ConnectedAccount"}},
 							"nullable": true,
 						},
-						"primaryEmail": map[string]any{
-							"allOf":    []map[string]any{{"$ref": "#/components/schemas/UserEmail"}},
-							"nullable": true,
-						},
 					},
-					"required": []string{"user", "emails", "steamAccounts", "guilds", "discordAccount", "primaryEmail"},
-				},
-				"PasswordRegisterRequest": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"email":       map[string]any{"type": "string", "format": "email"},
-						"password":    map[string]any{"type": "string"},
-						"displayName": map[string]any{"type": "string"},
-					},
-					"required": []string{"email", "password"},
-				},
-				"PasswordLoginRequest": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"email":    map[string]any{"type": "string", "format": "email"},
-						"password": map[string]any{"type": "string"},
-					},
-					"required": []string{"email", "password"},
-				},
-				"PasswordResetRequest": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"email": map[string]any{"type": "string", "format": "email"},
-					},
-					"required": []string{"email"},
-				},
-				"PasswordResetRequestResponse": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"status":     map[string]any{"type": "string", "enum": []string{"sent", "unlinked"}},
-						"linked":     map[string]any{"type": "boolean"},
-						"debugToken": map[string]any{"type": "string"},
-					},
-					"required": []string{"status", "linked"},
-				},
-				"ConsumePasswordResetRequest": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"token":       map[string]any{"type": "string"},
-						"newPassword": map[string]any{"type": "string"},
-					},
-					"required": []string{"token", "newPassword"},
-				},
-				"EmailVerificationRequestResponse": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"status":     map[string]any{"type": "string", "enum": []string{"sent"}},
-						"debugToken": map[string]any{"type": "string"},
-					},
-					"required": []string{"status"},
-				},
-				"ConsumeEmailVerificationRequest": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"token": map[string]any{"type": "string"},
-					},
-					"required": []string{"token"},
+					"required": []string{"user", "steamAccounts", "guilds", "discordAccount"},
 				},
 				"CurrentUserConnectionsResponse": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"emails": map[string]any{
-							"type":  "array",
-							"items": map[string]any{"$ref": "#/components/schemas/UserEmail"},
-						},
 						"steamAccounts": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"$ref": "#/components/schemas/LinkedSteamAccount"},
 						},
 						"discordAccount": map[string]any{"$ref": "#/components/schemas/ConnectedAccount"},
 					},
-					"required": []string{"emails", "steamAccounts"},
+					"required": []string{"steamAccounts"},
+				},
+				"NotificationPreferences": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"notifyInApp":                map[string]any{"type": "boolean"},
+						"notifyDiscordAnnouncements": map[string]any{"type": "boolean"},
+					},
+					"required": []string{"notifyInApp", "notifyDiscordAnnouncements"},
+				},
+				"NotificationPreferencesPatch": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"notifyInApp":                map[string]any{"type": "boolean"},
+						"notifyDiscordAnnouncements": map[string]any{"type": "boolean"},
+					},
+					"additionalProperties": false,
 				},
 				"UserGuildMembershipListResponse": map[string]any{
 					"type": "object",
@@ -3196,11 +3020,10 @@ func buildOpenAPIDocument() map[string]any {
 						"user":                 map[string]any{"$ref": "#/components/schemas/AppUser"},
 						"discordId":            map[string]any{"type": "string"},
 						"discordUsername":      map[string]any{"type": "string"},
-						"primaryEmail":         map[string]any{"type": "string", "format": "email"},
 						"guildCount":           map[string]any{"type": "integer"},
 						"steamConnectionCount": map[string]any{"type": "integer"},
 					},
-					"required": []string{"user", "discordId", "discordUsername", "primaryEmail", "guildCount", "steamConnectionCount"},
+					"required": []string{"user", "discordId", "discordUsername", "guildCount", "steamConnectionCount"},
 				},
 				"AdminUserListResponse": map[string]any{
 					"type": "object",

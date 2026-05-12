@@ -233,20 +233,13 @@ Key patterns:
 - The admin `GET /api/app/admin/permissions` route returns the canonical permission catalog from `rbac.AllPermissions()` (key + description). Static; no DB read. Used by the `/admin/roles` page to render the permission checkbox grid.
 - The admin `GET /api/app/admin/roles` response includes `memberCount` per role (count of distinct `admin_user_roles` rows). Permissions array still resolves to all-permissions for `superadmin` and to `admin_role_permissions` rows for everyone else.
 - Admin role mutations go through the action dispatcher: `roles.create`, `roles.update`, `roles.delete`, `roles.permissions.set`. All four require `admins.grant` and a `reason`. The three mutating actions (`update`, `delete`, `permissions.set`) reject roles with `is_system=true` via the shared `AssertNotSystemRole` guard. Deletion cascades to `admin_role_permissions` and `admin_user_roles` via FK.
-- Password-auth routes (`/api/app/auth/register|login|password/reset/*|email/verify/*`) exist on the backend, but no frontend page calls them today — the live login is Discord-only.
-- The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, polling three `tracked_servers.high_frequency=true` servers followed by one non-high-frequency server when both subsets exist. It updates `tracked_servers.last_polled_at` / `last_poll_error` and syncs per-server player presence into `player_states`. If BattleMetrics returns a successful zero-player response while that server still has online rows, the poller skips the mass-offline update until the third consecutive empty poll; any non-empty poll resets the counter and syncs normally.
+- The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, polling three `tracked_servers.high_frequency=true` servers followed by one non-high-frequency server when both subsets exist. It updates `tracked_servers.last_polled_at` / `last_poll_error` and syncs per-server player presence into `player_states`.
 
 **App users & browser auth**
 
-`app_users` stores first-class browser-facing RustLens users with roles such as `user` and `internal_admin`.
+`app_users` stores first-class browser-facing RustLens users with roles such as `user` and `internal_admin`. Discord identity (snowflake, username, global name, avatar hash) lives directly on this table; sign-in is Discord OAuth only via `/api/auth/discord`.
 
-`user_connected_accounts` stores external identities attached to an app user. Discord is optional here and is used for guild/game identity enrichment and convenience sign-in when enabled.
-
-`user_emails` stores primary and secondary email identities for app users.
-
-`user_password_credentials` stores bcrypt password hashes and password update timestamps. New and reset passwords require at least 12 characters. `password_reset_tokens` and `email_verification_tokens` store one-time password reset and email verification token hashes, not raw tokens.
-
-`app_audit_events` stores browser-auth and internal-admin audit events. The frontend signs users into Next.js sessions after successful email/password auth, password reset, or optional Discord OAuth completion via `/api/app/auth/*`. Email verification only marks the email verified and redirects back to the login flow. Raw reset / verification tokens are not returned by default; explicit local debug previews require both backend `ALLOW_AUTH_DEBUG_TOKENS=true` and frontend `AUTH_DEBUG_TOKEN_PREVIEW=true`.
+`app_audit_events` stores browser-auth and internal-admin audit events.
 
 **Steam & Discord linking**
 
@@ -364,8 +357,6 @@ Each app has a `.env.example` — copy and fill before running.
 | `APP_BASE_URL` | `http://localhost:3000` |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | `` (required to enable `/api/auth/discord`) |
 | `APP_ADMIN_DISCORD_IDS` | `` (CSV; bootstraps internal-admin role) |
-| `APP_EMAIL_TOKEN_TTL_MINUTES` | `20` |
-| `ALLOW_AUTH_DEBUG_TOKENS` | `false` |
 
 The BattleMetrics public API client is unauthenticated; there is no `BATTLEMETRICS_API_KEY` env var. Steam<->BM resolution is delegated to the external `bmmatch` service via `BM_MATCH_URL` + `BM_MATCH_TOKEN`.
 
@@ -384,7 +375,7 @@ The BattleMetrics public API client is unauthenticated; there is no `BATTLEMETRI
 | `BOT_OWNER_GUILD_ID` / `BOT_OWNER_DISCORD_IDS` | required for owner-only `/manage` |
 | `PROXY_ENABLED` / `PROXY_ENDPOINTS` | `false` / `` (controls bot-side proxied request concurrency) |
 
-**Frontend** expects `APP_SESSION_SECRET` and `APP_API_INTERNAL_SECRET` (shared with backend), and usually `RUSTLENS_API_URL`. `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be the canonical external origin used for Discord OAuth callbacks. Auth-handler rate limiting uses `REDIS_URL` (or `RATE_LIMIT_REDIS_URL`) via `lib/rate-limit.ts`. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects a dedicated canonical client-IP header configured via `TRUST_PROXY_IP_HEADER` for the rate limiter.
+**Frontend** expects `APP_SESSION_SECRET` and `APP_API_INTERNAL_SECRET` (shared with backend), and usually `RUSTLENS_API_URL`. `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be the canonical external origin used for Discord OAuth callbacks. `DISCORD_CLIENT_ID` (server-side, shared with backend) is read by the dashboard to render the "Install Bot" sidebar link; if unset, the link is hidden. Auth-handler rate limiting uses `REDIS_URL` (or `RATE_LIMIT_REDIS_URL`) via `lib/rate-limit.ts`. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects a dedicated canonical client-IP header configured via `TRUST_PROXY_IP_HEADER` for the rate limiter.
 
 `/wipereact missing` requires the Discord Guild Members privileged intent because the shard worker requests `GatewayIntentBits.GuildMembers` (alongside `Guilds` and `GuildVoiceStates`).
 

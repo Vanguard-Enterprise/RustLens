@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -37,16 +36,6 @@ func connectedAccountToMap(account store.ConnectedAccount) map[string]any {
 	}
 }
 
-func userEmailToMap(email store.UserEmail) map[string]any {
-	return map[string]any{
-		"email":      email.Email,
-		"isPrimary":  email.IsPrimary,
-		"isVerified": email.IsVerified,
-		"createdAt":  email.CreatedAt,
-		"updatedAt":  email.UpdatedAt,
-	}
-}
-
 func linkedSteamAccountToMap(account store.LinkedSteamAccount) map[string]any {
 	return map[string]any{
 		"steamId":     account.SteamID,
@@ -69,11 +58,6 @@ func userGuildMembershipToMap(guild store.UserGuildMembership) map[string]any {
 }
 
 func currentUserToMap(current store.CurrentUser) map[string]any {
-	emails := make([]map[string]any, 0, len(current.Emails))
-	for _, email := range current.Emails {
-		emails = append(emails, userEmailToMap(email))
-	}
-
 	steamAccounts := make([]map[string]any, 0, len(current.SteamAccounts))
 	for _, account := range current.SteamAccounts {
 		steamAccounts = append(steamAccounts, linkedSteamAccountToMap(account))
@@ -86,7 +70,6 @@ func currentUserToMap(current store.CurrentUser) map[string]any {
 
 	payload := map[string]any{
 		"user":          appUserToMap(current.User),
-		"emails":        emails,
 		"steamAccounts": steamAccounts,
 		"guilds":        guilds,
 	}
@@ -95,12 +78,6 @@ func currentUserToMap(current store.CurrentUser) map[string]any {
 		payload["discordAccount"] = connectedAccountToMap(*current.DiscordAccount)
 	} else {
 		payload["discordAccount"] = nil
-	}
-
-	if current.PrimaryEmail != nil {
-		payload["primaryEmail"] = userEmailToMap(*current.PrimaryEmail)
-	} else {
-		payload["primaryEmail"] = nil
 	}
 
 	return payload
@@ -135,229 +112,6 @@ func requireInternalAdmin(r *http.Request, postgres *store.PostgresStore) (store
 		return store.AppUser{}, false, http.StatusForbidden, "internal admin access required"
 	}
 	return user, true, http.StatusOK, ""
-}
-
-type passwordRegisterRequest struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	DisplayName string `json:"displayName"`
-}
-
-func (h *Handler) RegisterPasswordUser(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var request passwordRegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if request.Email == "" {
-		writeError(w, http.StatusBadRequest, "email is required")
-		return
-	}
-	if request.Password == "" {
-		writeError(w, http.StatusBadRequest, "password is required")
-		return
-	}
-
-	currentUser, err := h.postgres.CreatePasswordUser(r.Context(), request.Email, request.Password, request.DisplayName)
-	if errors.Is(err, store.ErrEmailAlreadyRegistered) {
-		writeError(w, http.StatusConflict, "email is already registered")
-		return
-	}
-	if errors.Is(err, store.ErrWeakPassword) {
-		writeError(w, http.StatusBadRequest, "password must be at least 12 characters")
-		return
-	}
-	if err != nil {
-		log.Printf("[backend] RegisterPasswordUser error for %s: %v", request.Email, err)
-		writeError(w, http.StatusInternalServerError, "failed to register user")
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, currentUserToMap(currentUser))
-}
-
-type passwordLoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-func (h *Handler) LoginPasswordUser(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var request passwordLoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if request.Email == "" {
-		writeError(w, http.StatusBadRequest, "email is required")
-		return
-	}
-	if request.Password == "" {
-		writeError(w, http.StatusBadRequest, "password is required")
-		return
-	}
-
-	currentUser, err := h.postgres.AuthenticatePasswordUser(r.Context(), request.Email, request.Password)
-	if errors.Is(err, store.ErrInvalidCredentials) {
-		writeError(w, http.StatusUnauthorized, "invalid email or password")
-		return
-	}
-	if err != nil {
-		log.Printf("[backend] LoginPasswordUser error for %s: %v", request.Email, err)
-		writeError(w, http.StatusInternalServerError, "failed to sign in")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, currentUserToMap(currentUser))
-}
-
-type passwordResetRequest struct {
-	Email string `json:"email"`
-}
-
-func (h *Handler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var request passwordResetRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if request.Email == "" {
-		writeError(w, http.StatusBadRequest, "email is required")
-		return
-	}
-
-	token, linked, err := h.postgres.CreatePasswordResetToken(r.Context(), request.Email, 30*time.Minute)
-	if errors.Is(err, store.ErrEmailNotLinked) {
-		writeError(w, http.StatusBadRequest, "email is required")
-		return
-	}
-	if err != nil {
-		log.Printf("[backend] RequestPasswordReset error for %s: %v", request.Email, err)
-		writeError(w, http.StatusInternalServerError, "failed to create password reset")
-		return
-	}
-
-	response := map[string]any{
-		"status": "unlinked",
-		"linked": linked,
-	}
-	if linked {
-		response["status"] = "sent"
-		if h.cfg.AllowAuthDebugTokens {
-			response["debugToken"] = token
-		}
-	} else {
-		response["status"] = "unlinked"
-	}
-
-	writeJSON(w, http.StatusOK, response)
-}
-
-type consumePasswordResetRequest struct {
-	Token       string `json:"token"`
-	NewPassword string `json:"newPassword"`
-}
-
-func (h *Handler) ConsumePasswordReset(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var request consumePasswordResetRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if request.Token == "" {
-		writeError(w, http.StatusBadRequest, "token is required")
-		return
-	}
-	if request.NewPassword == "" {
-		writeError(w, http.StatusBadRequest, "new password is required")
-		return
-	}
-
-	currentUser, err := h.postgres.ResetPasswordWithToken(r.Context(), request.Token, request.NewPassword)
-	if errors.Is(err, store.ErrPasswordResetTokenInvalid) {
-		writeError(w, http.StatusUnauthorized, "password reset token is invalid or expired")
-		return
-	}
-	if errors.Is(err, store.ErrWeakPassword) {
-		writeError(w, http.StatusBadRequest, "password must be at least 12 characters")
-		return
-	}
-	if err != nil {
-		log.Printf("[backend] ConsumePasswordReset error: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to reset password")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, currentUserToMap(currentUser))
-}
-
-func (h *Handler) RequestEmailVerification(w http.ResponseWriter, r *http.Request) {
-	actor, ok, status, message := requireAppActor(r, h.postgres)
-	if !ok {
-		writeError(w, status, message)
-		return
-	}
-
-	token, err := h.postgres.CreateEmailVerificationToken(r.Context(), actor.ID, 24*time.Hour)
-	if errors.Is(err, store.ErrEmailNotLinked) {
-		writeError(w, http.StatusBadRequest, "no email is linked to this account")
-		return
-	}
-	if errors.Is(err, store.ErrEmailAlreadyVerified) {
-		writeError(w, http.StatusConflict, "email is already verified")
-		return
-	}
-	if err != nil {
-		log.Printf("[backend] RequestEmailVerification error for %s: %v", actor.ID, err)
-		writeError(w, http.StatusInternalServerError, "failed to create email verification")
-		return
-	}
-
-	if h.cfg.AllowAuthDebugTokens {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status":     "sent",
-			"debugToken": token,
-		})
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "sent",
-	})
-}
-
-type consumeEmailVerificationRequest struct {
-	Token string `json:"token"`
-}
-
-func (h *Handler) ConsumeEmailVerification(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	var request consumeEmailVerificationRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if request.Token == "" {
-		writeError(w, http.StatusBadRequest, "token is required")
-		return
-	}
-
-	currentUser, err := h.postgres.VerifyEmailWithToken(r.Context(), request.Token)
-	if errors.Is(err, store.ErrEmailVerificationInvalid) {
-		writeError(w, http.StatusUnauthorized, "email verification token is invalid or expired")
-		return
-	}
-	if err != nil {
-		log.Printf("[backend] ConsumeEmailVerification error: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to verify email")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, currentUserToMap(currentUser))
 }
 
 func (h *Handler) GetCurrentAppUser(w http.ResponseWriter, r *http.Request) {
@@ -395,18 +149,12 @@ func (h *Handler) GetCurrentAppUserConnections(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	emails := make([]map[string]any, 0, len(currentUser.Emails))
-	for _, email := range currentUser.Emails {
-		emails = append(emails, userEmailToMap(email))
-	}
-
 	steamAccounts := make([]map[string]any, 0, len(currentUser.SteamAccounts))
 	for _, account := range currentUser.SteamAccounts {
 		steamAccounts = append(steamAccounts, linkedSteamAccountToMap(account))
 	}
 
 	payload := map[string]any{
-		"emails":        emails,
 		"steamAccounts": steamAccounts,
 	}
 	if currentUser.DiscordAccount != nil {
@@ -518,7 +266,6 @@ func (h *Handler) ListAppAdminUsers(w http.ResponseWriter, r *http.Request) {
 			"user":                 appUserToMap(item.User),
 			"discordId":            item.DiscordID,
 			"discordUsername":      item.DiscordUsername,
-			"primaryEmail":         item.PrimaryEmail,
 			"guildCount":           item.GuildCount,
 			"steamConnectionCount": item.SteamConnectionCount,
 		})

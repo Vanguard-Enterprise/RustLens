@@ -40,26 +40,3 @@ func (p *PostgresStore) PurgeTrackAnalyticsSessionsCacheBefore(ctx context.Conte
 	return tag.RowsAffected(), nil
 }
 
-// PurgeExpiredAuthTokensBefore removes consumed or expired rows from the
-// short-lived auth-token tables. Consumed tokens cannot be reused regardless
-// of expiry, so they're safe to drop unconditionally.
-//
-// Returns the number of rows deleted across all three tables.
-func (p *PostgresStore) PurgeExpiredAuthTokensBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	var total int64
-	for _, table := range []string{
-		"email_sign_in_tokens",
-		"password_reset_tokens",
-		"email_verification_tokens",
-	} {
-		tag, err := p.pool.Exec(ctx, `
-			DELETE FROM `+table+`
-			WHERE consumed_at IS NOT NULL OR expires_at < $1
-		`, cutoff)
-		if err != nil {
-			return total, err
-		}
-		total += tag.RowsAffected()
-	}
-	return total, nil
-}

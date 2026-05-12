@@ -201,20 +201,16 @@ func NewRouter(
 		r.Use(requireAppSecret)
 
 		r.Post("/auth/logout", appAuthHandler.Logout)
-		r.Post("/auth/register", handler.RegisterPasswordUser)
-		r.Post("/auth/login", handler.LoginPasswordUser)
-		r.Post("/auth/password/reset/request", handler.RequestPasswordReset)
-		r.Post("/auth/password/reset/consume", handler.ConsumePasswordReset)
-		r.Post("/auth/email/verify/consume", handler.ConsumeEmailVerification)
 
 		r.Group(func(r chi.Router) {
 			r.Use(requireSession)
 			r.Get("/me", appAuthHandler.Me)
+			r.Get("/me/preferences", appAuthHandler.Preferences)
+			r.Patch("/me/preferences", appAuthHandler.UpdatePreferences)
 		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(appSessionMiddleware(handler.appSessions))
-			r.Post("/auth/email/verify/request", handler.RequestEmailVerification)
 			r.Get("/me/connections", handler.GetCurrentAppUserConnections)
 			r.Get("/me/guilds", handler.GetCurrentAppUserGuilds)
 			r.Get("/me/guilds/installed", handler.GetCurrentAppUserInstalledGuilds)

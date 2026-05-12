@@ -11,7 +11,6 @@ const (
 	PermUsersRolesAssign       = "users.roles.assign"
 	PermUsersSuspend           = "users.suspend"
 	PermUsersSecurityReset     = "users.security.reset"
-	PermUsersEmailManage       = "users.email.manage"
 	PermUsersCreate            = "users.create"
 	PermUsersConnectionsManage = "users.connections.manage"
 	PermUsersDelete            = "users.delete"
@@ -32,8 +31,7 @@ var permissions = []Permission{
 	{Key: PermUsersEdit, Description: "Edit a user's profile fields (display name, avatar)"},
 	{Key: PermUsersRolesAssign, Description: "Assign or revoke admin roles on users"},
 	{Key: PermUsersSuspend, Description: "Suspend or unsuspend a user account"},
-	{Key: PermUsersSecurityReset, Description: "Trigger password resets and invalidate sessions"},
-	{Key: PermUsersEmailManage, Description: "Manage user emails and verification state"},
+	{Key: PermUsersSecurityReset, Description: "Invalidate a user's sessions"},
 	{Key: PermUsersCreate, Description: "Create a new user account"},
 	{Key: PermUsersConnectionsManage, Description: "Manage a user's connected external accounts"},
 	{Key: PermUsersDelete, Description: "Soft-delete a user account"},

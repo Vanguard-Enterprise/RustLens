@@ -199,11 +199,12 @@ export type AdminUserDetail = {
 	recentAudit: AdminUserAuditItem[];
 };
 
-export type TokenResponse = {
-	status: string;
-	linked?: boolean;
-	debugToken?: string;
+export type NotificationPreferences = {
+	notifyInApp: boolean;
+	notifyDiscordAnnouncements: boolean;
 };
+
+export type NotificationPreferencesPatch = Partial<NotificationPreferences>;
 
 /**
  * Envelope returned by /api/app/admin/actions/{type} on success. `result` is
@@ -299,56 +300,6 @@ export async function postAdminAction<T = unknown>(
 	return payload.result;
 }
 
-export function registerWithPassword(payload: {
-	email: string;
-	password: string;
-	displayName: string;
-}) {
-	return backendFetch<CurrentUser>("/api/app/auth/register", {
-		method: "POST",
-		body: JSON.stringify(payload),
-	});
-}
-
-export function loginWithPassword(payload: { email: string; password: string }) {
-	return backendFetch<CurrentUser>("/api/app/auth/login", {
-		method: "POST",
-		body: JSON.stringify(payload),
-	});
-}
-
-export function requestPasswordReset(email: string) {
-	return backendFetch<TokenResponse>("/api/app/auth/password/reset/request", {
-		method: "POST",
-		body: JSON.stringify({ email }),
-	});
-}
-
-export function consumePasswordReset(payload: {
-	token: string;
-	newPassword: string;
-}) {
-	return backendFetch<CurrentUser>("/api/app/auth/password/reset/consume", {
-		method: "POST",
-		body: JSON.stringify(payload),
-	});
-}
-
-export function requestEmailVerification(sessionToken?: string) {
-	return backendFetch<TokenResponse>(
-		"/api/app/auth/email/verify/request",
-		{ method: "POST" },
-		{ requireSession: true, sessionToken },
-	);
-}
-
-export function consumeEmailVerification(token: string) {
-	return backendFetch<CurrentUser>("/api/app/auth/email/verify/consume", {
-		method: "POST",
-		body: JSON.stringify({ token }),
-	});
-}
-
 export function getCurrentUser() {
 	return backendFetch<CurrentUser>("/api/app/me", undefined, { requireSession: true });
 }
@@ -359,6 +310,22 @@ export async function getCurrentUserSafe() {
 	} catch {
 		return null;
 	}
+}
+
+export function getNotificationPreferences() {
+	return backendFetch<NotificationPreferences>(
+		"/api/app/me/preferences",
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export function updateNotificationPreferences(patch: NotificationPreferencesPatch) {
+	return backendFetch<NotificationPreferences>(
+		"/api/app/me/preferences",
+		{ method: "PATCH", body: JSON.stringify(patch) },
+		{ requireSession: true },
+	);
 }
 
 /**

@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,9 +14,7 @@ import (
 )
 
 var (
-	ErrAppUserNotFound   = errors.New("app user not found")
-	ErrEmailTokenInvalid = errors.New("email token invalid")
-	ErrEmailNotLinked    = errors.New("email not linked")
+	ErrAppUserNotFound = errors.New("app user not found")
 )
 
 type AppUser struct {
@@ -41,14 +38,6 @@ type ConnectedAccount struct {
 	UpdatedAt         time.Time
 }
 
-type UserEmail struct {
-	Email      string
-	IsPrimary  bool
-	IsVerified bool
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-}
-
 type LinkedSteamAccount struct {
 	SteamID     string
 	BmID        string
@@ -69,8 +58,6 @@ type UserGuildMembership struct {
 type CurrentUser struct {
 	User           AppUser
 	DiscordAccount *ConnectedAccount
-	Emails         []UserEmail
-	PrimaryEmail   *UserEmail
 	SteamAccounts  []LinkedSteamAccount
 	Guilds         []UserGuildMembership
 }
@@ -79,7 +66,6 @@ type AdminUserListItem struct {
 	User                 AppUser
 	DiscordID            string
 	DiscordUsername      string
-	PrimaryEmail         string
 	GuildCount           int
 	SteamConnectionCount int
 }
@@ -124,21 +110,6 @@ func scanAppUser(scanner rowScanner) (AppUser, error) {
 		return AppUser{}, err
 	}
 
-	return record, nil
-}
-
-func scanUserEmail(scanner rowScanner) (UserEmail, error) {
-	var record UserEmail
-	err := scanner.Scan(
-		&record.Email,
-		&record.IsPrimary,
-		&record.IsVerified,
-		&record.CreatedAt,
-		&record.UpdatedAt,
-	)
-	if err != nil {
-		return UserEmail{}, err
-	}
 	return record, nil
 }
 
@@ -188,7 +159,6 @@ func scanAdminUserListItem(scanner rowScanner) (AdminUserListItem, error) {
 		&record.User.LastLoginAt,
 		&record.DiscordID,
 		&record.DiscordUsername,
-		&record.PrimaryEmail,
 		&record.GuildCount,
 		&record.SteamConnectionCount,
 	)
@@ -246,29 +216,12 @@ func scanAuditEvent(scanner rowScanner) (AuditEvent, error) {
 	return record, nil
 }
 
-func normalizeEmail(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
-}
-
 func generateAppUserID() (string, error) {
 	bytes := make([]byte, 12)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("usr_%s", hex.EncodeToString(bytes)), nil
-}
-
-func hashEmailToken(rawToken string) string {
-	sum := sha256.Sum256([]byte(rawToken))
-	return hex.EncodeToString(sum[:])
-}
-
-func generateEmailToken() (string, error) {
-	bytes := make([]byte, 24)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
 }
 
 func ensureRoleSet(roles []string, assignInternalAdmin bool) []string {
@@ -319,100 +272,6 @@ func (p *PostgresStore) GetAppUserDiscordID(ctx context.Context, userID string) 
 	return discordID, err
 }
 
-func (p *PostgresStore) CreateEmailSignInToken(ctx context.Context, email string, ttl time.Duration) (string, bool, error) {
-	normalizedEmail := normalizeEmail(email)
-	if normalizedEmail == "" {
-		return "", false, ErrEmailNotLinked
-	}
-
-	var userID string
-	err := p.pool.QueryRow(ctx, `
-		SELECT user_id
-		FROM user_emails
-		WHERE email = $1
-	`, normalizedEmail).Scan(&userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, err
-	}
-
-	rawToken, err := generateEmailToken()
-	if err != nil {
-		return "", false, err
-	}
-
-	_, err = p.pool.Exec(ctx, `
-		INSERT INTO email_sign_in_tokens (token_hash, email, expires_at)
-		VALUES ($1, $2, $3)
-	`, hashEmailToken(rawToken), normalizedEmail, time.Now().Add(ttl))
-	if err != nil {
-		return "", false, err
-	}
-
-	if err := p.InsertAppAuditEvent(ctx, userID, userID, "auth.email.request", map[string]any{
-		"email": normalizedEmail,
-	}); err != nil {
-		return "", false, err
-	}
-
-	return rawToken, true, nil
-}
-
-func (p *PostgresStore) ConsumeEmailSignInToken(ctx context.Context, rawToken string) (CurrentUser, error) {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return CurrentUser{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	var userID string
-	err = tx.QueryRow(ctx, `
-		SELECT ue.user_id
-		FROM email_sign_in_tokens est
-		INNER JOIN user_emails ue ON ue.email = est.email
-		WHERE est.token_hash = $1
-			AND est.consumed_at IS NULL
-			AND est.expires_at > NOW()
-	`, hashEmailToken(rawToken)).Scan(&userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return CurrentUser{}, ErrEmailTokenInvalid
-	}
-	if err != nil {
-		return CurrentUser{}, err
-	}
-
-	_, err = tx.Exec(ctx, `
-		UPDATE email_sign_in_tokens
-		SET consumed_at = NOW()
-		WHERE token_hash = $1
-	`, hashEmailToken(rawToken))
-	if err != nil {
-		return CurrentUser{}, err
-	}
-
-	_, err = tx.Exec(ctx, `
-		UPDATE app_users
-		SET updated_at = NOW(),
-			last_login_at = NOW()
-		WHERE id = $1
-	`, userID)
-	if err != nil {
-		return CurrentUser{}, err
-	}
-
-	if err := p.insertAuditEventTx(ctx, tx, userID, userID, "auth.email.login", map[string]any{}); err != nil {
-		return CurrentUser{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return CurrentUser{}, err
-	}
-
-	return p.GetCurrentUserByID(ctx, userID)
-}
-
 func (p *PostgresStore) GetCurrentUserByID(ctx context.Context, userID string) (CurrentUser, error) {
 	user, err := p.GetAppUserByID(ctx, userID)
 	if err != nil {
@@ -421,7 +280,6 @@ func (p *PostgresStore) GetCurrentUserByID(ctx context.Context, userID string) (
 
 	current := CurrentUser{
 		User:          user,
-		Emails:        []UserEmail{},
 		SteamAccounts: []LinkedSteamAccount{},
 		Guilds:        []UserGuildMembership{},
 	}
@@ -454,36 +312,6 @@ func (p *PostgresStore) GetCurrentUserByID(ctx context.Context, userID string) (
 			account.DisplayName = *discordGlobalName
 		}
 		current.DiscordAccount = &account
-	}
-
-	emailRows, err := p.pool.Query(ctx, `
-		SELECT email, is_primary, is_verified, created_at, updated_at
-		FROM user_emails
-		WHERE user_id = $1
-		ORDER BY is_primary DESC, updated_at DESC
-	`, userID)
-	if err != nil {
-		return CurrentUser{}, err
-	}
-	defer emailRows.Close()
-
-	for emailRows.Next() {
-		record, err := scanUserEmail(emailRows)
-		if err != nil {
-			return CurrentUser{}, err
-		}
-		current.Emails = append(current.Emails, record)
-		if current.PrimaryEmail == nil && record.IsPrimary {
-			primary := record
-			current.PrimaryEmail = &primary
-		}
-	}
-	if err := emailRows.Err(); err != nil {
-		return CurrentUser{}, err
-	}
-	if current.PrimaryEmail == nil && len(current.Emails) > 0 {
-		primary := current.Emails[0]
-		current.PrimaryEmail = &primary
 	}
 
 	if current.DiscordAccount == nil {
@@ -554,17 +382,9 @@ func (p *PostgresStore) ListAdminUsers(ctx context.Context) ([]AdminUserListItem
 			u.last_login_at,
 			u.discord_id,
 			u.discord_username,
-			COALESCE(e.email, ''),
 			COALESCE(g.guild_count, 0),
 			COALESCE(s.steam_count, 0)
 		FROM app_users u
-		LEFT JOIN LATERAL (
-			SELECT email
-			FROM user_emails
-			WHERE user_id = u.id
-			ORDER BY is_primary DESC, is_verified DESC, updated_at DESC
-			LIMIT 1
-		) e ON TRUE
 		LEFT JOIN LATERAL (
 			SELECT COUNT(*)::int AS guild_count
 			FROM user_guilds ug

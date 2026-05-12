@@ -355,6 +355,19 @@ Guild-scoped Steam-Discord associations managed by guild admins.
 - `guild_steam_discord_links_guild_discord_idx ON (guild_id, discord_id)` — lookup by guild + Discord user.
 - `guild_steam_discord_links_guild_steam_idx ON (guild_id, steam_id)` — lookup by guild + Steam account.
 
+### `user_notification_preferences`
+
+Per-user notification toggle state. Both flags default to `TRUE` (opt-out). Storage-only at this point — no delivery system reads them yet.
+
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | `TEXT` | PK, FK to `app_users.id` ON DELETE CASCADE |
+| `notify_in_app` | `BOOLEAN NOT NULL DEFAULT TRUE` | Future in-app notification centre |
+| `notify_discord_announcements` | `BOOLEAN NOT NULL DEFAULT TRUE` | Future bot DM announcements |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+Lazily upserted on first `GET /api/app/me/preferences` so handlers never see a missing-row case.
+
 ## Background services
 
 `cmd/server/main.go` starts three long-running goroutines, each cancelled by the root `ctx` on SIGINT/SIGTERM:
@@ -373,10 +386,9 @@ Defaults (overridable via `cleanup.Config`):
 |---|---|---|
 | Wipe reacts | 7 days past `scheduled_unix` | `wipe_reacts` |
 | Track-analytics session cache | 48 hours since `fetched_at` | `track_analytics_sessions_cache` |
-| Auth tokens | consumed, OR expired >24h ago | `email_sign_in_tokens`, `password_reset_tokens`, `email_verification_tokens` |
 | Tick interval | 1 hour | — |
 
-Wipe reacts are kept for a week after they pass so `/compare` and `/wipereact missing` can still operate on recent history. The analytics cache window matches the 24h freshness rule used by the analytics handler with a 24h buffer. Auth-token cleanup is safe because consumed tokens cannot be reused regardless of expiry, and the FK `ON DELETE CASCADE` from the parent tables already ensures we never orphan user records.
+Wipe reacts are kept for a week after they pass so `/compare` and `/wipereact missing` can still operate on recent history. The analytics cache window matches the 24h freshness rule used by the analytics handler with a 24h buffer.
 
 Failures of any single step are logged and do not abort the others; the service never crashes the server.
 

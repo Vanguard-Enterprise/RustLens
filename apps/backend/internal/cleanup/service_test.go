@@ -8,18 +8,14 @@ import (
 )
 
 type fakeStore struct {
-	wipeReactCalls    int
-	analyticsCalls    int
-	authTokenCalls    int
-	wipeReactCutoffs  []time.Time
-	analyticsCutoffs  []time.Time
-	authTokenCutoffs  []time.Time
-	wipeReactRows     int64
-	analyticsRows     int64
-	authTokenRows     int64
-	wipeReactErr      error
-	analyticsErr      error
-	authTokenErr      error
+	wipeReactCalls   int
+	analyticsCalls   int
+	wipeReactCutoffs []time.Time
+	analyticsCutoffs []time.Time
+	wipeReactRows    int64
+	analyticsRows    int64
+	wipeReactErr     error
+	analyticsErr     error
 }
 
 func (f *fakeStore) PurgeWipeReactsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
@@ -34,19 +30,12 @@ func (f *fakeStore) PurgeTrackAnalyticsSessionsCacheBefore(ctx context.Context, 
 	return f.analyticsRows, f.analyticsErr
 }
 
-func (f *fakeStore) PurgeExpiredAuthTokensBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	f.authTokenCalls++
-	f.authTokenCutoffs = append(f.authTokenCutoffs, cutoff)
-	return f.authTokenRows, f.authTokenErr
-}
-
 func TestRunOnceCallsAllPurgesWithRetentionCutoffs(t *testing.T) {
 	store := &fakeStore{}
 	cfg := Config{
 		Interval:                time.Hour,
 		WipeReactRetention:      7 * 24 * time.Hour,
 		AnalyticsCacheRetention: 48 * time.Hour,
-		AuthTokenGrace:          24 * time.Hour,
 	}
 	svc := NewService(store, cfg)
 
@@ -54,7 +43,7 @@ func TestRunOnceCallsAllPurgesWithRetentionCutoffs(t *testing.T) {
 	svc.runOnce(context.Background())
 	after := time.Now()
 
-	if store.wipeReactCalls != 1 || store.analyticsCalls != 1 || store.authTokenCalls != 1 {
+	if store.wipeReactCalls != 1 || store.analyticsCalls != 1 {
 		t.Fatalf("expected 1 call per purge, got %+v", store)
 	}
 
@@ -68,7 +57,6 @@ func TestRunOnceCallsAllPurgesWithRetentionCutoffs(t *testing.T) {
 	}
 	checkCutoff("wipeReact", store.wipeReactCutoffs[0], cfg.WipeReactRetention)
 	checkCutoff("analytics", store.analyticsCutoffs[0], cfg.AnalyticsCacheRetention)
-	checkCutoff("authToken", store.authTokenCutoffs[0], cfg.AuthTokenGrace)
 }
 
 func TestConfigDefaultsAreConservative(t *testing.T) {
@@ -82,9 +70,6 @@ func TestConfigDefaultsAreConservative(t *testing.T) {
 	if svc.cfg.AnalyticsCacheRetention != 48*time.Hour {
 		t.Errorf("AnalyticsCacheRetention default = %s, want 48h", svc.cfg.AnalyticsCacheRetention)
 	}
-	if svc.cfg.AuthTokenGrace != 24*time.Hour {
-		t.Errorf("AuthTokenGrace default = %s, want 24h", svc.cfg.AuthTokenGrace)
-	}
 }
 
 func TestRunOnceIsRobustToOneStepFailing(t *testing.T) {
@@ -92,10 +77,10 @@ func TestRunOnceIsRobustToOneStepFailing(t *testing.T) {
 		wipeReactErr: errors.New("boom"),
 	}
 	svc := NewService(store, Config{})
-	// Should not panic and should still run the other two steps.
+	// Should not panic and should still run the other step.
 	svc.runOnce(context.Background())
-	if store.analyticsCalls != 1 || store.authTokenCalls != 1 {
-		t.Fatalf("expected analytics+authToken to still run after wipeReact failure, got %+v", store)
+	if store.analyticsCalls != 1 {
+		t.Fatalf("expected analytics to still run after wipeReact failure, got %+v", store)
 	}
 }
 
