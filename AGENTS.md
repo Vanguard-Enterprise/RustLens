@@ -117,11 +117,18 @@ apps/frontend/
     legal-page.tsx / legal-toc.tsx       # Shared long-form legal page shell + TOC used by /privacy, /terms-of-service, /refund-policy
     chart-area-interactive.tsx, data-table.tsx, section-cards.tsx, latest-change.tsx, frequency-toggle.tsx, dashboard-skeleton.tsx  # Dashboard widgets
     nav-main.tsx, nav-secondary.tsx, nav-documents.tsx, nav-group.tsx, nav-links.tsx, nav-user.tsx, sidebar-nav-user.tsx, mobile-nav.tsx, desktop-nav.tsx, custom-sidebar-trigger.tsx  # Navigation primitives
+    session-provider.tsx       # React context for live current-user snapshot (roles, permissions)
+    session-events.tsx         # Mounts the EventSource hook; dispatches SSE events to Sonner + router
+    session-refresh-trigger.tsx # Sliding-TTL refresher (mount/focus/online/hourly)
     logo.tsx                   # Brand logo component
     ui/                        # shadcn/ui primitives added as source
   lib/
     rustlens-api.ts      # Server-side client for /api/app aggregate, admin, and (still-exposed) password-auth backend routes
     session.ts           # Signed Next.js `rustlens_session` cookie helpers (14-day TTL)
+    session-errors.ts    # SessionRevokedError + notice-slug mapping for /login?notice=
+    session-refresh.ts   # `refreshSession` server action: re-mints cookie when TTL < 7d
+    session-actions.ts   # `refreshCurrentUser` + `clearSessionAction` server actions
+    events-client.ts     # Browser EventSource lifecycle helper for /api/events/stream
     csrf.ts              # Double-submit CSRF token helper used by the Discord OAuth start link and /logout POST
     rate-limit.ts        # Redis-backed rate limiter (used by auth-related routes)
     discord-cdn.ts       # Discord avatar/CDN URL helpers
@@ -150,9 +157,10 @@ apps/backend/
   internal/
     config/config.go         # Env-based config with defaults
     http/
-      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/owner/*, /api/internal/bot/setup/*, /api/auth/discord (+ /callback), /api/app/* (auth, me, admin)
+      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/owner/*, /api/internal/bot/setup/*, /api/auth/discord (+ /callback), /api/events/stream, /api/app/* (auth, me, admin)
       handlers.go            # Bot-internal handler implementations
       app_handlers.go        # /api/app aggregate, password-auth, and admin handlers
+      events_handlers.go     # Cookie-authenticated SSE handler at /api/events/stream
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
     auth/jwt.go              # JWT signing/validation for bot service auth + app session token
     appauth/                 # App-session auth: handler, repo, middleware, Discord-OAuth-driven session creation
