@@ -4,6 +4,18 @@ import { ActionRowBuilder, ButtonBuilder, EmbedBuilder, MessageFlags } from "dis
 export const RUSTLENS_EMBED_COLOR = 14582045;
 export const RUSTLENS_EMBED_ICON_URL =
   "https://i.ibb.co/n8MWVLDN/1ee153f3c14d7decaeb6cb62c28fb5b4.webp";
+export const FOOTER_TEXT = "RustLens.com";
+
+export function buildFooter(text: string = FOOTER_TEXT) {
+  return { text, iconURL: RUSTLENS_EMBED_ICON_URL };
+}
+
+export function createEmbed() {
+  return new EmbedBuilder()
+    .setColor(RUSTLENS_EMBED_COLOR)
+    .setTimestamp()
+    .setFooter(buildFooter());
+}
 
 export function logDiscordError(
   context: string,
@@ -28,12 +40,9 @@ export function logDiscordCatch<T>(
 }
 
 export function buildWebsiteAdminOnlyEmbed() {
-  return new EmbedBuilder()
+  return createEmbed()
     .setTitle("Error")
-    .setDescription("This is locked to website admins only.")
-    .setColor(RUSTLENS_EMBED_COLOR)
-    .setTimestamp()
-    .setFooter({ text: "RustLens.com", iconURL: RUSTLENS_EMBED_ICON_URL });
+    .setDescription("This is locked to website admins only.");
 }
 
 export type ModalComponentNode = {

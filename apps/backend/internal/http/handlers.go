@@ -411,6 +411,7 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 		"trackedServerLogChannelId": settings.TrackedServerLogChannelID,
 		"trackedUsersCategoryId":    settings.TrackedUsersCategoryID,
 		"adminRoleId":               settings.AdminRoleID,
+		"alertRoleId":               settings.AlertRoleID,
 	})
 }
 
@@ -570,6 +571,7 @@ type updateGuildSettingsRequest struct {
 	TrackedServerLogChannelID *string `json:"trackedServerLogChannelId"`
 	TrackedUsersCategoryID    *string `json:"trackedUsersCategoryId"`
 	AdminRoleID               *string `json:"adminRoleId"`
+	AlertRoleID               *string `json:"alertRoleId"`
 }
 
 func validateSnowflakeOptionalField(w http.ResponseWriter, value *string, fieldName string) bool {
@@ -617,6 +619,9 @@ func (h *Handler) UpdateGuildSettings(w http.ResponseWriter, r *http.Request) {
 	if !validateSnowflakeOptionalField(w, request.AdminRoleID, "adminRoleId") {
 		return
 	}
+	if !validateSnowflakeOptionalField(w, request.AlertRoleID, "alertRoleId") {
+		return
+	}
 
 	settings, err := h.postgres.UpdateGuildSettings(r.Context(), guildID, store.GuildSettingsPatch{
 		WipeReactLogChannelID:     request.WipeReactLogChannelID,
@@ -624,6 +629,7 @@ func (h *Handler) UpdateGuildSettings(w http.ResponseWriter, r *http.Request) {
 		TrackedServerLogChannelID: request.TrackedServerLogChannelID,
 		TrackedUsersCategoryID:    request.TrackedUsersCategoryID,
 		AdminRoleID:               request.AdminRoleID,
+		AlertRoleID:               request.AlertRoleID,
 	})
 	if err != nil {
 		log.Printf("[backend] UpdateGuildSettings error for guild %s: %v", guildID, err)
@@ -2521,6 +2527,23 @@ func writeSteamDiscordLinkList(w http.ResponseWriter, links []store.SteamDiscord
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func setSteamCandidateToMap(candidate store.SetSteamCandidate) map[string]any {
+	return map[string]any{
+		"steamId":     candidate.SteamID,
+		"type":        candidate.Type,
+		"displayName": candidate.DisplayName,
+		"createdAt":   candidate.CreatedAt,
+	}
+}
+
+func writeSetSteamCandidateList(w http.ResponseWriter, candidates []store.SetSteamCandidate) {
+	items := make([]map[string]any, 0, len(candidates))
+	for _, candidate := range candidates {
+		items = append(items, setSteamCandidateToMap(candidate))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 type hideDiscordLinkIdentityRequest struct {
 	Reason    string `json:"reason"`
 	CreatedBy string `json:"createdBy"`
@@ -2875,6 +2898,23 @@ func (h *Handler) UnhideDiscordLinkIdentity(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (h *Handler) ListSetSteamCandidates(w http.ResponseWriter, r *http.Request) {
+	discordID := chi.URLParam(r, "discordID")
+	if discordID == "" || !snowflakePattern.MatchString(discordID) {
+		writeError(w, http.StatusBadRequest, "discordID must be a valid Discord snowflake")
+		return
+	}
+
+	candidates, err := h.postgres.ListSetSteamCandidates(r.Context(), discordID)
+	if err != nil {
+		log.Printf("[backend] ListSetSteamCandidates error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch setsteam candidates")
+		return
+	}
+
+	writeSetSteamCandidateList(w, candidates)
 }
 
 func (h *Handler) IsDiscordWebsiteAdmin(w http.ResponseWriter, r *http.Request) {

@@ -19,7 +19,10 @@ type Poller struct {
 	highFrequencyPolls int
 }
 
-const highFrequencyPollsBeforeLowFrequency = 3
+const (
+	highFrequencyPollsBeforeLowFrequency = 3
+	emptyPollsBeforeOffline              = 3
+)
 
 func NewPoller(client *Client, postgres *store.PostgresStore, redis *store.RedisStore, interval time.Duration) *Poller {
 	host, err := os.Hostname()
@@ -106,11 +109,42 @@ func (p *Poller) runCycle(ctx context.Context) {
 			})
 		}
 
-		syncCtx, syncCancel := context.WithTimeout(ctx, 30*time.Second)
-		err = p.postgres.SyncPlayerStates(syncCtx, server.BmID, inputs, observedAt)
-		syncCancel()
-		if err != nil {
-			pollErr = fmt.Errorf("sync player states: %w", err)
+		shouldSync := true
+		if len(inputs) == 0 {
+			stateCtx, stateCancel := context.WithTimeout(ctx, 5*time.Second)
+			onlineCount, countErr := p.postgres.CountOnlinePlayerStates(stateCtx, server.BmID)
+			stateCancel()
+			if countErr != nil {
+				pollErr = fmt.Errorf("count online player states: %w", countErr)
+			} else if onlineCount > 0 {
+				stateCtx, stateCancel = context.WithTimeout(ctx, 5*time.Second)
+				emptyPolls, incrementErr := p.postgres.IncrementTrackedServerEmptyPolls(stateCtx, server.BmID)
+				stateCancel()
+				if incrementErr != nil {
+					pollErr = fmt.Errorf("record empty player poll: %w", incrementErr)
+				} else if emptyPolls < emptyPollsBeforeOffline {
+					shouldSync = false
+					log.Printf("[battlemetrics] delaying empty poll for server %s (%s): %d/%d empty polls", server.BmID, server.Name, emptyPolls, emptyPollsBeforeOffline)
+				}
+			}
+		}
+
+		if pollErr == nil && shouldSync {
+			syncCtx, syncCancel := context.WithTimeout(ctx, 30*time.Second)
+			err = p.postgres.SyncPlayerStates(syncCtx, server.BmID, inputs, observedAt)
+			syncCancel()
+			if err != nil {
+				pollErr = fmt.Errorf("sync player states: %w", err)
+			}
+		}
+
+		if pollErr == nil && (len(inputs) > 0 || shouldSync) {
+			stateCtx, stateCancel := context.WithTimeout(ctx, 5*time.Second)
+			err = p.postgres.ResetTrackedServerEmptyPolls(stateCtx, server.BmID)
+			stateCancel()
+			if err != nil {
+				pollErr = fmt.Errorf("reset empty player polls: %w", err)
+			}
 		}
 	}
 

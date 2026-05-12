@@ -68,6 +68,7 @@ export type GuildSettings = {
   trackedServerLogChannelId: string;
   trackedUsersCategoryId: string;
   adminRoleId: string;
+  alertRoleId: string;
 };
 
 export type GuildSettingsPatch = Partial<Omit<GuildSettings, "guildId">>;
@@ -240,6 +241,17 @@ export type GuildSteamDiscordLink = {
 
 export type GuildSteamDiscordLinkListResponse = {
   items: GuildSteamDiscordLink[];
+};
+
+export type SetSteamCandidate = {
+  steamId: string;
+  type: "soft" | "hard";
+  displayName: string;
+  createdAt: string;
+};
+
+export type SetSteamCandidateListResponse = {
+  items: SetSteamCandidate[];
 };
 
 export type GuildNicknameTarget = {
@@ -428,6 +440,7 @@ export type TrackGroup = {
   channelId: string;
   messageId: string;
   sendUpdates: boolean;
+  pingAlertRoleOnEmpty: boolean;
   onlineCount: number;
   createdBy: string;
   createdAt: string;
@@ -1127,6 +1140,14 @@ export class BackendClient {
     );
   }
 
+  listSetSteamCandidates(workerId: string, discordId: string) {
+    return this.call<SetSteamCandidateListResponse>(
+      workerId,
+      `/api/internal/bot/setup/discord/${discordId}/setsteam-candidates`,
+      "GET",
+    );
+  }
+
   listGuildLinksBySteam(workerId: string, guildId: string, steamId: string) {
     return this.call<GuildSteamDiscordLinkListResponse>(
       workerId,
@@ -1169,6 +1190,7 @@ export class BackendClient {
       channelId: string;
       messageId: string;
       sendUpdates: boolean;
+      pingAlertRoleOnEmpty: boolean;
       onlineCount: number;
       createdBy: string;
     },
@@ -1197,6 +1219,7 @@ export class BackendClient {
       channelId?: string;
       messageId?: string;
       sendUpdates?: boolean;
+      pingAlertRoleOnEmpty?: boolean;
       onlineCount?: number;
     },
   ) {

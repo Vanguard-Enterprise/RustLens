@@ -291,3 +291,13 @@ func (p *PostgresStore) SyncPlayerStates(ctx context.Context, serverBmID string,
 
 	return tx.Commit(ctx)
 }
+
+func (p *PostgresStore) CountOnlinePlayerStates(ctx context.Context, serverBmID string) (int, error) {
+	var count int
+	err := p.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM player_states
+		WHERE server_bm_id = $1 AND is_online
+	`, serverBmID).Scan(&count)
+	return count, err
+}

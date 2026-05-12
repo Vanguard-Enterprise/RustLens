@@ -33,6 +33,7 @@ describe("BackendClient", () => {
         trackedServerLogChannelId: "",
         trackedUsersCategoryId: "",
         adminRoleId: "",
+        alertRoleId: "",
       }),
     } as Response;
 
@@ -346,6 +347,33 @@ describe("BackendClient", () => {
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/online-summary");
     expect(init?.method).toBe("GET");
+  });
+
+  it("fetches setsteam candidates by discord id", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            steamId: "76561198000000000",
+            type: "hard",
+            displayName: "Sem",
+            createdAt: "2026-04-01T10:00:00.000Z",
+          },
+        ],
+      }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    const result = await client.listSetSteamCandidates("worker-a", "456");
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/discord/456/setsteam-candidates");
+    expect(init?.method).toBe("GET");
+    expect(result.items[0].displayName).toBe("Sem");
   });
 
   it("posts guild steam-discord links", async () => {

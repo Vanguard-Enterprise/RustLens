@@ -21,6 +21,7 @@ type GuildSettings struct {
 	TrackedServerLogChannelID string
 	TrackedUsersCategoryID    string
 	AdminRoleID               string
+	AlertRoleID               string
 }
 
 type GuildSettingsPatch struct {
@@ -29,6 +30,7 @@ type GuildSettingsPatch struct {
 	TrackedServerLogChannelID *string
 	TrackedUsersCategoryID    *string
 	AdminRoleID               *string
+	AlertRoleID               *string
 }
 
 func NewPostgresStore(ctx context.Context, connectionString string) (*PostgresStore, error) {
@@ -74,6 +76,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			tracked_server_log_channel_id TEXT NOT NULL DEFAULT '',
 			tracked_users_category_id TEXT NOT NULL DEFAULT '',
 			admin_role_id TEXT NOT NULL DEFAULT '',
+			alert_role_id TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
@@ -85,6 +88,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS tracked_server_log_channel_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS tracked_users_category_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS admin_role_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS alert_role_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE guild_settings DROP COLUMN IF EXISTS log_channel_id;
 		ALTER TABLE guild_settings DROP COLUMN IF EXISTS alerts_channel_id;
 
@@ -373,7 +377,8 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			is_build BOOLEAN NOT NULL DEFAULT FALSE,
 			high_frequency BOOLEAN NOT NULL DEFAULT FALSE,
 			last_polled_at TIMESTAMPTZ,
-			last_poll_error TEXT NOT NULL DEFAULT ''
+			last_poll_error TEXT NOT NULL DEFAULT '',
+			empty_player_poll_count INTEGER NOT NULL DEFAULT 0
 		);
 
 		ALTER TABLE tracked_servers DROP COLUMN IF EXISTS include_in_guild_settings;
@@ -386,6 +391,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS high_frequency BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_polled_at TIMESTAMPTZ;
 		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS last_poll_error TEXT NOT NULL DEFAULT '';
+		ALTER TABLE tracked_servers ADD COLUMN IF NOT EXISTS empty_player_poll_count INTEGER NOT NULL DEFAULT 0;
 
 		CREATE TABLE IF NOT EXISTS outbound_proxies (
 			id BIGSERIAL PRIMARY KEY,
@@ -547,6 +553,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			channel_id TEXT NOT NULL DEFAULT '',
 			message_id TEXT NOT NULL DEFAULT '',
 			send_updates BOOLEAN NOT NULL DEFAULT FALSE,
+			ping_alert_role_on_empty BOOLEAN NOT NULL DEFAULT FALSE,
 			online_count INTEGER NOT NULL DEFAULT 0,
 			created_by TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -555,6 +562,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		);
 
 		CREATE INDEX IF NOT EXISTS track_groups_guild_idx ON track_groups (guild_id);
+		ALTER TABLE track_groups ADD COLUMN IF NOT EXISTS ping_alert_role_on_empty BOOLEAN NOT NULL DEFAULT FALSE;
 
 		CREATE TABLE IF NOT EXISTS track_group_members (
 			track_group_id BIGINT NOT NULL REFERENCES track_groups(id) ON DELETE CASCADE,
@@ -861,7 +869,8 @@ func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (G
 			linking_log_channel_id,
 			tracked_server_log_channel_id,
 			tracked_users_category_id,
-			admin_role_id
+			admin_role_id,
+			alert_role_id
 		FROM guild_settings
 		WHERE guild_id = $1
 	`, guildID).Scan(
@@ -870,6 +879,7 @@ func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (G
 		&settings.TrackedServerLogChannelID,
 		&settings.TrackedUsersCategoryID,
 		&settings.AdminRoleID,
+		&settings.AlertRoleID,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return GuildSettings{
@@ -879,6 +889,7 @@ func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (G
 			TrackedServerLogChannelID: "",
 			TrackedUsersCategoryID:    "",
 			AdminRoleID:               "",
+			AlertRoleID:               "",
 		}, nil
 	}
 	if err != nil {
@@ -906,6 +917,7 @@ func (p *PostgresStore) UpdateGuildSettings(ctx context.Context, guildID string,
 			tracked_server_log_channel_id = COALESCE($4, tracked_server_log_channel_id),
 			tracked_users_category_id = COALESCE($5, tracked_users_category_id),
 			admin_role_id = COALESCE($6, admin_role_id),
+			alert_role_id = COALESCE($7, alert_role_id),
 			updated_at = NOW()
 		WHERE guild_id = $1
 	`,
@@ -915,6 +927,7 @@ func (p *PostgresStore) UpdateGuildSettings(ctx context.Context, guildID string,
 		patch.TrackedServerLogChannelID,
 		patch.TrackedUsersCategoryID,
 		patch.AdminRoleID,
+		patch.AlertRoleID,
 	)
 	if err != nil {
 		return GuildSettings{}, err

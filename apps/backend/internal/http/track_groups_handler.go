@@ -15,20 +15,22 @@ import (
 )
 
 type trackGroupCreateRequest struct {
-	Name        string `json:"name"`
-	ServerBmID  string `json:"serverBmId"`
-	ChannelID   string `json:"channelId"`
-	MessageID   string `json:"messageId"`
-	SendUpdates bool   `json:"sendUpdates"`
-	OnlineCount int    `json:"onlineCount"`
-	CreatedBy   string `json:"createdBy"`
+	Name                 string `json:"name"`
+	ServerBmID           string `json:"serverBmId"`
+	ChannelID            string `json:"channelId"`
+	MessageID            string `json:"messageId"`
+	SendUpdates          bool   `json:"sendUpdates"`
+	PingAlertRoleOnEmpty bool   `json:"pingAlertRoleOnEmpty"`
+	OnlineCount          int    `json:"onlineCount"`
+	CreatedBy            string `json:"createdBy"`
 }
 
 type trackGroupUpdateRequest struct {
-	ChannelID   *string `json:"channelId"`
-	MessageID   *string `json:"messageId"`
-	SendUpdates *bool   `json:"sendUpdates"`
-	OnlineCount *int    `json:"onlineCount"`
+	ChannelID            *string `json:"channelId"`
+	MessageID            *string `json:"messageId"`
+	SendUpdates          *bool   `json:"sendUpdates"`
+	PingAlertRoleOnEmpty *bool   `json:"pingAlertRoleOnEmpty"`
+	OnlineCount          *int    `json:"onlineCount"`
 }
 
 type trackGroupAddMembersRequest struct {
@@ -53,17 +55,18 @@ type trackNotificationClaimRequest struct {
 
 func trackGroupToMap(group store.TrackGroup) map[string]any {
 	return map[string]any{
-		"id":          group.ID,
-		"guildId":     group.GuildID,
-		"name":        group.Name,
-		"serverBmId":  group.ServerBmID,
-		"channelId":   group.ChannelID,
-		"messageId":   group.MessageID,
-		"sendUpdates": group.SendUpdates,
-		"onlineCount": group.OnlineCount,
-		"createdBy":   group.CreatedBy,
-		"createdAt":   group.CreatedAt,
-		"updatedAt":   group.UpdatedAt,
+		"id":                   group.ID,
+		"guildId":              group.GuildID,
+		"name":                 group.Name,
+		"serverBmId":           group.ServerBmID,
+		"channelId":            group.ChannelID,
+		"messageId":            group.MessageID,
+		"sendUpdates":          group.SendUpdates,
+		"pingAlertRoleOnEmpty": group.PingAlertRoleOnEmpty,
+		"onlineCount":          group.OnlineCount,
+		"createdBy":            group.CreatedBy,
+		"createdAt":            group.CreatedAt,
+		"updatedAt":            group.UpdatedAt,
 	}
 }
 
@@ -121,14 +124,15 @@ func (h *Handler) CreateTrackGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	saved, err := h.postgres.CreateTrackGroup(r.Context(), store.TrackGroup{
-		GuildID:     guildID,
-		Name:        req.Name,
-		ServerBmID:  req.ServerBmID,
-		ChannelID:   req.ChannelID,
-		MessageID:   req.MessageID,
-		SendUpdates: req.SendUpdates,
-		OnlineCount: req.OnlineCount,
-		CreatedBy:   req.CreatedBy,
+		GuildID:              guildID,
+		Name:                 req.Name,
+		ServerBmID:           req.ServerBmID,
+		ChannelID:            req.ChannelID,
+		MessageID:            req.MessageID,
+		SendUpdates:          req.SendUpdates,
+		PingAlertRoleOnEmpty: req.PingAlertRoleOnEmpty,
+		OnlineCount:          req.OnlineCount,
+		CreatedBy:            req.CreatedBy,
 	})
 	if errors.Is(err, store.ErrTrackGroupNameTaken) {
 		writeError(w, http.StatusConflict, "track group with that name already exists")
@@ -205,10 +209,11 @@ func (h *Handler) UpdateTrackGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	group, err := h.postgres.UpdateTrackGroup(r.Context(), guildID, id, store.TrackGroupPatch{
-		ChannelID:   req.ChannelID,
-		MessageID:   req.MessageID,
-		SendUpdates: req.SendUpdates,
-		OnlineCount: req.OnlineCount,
+		ChannelID:            req.ChannelID,
+		MessageID:            req.MessageID,
+		SendUpdates:          req.SendUpdates,
+		PingAlertRoleOnEmpty: req.PingAlertRoleOnEmpty,
+		OnlineCount:          req.OnlineCount,
 	})
 	if errors.Is(err, store.ErrTrackGroupNotFound) {
 		writeError(w, http.StatusNotFound, "track group not found")
