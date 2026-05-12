@@ -14,7 +14,6 @@ type Config struct {
 	BotServiceJWT        string
 	AppAPIInternalSecret string
 	AppSessionSecret     string
-	AllowAuthDebugTokens bool
 	BotTargetShards      int
 	BotHeartbeatTTL      time.Duration
 	SteamAPIKey          string
@@ -22,7 +21,6 @@ type Config struct {
 	BMMatchURL           string
 	BMMatchToken         string
 	PlatformSyncToken    string
-	AppEmailTokenTTL     time.Duration
 	AllowedJWTIssuer     string
 	AllowedJWTAudience   string
 	AppAdminDiscordIDs   []string
@@ -39,7 +37,6 @@ func Load() Config {
 	targetShards := getEnvInt("BOT_TARGET_SHARDS", 4)
 	heartbeatTTL := getEnvInt("BOT_HEARTBEAT_TTL_SECONDS", 45)
 	battleMetricsPoll := getEnvInt("BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS", 30)
-	appEmailTokenTTL := getEnvInt("APP_EMAIL_TOKEN_TTL_MINUTES", 20)
 	proxyEnabled := getEnvBool("PROXY_ENABLED", false)
 
 	return Config{
@@ -49,7 +46,6 @@ func Load() Config {
 		BotServiceJWT:        getRequiredEnv("BOT_SERVICE_JWT_SECRET"),
 		AppAPIInternalSecret: getRequiredEnv("APP_API_INTERNAL_SECRET"),
 		AppSessionSecret:     getRequiredEnv("APP_SESSION_SECRET"),
-		AllowAuthDebugTokens: getEnvBool("ALLOW_AUTH_DEBUG_TOKENS", false),
 		BotTargetShards:      targetShards,
 		BotHeartbeatTTL:      time.Duration(heartbeatTTL) * time.Second,
 		SteamAPIKey:          getEnv("STEAM_API_KEY", ""),
@@ -57,7 +53,6 @@ func Load() Config {
 		BMMatchURL:           strings.TrimSpace(getEnv("BM_MATCH_URL", "")),
 		BMMatchToken:         strings.TrimSpace(getEnv("BM_MATCH_TOKEN", "")),
 		PlatformSyncToken:    strings.TrimSpace(getEnv("PLATFORMSYNC_TOKEN", "")),
-		AppEmailTokenTTL:     time.Duration(appEmailTokenTTL) * time.Minute,
 		AllowedJWTIssuer:     getEnv("BOT_JWT_ISSUER", "rustlens-bot"),
 		AllowedJWTAudience:   getEnv("BOT_JWT_AUDIENCE", "rustlens-backend"),
 		AppAdminDiscordIDs:   getEnvCSV("APP_ADMIN_DISCORD_IDS"),

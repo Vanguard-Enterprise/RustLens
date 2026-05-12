@@ -61,11 +61,11 @@ func SystemRoles() []RoleSeed {
 		{
 			Key:         RoleUserSupport,
 			Name:        "User Support",
-			Description: "Read users + audit + trigger password resets and verification resends",
+			Description: "Read users + audit + invalidate sessions",
 			IsSystem:    true,
 			Permissions: []string{
 				PermUsersRead, PermUsersAuditRead,
-				PermUsersSecurityReset, PermUsersEmailManage,
+				PermUsersSecurityReset,
 				PermUsersEdit,
 			},
 		},
@@ -77,7 +77,7 @@ func SystemRoles() []RoleSeed {
 			Permissions: []string{
 				PermUsersRead, PermUsersAuditRead, PermUsersEdit,
 				PermUsersRolesAssign, PermUsersSuspend,
-				PermUsersSecurityReset, PermUsersEmailManage,
+				PermUsersSecurityReset,
 				PermUsersCreate, PermUsersConnectionsManage,
 				PermUsersDelete,
 			},

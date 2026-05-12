@@ -384,10 +384,9 @@ Defaults (overridable via `cleanup.Config`):
 |---|---|---|
 | Wipe reacts | 7 days past `scheduled_unix` | `wipe_reacts` |
 | Track-analytics session cache | 48 hours since `fetched_at` | `track_analytics_sessions_cache` |
-| Auth tokens | consumed, OR expired >24h ago | `email_sign_in_tokens`, `password_reset_tokens`, `email_verification_tokens` |
 | Tick interval | 1 hour | — |
 
-Wipe reacts are kept for a week after they pass so `/compare` and `/wipereact missing` can still operate on recent history. The analytics cache window matches the 24h freshness rule used by the analytics handler with a 24h buffer. Auth-token cleanup is safe because consumed tokens cannot be reused regardless of expiry, and the FK `ON DELETE CASCADE` from the parent tables already ensures we never orphan user records.
+Wipe reacts are kept for a week after they pass so `/compare` and `/wipereact missing` can still operate on recent history. The analytics cache window matches the 24h freshness rule used by the analytics handler with a 24h buffer.
 
 Failures of any single step are logged and do not abort the others; the service never crashes the server.
 

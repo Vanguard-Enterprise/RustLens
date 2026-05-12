@@ -54,42 +54,6 @@ func TestPurgeTrackAnalyticsSessionsCacheBefore_DeletesOnlyStale(t *testing.T) {
 	}
 }
 
-func TestPurgeExpiredAuthTokensBefore_DeletesConsumedAndExpired(t *testing.T) {
-	ctx := context.Background()
-	s := newTestPostgres(t)
-
-	// Set up a user/email to satisfy FK constraints.
-	if _, err := s.pool.Exec(ctx, `INSERT INTO app_users (id, status) VALUES ($1, 'active') ON CONFLICT DO NOTHING`, "user-cleanup"); err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
-	if _, err := s.pool.Exec(ctx, `INSERT INTO user_emails (email, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, "cleanup@example.com", "user-cleanup"); err != nil {
-		t.Fatalf("insert email: %v", err)
-	}
-
-	now := time.Now()
-	insertAuthToken(t, s, "password_reset_tokens", "tok-expired", "user-cleanup", "cleanup@example.com", now.Add(-2*24*time.Hour), nil)
-	consumedAt := now.Add(-3 * time.Hour)
-	insertAuthToken(t, s, "password_reset_tokens", "tok-consumed", "user-cleanup", "cleanup@example.com", now.Add(48*time.Hour), &consumedAt)
-	insertAuthToken(t, s, "password_reset_tokens", "tok-active", "user-cleanup", "cleanup@example.com", now.Add(48*time.Hour), nil)
-
-	rows, err := s.PurgeExpiredAuthTokensBefore(ctx, now.Add(-time.Hour))
-	if err != nil {
-		t.Fatalf("PurgeExpiredAuthTokensBefore: %v", err)
-	}
-	if rows != 2 {
-		t.Errorf("expected 2 rows deleted, got %d", rows)
-	}
-	if !rowExists(t, s, "password_reset_tokens", "token_hash", "tok-active") {
-		t.Error("active reset token was deleted")
-	}
-	if rowExists(t, s, "password_reset_tokens", "token_hash", "tok-expired") {
-		t.Error("expired reset token was not deleted")
-	}
-	if rowExists(t, s, "password_reset_tokens", "token_hash", "tok-consumed") {
-		t.Error("consumed reset token was not deleted")
-	}
-}
-
 func insertWipeReact(t *testing.T, s *PostgresStore, messageID string, scheduledUnix int64) {
 	t.Helper()
 	_, err := s.pool.Exec(context.Background(), `
@@ -111,15 +75,6 @@ func insertAnalyticsCache(t *testing.T, s *PostgresStore, playerBmID, serverBmID
 	`, playerBmID, serverBmID, fetchedAt)
 	if err != nil {
 		t.Fatalf("insert analytics cache: %v", err)
-	}
-}
-
-func insertAuthToken(t *testing.T, s *PostgresStore, table, tokenHash, userID, email string, expiresAt time.Time, consumedAt *time.Time) {
-	t.Helper()
-	query := `INSERT INTO ` + table + ` (token_hash, user_id, email, expires_at, consumed_at) VALUES ($1, $2, $3, $4, $5)`
-	_, err := s.pool.Exec(context.Background(), query, tokenHash, userID, email, expiresAt, consumedAt)
-	if err != nil {
-		t.Fatalf("insert auth token %s: %v", tokenHash, err)
 	}
 }
 
