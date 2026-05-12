@@ -42,9 +42,16 @@ export function SessionEvents() {
 					router.push("/login?notice=expired");
 				}
 			},
-			async onConnectionLost() {
-				await clearSessionAction();
-				router.push("/login?notice=connection_lost");
+			onConnectionLost() {
+				// Only surface a non-destructive toast. A repeatedly-failing
+				// EventSource can be caused by transient network blips or a
+				// 429 too_many_connections from too many open tabs — neither
+				// implies the session cookie is invalid. Real revocations
+				// arrive as a session.revoked event, and stale cookies are
+				// caught by the next authenticated request.
+				toast.warning("Live updates disconnected", {
+					description: "Refresh the page to reconnect.",
+				});
 			},
 		});
 		return close;

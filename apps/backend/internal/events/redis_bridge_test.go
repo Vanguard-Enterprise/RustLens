@@ -51,6 +51,45 @@ func TestRedisBridge_LocalPublishFansToLocalSubscribers(t *testing.T) {
 	}
 }
 
+func TestRedisBridge_LocalPublishIsNotDuplicatedByRedisEcho(t *testing.T) {
+	rdb := newTestRedis(t)
+	hub := events.NewHub()
+	bridge := events.NewRedisBridge(rdb, hub)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := bridge.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	ch, unsub, err := hub.Subscribe(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer unsub()
+
+	bridge.PublishWithFanout("user-1", events.Event{Type: events.TypeRolesChanged, Reason: events.ReasonGrant})
+
+	// First receive: the synchronous local fanout.
+	select {
+	case got := <-ch:
+		if got.Type != events.TypeRolesChanged {
+			t.Fatalf("unexpected event: %+v", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for local event")
+	}
+
+	// Second receive must NOT happen — the Redis echo of our own publish
+	// should be filtered out by the bridge's instance-ID check.
+	select {
+	case got := <-ch:
+		t.Fatalf("got duplicate event from redis echo: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+		// expected: no second delivery.
+	}
+}
+
 func TestRedisBridge_RemotePublishDeliversToLocalSubscribers(t *testing.T) {
 	rdb := newTestRedis(t)
 	hub := events.NewHub()

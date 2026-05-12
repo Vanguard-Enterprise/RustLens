@@ -2,6 +2,8 @@ package events
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"time"
@@ -20,8 +22,9 @@ const redisPublishTimeout = 5 * time.Second
 const RedisChannel = "rustlens:user-events"
 
 type redisEnvelope struct {
-	UserID string `json:"userId"`
-	Event  Event  `json:"event"`
+	UserID     string `json:"userId"`
+	Event      Event  `json:"event"`
+	InstanceID string `json:"instanceId,omitempty"`
 }
 
 // RedisBridge mirrors local hub publishes to Redis and reads remote publishes
@@ -29,13 +32,22 @@ type redisEnvelope struct {
 // PublishWithFanout is the only entry point external code should use when it
 // wants an event delivered to all pods.
 type RedisBridge struct {
-	rdb *redis.Client
-	hub *Hub
+	rdb        *redis.Client
+	hub        *Hub
+	instanceID string
 }
 
-// NewRedisBridge constructs a bridge but does not start any goroutines.
+// NewRedisBridge constructs a bridge but does not start any goroutines. A
+// random per-instance ID is generated so the bridge can recognise and drop
+// its own messages echoed back from Redis (avoiding duplicate local delivery).
 func NewRedisBridge(rdb *redis.Client, hub *Hub) *RedisBridge {
-	return &RedisBridge{rdb: rdb, hub: hub}
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		// Fall back to a time-based id; collisions across pods are vanishingly
+		// unlikely and the worst case is a brief window of duplicate delivery.
+		buf = []byte(time.Now().UTC().Format(time.RFC3339Nano))
+	}
+	return &RedisBridge{rdb: rdb, hub: hub, instanceID: hex.EncodeToString(buf)}
 }
 
 // Start subscribes to RedisChannel and routes incoming messages into the
@@ -65,6 +77,11 @@ func (b *RedisBridge) Start(ctx context.Context) error {
 					log.Printf("[events] bridge: decode payload: %v", err)
 					continue
 				}
+				// Drop our own echoes: PublishWithFanout already delivered
+				// these to the local hub before publishing to Redis.
+				if env.InstanceID == b.instanceID {
+					continue
+				}
 				b.hub.Publish(env.UserID, env.Event)
 			}
 		}
@@ -79,7 +96,7 @@ func (b *RedisBridge) PublishWithFanout(userID string, e Event) {
 	// Local first — synchronous, in-process.
 	b.hub.Publish(userID, e)
 
-	payload, err := json.Marshal(redisEnvelope{UserID: userID, Event: e})
+	payload, err := json.Marshal(redisEnvelope{UserID: userID, Event: e, InstanceID: b.instanceID})
 	if err != nil {
 		log.Printf("[events] bridge: encode payload: %v", err)
 		return

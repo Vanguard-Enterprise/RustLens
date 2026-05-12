@@ -8,7 +8,6 @@ const MESSAGES: Record<string, { variant: "error" | "info" | "warning"; text: st
 	suspended: { variant: "error", text: "Your account has been suspended." },
 	deleted: { variant: "error", text: "Your account has been deleted." },
 	expired: { variant: "info", text: "Your session expired, please sign in again." },
-	connection_lost: { variant: "warning", text: "You were signed out. Please sign in again." },
 };
 
 /**
