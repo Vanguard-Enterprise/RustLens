@@ -140,6 +140,31 @@ export type AdminGuildsPage = {
 	pageSize: number;
 };
 
+export type AdminUserInstallItem = {
+	discordId: string;
+	username: string;
+	globalName: string | null;
+	avatarHash: string | null;
+	scopes: string[];
+	isInstalled: boolean;
+	installedAt: string;
+	leftAt: string | null;
+	lastSeenAt: string | null;
+};
+
+export type AdminUserInstallsQuery = {
+	q?: string;
+	page?: number;
+	pageSize?: number;
+};
+
+export type AdminUserInstallsPage = {
+	items: AdminUserInstallItem[];
+	total: number;
+	page: number;
+	pageSize: number;
+};
+
 export type AdminServerItem = {
 	serverBmId: string;
 	name: string;
@@ -414,6 +439,21 @@ export async function getAdminGuilds(params: AdminGuildsQuery = {}): Promise<Adm
 	const qs = sp.toString();
 	return backendFetch<AdminGuildsPage>(
 		`/api/app/admin/guilds${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getAdminUserInstalls(
+	params: AdminUserInstallsQuery = {},
+): Promise<AdminUserInstallsPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminUserInstallsPage>(
+		`/api/app/admin/user-installs${qs ? `?${qs}` : ""}`,
 		undefined,
 		{ requireSession: true },
 	);
