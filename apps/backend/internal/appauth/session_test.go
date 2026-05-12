@@ -108,3 +108,57 @@ func TestSerializeSession_RoundTripsAdminRoles(t *testing.T) {
 		t.Errorf("AdminRoles = %v, want [superadmin]", got.AdminRoles)
 	}
 }
+
+func TestValidateSession_RejectsSuspendedUser(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+
+	const userID = "usr_sess_suspended_1"
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO app_users (id, discord_id, discord_username, display_name, suspended_at)
+		 VALUES ($1, 'discord-sess-suspended-1', 'suspended_tester', 'Test', NOW())`,
+		userID,
+	); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	tok, err := appauth.SerializeSession(appauth.SessionUser{
+		UserID:    userID,
+		Epoch:     0,
+		ExpiresAt: time.Now().Add(time.Hour).UnixMilli(),
+	}, "test-secret")
+	if err != nil {
+		t.Fatalf("serialize: %v", err)
+	}
+
+	if _, err := appauth.ValidateSession(ctx, tok, "test-secret", pool); !errors.Is(err, appauth.ErrSessionRevoked) {
+		t.Fatalf("expected ErrSessionRevoked for suspended user, got %v", err)
+	}
+}
+
+func TestValidateSession_RejectsDeletedUser(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+
+	const userID = "usr_sess_deleted_1"
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO app_users (id, discord_id, discord_username, display_name, deleted_at)
+		 VALUES ($1, 'discord-sess-deleted-1', 'deleted_tester', 'Test', NOW())`,
+		userID,
+	); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	tok, err := appauth.SerializeSession(appauth.SessionUser{
+		UserID:    userID,
+		Epoch:     0,
+		ExpiresAt: time.Now().Add(time.Hour).UnixMilli(),
+	}, "test-secret")
+	if err != nil {
+		t.Fatalf("serialize: %v", err)
+	}
+
+	if _, err := appauth.ValidateSession(ctx, tok, "test-secret", pool); !errors.Is(err, appauth.ErrSessionRevoked) {
+		t.Fatalf("expected ErrSessionRevoked for deleted user, got %v", err)
+	}
+}

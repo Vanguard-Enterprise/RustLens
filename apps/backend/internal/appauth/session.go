@@ -79,12 +79,22 @@ func ValidateSession(ctx context.Context, token, secret string, pool *pgxpool.Po
 	if pool == nil {
 		return s, nil
 	}
-	var current int
-	if err := pool.QueryRow(ctx, `SELECT session_epoch FROM app_users WHERE id = $1`, s.UserID).Scan(&current); err != nil {
+	var (
+		currentEpoch int
+		suspendedAt  *time.Time
+		deletedAt    *time.Time
+	)
+	if err := pool.QueryRow(ctx,
+		`SELECT session_epoch, suspended_at, deleted_at FROM app_users WHERE id = $1`,
+		s.UserID,
+	).Scan(&currentEpoch, &suspendedAt, &deletedAt); err != nil {
 		// If the user no longer exists, treat the session as revoked.
 		return nil, ErrSessionRevoked
 	}
-	if s.Epoch < current {
+	if s.Epoch < currentEpoch {
+		return nil, ErrSessionRevoked
+	}
+	if suspendedAt != nil || deletedAt != nil {
 		return nil, ErrSessionRevoked
 	}
 	return s, nil
