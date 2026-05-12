@@ -140,6 +140,7 @@ Key patterns:
 - The frontend calls **app-facing backend routes** under `/api/app/*` with a shared internal app secret (`APP_API_INTERNAL_SECRET`) from server-side code only. Authenticated `/api/app/*` routes also receive the signed `rustlens_session` token via a server-only header so the backend derives the acting user from the validated session instead of trusting a caller-supplied user ID. The browser never calls these routes directly and the frontend does **not** call the bot JWT routes from the browser.
 - The authenticated shell wraps shadcn `SidebarProvider`/`SidebarInset` primitives (no `@efferd/*` dependency).
 - Next.js runs as a **hybrid Node server** in dev/prod rather than a static export.
+- **Real-time session events**: `<SessionProvider>` + `<SessionEvents>` mount inside `app/dashboard/layout.tsx` and `app/admin/layout.tsx`. The client opens a persistent `EventSource` to `/api/events/stream`; the backend pushes `roles.changed`, `session.revoked`, `session.expiring`, and 25-second `ping` events. Role/permission changes refetch `/api/app/me` and call `router.refresh()` without re-login; force-logout / suspension / deletion redirects to `/login?notice=<reason>` and the `<NoticeToast>` client component fires a Sonner toast on next render. `<SessionRefreshTrigger>` re-mints the cookie via the `refreshSession` server action when remaining TTL drops below 7 days (triggered on mount, focus, online, and hourly).
 
 ### Backend (Go)
 
@@ -167,6 +168,7 @@ apps/backend/
     proxycrypto/             # AES-GCM encrypt/decrypt for outbound_proxies storage
     steamapi/                # Steam Web API client (profile, owned games, ban lookups)
     cleanup/                 # Background data-cleanup service
+    events/                  # in-process pub/sub Hub + Redis bridge for SSE
     wipereactscheduler/      # Background scheduler enqueuing due wipe-react schedule posts
     users/                   # App-user session helpers
     shards/
@@ -234,6 +236,7 @@ Key patterns:
 - The admin `GET /api/app/admin/roles` response includes `memberCount` per role (count of distinct `admin_user_roles` rows). Permissions array still resolves to all-permissions for `superadmin` and to `admin_role_permissions` rows for everyone else.
 - Admin role mutations go through the action dispatcher: `roles.create`, `roles.update`, `roles.delete`, `roles.permissions.set`. All four require `admins.grant` and a `reason`. The three mutating actions (`update`, `delete`, `permissions.set`) reject roles with `is_system=true` via the shared `AssertNotSystemRole` guard. Deletion cascades to `admin_role_permissions` and `admin_user_roles` via FK.
 - The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, polling three `tracked_servers.high_frequency=true` servers followed by one non-high-frequency server when both subsets exist. It updates `tracked_servers.last_polled_at` / `last_poll_error` and syncs per-server player presence into `player_states`.
+- **`/api/events/stream`** is cookie-authenticated (not `/api/app/*`-secret) and serves SSE. Backed by `internal/events/Hub` (in-process pub/sub keyed by user id, capped at 5 connections per user) plus `internal/events/RedisBridge` (multi-pod fanout via Redis pub/sub channel `rustlens:user-events`). Admin actions in `internal/admin/actions/` (`users.roles.grant`, `users.roles.revoke`, `roles.permissions.set`, `users.suspend`, `users.delete`, `users.force_logout`) publish events through `events.Publisher`. `ValidateSession` rejects suspended or deleted users in addition to the `session_epoch` revocation check.
 
 **App users & browser auth**
 
