@@ -284,7 +284,38 @@ function logAlreadyAcknowledgedInteraction(interaction: Interaction, error: unkn
   });
 }
 
+// Tracks the last time we POSTed a "user-install seen" heartbeat for a given
+// user. Autocompletes fire on every keystroke, so without this dedupe a single
+// active user could generate dozens of backend hits per minute.
+const userInstallSeenCache = new Map<string, number>();
+const USER_INSTALL_SEEN_TTL_MS = 5 * 60_000;
+
+function reportUserInstallSeen(interaction: Interaction): void {
+  // Discord exposes the user-install owner (ApplicationIntegrationType.UserInstall = 1)
+  // on the interaction. Present only when the invocation came via a user install.
+  const owners = interaction.authorizingIntegrationOwners as
+    | Record<string, string>
+    | undefined;
+  const userId = owners?.["1"];
+  if (!userId) return;
+
+  const now = Date.now();
+  const last = userInstallSeenCache.get(userId);
+  if (last !== undefined && now - last < USER_INSTALL_SEEN_TTL_MS) return;
+  userInstallSeenCache.set(userId, now);
+
+  backend.touchBotUserInstallSeen(config.workerId, userId).catch((error) => {
+    console.error(JSON.stringify({
+      level: "warn",
+      message: "[bot] touchBotUserInstallSeen failed",
+      userId,
+      error: String(error),
+    }));
+  });
+}
+
 client.on("interactionCreate", async (interaction) => {
+  reportUserInstallSeen(interaction);
   try {
     if (interaction.isAutocomplete()) {
       if (await handleManageAutocomplete(interaction)) {
