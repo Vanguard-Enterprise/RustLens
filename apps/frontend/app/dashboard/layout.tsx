@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 
 import { SessionEvents } from "@/components/session-events";
 import { SessionProvider } from "@/components/session-provider";
+import { SessionRefreshTrigger } from "@/components/session-refresh-trigger";
 import { getCurrentUserSafe } from "@/lib/rustlens-api";
 import { requireSession } from "@/lib/session";
 
@@ -14,6 +15,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 	return (
 		<SessionProvider initial={currentUser}>
 			<SessionEvents />
+			<SessionRefreshTrigger />
 			{children}
 		</SessionProvider>
 	);
