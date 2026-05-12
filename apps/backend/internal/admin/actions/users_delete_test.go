@@ -12,6 +12,7 @@ import (
 	"rustlens/backend/internal/admin/actions"
 	"rustlens/backend/internal/admin/audit"
 	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/store"
 )
 
@@ -37,7 +38,7 @@ func newDeleteHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, *rb
 	au := audit.NewStore(s.Pool())
 	perms := &fakePermResolver{allow: map[string]bool{}}
 	reg := actions.NewRegistry(rbac.IsValidPermission)
-	if err := reg.Register(actions.NewUsersDeleteAction(s.Pool())); err != nil {
+	if err := reg.Register(actions.NewUsersDeleteAction(s.Pool(), events.NopPublisher{})); err != nil {
 		t.Fatalf("register delete: %v", err)
 	}
 	if err := reg.Register(actions.NewUsersRestoreAction(s.Pool())); err != nil {

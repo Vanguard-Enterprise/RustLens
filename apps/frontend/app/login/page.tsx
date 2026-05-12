@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AuthPage } from "@/components/auth-page";
 import { getCsrfToken } from "@/lib/csrf";
 import { clearSession, getSession } from "@/lib/session";
+import { NoticeToast } from "./notice-toast";
 
 type LoginPageProps = {
 	searchParams: Promise<{ error?: string | string[]; notice?: string | string[] }>;
@@ -30,5 +31,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 	}
 
 	const csrfToken = await getCsrfToken();
-	return <AuthPage error={error} notice={notice} csrfToken={csrfToken} />;
+	return (
+		<>
+			<NoticeToast notice={notice} />
+			<AuthPage error={error} notice={notice} csrfToken={csrfToken} />
+		</>
+	);
 }

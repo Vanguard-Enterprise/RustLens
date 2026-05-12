@@ -12,6 +12,7 @@ import (
 	"rustlens/backend/internal/admin/actions"
 	"rustlens/backend/internal/admin/audit"
 	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/store"
 )
 
@@ -49,7 +50,7 @@ func newRolesCRUDHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, 
 	if err := reg.Register(actions.NewRolesDeleteAction(s.Pool())); err != nil {
 		t.Fatalf("reg delete: %v", err)
 	}
-	if err := reg.Register(actions.NewRolesPermissionsSetAction(s.Pool())); err != nil {
+	if err := reg.Register(actions.NewRolesPermissionsSetAction(s.Pool(), events.NopPublisher{})); err != nil {
 		t.Fatalf("reg permissions set: %v", err)
 	}
 	disp := actions.NewDispatcher(reg, perms, auditSinkBridge{au}, fixedActor)

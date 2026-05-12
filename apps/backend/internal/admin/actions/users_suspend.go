@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/events"
 )
 
 type UsersSuspendParams struct {
@@ -17,13 +18,16 @@ type UsersSuspendParams struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-type usersSuspendAction struct{ pool *pgxpool.Pool }
+type usersSuspendAction struct {
+	pool *pgxpool.Pool
+	pub  events.Publisher
+}
 
 // NewUsersSuspendAction returns the users.suspend admin action. Marks a user
 // as suspended and bumps the session_epoch so any active signed session is
 // rejected on its next request.
-func NewUsersSuspendAction(pool *pgxpool.Pool) AdminAction {
-	return &usersSuspendAction{pool: pool}
+func NewUsersSuspendAction(pool *pgxpool.Pool, pub events.Publisher) AdminAction {
+	return &usersSuspendAction{pool: pool, pub: pub}
 }
 
 func (a *usersSuspendAction) Type() string                 { return "users.suspend" }
@@ -96,6 +100,10 @@ func (a *usersSuspendAction) Execute(ctx context.Context, in ActionInput) (Actio
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return ActionResult{}, err
+	}
+
+	if a.pub != nil {
+		a.pub.PublishWithFanout(p.UserID, events.Event{Type: events.TypeSessionRevoked, Reason: events.ReasonSuspended})
 	}
 
 	target := p.UserID

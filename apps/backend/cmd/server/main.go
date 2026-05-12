@@ -13,6 +13,7 @@ import (
 	"rustlens/backend/internal/bmmatch"
 	"rustlens/backend/internal/cleanup"
 	"rustlens/backend/internal/config"
+	"rustlens/backend/internal/events"
 	httpapi "rustlens/backend/internal/http"
 	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/platformsync"
@@ -92,6 +93,11 @@ func main() {
 	shardService := shards.NewService(redisStore, postgresStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
 	bmMatchClient := bmmatch.NewClient(cfg.BMMatchURL, cfg.BMMatchToken, 10*time.Second)
 	platformSyncClient := platformsync.NewClient(cfg.PlatformSyncToken, 10*time.Second)
+	eventsHub := events.NewHub()
+	eventsBridge := events.NewRedisBridge(redisStore.Client(), eventsHub)
+	if err := eventsBridge.Start(ctx); err != nil {
+		log.Fatalf("events bridge start failed: %v", err)
+	}
 	router := httpapi.NewRouter(
 		cfg,
 		postgresStore,
@@ -104,6 +110,8 @@ func main() {
 		platformSyncClient,
 		outboundProvider,
 		proxyCrypto,
+		eventsHub,
+		eventsBridge,
 	)
 	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)

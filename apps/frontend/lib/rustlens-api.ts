@@ -2,6 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import { clearSession, getSessionToken } from "@/lib/session";
+import { noticeFromBackendError } from "@/lib/session-errors";
 
 const SESSION_INVALID_ERRORS = new Set([
 	"session_required",
@@ -267,7 +268,8 @@ async function backendFetch<T>(
 			SESSION_INVALID_ERRORS.has(errorCode)
 		) {
 			await clearSession();
-			redirect("/login?error=session");
+			const notice = noticeFromBackendError(errorCode);
+			redirect(`/login?notice=${notice}`);
 		}
 		throw new Error(message);
 	}

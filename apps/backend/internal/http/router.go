@@ -14,6 +14,7 @@ import (
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/bmmatch"
 	"rustlens/backend/internal/config"
+	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/oauth/discord"
 	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/platformsync"
@@ -56,8 +57,13 @@ func NewRouter(
 	platformSync *platformsync.Client,
 	outboundProvider *outboundhttp.Provider,
 	proxyCrypto *proxycrypto.Crypto,
+	eventsHub *events.Hub,
+	publisher events.Publisher,
 ) http.Handler {
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto)
+	if publisher == nil {
+		publisher = events.NopPublisher{}
+	}
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -195,6 +201,12 @@ func NewRouter(
 	r.Route("/api/auth/discord", func(r chi.Router) {
 		r.Get("/", discordHandler.Initiate)
 		r.Get("/callback", discordHandler.Callback)
+	})
+
+	r.Route("/api/events", func(r chi.Router) {
+		if eventsHub != nil {
+			r.Get("/stream", NewEventsHandler(cfg.AppSessionSecret, eventsHub, postgres.Pool()).ServeHTTP)
+		}
 	})
 
 	r.Route("/api/app", func(r chi.Router) {
