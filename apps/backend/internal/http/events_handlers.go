@@ -42,19 +42,15 @@ func (h *EventsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Headers required for SSE through HTTP/1.1 + Traefik.
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache, no-transform")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
-	// 3. Subscribe to hub for this user. Honour the per-user cap.
+	// 2. Subscribe to hub for this user. Honour the per-user cap. Do this
+	//    before setting SSE response headers so error responses don't claim a
+	//    streaming Content-Type.
 	ctx := r.Context()
 	ch, unsub, err := h.hub.Subscribe(ctx, session.UserID)
 	if err != nil {
@@ -67,10 +63,18 @@ func (h *EventsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer unsub()
 
+	// 3. Headers required for SSE through HTTP/1.1 + Traefik.
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
 	// 4. Send initial ping so the client knows the channel is live.
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
-	writeSSE(w, events.Event{Type: events.TypePing})
+	if !writeSSE(w, events.Event{Type: events.TypePing}) {
+		return
+	}
 	flusher.Flush()
 
 	// 5. Loop: forward hub events + heartbeat + one-shot session.expiring.
