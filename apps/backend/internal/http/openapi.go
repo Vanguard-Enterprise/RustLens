@@ -2072,6 +2072,82 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/app/admin/user-installs": map[string]any{
+				"get": map[string]any{
+					"summary":     "List admin user-app installs",
+					"description": "Returns paginated bot_user_installs rows — Discord users who installed RustLens as a user app (integration_type=1). Supports free-text search across username/global_name (substring) and discord_id (prefix).",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "q",
+							"in":          "query",
+							"required":    false,
+							"description": "Substring search across username and global_name; prefix match on discord_id.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "page",
+							"in":          "query",
+							"required":    false,
+							"description": "1-based page number. Default 1.",
+							"schema":      map[string]any{"type": "integer", "minimum": 1},
+						},
+						{
+							"name":        "pageSize",
+							"in":          "query",
+							"required":    false,
+							"description": "Page size, default 20, capped at 100.",
+							"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Admin user-app installs returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/AdminUserInstallListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+					},
+				},
+			},
+			"/api/discord/webhook-events": map[string]any{
+				"post": map[string]any{
+					"summary":     "Discord Webhook Events sink",
+					"description": "Public endpoint registered in the Discord Developer Portal under 'Webhook Events'. Authenticated via ed25519 signature over (X-Signature-Timestamp || rawBody) using the application's public key. Handles the PING handshake (type=0) and event payloads (type=1) for APPLICATION_AUTHORIZED (integration_type=1 user installs only) and APPLICATION_DEAUTHORIZED. Idempotent: returns 204 on success.",
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/DiscordWebhookPayload"},
+							},
+						},
+					},
+					"parameters": []map[string]any{
+						{
+							"name":     "X-Signature-Ed25519",
+							"in":       "header",
+							"required": true,
+							"schema":   map[string]any{"type": "string"},
+						},
+						{
+							"name":     "X-Signature-Timestamp",
+							"in":       "header",
+							"required": true,
+							"schema":   map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"204": map[string]any{"description": "Event accepted (PING or processed event)"},
+						"400": map[string]any{"description": "Malformed body"},
+						"401": map[string]any{"description": "Missing or invalid ed25519 signature"},
+						"503": map[string]any{"description": "DISCORD_APP_PUBLIC_KEY not configured"},
+					},
+				},
+			},
 			"/api/app/admin/servers": map[string]any{
 				"get": map[string]any{
 					"summary":     "List admin servers",
@@ -3193,6 +3269,56 @@ func buildOpenAPIDocument() map[string]any {
 						"pageSize": map[string]any{"type": "integer"},
 					},
 					"required": []string{"items", "total", "page", "pageSize"},
+				},
+				"AdminUserInstallItem": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"discordId":   map[string]any{"type": "string"},
+						"username":    map[string]any{"type": "string"},
+						"globalName":  map[string]any{"type": "string", "nullable": true},
+						"avatarHash":  map[string]any{"type": "string", "nullable": true},
+						"scopes":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+						"isInstalled": map[string]any{"type": "boolean"},
+						"installedAt": map[string]any{"type": "string", "format": "date-time"},
+						"leftAt":      map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"lastSeenAt":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
+					},
+					"required": []string{
+						"discordId", "username", "globalName", "avatarHash", "scopes",
+						"isInstalled", "installedAt", "leftAt", "lastSeenAt",
+					},
+				},
+				"AdminUserInstallListResponse": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"items": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"$ref": "#/components/schemas/AdminUserInstallItem"},
+						},
+						"total":    map[string]any{"type": "integer"},
+						"page":     map[string]any{"type": "integer"},
+						"pageSize": map[string]any{"type": "integer"},
+					},
+					"required": []string{"items", "total", "page", "pageSize"},
+				},
+				"DiscordWebhookPayload": map[string]any{
+					"type":        "object",
+					"description": "Envelope for Discord Webhook Events. type=0 is the PING handshake; type=1 carries an event object.",
+					"properties": map[string]any{
+						"version":        map[string]any{"type": "integer"},
+						"application_id": map[string]any{"type": "string"},
+						"type":           map[string]any{"type": "integer", "enum": []int{0, 1}},
+						"event": map[string]any{
+							"type":     "object",
+							"nullable": true,
+							"properties": map[string]any{
+								"type":      map[string]any{"type": "string", "enum": []string{"APPLICATION_AUTHORIZED", "APPLICATION_DEAUTHORIZED"}},
+								"timestamp": map[string]any{"type": "string", "format": "date-time"},
+								"data":      map[string]any{"type": "object"},
+							},
+						},
+					},
+					"required": []string{"version", "type"},
 				},
 				"AdminServerOverview": map[string]any{
 					"type": "object",

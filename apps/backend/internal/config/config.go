@@ -30,6 +30,7 @@ type Config struct {
 	AppBaseURL           string
 	DiscordClientID      string
 	DiscordClientSecret  string
+	DiscordAppPublicKey  string
 	AppOrigin            string
 }
 
@@ -62,6 +63,7 @@ func Load() Config {
 		AppBaseURL:           getEnv("APP_BASE_URL", "http://localhost:3000"),
 		DiscordClientID:      getEnv("DISCORD_CLIENT_ID", ""),
 		DiscordClientSecret:  getEnv("DISCORD_CLIENT_SECRET", ""),
+		DiscordAppPublicKey:  strings.TrimSpace(getEnv("DISCORD_APP_PUBLIC_KEY", "")),
 		AppOrigin:            getEnv("APP_ORIGIN", "http://localhost"),
 	}
 }

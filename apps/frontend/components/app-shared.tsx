@@ -29,6 +29,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
 	{ href: "/admin/users", label: "Users", icon: UsersIcon, permissions: ["users.read"] },
 	{ href: "/admin/links", label: "Link Review", icon: ScanEyeIcon, permissions: ["links.review"] },
 	{ href: "/admin/guilds", label: "Guilds", icon: UserRoundIcon, permissions: ["guilds.untrack_server"] },
+	{ href: "/admin/user-installs", label: "User Apps", icon: UsersIcon, permissions: ["users.read"] },
 	{ href: "/admin/proxies", label: "Proxies", icon: NetworkIcon, permissions: ["proxies.edit"] },
 	{ href: "/admin/audit", label: "Audit", icon: ActivityIcon, permissions: ["audit.read"] },
 	{ href: "/admin/roles", label: "Roles", icon: KeyRoundIcon, permissions: ["admins.grant"] },

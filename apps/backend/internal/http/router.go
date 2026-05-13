@@ -76,6 +76,9 @@ func NewRouter(
 	r.Get("/api/docs/openapi.json", handler.OpenAPISpec)
 	r.Get("/api/healthz", handler.Healthz)
 
+	// Discord Webhook Events (Dev Portal). Signature-authed inside the handler.
+	r.Post("/api/discord/webhook-events", handler.DiscordWebhookEvents)
+
 	r.Route("/api/internal/bot/shards", func(r chi.Router) {
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Post("/register", handler.RegisterShardWorker)
@@ -144,6 +147,7 @@ func NewRouter(
 		r.Post("/bot-guilds/upsert", handler.UpsertBotGuild)
 		r.Post("/bot-guilds/leave", handler.MarkBotGuildLeft)
 		r.Post("/bot-guilds/reconcile", handler.ReconcileBotGuilds)
+		r.Post("/bot-user-installs/seen", handler.TouchBotUserInstallSeen)
 		r.Get("/steam/{steamID}", handler.GetSteamAccount)
 		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
@@ -238,6 +242,7 @@ func NewRouter(
 			r.Get("/users/{id}", handler.GetAdminUser)
 			r.Get("/users/{id}/audit", handler.ListAdminUserAudit)
 			r.Get("/guilds", handler.ListAdminGuilds)
+			r.Get("/user-installs", handler.ListAdminUserInstalls)
 			r.Get("/servers", handler.ListAdminServers)
 			r.Get("/audit", handler.ListAdminAudit)
 			r.Get("/audit/event-types", handler.ListAdminAuditEventTypes)

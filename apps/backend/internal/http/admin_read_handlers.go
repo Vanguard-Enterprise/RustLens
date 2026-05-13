@@ -58,6 +58,18 @@ type adminGuildItem struct {
 	TrackedServerCount     int     `json:"trackedServerCount"`
 }
 
+type adminUserInstallItem struct {
+	DiscordID   string   `json:"discordId"`
+	Username    string   `json:"username"`
+	GlobalName  *string  `json:"globalName"`
+	AvatarHash  *string  `json:"avatarHash"`
+	Scopes      []string `json:"scopes"`
+	IsInstalled bool     `json:"isInstalled"`
+	InstalledAt string   `json:"installedAt"`
+	LeftAt      *string  `json:"leftAt"`
+	LastSeenAt  *string  `json:"lastSeenAt"`
+}
+
 type adminServerItem struct {
 	ServerBmID    string  `json:"serverBmId"`
 	Name          string  `json:"name"`
@@ -284,6 +296,71 @@ func (h *Handler) ListAdminGuilds(w http.ResponseWriter, r *http.Request) {
 		if r.LeftAt != nil {
 			s := r.LeftAt.Format(time.RFC3339)
 			it.LeftAt = &s
+		}
+		items = append(items, it)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":    items,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+	})
+}
+
+// ListAdminUserInstalls: GET /api/app/admin/user-installs
+// Query:
+//
+//	q=<substring>            matches username (substring), global_name (substring), discord_id (prefix); ILIKE
+//	page=1 (default)         1-based
+//	pageSize=20 (default)    capped at 100
+func (h *Handler) ListAdminUserInstalls(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := r.URL.Query()
+
+	page := 1
+	pageSize := 20
+	if v := q.Get("page"); v != "" {
+		parseLimit(v, &page)
+		if page < 1 {
+			page = 1
+		}
+	}
+	if v := q.Get("pageSize"); v != "" {
+		parseLimit(v, &pageSize)
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	rows, total, err := h.postgres.ListAdminUserInstalls(ctx, store.ListAdminUserInstallsOpts{
+		Q:        q.Get("q"),
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	items := make([]adminUserInstallItem, 0, len(rows))
+	for _, r := range rows {
+		it := adminUserInstallItem{
+			DiscordID:   r.DiscordID,
+			Username:    r.Username,
+			GlobalName:  r.GlobalName,
+			AvatarHash:  r.AvatarHash,
+			Scopes:      r.Scopes,
+			IsInstalled: r.IsInstalled,
+			InstalledAt: r.InstalledAt.Format(time.RFC3339),
+		}
+		if r.LeftAt != nil {
+			s := r.LeftAt.Format(time.RFC3339)
+			it.LeftAt = &s
+		}
+		if r.LastSeenAt != nil {
+			s := r.LastSeenAt.Format(time.RFC3339)
+			it.LastSeenAt = &s
 		}
 		items = append(items, it)
 	}

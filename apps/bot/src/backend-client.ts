@@ -1040,6 +1040,15 @@ export class BackendClient {
     );
   }
 
+  touchBotUserInstallSeen(workerId: string, discordId: string) {
+    return this.call<{ status: string }>(
+      workerId,
+      `/api/internal/bot/setup/bot-user-installs/seen`,
+      "POST",
+      { discordId },
+    );
+  }
+
   createGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
     return this.call<GuildSteamDiscordLink>(
       workerId,
