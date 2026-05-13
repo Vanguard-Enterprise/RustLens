@@ -253,10 +253,10 @@ async function backendFetch<T>(
 		let message = `RustLens API request failed: ${response.status}`;
 		let errorCode: string | undefined;
 		try {
-			const payload = (await response.json()) as { error?: string };
+			const payload = (await response.json()) as { error?: string; message?: string };
 			if (payload.error) {
 				errorCode = payload.error;
-				message = payload.error;
+				message = payload.message || payload.error;
 			}
 		} catch {
 			// Ignore JSON parsing failures and fall back to the status message.
