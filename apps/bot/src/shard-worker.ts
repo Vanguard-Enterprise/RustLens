@@ -304,7 +304,22 @@ function reportUserInstallSeen(interaction: Interaction): void {
   if (last !== undefined && now - last < USER_INSTALL_SEEN_TTL_MS) return;
   userInstallSeenCache.set(userId, now);
 
-  backend.touchBotUserInstallSeen(config.workerId, userId).catch((error) => {
+  // Forward whatever user metadata the interaction gives us so the backend can
+  // backfill rows that were created via the heartbeat fallback (i.e. users who
+  // installed before the webhook was wired up). Only use interaction.user if
+  // it matches the user-install owner — otherwise we'd attribute the inviter's
+  // name to whoever ran the command in a different context.
+  const u = interaction.user;
+  const metadata =
+    u && u.id === userId
+      ? {
+          username: u.username,
+          globalName: u.globalName ?? null,
+          avatarHash: u.avatar ?? null,
+        }
+      : undefined;
+
+  backend.touchBotUserInstallSeen(config.workerId, userId, metadata).catch((error) => {
     console.error(JSON.stringify({
       level: "warn",
       message: "[bot] touchBotUserInstallSeen failed",

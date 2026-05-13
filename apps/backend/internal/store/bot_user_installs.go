@@ -50,18 +50,45 @@ func (p *PostgresStore) MarkBotUserInstallRemoved(ctx context.Context, discordID
 	return err
 }
 
+// TouchBotUserInstallSeenInput carries the user metadata the bot can salvage
+// from an interaction. Username/global_name/avatar are optional — empty username
+// or nil pointers mean "no data" and existing values are preserved.
+type TouchBotUserInstallSeenInput struct {
+	DiscordID  string
+	Username   string
+	GlobalName *string
+	AvatarHash *string
+}
+
 // TouchBotUserInstallSeen is the interaction-backfill heartbeat. Called by the
 // bot when an interaction arrives with authorizing_integration_owners["1"]
-// matching this user. If the row exists, last_seen_at is bumped; if it does
-// not (we missed the webhook), we insert it active so the user shows up in
-// admin even without an APPLICATION_AUTHORIZED event.
-func (p *PostgresStore) TouchBotUserInstallSeen(ctx context.Context, discordID string) error {
+// matching this user. If the row exists, last_seen_at is bumped (and any
+// provided metadata is backfilled/refreshed); if it does not (we missed the
+// webhook), we insert it active so the user shows up in admin even without an
+// APPLICATION_AUTHORIZED event.
+func (p *PostgresStore) TouchBotUserInstallSeen(ctx context.Context, in TouchBotUserInstallSeenInput) error {
 	_, err := p.pool.Exec(ctx, `
-		INSERT INTO bot_user_installs (discord_id, is_installed, installed_at, last_seen_at, metadata_updated_at)
-		VALUES ($1, TRUE, NOW(), NOW(), NOW())
-		ON CONFLICT (discord_id) DO UPDATE
-		SET last_seen_at = NOW()
-	`, discordID)
+		INSERT INTO bot_user_installs (
+			discord_id, username, global_name, avatar_hash,
+			is_installed, installed_at, last_seen_at, metadata_updated_at
+		)
+		VALUES ($1, $2, $3, $4, TRUE, NOW(), NOW(), NOW())
+		ON CONFLICT (discord_id) DO UPDATE SET
+			username = CASE
+				WHEN EXCLUDED.username <> '' THEN EXCLUDED.username
+				ELSE bot_user_installs.username
+			END,
+			global_name  = COALESCE(EXCLUDED.global_name, bot_user_installs.global_name),
+			avatar_hash  = COALESCE(EXCLUDED.avatar_hash, bot_user_installs.avatar_hash),
+			last_seen_at = NOW(),
+			metadata_updated_at = CASE
+				WHEN EXCLUDED.username <> ''
+				  OR EXCLUDED.global_name IS NOT NULL
+				  OR EXCLUDED.avatar_hash IS NOT NULL
+				THEN NOW()
+				ELSE bot_user_installs.metadata_updated_at
+			END
+	`, in.DiscordID, in.Username, in.GlobalName, in.AvatarHash)
 	return err
 }
 

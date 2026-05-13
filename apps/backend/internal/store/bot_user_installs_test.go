@@ -123,7 +123,7 @@ func TestTouchBotUserInstallSeen_InsertsAndBumps(t *testing.T) {
 	id := "400000000000000003"
 
 	// First touch must insert the row.
-	if err := s.TouchBotUserInstallSeen(ctx, id); err != nil {
+	if err := s.TouchBotUserInstallSeen(ctx, TouchBotUserInstallSeenInput{DiscordID: id}); err != nil {
 		t.Fatalf("first touch: %v", err)
 	}
 	var first time.Time
@@ -135,7 +135,7 @@ func TestTouchBotUserInstallSeen_InsertsAndBumps(t *testing.T) {
 
 	// Second touch must bump last_seen_at strictly forward.
 	time.Sleep(10 * time.Millisecond)
-	if err := s.TouchBotUserInstallSeen(ctx, id); err != nil {
+	if err := s.TouchBotUserInstallSeen(ctx, TouchBotUserInstallSeenInput{DiscordID: id}); err != nil {
 		t.Fatalf("second touch: %v", err)
 	}
 	var second time.Time

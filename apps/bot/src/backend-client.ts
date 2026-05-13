@@ -1040,12 +1040,24 @@ export class BackendClient {
     );
   }
 
-  touchBotUserInstallSeen(workerId: string, discordId: string) {
+  touchBotUserInstallSeen(
+    workerId: string,
+    discordId: string,
+    metadata?: {
+      username?: string;
+      globalName?: string | null;
+      avatarHash?: string | null;
+    },
+  ) {
+    const payload: Record<string, unknown> = { discordId };
+    if (metadata?.username) payload.username = metadata.username;
+    if (metadata?.globalName !== undefined) payload.globalName = metadata.globalName;
+    if (metadata?.avatarHash !== undefined) payload.avatarHash = metadata.avatarHash;
     return this.call<{ status: string }>(
       workerId,
       `/api/internal/bot/setup/bot-user-installs/seen`,
       "POST",
-      { discordId },
+      payload,
     );
   }
 
