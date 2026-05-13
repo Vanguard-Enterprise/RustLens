@@ -278,10 +278,10 @@ async function backendFetch<T>(
 		let message = `RustLens API request failed: ${response.status}`;
 		let errorCode: string | undefined;
 		try {
-			const payload = (await response.json()) as { error?: string };
+			const payload = (await response.json()) as { error?: string; message?: string };
 			if (payload.error) {
 				errorCode = payload.error;
-				message = payload.error;
+				message = payload.message || payload.error;
 			}
 		} catch {
 			// Ignore JSON parsing failures and fall back to the status message.
@@ -647,6 +647,136 @@ export async function bulkAdminProxies(
 	);
 }
 
+// --- BattleMetrics tracked servers ---
+
+export type AdminBmServerItem = {
+	bmId: string;
+	name: string;
+	isVitality: boolean;
+	isAtlas: boolean;
+	isVital: boolean;
+	isModded: boolean;
+	isOfficial: boolean;
+	isBuild: boolean;
+	highFrequency: boolean;
+	lastPolledAt?: string;
+	lastPollError: string;
+};
+
+export type AdminBmServerSortKey =
+	| "name"
+	| "bmId"
+	| "highFrequency"
+	| "lastPolledAt"
+	| "pollStatus";
+
+export type AdminBmServerSortOrder = "asc" | "desc";
+
+export type AdminBmServersQuery = {
+	q?: string;
+	highFrequency?: boolean;
+	hasError?: boolean;
+	page?: number;
+	pageSize?: number;
+	sortBy?: AdminBmServerSortKey;
+	sortOrder?: AdminBmServerSortOrder;
+};
+
+export type AdminBmServersPage = {
+	items: AdminBmServerItem[];
+	total: number;
+	page: number;
+	pageSize: number;
+};
+
+export type AdminBmServerInput = {
+	bmId: string;
+	name: string;
+	isVitality: boolean;
+	isAtlas: boolean;
+	isVital: boolean;
+	isModded: boolean;
+	isOfficial: boolean;
+	isBuild: boolean;
+	highFrequency: boolean;
+};
+
+export async function getAdminBmServers(
+	params: AdminBmServersQuery = {},
+): Promise<AdminBmServersPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	if (params.highFrequency !== undefined)
+		sp.set("highFrequency", String(params.highFrequency));
+	if (params.hasError !== undefined) sp.set("hasError", String(params.hasError));
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	if (params.sortBy) sp.set("sortBy", params.sortBy);
+	if (params.sortOrder) sp.set("sortOrder", params.sortOrder);
+	const qs = sp.toString();
+	return backendFetch<AdminBmServersPage>(
+		`/api/app/admin/bm-servers${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function createAdminBmServer(
+	input: AdminBmServerInput,
+	reason: string,
+): Promise<AdminBmServerItem> {
+	return backendFetch<AdminBmServerItem>(
+		"/api/app/admin/bm-servers",
+		{ method: "POST", body: JSON.stringify({ ...input, reason }) },
+		{ requireSession: true },
+	);
+}
+
+export async function updateAdminBmServer(
+	currentBmId: string,
+	input: AdminBmServerInput,
+	reason: string,
+): Promise<AdminBmServerItem> {
+	return backendFetch<AdminBmServerItem>(
+		`/api/app/admin/bm-servers/${encodeURIComponent(currentBmId)}`,
+		{ method: "PUT", body: JSON.stringify({ ...input, reason }) },
+		{ requireSession: true },
+	);
+}
+
+export async function deleteAdminBmServer(
+	bmId: string,
+	reason: string,
+): Promise<{ status: string }> {
+	const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+	return backendFetch<{ status: string }>(
+		`/api/app/admin/bm-servers/${encodeURIComponent(bmId)}${qs}`,
+		{ method: "DELETE" },
+		{ requireSession: true },
+	);
+}
+
+export type BulkBmServerAction = "set_high_freq" | "set_standard" | "delete";
+
+export type BulkBmServerResult = {
+	action: BulkBmServerAction;
+	succeeded: number;
+	failed: number;
+	results: Array<{ bmId: string; ok: boolean; error?: string }>;
+};
+
+export async function bulkAdminBmServers(
+	action: BulkBmServerAction,
+	bmIds: string[],
+	reason: string,
+): Promise<BulkBmServerResult> {
+	return backendFetch<BulkBmServerResult>(
+		"/api/app/admin/bm-servers/bulk",
+		{ method: "POST", body: JSON.stringify({ action, bmIds, reason }) },
+		{ requireSession: true },
+	);
+}
+
 export type CreateAdminRoleInput = {
 	key: string;
 	name: string;
@@ -726,22 +856,6 @@ export async function deleteAdminUser(
 ) {
 	return postAdminAction<{ userId: string }>(
 		"users.delete",
-		{ userId, typedConfirmation },
-		reason,
-	);
-}
-
-export async function restoreAdminUser(userId: string, reason: string) {
-	return postAdminAction<{ userId: string }>("users.restore", { userId }, reason);
-}
-
-export async function purgeAdminUser(
-	userId: string,
-	reason: string,
-	typedConfirmation: string,
-) {
-	return postAdminAction<{ userId: string }>(
-		"users.purge",
 		{ userId, typedConfirmation },
 		reason,
 	);

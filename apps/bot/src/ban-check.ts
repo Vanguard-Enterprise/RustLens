@@ -7,9 +7,11 @@ import type {
 } from "discord.js";
 import { EmbedBuilder, MessageFlags } from "discord.js";
 import { BackendClient } from "./backend-client.js";
-import type { BanCategory } from "./ban-categories.js";
+import { BAN_CATEGORIES, type BanCategory } from "./ban-categories.js";
 import { loadConfig } from "./config.js";
 import { logDiscordError } from "./shared.js";
+
+const ALL_CATEGORIES: BanCategory[] = BAN_CATEGORIES.map((c) => c.value);
 
 const BANNED_EMBED_COLOR = 0xd31239;
 const CACHE_TTL_MS = 30_000;
@@ -49,6 +51,11 @@ function getWorkerID() {
 
 async function fetchBannedCategories(discordId: string): Promise<Set<BanCategory>> {
   const response = await getBackend().getUserBan(getWorkerID(), discordId);
+  // A suspended website account is a blanket ban: every command category
+  // returns the same "You have been banned" reply on the bot side.
+  if (response.suspended) {
+    return new Set<BanCategory>(ALL_CATEGORIES);
+  }
   return new Set(response.categories as BanCategory[]);
 }
 

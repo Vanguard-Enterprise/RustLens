@@ -3734,6 +3734,7 @@ func writeUserBan(w http.ResponseWriter, ban store.UserBan) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"discordId":  ban.DiscordID,
 		"categories": categories,
+		"suspended":  ban.Suspended,
 	})
 }
 

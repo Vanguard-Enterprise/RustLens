@@ -58,7 +58,8 @@ export function DeleteDialog({ open, onOpenChange, userId, displayName, onConfir
 				<DialogHeader>
 					<DialogTitle>Delete {displayName}</DialogTitle>
 					<DialogDescription>
-						This soft-deletes the account. Type the display name <code>{displayName}</code> to confirm.
+						This permanently removes the user and any data tied to them via FK cascade.
+						Type the display name <code>{displayName}</code> to confirm.
 					</DialogDescription>
 				</DialogHeader>
 				<div className="flex flex-col gap-3">

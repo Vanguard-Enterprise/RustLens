@@ -33,7 +33,7 @@ func NewUsersSuspendAction(pool *pgxpool.Pool, pub events.Publisher) AdminAction
 func (a *usersSuspendAction) Type() string                 { return "users.suspend" }
 func (a *usersSuspendAction) Permission() string           { return rbac.PermUsersSuspend }
 func (a *usersSuspendAction) RequiresReason() bool         { return true }
-func (a *usersSuspendAction) Dangerous() bool              { return true }
+func (a *usersSuspendAction) Dangerous() bool              { return false }
 func (a *usersSuspendAction) SensitiveParamKeys() []string { return nil }
 func (a *usersSuspendAction) ResourceType() string         { return "user" }
 
@@ -50,9 +50,8 @@ func (a *usersSuspendAction) Validate(raw json.RawMessage) (ValidatedParams, err
 	}
 	target := p.UserID
 	return ValidatedParams{
-		ResourceID:           p.UserID,
-		TargetUserID:         &target,
-		ConfirmationExpected: p.UserID,
+		ResourceID:   p.UserID,
+		TargetUserID: &target,
 	}, nil
 }
 

@@ -11,36 +11,26 @@ import {
 } from "@/components/ui/collapsible";
 import type { AdminUserDetail } from "@/lib/rustlens-api";
 
-import {
-	deleteUserAction,
-	purgeUserAction,
-	restoreUserAction,
-	suspendUserAction,
-	unsuspendUserAction,
-} from "../actions";
+import { deleteUserAction, suspendUserAction, unsuspendUserAction } from "../actions";
 import { DeleteDialog } from "./delete-dialog";
-import { PurgeDialog } from "./purge-dialog";
-import { RestoreDialog } from "./restore-dialog";
 import { SuspendDialog } from "./suspend-dialog";
 
 type Props = {
 	detail: AdminUserDetail;
 	canSuspend: boolean;
 	canDelete: boolean;
-	canPurge: boolean;
 };
 
-type DialogKey = "suspend" | "unsuspend" | "delete" | "restore" | "purge" | null;
+type DialogKey = "suspend" | "unsuspend" | "delete" | null;
 
-export function DangerZone({ detail, canSuspend, canDelete, canPurge }: Props) {
+export function DangerZone({ detail, canSuspend, canDelete }: Props) {
 	const router = useRouter();
 	const [dialog, setDialog] = React.useState<DialogKey>(null);
 	const close = () => setDialog(null);
 
 	const isSuspended = !!detail.suspendedAt;
-	const isDeleted = !!detail.deletedAt;
 
-	if (!canSuspend && !canDelete && !canPurge) return null;
+	if (!canSuspend && !canDelete) return null;
 
 	return (
 		<section className="rounded-lg border border-destructive/40 bg-card p-4">
@@ -61,19 +51,9 @@ export function DangerZone({ detail, canSuspend, canDelete, canPurge }: Props) {
 							Unsuspend user
 						</Button>
 					) : null}
-					{canDelete && !isDeleted ? (
+					{canDelete ? (
 						<Button variant="destructive" size="sm" onClick={() => setDialog("delete")}>
-							Delete user
-						</Button>
-					) : null}
-					{canDelete && isDeleted ? (
-						<Button variant="outline" size="sm" onClick={() => setDialog("restore")}>
-							Restore user
-						</Button>
-					) : null}
-					{canPurge ? (
-						<Button variant="destructive" size="sm" onClick={() => setDialog("purge")}>
-							Purge user (permanent)
+							Delete user (permanent)
 						</Button>
 					) : null}
 				</CollapsibleContent>
@@ -100,29 +80,7 @@ export function DangerZone({ detail, canSuspend, canDelete, canPurge }: Props) {
 				onConfirm={async (userId, reason, typed) => {
 					const res = await deleteUserAction(userId, reason, typed);
 					if (!res.ok) throw new Error(res.error);
-					router.refresh();
-				}}
-			/>
-			<RestoreDialog
-				open={dialog === "restore"}
-				onOpenChange={(o) => !o && close()}
-				userId={detail.user.id}
-				displayName={detail.user.displayName}
-				onConfirm={async (userId, reason) => {
-					const res = await restoreUserAction(userId, reason);
-					if (!res.ok) throw new Error(res.error);
-					router.refresh();
-				}}
-			/>
-			<PurgeDialog
-				open={dialog === "purge"}
-				onOpenChange={(o) => !o && close()}
-				userId={detail.user.id}
-				displayName={detail.user.displayName}
-				onConfirm={async (userId, reason, typed) => {
-					const res = await purgeUserAction(userId, reason, typed);
-					if (!res.ok) throw new Error(res.error);
-					// On purge the user is gone; navigate back to the list.
+					// On delete the user is gone; navigate back to the list.
 					router.push("/admin/users");
 				}}
 			/>

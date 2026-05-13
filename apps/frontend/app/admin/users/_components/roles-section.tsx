@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/tooltip";
 import type { AdminRoleItem, AdminUserDetail } from "@/lib/rustlens-api";
 
+
+
 import { grantRoleAction, revokeRoleAction } from "../actions";
 import { GrantRoleDialog } from "./grant-role-dialog";
 import { RevokeRoleDialog } from "./revoke-role-dialog";
@@ -21,7 +23,6 @@ import { RevokeRoleDialog } from "./revoke-role-dialog";
 type Props = {
 	detail: AdminUserDetail;
 	roles: AdminRoleItem[];
-	actorUserId: string;
 	canAssign: boolean;
 	canGrantSuperadmin: boolean;
 };
@@ -29,7 +30,6 @@ type Props = {
 export function RolesSection({
 	detail,
 	roles,
-	actorUserId,
 	canAssign,
 	canGrantSuperadmin,
 }: Props) {
@@ -39,7 +39,6 @@ export function RolesSection({
 
 	if (!canAssign) return null;
 
-	const isSelf = detail.user.id === actorUserId;
 	const currentRoles = detail.adminRoles;
 	const assignableRoles = roles.filter((r) => !currentRoles.includes(r.key));
 
@@ -90,29 +89,14 @@ export function RolesSection({
 									) : (
 										<span>{name}</span>
 									)}
-									{isSelf ? (
-										<Tooltip>
-											<TooltipTrigger asChild>
-												<span
-													className="cursor-not-allowed opacity-40"
-													aria-label="You can't revoke your own admin roles"
-													role="img"
-												>
-													<XIcon className="size-3" />
-												</span>
-											</TooltipTrigger>
-											<TooltipContent>You can&apos;t revoke your own admin roles.</TooltipContent>
-										</Tooltip>
-									) : (
-										<button
-											type="button"
-											onClick={() => setRevoking({ key: roleKey, name })}
-											className="rounded hover:bg-foreground/10"
-											aria-label={`Revoke ${name}`}
-										>
-											<XIcon className="size-3" />
-										</button>
-									)}
+									<button
+										type="button"
+										onClick={() => setRevoking({ key: roleKey, name })}
+										className="rounded hover:bg-foreground/10"
+										aria-label={`Revoke ${name}`}
+									>
+										<XIcon className="size-3" />
+									</button>
 								</Badge>
 							);
 						})

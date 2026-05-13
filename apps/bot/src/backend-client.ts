@@ -430,6 +430,11 @@ export type PlatformSyncResult = {
 export type UserBan = {
   discordId: string;
   categories: string[];
+  /**
+   * The linked app_user (matched by discord_id on the website) is currently
+   * suspended. The bot treats this as a blanket ban across every category.
+   */
+  suspended?: boolean;
 };
 
 export type TrackGroup = {

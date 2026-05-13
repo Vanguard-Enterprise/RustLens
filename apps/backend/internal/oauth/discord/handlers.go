@@ -148,6 +148,12 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, h.frontendURL("/login?error=discord-auth"), http.StatusFound)
 		return
 	}
+	if notice, blocked, err := h.checkAccountStatus(ctx, userID); err != nil {
+		log.Printf("discord callback: account status(%s): %v", userID, err)
+	} else if blocked {
+		http.Redirect(w, r, h.frontendURL("/login?notice="+notice), http.StatusFound)
+		return
+	}
 	if err := h.cfg.Repo.TouchLastLogin(ctx, userID); err != nil {
 		// Log-and-continue: failing to touch last_login_at must not block sign-in.
 		log.Printf("discord callback: TouchLastLogin(%s): %v", userID, err)
@@ -168,6 +174,35 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.mintAndRedirect(w, r, userID, "/dashboard")
+}
+
+// checkAccountStatus inspects suspended_at/deleted_at for a freshly-resolved
+// app_user and returns a /login?notice= slug when the account should be
+// rejected at sign-in. Mirrors ValidateSession's later-render guard so a
+// suspended user sees the ban notice instead of being redirected into a
+// dashboard that immediately bounces them back out.
+func (h *Handler) checkAccountStatus(ctx context.Context, userID string) (string, bool, error) {
+	if h.cfg.Pool == nil {
+		return "", false, nil
+	}
+	var (
+		suspendedAt *time.Time
+		deletedAt   *time.Time
+	)
+	err := h.cfg.Pool.QueryRow(ctx,
+		`SELECT suspended_at, deleted_at FROM app_users WHERE id = $1`,
+		userID,
+	).Scan(&suspendedAt, &deletedAt)
+	if err != nil {
+		return "", false, err
+	}
+	if deletedAt != nil {
+		return "deleted", true, nil
+	}
+	if suspendedAt != nil {
+		return "suspended", true, nil
+	}
+	return "", false, nil
 }
 
 func (h *Handler) mintAndRedirect(w http.ResponseWriter, r *http.Request, userID string, target string) {

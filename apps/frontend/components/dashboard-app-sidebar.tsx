@@ -31,6 +31,7 @@ import {
 	LayoutDashboardIcon,
 	NetworkIcon,
 	SearchIcon,
+	ServerIcon,
 	Settings2Icon,
 	UsersIcon,
 	UsersRoundIcon,
@@ -230,6 +231,14 @@ export function DashboardAppSidebar({
 									path: "/admin/proxies",
 									icon: NetworkIcon,
 									isActive: pathname === "/admin/proxies" || pathname.startsWith("/admin/proxies/"),
+								});
+							}
+							if (permissions.includes("bm_servers.read")) {
+								infraItems.push({
+									title: "BM Servers",
+									path: "/admin/bm-servers",
+									icon: ServerIcon,
+									isActive: pathname === "/admin/bm-servers" || pathname.startsWith("/admin/bm-servers/"),
 								});
 							}
 							return infraItems.length > 0 ? (
