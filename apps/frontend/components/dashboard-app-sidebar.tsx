@@ -180,6 +180,16 @@ export function DashboardAppSidebar({
 									icon: UsersRoundIcon,
 									isActive: pathname === "/admin/guilds" || pathname.startsWith("/admin/guilds/"),
 								},
+								...(permissions.includes("users.read")
+									? [{
+											title: "User Apps",
+											path: "/admin/user-installs",
+											icon: UsersIcon,
+											isActive:
+												pathname === "/admin/user-installs" ||
+												pathname.startsWith("/admin/user-installs/"),
+										}]
+									: []),
 							]}
 						/>
 						{(() => {
