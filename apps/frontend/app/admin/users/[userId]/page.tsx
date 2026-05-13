@@ -72,7 +72,6 @@ export default async function AdminUserDetailRoute({
 								detail={userDetail}
 								roles={roles}
 								audit={audit.items}
-								actorUserId={session.userId ?? ""}
 								permissions={session.permissions ?? []}
 							/>
 						</div>

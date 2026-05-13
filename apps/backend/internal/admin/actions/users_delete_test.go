@@ -2,12 +2,14 @@ package actions_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 
 	"rustlens/backend/internal/admin/actions"
 	"rustlens/backend/internal/admin/audit"
@@ -41,9 +43,6 @@ func newDeleteHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, *rb
 	if err := reg.Register(actions.NewUsersDeleteAction(s.Pool(), events.NopPublisher{})); err != nil {
 		t.Fatalf("register delete: %v", err)
 	}
-	if err := reg.Register(actions.NewUsersRestoreAction(s.Pool())); err != nil {
-		t.Fatalf("register restore: %v", err)
-	}
 	disp := actions.NewDispatcher(reg, perms, auditSinkBridge{au}, fixedActor)
 	r := chi.NewRouter()
 	r.Post("/api/app/admin/actions/{type}", disp.ServeHTTP)
@@ -58,13 +57,6 @@ func TestUsersDelete_HappyPath(t *testing.T) {
 	seedAppUser(t, s, "usr_test_actor", "Actor", false)
 	const tid = "usr_del_target"
 	seedAppUser(t, s, tid, "Target", false)
-	// Ensure clean (not deleted).
-	if _, err := s.Pool().Exec(context.Background(),
-		`UPDATE app_users SET deleted_at = NULL, deleted_by = NULL WHERE id = $1`, tid); err != nil {
-		t.Fatalf("reset: %v", err)
-	}
-	var epochBefore int
-	_ = s.Pool().QueryRow(context.Background(), `SELECT session_epoch FROM app_users WHERE id=$1`, tid).Scan(&epochBefore)
 
 	body := mustJSON(t, map[string]any{
 		"params":            map[string]any{"userId": tid},
@@ -75,17 +67,10 @@ func TestUsersDelete_HappyPath(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("status=%d body=%s", resp.StatusCode, readBody(resp))
 	}
-	var deletedAt *string
-	var epochAfter int
-	if err := s.Pool().QueryRow(context.Background(),
-		`SELECT deleted_at::text, session_epoch FROM app_users WHERE id=$1`, tid).Scan(&deletedAt, &epochAfter); err != nil {
-		t.Fatalf("query: %v", err)
-	}
-	if deletedAt == nil {
-		t.Errorf("expected deleted_at set")
-	}
-	if epochAfter <= epochBefore {
-		t.Errorf("epoch not bumped")
+	var id string
+	err := s.Pool().QueryRow(context.Background(), `SELECT id FROM app_users WHERE id=$1`, tid).Scan(&id)
+	if !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("expected row gone; got err=%v id=%s", err, id)
 	}
 }
 
@@ -130,27 +115,5 @@ func TestUsersDelete_LastSuperadminBlocked(t *testing.T) {
 	resp := mustPOST(t, srv.URL+"/api/app/admin/actions/users.delete", body)
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("status=%d; want 409 body=%s", resp.StatusCode, readBody(resp))
-	}
-}
-
-func TestUsersRestore_Clears(t *testing.T) {
-	srv, s, _, setPerms := newDeleteHarness(t)
-	setPerms(map[string]bool{rbac.PermUsersDelete: true})
-	seedAppUser(t, s, "usr_test_actor", "Actor", false)
-	const tid = "usr_restore_target"
-	seedAppUser(t, s, tid, "Target", true)
-
-	body := mustJSON(t, map[string]any{"params": map[string]any{"userId": tid}})
-	resp := mustPOST(t, srv.URL+"/api/app/admin/actions/users.restore", body)
-	if resp.StatusCode != 200 {
-		t.Fatalf("status=%d body=%s", resp.StatusCode, readBody(resp))
-	}
-	var deletedAt *string
-	if err := s.Pool().QueryRow(context.Background(),
-		`SELECT deleted_at::text FROM app_users WHERE id=$1`, tid).Scan(&deletedAt); err != nil {
-		t.Fatalf("query: %v", err)
-	}
-	if deletedAt != nil {
-		t.Errorf("expected deleted_at cleared; got %v", *deletedAt)
 	}
 }

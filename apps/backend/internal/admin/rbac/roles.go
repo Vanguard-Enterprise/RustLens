@@ -47,6 +47,8 @@ func SystemRoles() []RoleSeed {
 				"proxies.read",
 				"proxies.edit",
 				"proxies.rotate_credentials",
+				"bm_servers.read",
+				"bm_servers.edit",
 				"audit.read",
 			},
 		},

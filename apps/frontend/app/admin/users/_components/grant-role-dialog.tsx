@@ -1,8 +1,17 @@
 "use client";
 
+import { ChevronsUpDownIcon, CheckIcon } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+	Command,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+} from "@/components/ui/command";
 import {
 	Dialog,
 	DialogContent,
@@ -13,14 +22,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { AdminRoleItem } from "@/lib/rustlens-api";
+import { cn } from "@/lib/utils";
 
 type Props = {
 	open: boolean;
@@ -43,6 +47,7 @@ export function GrantRoleDialog({
 	const [reason, setReason] = React.useState("");
 	const [submitting, setSubmitting] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
+	const [pickerOpen, setPickerOpen] = React.useState(false);
 	const [prevOpen, setPrevOpen] = React.useState(open);
 
 	if (prevOpen !== open) {
@@ -52,8 +57,11 @@ export function GrantRoleDialog({
 			setReason("");
 			setError(null);
 			setSubmitting(false);
+			setPickerOpen(false);
 		}
 	}
+
+	const selected = assignableRoles.find((r) => r.key === roleKey) ?? null;
 
 	const submit = async () => {
 		if (!roleKey || !reason.trim()) return;
@@ -81,34 +89,81 @@ export function GrantRoleDialog({
 
 				<div className="flex flex-col gap-3">
 					<div className="flex flex-col gap-1">
-						<Label htmlFor="role">Role</Label>
-						<Select value={roleKey} onValueChange={setRoleKey}>
-							<SelectTrigger id="role">
-								<SelectValue placeholder="Pick a role" />
-							</SelectTrigger>
-							<SelectContent>
-								{assignableRoles.map((r) => {
-									const disabled = r.key === "superadmin" && !canGrantSuperadmin;
-									return (
-										<SelectItem key={r.key} value={r.key} disabled={disabled}>
-											<div className="flex flex-col">
-												<span>{r.name}</span>
-												{r.description ? (
-													<span className="text-xs text-muted-foreground">
-														{r.description}
-													</span>
-												) : null}
-												{disabled ? (
-													<span className="text-xs text-amber-600">
-														Requires admins.grant
-													</span>
-												) : null}
-											</div>
-										</SelectItem>
-									);
-								})}
-							</SelectContent>
-						</Select>
+						<Label htmlFor="role-picker">Role</Label>
+						<Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+							<PopoverTrigger asChild>
+								<Button
+									id="role-picker"
+									variant="outline"
+									role="combobox"
+									aria-expanded={pickerOpen}
+									className="w-full justify-between font-normal"
+								>
+									<span className={cn(!selected && "text-muted-foreground")}>
+										{selected ? selected.name : "Search and pick a role…"}
+									</span>
+									<ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+								</Button>
+							</PopoverTrigger>
+							<PopoverContent
+								className="w-[--radix-popover-trigger-width] p-0"
+								align="start"
+							>
+								<Command>
+									<CommandInput placeholder="Search by name, key, or description…" />
+									<CommandList>
+										<CommandEmpty>No roles found.</CommandEmpty>
+										<CommandGroup>
+											{assignableRoles.map((r) => {
+												const disabled =
+													r.key === "superadmin" && !canGrantSuperadmin;
+												const searchValue = [
+													r.name,
+													r.key,
+													r.description ?? "",
+												].join(" ");
+												return (
+													<CommandItem
+														key={r.key}
+														value={searchValue}
+														disabled={disabled}
+														onSelect={() => {
+															if (disabled) return;
+															setRoleKey(r.key);
+															setPickerOpen(false);
+														}}
+														className="flex items-start gap-2"
+													>
+														<CheckIcon
+															className={cn(
+																"mt-0.5 size-4",
+																roleKey === r.key ? "opacity-100" : "opacity-0",
+															)}
+														/>
+														<div className="flex min-w-0 flex-col">
+															<span className="truncate">{r.name}</span>
+															<span className="truncate font-mono text-xs text-muted-foreground">
+																{r.key}
+															</span>
+															{r.description ? (
+																<span className="text-xs text-muted-foreground">
+																	{r.description}
+																</span>
+															) : null}
+															{disabled ? (
+																<span className="text-xs text-amber-600">
+																	Requires admins.grant
+																</span>
+															) : null}
+														</div>
+													</CommandItem>
+												);
+											})}
+										</CommandGroup>
+									</CommandList>
+								</Command>
+							</PopoverContent>
+						</Popover>
 					</div>
 
 					<div className="flex flex-col gap-1">
@@ -128,10 +183,7 @@ export function GrantRoleDialog({
 					<Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
 						Cancel
 					</Button>
-					<Button
-						onClick={submit}
-						disabled={submitting || !roleKey || !reason.trim()}
-					>
+					<Button onClick={submit} disabled={submitting || !roleKey || !reason.trim()}>
 						Grant role
 					</Button>
 				</DialogFooter>

@@ -21,6 +21,8 @@ const (
 	PermProxiesRead            = "proxies.read"
 	PermProxiesEdit            = "proxies.edit"
 	PermProxiesRotateCreds     = "proxies.rotate_credentials"
+	PermBmServersRead          = "bm_servers.read"
+	PermBmServersEdit          = "bm_servers.edit"
 	PermLinksReview            = "links.review"
 	PermLinksApprove           = "links.approve"
 	PermGuildsUntrackServer    = "guilds.untrack_server"
@@ -41,6 +43,8 @@ var permissions = []Permission{
 	{Key: PermProxiesRead, Description: "View the outbound proxy provider list"},
 	{Key: PermProxiesEdit, Description: "Create, update, or delete outbound proxy providers"},
 	{Key: PermProxiesRotateCreds, Description: "Rotate outbound proxy provider credentials"},
+	{Key: PermBmServersRead, Description: "View the tracked BattleMetrics server list"},
+	{Key: PermBmServersEdit, Description: "Create, update, or delete tracked BattleMetrics servers"},
 	{Key: PermLinksReview, Description: "View the Steam-Discord link review queue"},
 	{Key: PermLinksApprove, Description: "Approve or reject queued Steam-Discord links"},
 	{Key: PermGuildsUntrackServer, Description: "Remove a server from a guild's tracked set"},

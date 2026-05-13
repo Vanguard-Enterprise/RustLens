@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -24,6 +26,127 @@ type TrackedServer struct {
 	HighFrequency bool
 	LastPolledAt  *time.Time
 	LastPollError string
+}
+
+type TrackedServerFilter struct {
+	Q             string
+	HighFrequency *bool
+	HasError      *bool
+	SortBy        string // name | bmId | highFrequency | lastPolledAt | pollStatus
+	SortOrder     string // asc | desc
+}
+
+func trackedServerOrderClause(sortBy, sortOrder string) string {
+	desc := strings.EqualFold(sortOrder, "desc")
+	dir := "ASC"
+	if desc {
+		dir = "DESC"
+	}
+	// Stable tie-breaker on bm_id.
+	switch sortBy {
+	case "bmId":
+		return "ORDER BY bm_id " + dir
+	case "highFrequency":
+		return "ORDER BY high_frequency " + dir + ", name ASC, bm_id ASC"
+	case "lastPolledAt":
+		nulls := "NULLS LAST"
+		if desc {
+			nulls = "NULLS LAST"
+		} else {
+			nulls = "NULLS FIRST"
+		}
+		return "ORDER BY last_polled_at " + dir + " " + nulls + ", name ASC, bm_id ASC"
+	case "pollStatus":
+		// "error" rows (last_poll_error <> '') first when DESC, healthy first when ASC.
+		return "ORDER BY (last_poll_error <> '') " + dir + ", name ASC, bm_id ASC"
+	case "name", "":
+		return "ORDER BY name " + dir + ", bm_id ASC"
+	default:
+		return "ORDER BY name ASC, bm_id ASC"
+	}
+}
+
+func (p *PostgresStore) ListTrackedServersPage(ctx context.Context, filter TrackedServerFilter, limit, offset int) ([]TrackedServer, int, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	args := []any{}
+	conds := []string{}
+	addArg := func(v any) string {
+		args = append(args, v)
+		return "$" + strconv.Itoa(len(args))
+	}
+
+	if q := strings.TrimSpace(filter.Q); q != "" {
+		ph := addArg("%" + q + "%")
+		conds = append(conds, "(name ILIKE "+ph+" OR bm_id ILIKE "+ph+")")
+	}
+	if filter.HighFrequency != nil {
+		ph := addArg(*filter.HighFrequency)
+		conds = append(conds, "high_frequency = "+ph)
+	}
+	if filter.HasError != nil {
+		if *filter.HasError {
+			conds = append(conds, "last_poll_error <> ''")
+		} else {
+			conds = append(conds, "last_poll_error = ''")
+		}
+	}
+
+	where := ""
+	if len(conds) > 0 {
+		where = "WHERE " + strings.Join(conds, " AND ")
+	}
+
+	var total int
+	if err := p.pool.QueryRow(ctx, "SELECT COUNT(*) FROM tracked_servers "+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	order := trackedServerOrderClause(filter.SortBy, filter.SortOrder)
+	limitPh := addArg(limit)
+	offsetPh := addArg(offset)
+	rows, err := p.pool.Query(ctx, `
+		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, high_frequency, last_polled_at, last_poll_error
+		FROM tracked_servers
+		`+where+`
+		`+order+`
+		LIMIT `+limitPh+` OFFSET `+offsetPh+`
+	`, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	items := make([]TrackedServer, 0)
+	for rows.Next() {
+		var item TrackedServer
+		if err := rows.Scan(
+			&item.BmID,
+			&item.Name,
+			&item.IsVitality,
+			&item.IsAtlas,
+			&item.IsVital,
+			&item.IsModded,
+			&item.IsOfficial,
+			&item.IsBuild,
+			&item.HighFrequency,
+			&item.LastPolledAt,
+			&item.LastPollError,
+		); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	return items, total, nil
 }
 
 func (p *PostgresStore) ListTrackedServers(ctx context.Context) ([]TrackedServer, error) {
@@ -288,6 +411,21 @@ func (p *PostgresStore) GetTrackedServer(ctx context.Context, bmID string) (Trac
 	}
 
 	return item, nil
+}
+
+func (p *PostgresStore) SetTrackedServerHighFrequency(ctx context.Context, bmID string, highFrequency bool) error {
+	tag, err := p.pool.Exec(ctx, `
+		UPDATE tracked_servers
+		SET high_frequency = $2
+		WHERE bm_id = $1
+	`, bmID, highFrequency)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrTrackedServerNotFound
+	}
+	return nil
 }
 
 func (p *PostgresStore) DeleteTrackedServer(ctx context.Context, bmID string) error {

@@ -23,8 +23,9 @@ type usersDeleteAction struct {
 	pub  events.Publisher
 }
 
-// NewUsersDeleteAction soft-deletes a user (sets deleted_at/deleted_by) and
-// bumps session_epoch to invalidate any active sessions.
+// NewUsersDeleteAction hard-deletes a user row. FK cascades remove the user's
+// admin role assignments; audit_events.target_user_id has no FK so the audit
+// trail survives the delete.
 func NewUsersDeleteAction(pool *pgxpool.Pool, pub events.Publisher) AdminAction {
 	return &usersDeleteAction{pool: pool, pub: pub}
 }
@@ -67,29 +68,17 @@ func (a *usersDeleteAction) Execute(ctx context.Context, in ActionInput) (Action
 		return ActionResult{}, err
 	}
 
-	tx, err := a.pool.Begin(ctx)
-	if err != nil {
-		return ActionResult{}, err
-	}
-	defer tx.Rollback(ctx)
-
+	// Confirm the user exists before issuing DELETE (so we can return 404).
 	var id string
-	err = tx.QueryRow(ctx, `
-		UPDATE app_users
-		   SET deleted_at = now(), deleted_by = $2, updated_at = now()
-		 WHERE id = $1 AND deleted_at IS NULL
-		 RETURNING id
-	`, p.UserID, in.ActorUserID).Scan(&id)
+	err := a.pool.QueryRow(ctx, `SELECT id FROM app_users WHERE id=$1`, p.UserID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ActionResult{}, fmt.Errorf("%w: user missing or already deleted", ErrConflict)
+		return ActionResult{}, fmt.Errorf("%w: user %s", ErrNotFound, p.UserID)
 	}
 	if err != nil {
 		return ActionResult{}, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE app_users SET session_epoch = session_epoch + 1 WHERE id = $1`, p.UserID); err != nil {
-		return ActionResult{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
+
+	if _, err := a.pool.Exec(ctx, `DELETE FROM app_users WHERE id=$1`, p.UserID); err != nil {
 		return ActionResult{}, err
 	}
 
@@ -101,6 +90,6 @@ func (a *usersDeleteAction) Execute(ctx context.Context, in ActionInput) (Action
 	return ActionResult{
 		ResourceID:   p.UserID,
 		TargetUserID: &target,
-		Payload:      map[string]any{"userId": p.UserID},
+		Payload:      map[string]any{"userId": p.UserID, "deleted": true},
 	}, nil
 }

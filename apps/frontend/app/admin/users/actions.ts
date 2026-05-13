@@ -7,8 +7,6 @@ import {
 	bulkAdminUserAction,
 	deleteAdminUser,
 	editAdminUser,
-	purgeAdminUser,
-	restoreAdminUser,
 	revokeAdminUserRole,
 	suspendAdminUser,
 	unsuspendAdminUser,
@@ -133,36 +131,6 @@ export async function deleteUserAction(
 	if (res.ok) {
 		revalidatePath(USERS_PATH);
 		revalidatePath(userPath(userId));
-	}
-	return res;
-}
-
-export async function restoreUserAction(
-	userId: string,
-	reason: string,
-): Promise<ActionResult> {
-	await requirePermission("users.delete");
-	try {
-		await restoreAdminUser(userId, reason.trim());
-		revalidatePath(USERS_PATH);
-		revalidatePath(userPath(userId));
-		return { ok: true, result: { userId } };
-	} catch (err) {
-		return { ok: false, error: (err as Error).message };
-	}
-}
-
-export async function purgeUserAction(
-	userId: string,
-	reason: string,
-	typedConfirmation: string,
-): Promise<ActionResult> {
-	await requirePermission("admins.grant");
-	const res = await withReason(reason, () =>
-		purgeAdminUser(userId, reason.trim(), typedConfirmation),
-	);
-	if (res.ok) {
-		revalidatePath(USERS_PATH);
 	}
 	return res;
 }

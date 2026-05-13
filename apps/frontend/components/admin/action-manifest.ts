@@ -3,8 +3,6 @@ export type AdminActionKey =
   | "users.suspend"
   | "users.unsuspend"
   | "users.delete"
-  | "users.restore"
-  | "users.purge"
   | "users.password.forceReset"
   | "users.force_unlink_steam"
   | "users.roles.grant"
@@ -75,22 +73,6 @@ export const ADMIN_ACTIONS: Record<AdminActionKey, AdminActionMeta> = {
     key: "users.delete",
     label: "Delete user",
     permission: "users.delete",
-    requiresReason: true,
-    dangerous: true,
-    resourceType: "user",
-  },
-  "users.restore": {
-    key: "users.restore",
-    label: "Restore user",
-    permission: "users.delete",
-    requiresReason: false,
-    dangerous: false,
-    resourceType: "user",
-  },
-  "users.purge": {
-    key: "users.purge",
-    label: "Purge user",
-    permission: "admins.grant",
     requiresReason: true,
     dangerous: true,
     resourceType: "user",
