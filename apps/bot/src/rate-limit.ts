@@ -11,7 +11,7 @@ import { logDiscordError } from "./shared.js";
 
 // Static fraud-alert destination. Fill in to enable; empty string disables
 // posting (alerts are still detected and logged to stdout).
-const FRAUD_ALERT_CHANNEL_ID = "";
+const FRAUD_ALERT_CHANNEL_ID = "1492270634594603170";
 
 const RATE_LIMIT_BUDGET_MS = 1_500;
 const COOLDOWN_EMBED_COLOR = 0xf5a524;
