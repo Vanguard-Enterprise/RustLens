@@ -29,10 +29,7 @@ export function NavbarPlayerSearch() {
 
 	useEffect(() => {
 		const trimmed = q.trim();
-		if (trimmed.length < MIN_QUERY_LEN) {
-			setState({ kind: "idle" });
-			return;
-		}
+		if (trimmed.length < MIN_QUERY_LEN) return;
 		const handle = setTimeout(async () => {
 			abortRef.current?.abort();
 			const ctl = new AbortController();
@@ -75,8 +72,10 @@ export function NavbarPlayerSearch() {
 						placeholder="Search players  /"
 						value={q}
 						onChange={(e) => {
-							setQ(e.target.value);
+							const value = e.target.value;
+							setQ(value);
 							setOpen(true);
+							if (value.trim().length < MIN_QUERY_LEN) setState({ kind: "idle" });
 						}}
 						onFocus={() => setOpen(true)}
 					/>
