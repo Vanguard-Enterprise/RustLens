@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -12,6 +13,24 @@ import (
 	"rustlens/backend/internal/players"
 	"rustlens/backend/internal/store"
 )
+
+// allowPlayerSearch is a minimal per-userID sliding-window counter using
+// Redis INCR/EXPIRE. Fails open on Redis errors. scope is one of
+// "search" or "profile".
+func (h *Handler) allowPlayerSearch(ctx context.Context, userID, scope string, max int, window time.Duration) bool {
+	if h.redis == nil || userID == "" {
+		return true
+	}
+	key := "rustlens:players_" + scope + ":" + userID
+	count, err := h.redis.Client().Incr(ctx, key).Result()
+	if err != nil {
+		return true // fail open on Redis hiccup
+	}
+	if count == 1 {
+		_ = h.redis.Client().Expire(ctx, key, window).Err()
+	}
+	return count <= int64(max)
+}
 
 type playerSearchHit struct {
 	SteamID       string                  `json:"steamId"`
@@ -46,12 +65,20 @@ func (h *Handler) SearchPlayers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "q must be at least 2 characters")
 		return
 	}
+	session := appauth.SessionFromContext(r.Context())
+	userID := ""
+	if session != nil {
+		userID = session.UserID
+	}
+	if !h.allowPlayerSearch(r.Context(), userID, "search", 30, 60*time.Second) {
+		writeError(w, http.StatusTooManyRequests, "rate limited")
+		return
+	}
 	includeOffline := r.URL.Query().Get("includeOffline") == "true"
 
 	kind := players.ClassifyQuery(q)
 
 	if kind == players.KindName {
-		session := appauth.SessionFromContext(r.Context())
 		if session == nil || len(session.AdminRoles) == 0 {
 			writeError(w, http.StatusForbidden, "name search requires admin")
 			return
@@ -129,6 +156,15 @@ func (h *Handler) lookupSingleHit(ctx context.Context, steamID string) *playerSe
 // GetSteamProfile pipeline so the bot-internal and app routes return the
 // same JSON.
 func (h *Handler) GetPlayerProfileApp(w http.ResponseWriter, r *http.Request) {
+	session := appauth.SessionFromContext(r.Context())
+	userID := ""
+	if session != nil {
+		userID = session.UserID
+	}
+	if !h.allowPlayerSearch(r.Context(), userID, "profile", 60, 60*time.Second) {
+		writeError(w, http.StatusTooManyRequests, "rate limited")
+		return
+	}
 	identifier := chi.URLParam(r, "identifier")
 	steamID, err := h.players.ResolveToSteamID(r.Context(), identifier)
 	if err != nil {
