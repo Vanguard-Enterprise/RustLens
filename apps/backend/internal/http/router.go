@@ -162,6 +162,9 @@ func NewRouter(
 		r.Get("/bans/{discordID}", handler.GetUserBan)
 		r.Put("/bans/{discordID}", handler.UpdateUserBan)
 
+		// Shared bot-command rate limiter + low-guild fraud detector
+		r.Post("/rate-limit/consume", handler.ConsumeRateLimit)
+
 		// Guild-scoped steam-discord links
 		r.Get("/guilds/{guildID}/online-summary", handler.ListGuildOnlineSummary)
 		r.Get("/guilds/{guildID}/game-bans", handler.CheckGuildGameBans)

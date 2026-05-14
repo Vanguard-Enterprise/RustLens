@@ -1337,6 +1337,39 @@ export class BackendClient {
       60_000,
     );
   }
+
+  consumeRateLimit(
+    workerId: string,
+    payload: {
+      discordId: string;
+      command: string;
+      guildId?: string;
+      memberCount?: number;
+    },
+  ) {
+    return this.call<RateLimitConsumeResponse>(
+      workerId,
+      "/api/internal/bot/setup/rate-limit/consume",
+      "POST",
+      payload,
+      2_000,
+    );
+  }
 }
+
+export type RateLimitFraudAlert = {
+  guildId: string;
+  command: string;
+  count: number;
+  memberCount: number;
+  windowSecs: number;
+};
+
+export type RateLimitConsumeResponse = {
+  allowed: boolean;
+  retryAfterSeconds: number;
+  violationLevel?: number;
+  fraudAlert?: RateLimitFraudAlert;
+};
 
 export type { UpsertBotGuildPayload, UpsertBotGuildResponse };

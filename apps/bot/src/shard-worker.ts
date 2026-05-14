@@ -23,6 +23,7 @@ import {
   enforceBan,
   enforceBanForAutocomplete,
 } from "./ban-check.js";
+import { enforceRateLimit } from "./rate-limit.js";
 import {
   ensureBindCommand,
   handleBindButtonInteraction,
@@ -382,6 +383,9 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (interaction.commandName === PLAYER_COMMAND_NAME) {
+        if (await enforceRateLimit(interaction, "player")) {
+          return;
+        }
         if (!(await deferPlayerChatInput(interaction))) {
           return;
         }
