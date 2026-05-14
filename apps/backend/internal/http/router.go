@@ -233,6 +233,11 @@ func NewRouter(
 			r.Get("/me/guilds/{guildID}/links", handler.GetCurrentAppUserGuildLinks)
 		})
 
+		r.Group(func(r chi.Router) {
+			r.Use(requireSession)
+			r.Get("/players/search", handler.SearchPlayers)
+		})
+
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(requireSession)
 			r.Post("/actions/{type}", handler.actionDispatcher.ServeHTTP)
