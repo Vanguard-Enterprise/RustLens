@@ -10,6 +10,7 @@ import {
 	getCurrentNavItem,
 } from "@/components/app-shared";
 import { NavUser } from "@/components/nav-user";
+import { NavbarPlayerSearch } from "@/components/navbar-player-search";
 import { BellIcon } from "lucide-react";
 
 type AppHeaderProps = {
@@ -49,6 +50,7 @@ export function AppHeader({ csrfToken, pathname, variant, user }: AppHeaderProps
 				<AppBreadcrumbs page={activePage} />
 			</div>
 			<div className="flex items-center gap-3">
+				<NavbarPlayerSearch />
 				<Button aria-label="Notifications" size="icon" variant="ghost">
 					<BellIcon
 					/>
