@@ -7,14 +7,13 @@ import {
 } from "discord.js";
 import { BackendClient, type RateLimitFraudAlert } from "./backend-client.js";
 import { loadConfig } from "./config.js";
-import { logDiscordError } from "./shared.js";
+import { logDiscordError, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 // Static fraud-alert destination. Fill in to enable; empty string disables
 // posting (alerts are still detected and logged to stdout).
 const FRAUD_ALERT_CHANNEL_ID = "1492270634594603170";
 
 const RATE_LIMIT_BUDGET_MS = 1_500;
-const COOLDOWN_EMBED_COLOR = 0xf5a524;
 const FRAUD_EMBED_COLOR = 0xd31239;
 
 const rateLimitTimedOut = Symbol("rateLimitTimedOut");
@@ -61,7 +60,7 @@ function buildCooldownEmbed(retryAfterSeconds: number) {
     .setDescription(
       `You're using this command too often. Try again in ${formatRetry(retryAfterSeconds)}.`,
     )
-    .setColor(COOLDOWN_EMBED_COLOR);
+    .setColor(RUSTLENS_EMBED_COLOR);
 }
 
 async function postFraudAlert(client: Client, alert: RateLimitFraudAlert) {
