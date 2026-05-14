@@ -13,8 +13,8 @@ export default async function PlayerProfilePage({ params }: PageProps) {
 	try {
 		profile = await getPlayerProfile(steamId);
 	} catch (err) {
-		const message = err instanceof Error ? err.message : "";
-		if (message.includes("404")) notFound();
+		const status = err instanceof Error ? (err as Error & { status?: number }).status : undefined;
+		if (status === 404) notFound();
 		throw err;
 	}
 	return (

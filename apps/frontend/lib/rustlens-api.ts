@@ -296,7 +296,10 @@ async function backendFetch<T>(
 			const notice = noticeFromBackendError(errorCode);
 			redirect(`/login?notice=${notice}`);
 		}
-		throw new Error(message);
+		const error = new Error(message) as Error & { status?: number; errorCode?: string };
+		error.status = response.status;
+		error.errorCode = errorCode;
+		throw error;
 	}
 
 	return (await response.json()) as T;
