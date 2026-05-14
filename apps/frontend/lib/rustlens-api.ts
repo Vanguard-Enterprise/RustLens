@@ -885,3 +885,63 @@ export async function bulkAdminUserAction(
 	);
 }
 
+export type PlayerSearchHit = {
+	steamId: string;
+	bmId: string | null;
+	bmName: string | null;
+	avatarUrl: string | null;
+	currentServer: { bmId: string; name: string } | null;
+	isOnline: boolean;
+	lastSeenAt: string | null;
+};
+
+export type PlayerSearchResponse = {
+	items: PlayerSearchHit[];
+	mode: "identifier" | "name";
+};
+
+/**
+ * Public subset of the bot's steamProfileResponse used by /player and the
+ * hover card. The exact field set must match what the backend returns from
+ * GET /api/app/players/{identifier}/profile (which delegates to
+ * GetSteamProfile). Optional fields use `| null` since pgx scans to
+ * pointers and the JSON serializer emits `null` for unset values.
+ */
+export type PlayerProfile = {
+	steamId: string;
+	bmId: string | null;
+	bmName: string | null;
+	avatarImage: string | null;
+	firstSeenAt: string | null;
+	totalBmHours: number | null;
+	categoryHours: Record<string, number>;
+	steamRustHours: number | null;
+	currentServer: { bmId: string; name: string } | null;
+	lastServer: { bmId: string; name: string } | null;
+	riskFactor: {
+		steamBmGapHours: number | null;
+		serversPlayed: number | null;
+		bmHours: number | null;
+	} | null;
+};
+
+export async function searchPlayers(
+	q: string,
+	includeOffline = false,
+): Promise<PlayerSearchResponse> {
+	const params = new URLSearchParams({ q });
+	if (includeOffline) params.set("includeOffline", "true");
+	return backendFetch<PlayerSearchResponse>(
+		`/api/app/players/search?${params.toString()}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getPlayerProfile(identifier: string): Promise<PlayerProfile> {
+	const id = encodeURIComponent(identifier);
+	return backendFetch<PlayerProfile>(`/api/app/players/${id}/profile`, undefined, {
+		requireSession: true,
+	});
+}
+
