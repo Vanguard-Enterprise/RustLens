@@ -1,0 +1,109 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`PlayerProfileCard > renders the public profile fields 1`] = `
+<div>
+  <div
+    class="p-6"
+  >
+    <div
+      class="flex items-center gap-4"
+    >
+      <div
+        class="h-16 w-16 rounded bg-muted"
+      />
+      <div
+        class="flex flex-col"
+      >
+        <h2
+          class="text-lg font-semibold"
+        >
+          Bean
+        </h2>
+        <a
+          class="text-xs text-muted-foreground hover:underline"
+          href="https://www.battlemetrics.com/players/123456"
+          rel="noreferrer"
+          target="_blank"
+        >
+          BM #
+          123456
+        </a>
+        <a
+          class="text-xs text-muted-foreground hover:underline"
+          href="https://steamcommunity.com/profiles/76561198000000001"
+          rel="noreferrer"
+          target="_blank"
+        >
+          Steam 
+          76561198000000001
+        </a>
+      </div>
+    </div>
+    <dl
+      class="mt-4 grid grid-cols-2 gap-2 text-sm"
+    >
+      <dt
+        class="text-muted-foreground"
+      >
+        Total BM hours
+      </dt>
+      <dd>
+        12.5
+      </dd>
+      <dt
+        class="text-muted-foreground"
+      >
+        Steam Rust hours
+      </dt>
+      <dd>
+        50.0
+      </dd>
+      <dt
+        class="text-muted-foreground"
+      >
+        Currently on
+      </dt>
+      <dd>
+        Vital Main
+      </dd>
+    </dl>
+    <div
+      class="mt-4"
+    >
+      <h3
+        class="text-xs font-semibold uppercase text-muted-foreground"
+      >
+        Category hours
+      </h3>
+      <ul
+        class="mt-1 grid grid-cols-2 gap-1 text-sm"
+      >
+        <li
+          class="flex justify-between"
+        >
+          <span>
+            Vital
+          </span>
+          <span
+            class="tabular-nums"
+          >
+            4.0
+          </span>
+        </li>
+        <li
+          class="flex justify-between"
+        >
+          <span>
+            Modded
+          </span>
+          <span
+            class="tabular-nums"
+          >
+            8.0
+          </span>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+`;
