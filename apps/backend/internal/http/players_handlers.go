@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
+
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/players"
 	"rustlens/backend/internal/store"
@@ -118,6 +120,33 @@ func (h *Handler) lookupSingleHit(ctx context.Context, steamID string) *playerSe
 		}
 	}
 	return &hit
+}
+
+// GetPlayerProfileApp handles GET /api/app/players/{identifier}/profile.
+//
+// Resolves {identifier} (Steam ID, BM ID, or steamcommunity URL) to a
+// Steam64 ID, then delegates response shape to the existing
+// GetSteamProfile pipeline so the bot-internal and app routes return the
+// same JSON.
+func (h *Handler) GetPlayerProfileApp(w http.ResponseWriter, r *http.Request) {
+	identifier := chi.URLParam(r, "identifier")
+	steamID, err := h.players.ResolveToSteamID(r.Context(), identifier)
+	if err != nil {
+		if errors.Is(err, players.ErrNotFound) || errors.Is(err, store.ErrSteamAccountNotFound) {
+			writeError(w, http.StatusNotFound, "player not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "lookup failed")
+		return
+	}
+
+	// Re-issue the request through GetSteamProfile so the response matches
+	// the bot-internal shape exactly. Rebuild the chi context with
+	// {steamID} populated.
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("steamID", steamID)
+	r2 := r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+	h.GetSteamProfile(w, r2)
 }
 
 func toPlayerSearchHits(rows []store.PlayerSearchHit) []playerSearchHit {
