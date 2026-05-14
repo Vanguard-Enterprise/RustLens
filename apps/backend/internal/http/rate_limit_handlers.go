@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/fraud"
 	"rustlens/backend/internal/ratelimit"
 )
@@ -91,6 +92,15 @@ func (h *Handler) ConsumeRateLimit(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.GuildID != "" && !validateSnowflakeValue(req.GuildID) {
 		writeError(w, http.StatusBadRequest, "guildId must be a valid Discord snowflake")
+		return
+	}
+
+	bypass, err := h.postgres.DiscordHasPermission(r.Context(), req.DiscordID, rbac.PermCommandsRateLimitBypass)
+	if err != nil {
+		log.Printf("[backend] rate-limit bypass check error user=%s cmd=%s: %v", req.DiscordID, cmd, err)
+	}
+	if bypass {
+		writeJSON(w, http.StatusOK, rateLimitConsumeResponse{Allowed: true})
 		return
 	}
 
