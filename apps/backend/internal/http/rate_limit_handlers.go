@@ -25,11 +25,11 @@ var playerRateLimitConfig = ratelimit.Config{
 }
 
 // playerFraudConfig: alert when a guild with <25 approximate members
-// triggers >=50 /player invocations within a rolling hour. Alerts are
+// triggers >=30 /player invocations within a rolling hour. Alerts are
 // suppressed per (guild, command) for 6h to avoid spam.
 var playerFraudConfig = fraud.Config{
 	Window:         1 * time.Hour,
-	Threshold:      50,
+	Threshold:      30,
 	MaxMemberCount: 25,
 	AlertCooldown:  6 * time.Hour,
 }
