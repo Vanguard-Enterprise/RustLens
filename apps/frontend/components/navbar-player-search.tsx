@@ -16,6 +16,7 @@ type ResultsState =
 	| { kind: "idle" }
 	| { kind: "loading" }
 	| { kind: "ok"; hits: PlayerSearchHit[]; mode: "identifier" | "name" }
+	| { kind: "unauthenticated" }
 	| { kind: "forbidden" }
 	| { kind: "rate_limited" }
 	| { kind: "error" };
@@ -40,7 +41,8 @@ export function NavbarPlayerSearch() {
 			const res = await searchPlayersAction(trimmed, false);
 			if (ctl.signal.aborted) return;
 			if ("error" in res) {
-				if (res.error === "forbidden") setState({ kind: "forbidden" });
+				if (res.error === "unauthenticated") setState({ kind: "unauthenticated" });
+				else if (res.error === "forbidden") setState({ kind: "forbidden" });
 				else if (res.error === "rate_limited") setState({ kind: "rate_limited" });
 				else setState({ kind: "error" });
 				return;
@@ -89,6 +91,19 @@ export function NavbarPlayerSearch() {
 
 function NavbarSearchResults({ q, state }: { q: string; state: ResultsState }) {
 	if (state.kind === "loading") return <div className="p-3 text-sm text-muted-foreground">Searching…</div>;
+	if (state.kind === "unauthenticated") {
+		return (
+			<div className="flex flex-col gap-2 p-3 text-sm">
+				<p className="text-muted-foreground">Sign in to search players.</p>
+				<a
+					href="/api/auth/discord"
+					className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+				>
+					Sign in with Discord
+				</a>
+			</div>
+		);
+	}
 	if (state.kind === "forbidden") {
 		return (
 			<div className="p-3 text-sm text-muted-foreground">

@@ -17,11 +17,18 @@ function messageOf(err: unknown): string {
 	return err instanceof Error ? err.message : "";
 }
 
+function isUnauthenticated(err: unknown): boolean {
+	const status = statusOf(err);
+	if (status === 401) return true;
+	return messageOf(err).toLowerCase().includes("rustlens session is required");
+}
+
 export async function searchPlayersAction(
 	q: string,
 	includeOffline = false,
 ): Promise<
 	| PlayerSearchResponse
+	| { error: "unauthenticated" }
 	| { error: "forbidden" }
 	| { error: "rate_limited" }
 	| { error: "unknown" }
@@ -29,6 +36,7 @@ export async function searchPlayersAction(
 	try {
 		return await searchPlayers(q, includeOffline);
 	} catch (err) {
+		if (isUnauthenticated(err)) return { error: "unauthenticated" };
 		const status = statusOf(err);
 		if (status === 403) return { error: "forbidden" };
 		if (status === 429) return { error: "rate_limited" };
@@ -39,11 +47,16 @@ export async function searchPlayersAction(
 export async function getPlayerProfileAction(
 	identifier: string,
 ): Promise<
-	PlayerProfile | { error: "not_found" } | { error: "private" } | { error: "unknown" }
+	| PlayerProfile
+	| { error: "unauthenticated" }
+	| { error: "not_found" }
+	| { error: "private" }
+	| { error: "unknown" }
 > {
 	try {
 		return await getPlayerProfile(identifier);
 	} catch (err) {
+		if (isUnauthenticated(err)) return { error: "unauthenticated" };
 		const status = statusOf(err);
 		const message = messageOf(err).toLowerCase();
 		if (status === 404 && message.includes("battlemetrics profile private")) {
