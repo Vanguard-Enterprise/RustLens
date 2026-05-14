@@ -904,28 +904,47 @@ export type PlayerSearchResponse = {
 };
 
 /**
- * Public subset of the bot's steamProfileResponse used by /player and the
- * hover card. The exact field set must match what the backend returns from
- * GET /api/app/players/{identifier}/profile (which delegates to
- * GetSteamProfile). Optional fields use `| null` since pgx scans to
- * pointers and the JSON serializer emits `null` for unset values.
+ * Mirror of the backend's steamProfileResponse, returned by both
+ * GET /api/app/players/{identifier}/profile and the bot-internal
+ * /api/internal/bot/setup/steam/{steamID}/profile path. Strings are empty
+ * (not null) when the underlying value is unset; only the explicitly
+ * pointer-typed Go fields surface as `null`.
  */
+export type PlayerProfileHours = {
+	vitality: number;
+	atlas: number;
+	vital: number;
+	modded: number;
+	official: number;
+	build: number;
+	bm: number;
+	rust: number | null;
+};
+
+export type PlayerProfileNameGap = {
+	fromUnix: number;
+	toUnix: number;
+};
+
+export type PlayerProfileStatus = {
+	isOnline: boolean;
+	serverBmId: string;
+	serverName: string;
+	onlineUnix: number | null;
+	offlineUnix: number | null;
+};
+
 export type PlayerProfile = {
 	steamId: string;
-	bmId: string | null;
-	bmName: string | null;
-	avatarImage: string | null;
-	firstSeenAt: string | null;
-	totalBmHours: number | null;
-	categoryHours: Record<string, number>;
-	steamRustHours: number | null;
-	currentServer: { bmId: string; name: string } | null;
-	lastServer: { bmId: string; name: string } | null;
-	riskFactor: {
-		steamBmGapHours: number | null;
-		serversPlayed: number | null;
-		bmHours: number | null;
-	} | null;
+	bmId: string;
+	bmName: string;
+	personaName: string;
+	avatarImage: string;
+	firstSeenUnix: number | null;
+	hours: PlayerProfileHours;
+	serversPlayed: number;
+	nameGaps: PlayerProfileNameGap[];
+	status?: PlayerProfileStatus | null;
 };
 
 export async function searchPlayers(
