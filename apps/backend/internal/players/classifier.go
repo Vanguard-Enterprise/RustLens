@@ -7,14 +7,16 @@ import (
 	"strings"
 )
 
+// QueryKind is the shape of a raw search-box input.
 type QueryKind int
 
+// QueryKind values describe how the search box input was classified.
 const (
-	KindEmpty QueryKind = iota
-	KindSteamID
-	KindBmID
-	KindSteamURL
-	KindName
+	KindEmpty    QueryKind = iota // empty / whitespace-only input
+	KindSteamID                   // bare 17-digit Steam64 ID
+	KindBmID                      // bare BattleMetrics player ID or BM player URL
+	KindSteamURL                  // steamcommunity.com profile or vanity URL
+	KindName                      // free-form name search fallback
 )
 
 var (
