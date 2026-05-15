@@ -16,7 +16,6 @@ type RoleSeed struct {
 	Name        string
 	Description string
 	IsSystem    bool
-	Color       string
 	Permissions []string // empty for superadmin (implicit all)
 }
 
@@ -97,9 +96,8 @@ func SystemRoles() []RoleSeed {
 		{
 			Key:         RolePRO,
 			Name:        "PRO",
-			Description: "Yellow system role for PRO users.",
+			Description: "Role for PRO users",
 			IsSystem:    true,
-			Color:       "#facc15",
 			Permissions: []string{},
 		},
 	}

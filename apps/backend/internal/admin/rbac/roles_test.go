@@ -50,7 +50,7 @@ func TestSystemRoles_ModeratorHasExpectedPermissions(t *testing.T) {
 	}
 }
 
-func TestSystemRoles_ContainsYellowPRO(t *testing.T) {
+func TestSystemRoles_ContainsPRO(t *testing.T) {
 	roles := SystemRoles()
 	var pro *RoleSeed
 	for i := range roles {
@@ -64,7 +64,7 @@ func TestSystemRoles_ContainsYellowPRO(t *testing.T) {
 	if !pro.IsSystem {
 		t.Errorf("PRO must be is_system")
 	}
-	if pro.Color != "#facc15" {
-		t.Errorf("PRO color = %q, want #facc15", pro.Color)
+	if pro.Description != "Role for PRO users" {
+		t.Errorf("PRO description = %q, want Role for PRO users", pro.Description)
 	}
 }

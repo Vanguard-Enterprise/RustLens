@@ -13,6 +13,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { AdminRoleItem, AdminUserDetail } from "@/lib/rustlens-api";
+import { cn } from "@/lib/utils";
 
 
 
@@ -26,15 +27,6 @@ type Props = {
 	canAssign: boolean;
 	canGrantSuperadmin: boolean;
 };
-
-function roleBadgeStyle(color?: string | null): React.CSSProperties | undefined {
-	if (!color) return undefined;
-	return {
-		backgroundColor: color,
-		borderColor: color,
-		color: "#422006",
-	};
-}
 
 export function RolesSection({
 	detail,
@@ -82,12 +74,17 @@ export function RolesSection({
 							const name = role?.name ?? roleKey;
 							const description = role?.description ?? null;
 							const isSuperadmin = roleKey === "superadmin";
+							const isPro = roleKey === "PRO";
 							return (
 								<Badge
 									key={roleKey}
-									variant={isSuperadmin ? "destructive" : role?.color ? "outline" : "secondary"}
-									className="gap-1"
-									style={roleBadgeStyle(role?.color)}
+									variant={isSuperadmin ? "destructive" : isPro ? "outline" : "secondary"}
+									className={cn(
+										"gap-1",
+										isPro
+											? "border-yellow-500/20 bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500/15 dark:text-yellow-300"
+											: null,
+									)}
 								>
 									{description ? (
 										<Tooltip>

@@ -180,7 +180,6 @@ export type AdminRoleItem = {
 	name: string;
 	description: string | null;
 	isSystem: boolean;
-	color?: string | null;
 	permissions: string[];
 	memberCount: number;
 };

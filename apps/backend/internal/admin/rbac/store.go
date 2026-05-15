@@ -15,7 +15,6 @@ type Role struct {
 	Name        string
 	Description string
 	IsSystem    bool
-	Color       string
 }
 
 type Store struct{ pool *pgxpool.Pool }
@@ -41,16 +40,15 @@ func (s *Store) SeedPermissionsAndRoles(ctx context.Context) error {
 	for _, r := range SystemRoles() {
 		var roleID uuid.UUID
 		err := tx.QueryRow(ctx,
-			`INSERT INTO admin_roles (key, name, description, is_system, color)
-			 VALUES ($1, $2, $3, $4, $5)
+			`INSERT INTO admin_roles (key, name, description, is_system)
+			 VALUES ($1, $2, $3, $4)
 			 ON CONFLICT (key) DO UPDATE
 			   SET name = EXCLUDED.name,
 			       description = EXCLUDED.description,
 			       is_system = EXCLUDED.is_system,
-			       color = EXCLUDED.color,
 			       updated_at = NOW()
 			 RETURNING id`,
-			r.Key, r.Name, r.Description, r.IsSystem, nullableString(r.Color),
+			r.Key, r.Name, r.Description, r.IsSystem,
 		).Scan(&roleID)
 		if err != nil {
 			return err
@@ -75,7 +73,7 @@ func (s *Store) SeedPermissionsAndRoles(ctx context.Context) error {
 
 func (s *Store) ListRoles(ctx context.Context) ([]Role, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, key, name, COALESCE(description, ''), is_system, COALESCE(color, '') FROM admin_roles ORDER BY key`,
+		`SELECT id, key, name, COALESCE(description, ''), is_system FROM admin_roles ORDER BY key`,
 	)
 	if err != nil {
 		return nil, err
@@ -84,7 +82,7 @@ func (s *Store) ListRoles(ctx context.Context) ([]Role, error) {
 	var out []Role
 	for rows.Next() {
 		var r Role
-		if err := rows.Scan(&r.ID, &r.Key, &r.Name, &r.Description, &r.IsSystem, &r.Color); err != nil {
+		if err := rows.Scan(&r.ID, &r.Key, &r.Name, &r.Description, &r.IsSystem); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -101,11 +99,11 @@ type RoleWithMemberCount struct {
 
 func (s *Store) ListRolesWithMemberCount(ctx context.Context) ([]RoleWithMemberCount, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT r.id, r.key, r.name, COALESCE(r.description, ''), r.is_system, COALESCE(r.color, ''),
+		SELECT r.id, r.key, r.name, COALESCE(r.description, ''), r.is_system,
 		       COUNT(ur.user_id)::int AS member_count
 		FROM admin_roles r
 		LEFT JOIN admin_user_roles ur ON ur.role_id = r.id
-		GROUP BY r.id, r.key, r.name, r.description, r.is_system, r.color
+		GROUP BY r.id, r.key, r.name, r.description, r.is_system
 		ORDER BY r.key
 	`)
 	if err != nil {
@@ -115,7 +113,7 @@ func (s *Store) ListRolesWithMemberCount(ctx context.Context) ([]RoleWithMemberC
 	var out []RoleWithMemberCount
 	for rows.Next() {
 		var r RoleWithMemberCount
-		if err := rows.Scan(&r.Role.ID, &r.Role.Key, &r.Role.Name, &r.Role.Description, &r.Role.IsSystem, &r.Role.Color, &r.MemberCount); err != nil {
+		if err := rows.Scan(&r.Role.ID, &r.Role.Key, &r.Role.Name, &r.Role.Description, &r.Role.IsSystem, &r.MemberCount); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -160,7 +158,7 @@ func (s *Store) RevokeRole(ctx context.Context, userID string, roleID uuid.UUID)
 
 func (s *Store) RolesForUser(ctx context.Context, userID string) ([]Role, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT r.id, r.key, r.name, COALESCE(r.description, ''), r.is_system, COALESCE(r.color, '')
+		SELECT r.id, r.key, r.name, COALESCE(r.description, ''), r.is_system
 		FROM admin_user_roles ur
 		JOIN admin_roles r ON r.id = ur.role_id
 		WHERE ur.user_id = $1
@@ -173,19 +171,12 @@ func (s *Store) RolesForUser(ctx context.Context, userID string) ([]Role, error)
 	var out []Role
 	for rows.Next() {
 		var r Role
-		if err := rows.Scan(&r.ID, &r.Key, &r.Name, &r.Description, &r.IsSystem, &r.Color); err != nil {
+		if err := rows.Scan(&r.ID, &r.Key, &r.Name, &r.Description, &r.IsSystem); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
-}
-
-func nullableString(value string) any {
-	if value == "" {
-		return nil
-	}
-	return value
 }
 
 func (s *Store) PermissionsForRole(ctx context.Context, roleID uuid.UUID) ([]string, error) {

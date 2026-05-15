@@ -3661,7 +3661,6 @@ type adminRoleItem struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	IsSystem    bool     `json:"isSystem"`
-	Color       string   `json:"color,omitempty"`
 	Permissions []string `json:"permissions"`
 	MemberCount int      `json:"memberCount"`
 }
@@ -3704,7 +3703,6 @@ func (h *Handler) ListAdminRoles(w http.ResponseWriter, r *http.Request) {
 			Name:        rl.Role.Name,
 			Description: rl.Role.Description,
 			IsSystem:    rl.Role.IsSystem,
-			Color:       rl.Role.Color,
 			Permissions: perms,
 			MemberCount: rl.MemberCount,
 		})
