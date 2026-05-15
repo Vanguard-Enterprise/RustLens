@@ -27,6 +27,15 @@ type Props = {
 	canGrantSuperadmin: boolean;
 };
 
+function roleBadgeStyle(color?: string | null): React.CSSProperties | undefined {
+	if (!color) return undefined;
+	return {
+		backgroundColor: color,
+		borderColor: color,
+		color: "#422006",
+	};
+}
+
 export function RolesSection({
 	detail,
 	roles,
@@ -76,8 +85,9 @@ export function RolesSection({
 							return (
 								<Badge
 									key={roleKey}
-									variant={isSuperadmin ? "destructive" : "secondary"}
+									variant={isSuperadmin ? "destructive" : role?.color ? "outline" : "secondary"}
 									className="gap-1"
+									style={roleBadgeStyle(role?.color)}
 								>
 									{description ? (
 										<Tooltip>

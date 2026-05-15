@@ -75,6 +75,15 @@ function SortableHeader({
 	);
 }
 
+function roleBadgeStyle(roleKey: string): React.CSSProperties | undefined {
+	if (roleKey !== "PRO") return undefined;
+	return {
+		backgroundColor: "#facc15",
+		borderColor: "#facc15",
+		color: "#422006",
+	};
+}
+
 export function UsersTable({ items, selected, onToggle, onToggleAll, sort, onSortChange }: Props) {
 	const allOnPageSelected = items.length > 0 && items.every((it) => selected.has(it.user.id));
 	return (
@@ -163,7 +172,8 @@ export function UsersTable({ items, selected, onToggle, onToggleAll, sort, onSor
 											it.adminRoles.map((r) => (
 												<Badge
 													key={r}
-													variant={r === "superadmin" ? "destructive" : "secondary"}
+													variant={r === "superadmin" ? "destructive" : r === "PRO" ? "outline" : "secondary"}
+													style={roleBadgeStyle(r)}
 												>
 													{r}
 												</Badge>

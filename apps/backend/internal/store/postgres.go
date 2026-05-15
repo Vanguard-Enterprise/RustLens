@@ -645,6 +645,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		    name TEXT NOT NULL,
 		    description TEXT,
 		    is_system BOOLEAN NOT NULL DEFAULT FALSE,
+		    color TEXT,
 		    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
@@ -678,6 +679,9 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS audit_events_target_user_idx ON audit_events (target_user_id, created_at DESC);
 	`); err != nil {
 		return err
+	}
+	if _, err := p.pool.Exec(ctx, `ALTER TABLE admin_roles ADD COLUMN IF NOT EXISTS color TEXT`); err != nil {
+		return fmt.Errorf("add admin_roles.color: %w", err)
 	}
 
 	// app_users — Discord-only identity. discord_id is the sole login key.

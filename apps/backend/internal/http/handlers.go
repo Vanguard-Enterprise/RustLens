@@ -2941,6 +2941,22 @@ func (h *Handler) IsDiscordWebsiteAdmin(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]bool{"isAdmin": isAdmin})
 }
 
+func (h *Handler) HasDiscordPRORole(w http.ResponseWriter, r *http.Request) {
+	discordID, ok := validateSnowflakePathParam(w, r, "discordID")
+	if !ok {
+		return
+	}
+
+	hasRole, err := h.postgres.DiscordUserHasAdminRole(r.Context(), discordID, rbac.RolePRO)
+	if err != nil {
+		log.Printf("[backend] HasDiscordPRORole error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to check PRO role")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"hasRole": hasRole})
+}
+
 type createSoftLinkRequest struct {
 	SteamID   string `json:"steamId"`
 	DiscordID string `json:"discordId"`
@@ -3645,6 +3661,7 @@ type adminRoleItem struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	IsSystem    bool     `json:"isSystem"`
+	Color       string   `json:"color,omitempty"`
 	Permissions []string `json:"permissions"`
 	MemberCount int      `json:"memberCount"`
 }
@@ -3687,6 +3704,7 @@ func (h *Handler) ListAdminRoles(w http.ResponseWriter, r *http.Request) {
 			Name:        rl.Role.Name,
 			Description: rl.Role.Description,
 			IsSystem:    rl.Role.IsSystem,
+			Color:       rl.Role.Color,
 			Permissions: perms,
 			MemberCount: rl.MemberCount,
 		})

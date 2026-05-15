@@ -157,6 +157,7 @@ func NewRouter(
 		r.Delete("/discord/{discordID}/link-visibility-hidden", handler.UnhideDiscordLinkIdentity)
 		r.Get("/discord/{discordID}/guilds", handler.ListUserGuildLinksByDiscord)
 		r.Get("/discord/{discordID}/is-website-admin", handler.IsDiscordWebsiteAdmin)
+		r.Get("/discord/{discordID}/has-pro-role", handler.HasDiscordPRORole)
 
 		// User ban registry (owner-only /ban command)
 		r.Get("/bans/{discordID}", handler.GetUserBan)

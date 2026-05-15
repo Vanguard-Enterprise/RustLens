@@ -81,6 +81,15 @@ function SortableHeader({
 	);
 }
 
+function roleBadgeStyle(color?: string | null): React.CSSProperties | undefined {
+	if (!color) return undefined;
+	return {
+		backgroundColor: color,
+		borderColor: color,
+		color: "#422006",
+	};
+}
+
 export function RolesTable({ roles, sort, onSortChange, onEdit, onDelete }: Props) {
 	return (
 		<div className="overflow-hidden rounded-lg border">
@@ -128,7 +137,14 @@ export function RolesTable({ roles, sort, onSortChange, onEdit, onDelete }: Prop
 					) : (
 						roles.map((r) => (
 							<TableRow key={r.id}>
-								<TableCell className="font-medium">{r.name}</TableCell>
+								<TableCell className="font-medium">
+									<Badge
+										variant={r.color ? "outline" : "secondary"}
+										style={roleBadgeStyle(r.color)}
+									>
+										{r.name}
+									</Badge>
+								</TableCell>
 								<TableCell>
 									<code className="text-xs font-mono">{r.key}</code>
 								</TableCell>

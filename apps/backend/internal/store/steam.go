@@ -1030,3 +1030,20 @@ func (p *PostgresStore) IsDiscordWebsiteAdmin(ctx context.Context, discordID str
 	}
 	return exists, nil
 }
+
+func (p *PostgresStore) DiscordUserHasAdminRole(ctx context.Context, discordID, roleKey string) (bool, error) {
+	var exists bool
+	err := p.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM app_users u
+			JOIN admin_user_roles aur ON aur.user_id = u.id
+			JOIN admin_roles r ON r.id = aur.role_id
+			WHERE u.discord_id = $1 AND r.key = $2
+		)
+	`, discordID, roleKey).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
