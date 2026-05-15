@@ -979,6 +979,14 @@ export class BackendClient {
     );
   }
 
+  hasDiscordProRole(workerId: string, discordId: string) {
+    return this.call<{ hasRole: boolean }>(
+      workerId,
+      `/api/internal/bot/setup/discord/${discordId}/has-pro-role`,
+      "GET",
+    );
+  }
+
   resolveSteamID(workerId: string, input: string) {
     return this.call<ResolveSteamIDResponse>(
       workerId,

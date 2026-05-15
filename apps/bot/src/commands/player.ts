@@ -11,14 +11,14 @@ import { extractBmID } from "../bm-input.js";
 import { loadConfig } from "../config.js";
 import {
   createEmbed,
-  buildWebsiteAdminOnlyEmbed,
+  buildProOnlyFeatureEmbed,
 } from "../shared.js";
 import {
   resolveSteamInputErrorMessage,
   resolveSteamProfileInput,
 } from "../steam-input.js";
 import { buildProfileButtons, buildUserEmbed, fetchSteamProfileForView } from "./view.js";
-import { isWebsiteAdmin } from "../website-admin.js";
+import { hasProFeatureAccess } from "../website-admin.js";
 
 export const PLAYER_COMMAND_NAME = "player";
 
@@ -107,9 +107,9 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
       return true;
     }
 
-    if (!(await isWebsiteAdmin(interaction.user.id))) {
+    if (!(await hasProFeatureAccess(interaction.user.id))) {
       await interaction.editReply({
-        embeds: [buildWebsiteAdminOnlyEmbed()],
+        embeds: [buildProOnlyFeatureEmbed()],
       });
       return true;
     }
@@ -432,8 +432,8 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       return true;
     }
 
-    if (!(await isWebsiteAdmin(interaction.user.id))) {
-      await interaction.editReply({ embeds: [buildWebsiteAdminOnlyEmbed()] });
+    if (!(await hasProFeatureAccess(interaction.user.id))) {
+      await interaction.editReply({ embeds: [buildProOnlyFeatureEmbed()] });
       return true;
     }
 
@@ -463,8 +463,8 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       return true;
     }
 
-    if (!(await isWebsiteAdmin(interaction.user.id))) {
-      await interaction.editReply({ embeds: [buildWebsiteAdminOnlyEmbed()] });
+    if (!(await hasProFeatureAccess(interaction.user.id))) {
+      await interaction.editReply({ embeds: [buildProOnlyFeatureEmbed()] });
       return true;
     }
 
