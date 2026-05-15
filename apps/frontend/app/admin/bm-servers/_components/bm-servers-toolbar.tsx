@@ -6,6 +6,7 @@ import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
 	Popover,
@@ -69,14 +70,14 @@ export function BmServersToolbar({ query, onChange }: Props) {
 
 	const highFrequency = toTri(query.highFrequency);
 	const hasError = toTri(query.hasError);
-	const categoryTri = CATEGORIES.map(
-		(c) => [c, toTri(query[c.key])] as const,
-	);
 
 	const activeCount =
 		(highFrequency !== "all" ? 1 : 0) +
 		(hasError !== "all" ? 1 : 0) +
-		categoryTri.reduce((n, [, t]) => n + (t !== "all" ? 1 : 0), 0);
+		CATEGORIES.reduce(
+			(n, c) => n + (query[c.key] !== undefined ? 1 : 0),
+			0,
+		);
 	const hasActiveFilters = activeCount > 0;
 
 	const clearedCategories: Partial<AdminBmServersQuery> = Object.fromEntries(
@@ -114,30 +115,25 @@ export function BmServersToolbar({ query, onChange }: Props) {
 								<span className="text-xs font-medium uppercase text-muted-foreground">
 									Categories
 								</span>
-								{categoryTri.map(([cat, tri]) => (
-									<div key={cat.key} className="flex flex-col gap-1">
-										<span className="text-xs text-muted-foreground">
-											{cat.label}
-										</span>
-										<div className="flex flex-wrap gap-1">
-											{TRI.map((v) => (
-												<Button
-													key={v}
-													variant={tri === v ? "default" : "outline"}
-													size="sm"
-													onClick={() =>
-														onChange({
-															[cat.key]: fromTri(v),
-															page: 1,
-														})
-													}
-												>
-													{triLabel(v, "yes", "no")}
-												</Button>
-											))}
-										</div>
-									</div>
-								))}
+								<div className="grid grid-cols-3 gap-2">
+									{CATEGORIES.map(({ key, label }) => (
+										<label
+											key={key}
+											className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+										>
+											<Checkbox
+												checked={query[key] === true}
+												onCheckedChange={(v) =>
+													onChange({
+														[key]: v ? true : undefined,
+														page: 1,
+													})
+												}
+											/>
+											{label}
+										</label>
+									))}
+								</div>
 							</div>
 							<div className="flex flex-col gap-1.5">
 								<span className="text-xs font-medium uppercase text-muted-foreground">
