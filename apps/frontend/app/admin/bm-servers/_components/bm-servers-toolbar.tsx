@@ -34,6 +34,23 @@ function fromTri(value: TriOption): boolean | undefined {
 	return value === "true";
 }
 
+type CategoryKey =
+	| "isVitality"
+	| "isAtlas"
+	| "isVital"
+	| "isModded"
+	| "isOfficial"
+	| "isBuild";
+
+const CATEGORIES: ReadonlyArray<{ key: CategoryKey; label: string }> = [
+	{ key: "isVitality", label: "Vitality" },
+	{ key: "isAtlas", label: "Atlas" },
+	{ key: "isVital", label: "Vital" },
+	{ key: "isModded", label: "Modded" },
+	{ key: "isOfficial", label: "Official" },
+	{ key: "isBuild", label: "Build" },
+];
+
 type Props = {
 	query: AdminBmServersQuery;
 	onChange: (next: Partial<AdminBmServersQuery>) => void;
@@ -52,10 +69,19 @@ export function BmServersToolbar({ query, onChange }: Props) {
 
 	const highFrequency = toTri(query.highFrequency);
 	const hasError = toTri(query.hasError);
+	const categoryTri = CATEGORIES.map(
+		(c) => [c, toTri(query[c.key])] as const,
+	);
 
 	const activeCount =
-		(highFrequency !== "all" ? 1 : 0) + (hasError !== "all" ? 1 : 0);
+		(highFrequency !== "all" ? 1 : 0) +
+		(hasError !== "all" ? 1 : 0) +
+		categoryTri.reduce((n, [, t]) => n + (t !== "all" ? 1 : 0), 0);
 	const hasActiveFilters = activeCount > 0;
+
+	const clearedCategories: Partial<AdminBmServersQuery> = Object.fromEntries(
+		CATEGORIES.map((c) => [c.key, undefined]),
+	);
 
 	return (
 		<>
@@ -82,8 +108,37 @@ export function BmServersToolbar({ query, onChange }: Props) {
 							) : null}
 						</Button>
 					</PopoverTrigger>
-					<PopoverContent align="start" className="w-72">
-						<div className="flex flex-col gap-3">
+					<PopoverContent align="start" className="w-80">
+						<div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
+							<div className="flex flex-col gap-1.5">
+								<span className="text-xs font-medium uppercase text-muted-foreground">
+									Categories
+								</span>
+								{categoryTri.map(([cat, tri]) => (
+									<div key={cat.key} className="flex flex-col gap-1">
+										<span className="text-xs text-muted-foreground">
+											{cat.label}
+										</span>
+										<div className="flex flex-wrap gap-1">
+											{TRI.map((v) => (
+												<Button
+													key={v}
+													variant={tri === v ? "default" : "outline"}
+													size="sm"
+													onClick={() =>
+														onChange({
+															[cat.key]: fromTri(v),
+															page: 1,
+														})
+													}
+												>
+													{triLabel(v, "yes", "no")}
+												</Button>
+											))}
+										</div>
+									</div>
+								))}
+							</div>
 							<div className="flex flex-col gap-1.5">
 								<span className="text-xs font-medium uppercase text-muted-foreground">
 									High frequency
@@ -142,6 +197,7 @@ export function BmServersToolbar({ query, onChange }: Props) {
 							onChange({
 								highFrequency: undefined,
 								hasError: undefined,
+								...clearedCategories,
 								page: 1,
 							})
 						}

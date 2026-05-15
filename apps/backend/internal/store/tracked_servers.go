@@ -32,6 +32,12 @@ type TrackedServerFilter struct {
 	Q             string
 	HighFrequency *bool
 	HasError      *bool
+	IsVitality    *bool
+	IsAtlas       *bool
+	IsVital       *bool
+	IsModded      *bool
+	IsOfficial    *bool
+	IsBuild       *bool
 	SortBy        string // name | bmId | highFrequency | lastPolledAt | pollStatus
 	SortOrder     string // asc | desc
 }
@@ -96,6 +102,19 @@ func (p *PostgresStore) ListTrackedServersPage(ctx context.Context, filter Track
 			conds = append(conds, "last_poll_error = ''")
 		}
 	}
+	addBoolFilter := func(column string, value *bool) {
+		if value == nil {
+			return
+		}
+		ph := addArg(*value)
+		conds = append(conds, column+" = "+ph)
+	}
+	addBoolFilter("is_vitality", filter.IsVitality)
+	addBoolFilter("is_atlas", filter.IsAtlas)
+	addBoolFilter("is_vital", filter.IsVital)
+	addBoolFilter("is_modded", filter.IsModded)
+	addBoolFilter("is_official", filter.IsOfficial)
+	addBoolFilter("is_build", filter.IsBuild)
 
 	where := ""
 	if len(conds) > 0 {
