@@ -77,9 +77,10 @@ func (h *Handler) SearchPlayers(w http.ResponseWriter, r *http.Request) {
 	includeOffline := r.URL.Query().Get("includeOffline") == "true"
 
 	kind := players.ClassifyQuery(q)
+	isAdmin := session != nil && len(session.AdminRoles) > 0
 
 	if kind == players.KindName {
-		if session == nil || len(session.AdminRoles) == 0 {
+		if !isAdmin {
 			writeError(w, http.StatusForbidden, "name search requires admin")
 			return
 		}
@@ -98,6 +99,18 @@ func (h *Handler) SearchPlayers(w http.ResponseWriter, r *http.Request) {
 	steamID, err := h.players.ResolveToSteamID(r.Context(), q)
 	if err != nil {
 		if errors.Is(err, players.ErrNotFound) || errors.Is(err, store.ErrSteamAccountNotFound) {
+			if kind == players.KindSteamVanity && isAdmin {
+				hits, ferr := h.players.SearchByName(r.Context(), q, includeOffline)
+				if ferr != nil {
+					writeError(w, http.StatusInternalServerError, "search failed")
+					return
+				}
+				writeJSON(w, http.StatusOK, playerSearchResponse{
+					Items: toPlayerSearchHits(hits),
+					Mode:  "name",
+				})
+				return
+			}
 			writeJSON(w, http.StatusOK, playerSearchResponse{Items: []playerSearchHit{}, Mode: "identifier"})
 			return
 		}

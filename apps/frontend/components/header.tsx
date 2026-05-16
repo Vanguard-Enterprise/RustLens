@@ -52,7 +52,7 @@ export function Header({ csrfToken, user }: HeaderProps = {}) {
 					<DesktopNav />
 				</div>
 				<div className="hidden items-center gap-2 md:flex">
-					<NavbarPlayerSearch />
+					<NavbarPlayerSearch isAuthed={Boolean(user)} />
 					{user && csrfToken ? (
 						<NavUser csrfToken={csrfToken} user={user} />
 					) : (

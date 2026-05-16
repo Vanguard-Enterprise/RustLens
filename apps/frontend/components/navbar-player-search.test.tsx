@@ -5,6 +5,11 @@ vi.mock("@/app/_actions/player-search", () => ({
 	searchPlayersAction: vi.fn(),
 }));
 
+const pushMock = vi.fn();
+vi.mock("next/navigation", () => ({
+	useRouter: () => ({ push: pushMock }),
+}));
+
 import { searchPlayersAction } from "@/app/_actions/player-search";
 import { NavbarPlayerSearch } from "./navbar-player-search";
 
@@ -51,5 +56,36 @@ describe("NavbarPlayerSearch", () => {
 
 		await new Promise((r) => setTimeout(r, 400));
 		expect(searchPlayersAction).not.toHaveBeenCalled();
+	});
+
+	it("Enter redirects to login when not authed and never calls the action", async () => {
+		(searchPlayersAction as ReturnType<typeof vi.fn>).mockReset();
+		const assign = vi.fn();
+		Object.defineProperty(window, "location", {
+			configurable: true,
+			value: { assign },
+		});
+
+		render(<NavbarPlayerSearch isAuthed={false} />);
+		const input = screen.getByRole("searchbox") as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "abcd" } });
+		fireEvent.keyDown(input, { key: "Enter" });
+
+		expect(assign).toHaveBeenCalledWith("/api/auth/discord");
+		await new Promise((r) => setTimeout(r, 400));
+		expect(searchPlayersAction).not.toHaveBeenCalled();
+	});
+
+	it("Enter pushes /search when authed", async () => {
+		(searchPlayersAction as ReturnType<typeof vi.fn>).mockReset();
+		(searchPlayersAction as ReturnType<typeof vi.fn>).mockResolvedValue({ items: [], mode: "name" });
+		pushMock.mockReset();
+
+		render(<NavbarPlayerSearch isAuthed />);
+		const input = screen.getByRole("searchbox") as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "alice" } });
+		fireEvent.keyDown(input, { key: "Enter" });
+
+		expect(pushMock).toHaveBeenCalledWith("/search?q=alice");
 	});
 });

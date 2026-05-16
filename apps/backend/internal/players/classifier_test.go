@@ -24,6 +24,14 @@ func TestClassifyQuery(t *testing.T) {
 		{"battlemetrics rcon url", "https://www.battlemetrics.com/rcon/players/123456", KindBmID},
 		{"name with spaces", "Mr Bean", KindName},
 		{"name that looks numeric but too short", "42", KindName},
+		{"bare vanity letters only", "gabelogannewell", KindSteamVanity},
+		{"bare vanity with underscore", "some_vanity", KindSteamVanity},
+		{"bare vanity with hyphen and digits", "ash-99", KindSteamVanity},
+		{"bare vanity minimum length", "abc", KindSteamVanity},
+		{"vanity must start with letter", "_abc", KindName},
+		{"vanity too short", "ab", KindName},
+		{"vanity too long", "abcdefghijklmnopqrstuvwxyz1234567", KindName},
+		{"name with space defeats vanity", "ash 99", KindName},
 	}
 
 	for _, tc := range cases {

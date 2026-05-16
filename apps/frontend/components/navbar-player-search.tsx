@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -11,6 +12,7 @@ import type { PlayerSearchHit } from "@/lib/rustlens-api";
 const DEBOUNCE_MS = 250;
 const MIN_QUERY_LEN = 2;
 const TOP_N = 6;
+const LOGIN_HREF = "/api/auth/discord";
 
 type ResultsState =
 	| { kind: "idle" }
@@ -21,7 +23,12 @@ type ResultsState =
 	| { kind: "rate_limited" }
 	| { kind: "error" };
 
-export function NavbarPlayerSearch() {
+type Props = {
+	isAuthed?: boolean;
+};
+
+export function NavbarPlayerSearch({ isAuthed = true }: Props = {}) {
+	const router = useRouter();
 	const [q, setQ] = useState("");
 	const [open, setOpen] = useState(false);
 	const [state, setState] = useState<ResultsState>({ kind: "idle" });
@@ -30,6 +37,7 @@ export function NavbarPlayerSearch() {
 	useEffect(() => {
 		const trimmed = q.trim();
 		if (trimmed.length < MIN_QUERY_LEN) return;
+		if (!isAuthed) return;
 		const handle = setTimeout(async () => {
 			abortRef.current?.abort();
 			const ctl = new AbortController();
@@ -47,7 +55,7 @@ export function NavbarPlayerSearch() {
 			setState({ kind: "ok", hits: res.items.slice(0, TOP_N), mode: res.mode });
 		}, DEBOUNCE_MS);
 		return () => clearTimeout(handle);
-	}, [q]);
+	}, [q, isAuthed]);
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -69,7 +77,7 @@ export function NavbarPlayerSearch() {
 						data-navbar-player-search
 						type="search"
 						role="searchbox"
-						placeholder="Search players  /"
+						placeholder="Find Players"
 						value={q}
 						onChange={(e) => {
 							const value = e.target.value;
@@ -78,10 +86,28 @@ export function NavbarPlayerSearch() {
 							if (value.trim().length < MIN_QUERY_LEN) setState({ kind: "idle" });
 						}}
 						onFocus={() => setOpen(true)}
+						onKeyDown={(e) => {
+							if (e.key !== "Enter") return;
+							const trimmed = q.trim();
+							if (trimmed.length < MIN_QUERY_LEN) return;
+							e.preventDefault();
+							if (!isAuthed) {
+								window.location.assign(LOGIN_HREF);
+								return;
+							}
+							router.push(`/search?q=${encodeURIComponent(trimmed)}`);
+						}}
 					/>
 				</PopoverTrigger>
 				<PopoverContent align="end" className="w-80 p-0">
-					<NavbarSearchResults q={q} state={state} />
+					<NavbarSearchResults
+						q={q}
+						state={
+							!isAuthed && q.trim().length >= MIN_QUERY_LEN
+								? { kind: "unauthenticated" }
+								: state
+						}
+					/>
 				</PopoverContent>
 			</Popover>
 		</div>
