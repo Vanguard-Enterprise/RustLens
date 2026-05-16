@@ -20,9 +20,11 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { RotateApiKeyDialog } from "./rotate-api-key-dialog";
+import { RevokeApiKeyDialog } from "./revoke-api-key-dialog";
 
 export function ApiKeysTable({ items }: { items: AdminApiKey[] }) {
 	const [rotating, setRotating] = useState<{ id: string; name: string } | null>(null);
+	const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null);
 
 	return (
 		<>
@@ -67,7 +69,13 @@ export function ApiKeysTable({ items }: { items: AdminApiKey[] }) {
 										>
 											Rotate
 										</DropdownMenuItem>
-										{/* Revoke item added in Task 21 */}
+										<DropdownMenuItem
+											disabled={k.revokedAt !== null}
+											className="text-destructive"
+											onClick={() => setRevoking({ id: k.id, name: k.name })}
+										>
+											Revoke
+										</DropdownMenuItem>
 									</DropdownMenuContent>
 								</DropdownMenu>
 							</TableCell>
@@ -91,6 +99,14 @@ export function ApiKeysTable({ items }: { items: AdminApiKey[] }) {
 					keyName={rotating.name}
 					open={true}
 					onOpenChange={(o) => !o && setRotating(null)}
+				/>
+			)}
+			{revoking && (
+				<RevokeApiKeyDialog
+					keyId={revoking.id}
+					keyName={revoking.name}
+					open={true}
+					onOpenChange={(o) => !o && setRevoking(null)}
 				/>
 			)}
 		</>
