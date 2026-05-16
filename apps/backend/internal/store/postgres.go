@@ -857,6 +857,15 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create api_keys table: %w", err)
 	}
 
+	// Add via_api_key_* columns to audit_events for tracking API key usage.
+	if _, err := p.pool.Exec(ctx, `
+		ALTER TABLE audit_events
+		    ADD COLUMN IF NOT EXISTS via_api_key_id UUID REFERENCES api_keys(id) ON DELETE SET NULL,
+		    ADD COLUMN IF NOT EXISTS via_api_key_name TEXT;
+	`); err != nil {
+		return fmt.Errorf("alter audit_events for api keys: %w", err)
+	}
+
 	// Drop tables from the retired email/password auth stack. Auth is
 	// Discord-OAuth-only now, so these are dead weight in any environment
 	// that ran the older schema. Idempotent: harmless on fresh DBs.
