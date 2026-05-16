@@ -269,3 +269,7 @@ func (a auditBridge) RecordEntry(ctx context.Context, e actions.AuditEntryInput)
 		UserAgent:         e.UserAgent,
 	})
 }
+
+func TestAPIKeyEndToEnd(t *testing.T) {
+	t.Skip("Wire once the API key router middleware is set up; implement with the existing e2e harness in this file by: (a) calling api_keys.create through the dispatcher, (b) issuing GET /api/app/admin/users with Authorization: Bearer <secret>, (c) asserting the response is 200 and an audit row exists with via_api_key_{id,name} populated, (d) calling api_keys.revoke, (e) asserting the same request now returns 401 api_key_revoked.")
+}
