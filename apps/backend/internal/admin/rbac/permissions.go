@@ -17,17 +17,18 @@ const (
 	PermUsersAuditRead         = "users.audit.read"
 	PermUsersForceUnlink       = "users.force_unlink_steam"
 
-	PermAdminsGrant              = "admins.grant"
-	PermCommandsRateLimitBypass  = "commands.rate_limit.bypass"
-	PermProxiesRead              = "proxies.read"
-	PermProxiesEdit            = "proxies.edit"
-	PermProxiesRotateCreds     = "proxies.rotate_credentials"
-	PermBmServersRead          = "bm_servers.read"
-	PermBmServersEdit          = "bm_servers.edit"
-	PermLinksReview            = "links.review"
-	PermLinksApprove           = "links.approve"
-	PermGuildsUntrackServer    = "guilds.untrack_server"
-	PermAuditRead              = "audit.read"
+	PermAdminsGrant             = "admins.grant"
+	PermCommandsRateLimitBypass = "commands.rate_limit.bypass"
+	PermCommandsFraudBypass     = "commands.fraud.bypass"
+	PermProxiesRead             = "proxies.read"
+	PermProxiesEdit             = "proxies.edit"
+	PermProxiesRotateCreds      = "proxies.rotate_credentials"
+	PermBmServersRead           = "bm_servers.read"
+	PermBmServersEdit           = "bm_servers.edit"
+	PermLinksReview             = "links.review"
+	PermLinksApprove            = "links.approve"
+	PermGuildsUntrackServer     = "guilds.untrack_server"
+	PermAuditRead               = "audit.read"
 )
 
 var permissions = []Permission{
@@ -51,7 +52,8 @@ var permissions = []Permission{
 	{Key: PermGuildsUntrackServer, Description: "Remove a server from a guild's tracked set"},
 	{Key: PermAdminsGrant, Description: "Grant or revoke admin roles; edit role-permission mappings"},
 	{Key: PermAuditRead, Description: "Read the admin audit log"},
-	{Key: PermCommandsRateLimitBypass, Description: "Bypass slash-command rate limits and fraud detection"},
+	{Key: PermCommandsRateLimitBypass, Description: "Bypass slash-command rate limits (no cooldown)"},
+	{Key: PermCommandsFraudBypass, Description: "Exempt slash-command invocations from fraud detection counters and alerts"},
 }
 
 func AllPermissions() []Permission {
