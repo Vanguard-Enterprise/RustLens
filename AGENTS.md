@@ -94,6 +94,8 @@ apps/frontend/
     admin/bm-servers/page.tsx           # Admin tracked BattleMetrics servers management (bm_servers.read; edits require bm_servers.edit)
     dashboard/page.tsx                  # Authenticated user dashboard root
     dashboard/guilds/[guildId]/page.tsx # Per-guild authenticated dashboard view
+    search/page.tsx                     # Player search results page (?q=&includeOffline=); admin-only offline toggle
+    player/[steamId]/page.tsx           # Public player profile page (mirror of bot /player embed, charts deferred)
     privacy/page.tsx                    # Public privacy-policy page
     terms-of-service/page.tsx           # Public terms-of-service page
     refund-policy/page.tsx              # Public refund-policy page
@@ -113,6 +115,9 @@ apps/frontend/
     pricing-section.tsx        # Landing pricing block
     footer.tsx                 # Footer with FaDiscord (react-icons) social link
     auth-page.tsx              # "Sign in with Discord" panel (single OAuth button, no email/password UI)
+    navbar-player-search.tsx   # Discord-style player search popover injected into the dashboard/admin header
+    player-hover-card.tsx      # Hover wrapper around PlayerProfileCard with per-session in-memory cache
+    player-profile-card.tsx    # Shared profile card body used by /player and the hover preview
     auth-divider.tsx           # Divider used inside the auth panel
     not-found.tsx              # 404 panel reused by app/not-found.tsx
     legal-page.tsx / legal-toc.tsx       # Shared long-form legal page shell + TOC used by /privacy, /terms-of-service, /refund-policy
@@ -212,6 +217,7 @@ apps/backend/
 Key patterns:
 
 - Schema is auto-migrated at startup via `EnsureSchema()` (no migration tool).
+- App-facing player routes (`GET /api/app/players/search`, `GET /api/app/players/{identifier}/profile`) are session-authed via `requireSession`. The search route accepts identifier-shaped queries (Steam ID, BM ID, steamcommunity URL) for any logged-in user and falls back to a name-substring search across all globally tracked servers — capped at 20, deduped by Steam ID, online-first — that requires the caller to have at least one row in `admin_user_roles`. The profile route resolves any identifier to a Steam64 ID then delegates to the same pipeline as the bot-internal `/api/internal/bot/setup/steam/{steamID}/profile`. Both routes are rate-limited per session via Redis (`players_search`: 30/60s, `players_profile`: 60/60s). Shared lookup logic lives in `internal/players/`.
 - Bot routes (`/api/internal/bot/shards/*`) are JWT-protected via middleware.
 - Bot owner proxy routes (`/api/internal/bot/owner/proxies*`) are JWT-protected and back owner-guild-only `/manage proxy add|edit|list|remove`. Proxy URLs are encrypted at rest in `outbound_proxies` with AES-GCM using `PROXY_ENCRYPTION_KEY`; API responses and logs only expose credential-free `scheme://host:port` values. DB proxies are preferred over legacy `PROXY_ENDPOINTS`, and create/update/delete reloads the in-process outbound provider without a backend restart. The outbound provider tracks each proxy's request results over a 10-minute window and auto-disables DB proxies whose error rate reaches at least 50% after 10 or more requests.
 - Bot guild settings routes (`/api/internal/bot/setup/guilds/*/settings`) are JWT-protected and store per-guild log channels, the tracked-users category (under which `/track` creates per-group channels), the admin role, and the alert role pinged by enabled track alerts.

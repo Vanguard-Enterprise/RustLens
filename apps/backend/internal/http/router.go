@@ -283,6 +283,12 @@ func NewRouter(
 			r.Get("/me/guilds/{guildID}/links", handler.GetCurrentAppUserGuildLinks)
 		})
 
+		r.Group(func(r chi.Router) {
+			r.Use(requireSession)
+			r.Get("/players/search", handler.SearchPlayers)
+			r.Get("/players/{identifier}/profile", handler.GetPlayerProfileApp)
+		})
+
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(bridgeAPIKeyPerms)
 			// requireSession gates non-API-key requests; API-key requests skip it

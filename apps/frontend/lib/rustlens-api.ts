@@ -298,7 +298,10 @@ async function backendFetch<T>(
 			const notice = noticeFromBackendError(errorCode);
 			redirect(`/login?notice=${notice}`);
 		}
-		throw new Error(message);
+		const error = new Error(message) as Error & { status?: number; errorCode?: string };
+		error.status = response.status;
+		error.errorCode = errorCode;
+		throw error;
 	}
 
 	return (await response.json()) as T;
@@ -976,5 +979,84 @@ export async function bulkAdminUserAction(
 		{ action, userIds, params },
 		reason,
 	);
+}
+
+export type PlayerSearchHit = {
+	steamId: string;
+	bmId: string | null;
+	bmName: string | null;
+	avatarUrl: string | null;
+	currentServer: { bmId: string; name: string } | null;
+	isOnline: boolean;
+	lastSeenAt: string | null;
+};
+
+export type PlayerSearchResponse = {
+	items: PlayerSearchHit[];
+	mode: "identifier" | "name";
+};
+
+/**
+ * Mirror of the backend's steamProfileResponse, returned by both
+ * GET /api/app/players/{identifier}/profile and the bot-internal
+ * /api/internal/bot/setup/steam/{steamID}/profile path. Strings are empty
+ * (not null) when the underlying value is unset; only the explicitly
+ * pointer-typed Go fields surface as `null`.
+ */
+export type PlayerProfileHours = {
+	vitality: number;
+	atlas: number;
+	vital: number;
+	modded: number;
+	official: number;
+	build: number;
+	bm: number;
+	rust: number | null;
+};
+
+export type PlayerProfileNameGap = {
+	fromUnix: number;
+	toUnix: number;
+};
+
+export type PlayerProfileStatus = {
+	isOnline: boolean;
+	serverBmId: string;
+	serverName: string;
+	onlineUnix: number | null;
+	offlineUnix: number | null;
+};
+
+export type PlayerProfile = {
+	steamId: string;
+	bmId: string;
+	bmName: string;
+	personaName: string;
+	avatarImage: string;
+	firstSeenUnix: number | null;
+	hours: PlayerProfileHours;
+	serversPlayed: number;
+	nameGaps: PlayerProfileNameGap[];
+	status?: PlayerProfileStatus | null;
+};
+
+export async function searchPlayers(
+	q: string,
+	includeOffline = false,
+): Promise<PlayerSearchResponse> {
+	const params = new URLSearchParams({ q });
+	if (includeOffline) params.set("includeOffline", "true");
+	return backendFetch<PlayerSearchResponse>(
+		`/api/app/players/search?${params.toString()}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getPlayerProfile(identifier: string): Promise<PlayerProfile> {
+	const id = encodeURIComponent(identifier);
+	return backendFetch<PlayerProfile>(`/api/app/players/${id}/profile`, undefined, {
+		requireSession: true,
+	});
 }
 

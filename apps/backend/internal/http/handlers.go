@@ -27,6 +27,7 @@ import (
 	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/platformsync"
+	"rustlens/backend/internal/players"
 	"rustlens/backend/internal/proxycrypto"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
@@ -64,6 +65,7 @@ type Handler struct {
 	outboundProvider    *outboundhttp.Provider
 	proxyCrypto         *proxycrypto.Crypto
 	publisher           events.Publisher
+	players             *players.Service
 }
 
 func NewHandler(
@@ -130,6 +132,7 @@ func NewHandler(
 		outboundProvider:    outboundProvider,
 		proxyCrypto:         proxyCrypto,
 		publisher:           publisher,
+		players:             players.NewService(postgres, steamClient, bmMatch),
 	}
 }
 
