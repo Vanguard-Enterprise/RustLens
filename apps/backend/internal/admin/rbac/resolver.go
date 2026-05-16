@@ -18,6 +18,26 @@ type requestCache struct {
 	entries map[string]map[string]bool
 }
 
+type apiKeyPermsKey struct{}
+
+// WithAPIKeyPermissions stamps the API key's snapshot permissions onto the
+// context. The resolver intersects the user's current role permissions with
+// this snapshot, so the effective set is the floor of the two — meaning
+// revoking a permission from the user immediately constrains every key they
+// minted without touching the api_keys table.
+func WithAPIKeyPermissions(ctx context.Context, perms []string) context.Context {
+	set := make(map[string]bool, len(perms))
+	for _, p := range perms {
+		set[p] = true
+	}
+	return context.WithValue(ctx, apiKeyPermsKey{}, set)
+}
+
+func apiKeyPermsFromContext(ctx context.Context) (map[string]bool, bool) {
+	v, ok := ctx.Value(apiKeyPermsKey{}).(map[string]bool)
+	return v, ok
+}
+
 func (r *Resolver) WithRequest(ctx context.Context) context.Context {
 	return context.WithValue(ctx, requestCacheKey{}, &requestCache{entries: map[string]map[string]bool{}})
 }
@@ -44,6 +64,15 @@ func (r *Resolver) loadSet(ctx context.Context, userID string) (map[string]bool,
 	set := make(map[string]bool, len(perms))
 	for _, p := range perms {
 		set[p] = true
+	}
+	if keySet, ok := apiKeyPermsFromContext(ctx); ok {
+		filtered := make(map[string]bool, len(set))
+		for k := range set {
+			if keySet[k] {
+				filtered[k] = true
+			}
+		}
+		set = filtered
 	}
 	if cache != nil {
 		cache.entries[userID] = set

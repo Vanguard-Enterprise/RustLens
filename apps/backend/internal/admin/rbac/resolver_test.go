@@ -44,3 +44,29 @@ func TestResolver_CachesPerRequest(t *testing.T) {
 		t.Errorf("expected 1 loader call per request, got %d", f.calls)
 	}
 }
+
+type stubLoader struct{ perms []string }
+
+func (s stubLoader) PermissionsForUser(_ context.Context, _ string) ([]string, error) {
+	return s.perms, nil
+}
+
+func TestResolverIntersectsWithAPIKeyPermissions(t *testing.T) {
+	r := NewResolver(stubLoader{perms: []string{"users.read", "users.edit"}})
+	ctx := WithAPIKeyPermissions(context.Background(), []string{"users.read"})
+
+	got, err := r.PermissionsForUser(ctx, "u1")
+	if err != nil {
+		t.Fatalf("perms: %v", err)
+	}
+	if len(got) != 1 || got[0] != "users.read" {
+		t.Errorf("intersect failed: %v", got)
+	}
+
+	if ok, _ := r.HasPermission(ctx, "u1", "users.edit"); ok {
+		t.Error("users.edit should be filtered out by intersection")
+	}
+	if ok, _ := r.HasPermission(ctx, "u1", "users.read"); !ok {
+		t.Error("users.read should still pass")
+	}
+}
