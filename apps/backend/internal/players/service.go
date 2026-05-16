@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
 )
 
@@ -72,6 +73,9 @@ func (svc *Service) ResolveToSteamID(ctx context.Context, input string) (string,
 		}
 		id, err := svc.steam.ResolveSteamID(ctx, "https://steamcommunity.com/id/"+q)
 		if err != nil {
+			if errors.Is(err, steamapi.ErrVanityNotFound) {
+				return "", ErrNotFound
+			}
 			return "", err
 		}
 		return id, nil

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
 )
 
@@ -65,6 +66,15 @@ func TestResolveToSteamID_VanityURL(t *testing.T) {
 
 func TestResolveToSteamID_VanityWithoutResolver(t *testing.T) {
 	svc := NewService(stubStore{}, nil, nil)
+	_, err := svc.ResolveToSteamID(context.Background(), "gabelogannewell")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestResolveToSteamID_VanityNotFoundMapsToErrNotFound(t *testing.T) {
+	steam := &stubSteam{err: steamapi.ErrVanityNotFound}
+	svc := NewService(stubStore{}, steam, nil)
 	_, err := svc.ResolveToSteamID(context.Background(), "gabelogannewell")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
