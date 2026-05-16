@@ -6,6 +6,7 @@ import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
 	Popover,
@@ -34,6 +35,23 @@ function fromTri(value: TriOption): boolean | undefined {
 	return value === "true";
 }
 
+type CategoryKey =
+	| "isVitality"
+	| "isAtlas"
+	| "isVital"
+	| "isModded"
+	| "isOfficial"
+	| "isBuild";
+
+const CATEGORIES: ReadonlyArray<{ key: CategoryKey; label: string }> = [
+	{ key: "isVitality", label: "Vitality" },
+	{ key: "isAtlas", label: "Atlas" },
+	{ key: "isVital", label: "Vital" },
+	{ key: "isModded", label: "Modded" },
+	{ key: "isOfficial", label: "Official" },
+	{ key: "isBuild", label: "Build" },
+];
+
 type Props = {
 	query: AdminBmServersQuery;
 	onChange: (next: Partial<AdminBmServersQuery>) => void;
@@ -54,8 +72,17 @@ export function BmServersToolbar({ query, onChange }: Props) {
 	const hasError = toTri(query.hasError);
 
 	const activeCount =
-		(highFrequency !== "all" ? 1 : 0) + (hasError !== "all" ? 1 : 0);
+		(highFrequency !== "all" ? 1 : 0) +
+		(hasError !== "all" ? 1 : 0) +
+		CATEGORIES.reduce(
+			(n, c) => n + (query[c.key] !== undefined ? 1 : 0),
+			0,
+		);
 	const hasActiveFilters = activeCount > 0;
+
+	const clearedCategories: Partial<AdminBmServersQuery> = Object.fromEntries(
+		CATEGORIES.map((c) => [c.key, undefined]),
+	);
 
 	return (
 		<>
@@ -82,8 +109,32 @@ export function BmServersToolbar({ query, onChange }: Props) {
 							) : null}
 						</Button>
 					</PopoverTrigger>
-					<PopoverContent align="start" className="w-72">
-						<div className="flex flex-col gap-3">
+					<PopoverContent align="start" className="w-80">
+						<div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
+							<div className="flex flex-col gap-1.5">
+								<span className="text-xs font-medium uppercase text-muted-foreground">
+									Categories
+								</span>
+								<div className="grid grid-cols-3 gap-2">
+									{CATEGORIES.map(({ key, label }) => (
+										<label
+											key={key}
+											className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+										>
+											<Checkbox
+												checked={query[key] === true}
+												onCheckedChange={(v) =>
+													onChange({
+														[key]: v ? true : undefined,
+														page: 1,
+													})
+												}
+											/>
+											{label}
+										</label>
+									))}
+								</div>
+							</div>
 							<div className="flex flex-col gap-1.5">
 								<span className="text-xs font-medium uppercase text-muted-foreground">
 									High frequency
@@ -142,6 +193,7 @@ export function BmServersToolbar({ query, onChange }: Props) {
 							onChange({
 								highFrequency: undefined,
 								hasError: undefined,
+								...clearedCategories,
 								page: 1,
 							})
 						}

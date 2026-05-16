@@ -676,6 +676,12 @@ export type AdminBmServersQuery = {
 	q?: string;
 	highFrequency?: boolean;
 	hasError?: boolean;
+	isVitality?: boolean;
+	isAtlas?: boolean;
+	isVital?: boolean;
+	isModded?: boolean;
+	isOfficial?: boolean;
+	isBuild?: boolean;
 	page?: number;
 	pageSize?: number;
 	sortBy?: AdminBmServerSortKey;
@@ -709,6 +715,14 @@ export async function getAdminBmServers(
 	if (params.highFrequency !== undefined)
 		sp.set("highFrequency", String(params.highFrequency));
 	if (params.hasError !== undefined) sp.set("hasError", String(params.hasError));
+	if (params.isVitality !== undefined)
+		sp.set("isVitality", String(params.isVitality));
+	if (params.isAtlas !== undefined) sp.set("isAtlas", String(params.isAtlas));
+	if (params.isVital !== undefined) sp.set("isVital", String(params.isVital));
+	if (params.isModded !== undefined) sp.set("isModded", String(params.isModded));
+	if (params.isOfficial !== undefined)
+		sp.set("isOfficial", String(params.isOfficial));
+	if (params.isBuild !== undefined) sp.set("isBuild", String(params.isBuild));
 	if (params.page) sp.set("page", String(params.page));
 	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
 	if (params.sortBy) sp.set("sortBy", params.sortBy);

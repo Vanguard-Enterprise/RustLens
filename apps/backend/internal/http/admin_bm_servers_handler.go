@@ -150,6 +150,12 @@ func (h *Handler) ListAdminBmServers(w http.ResponseWriter, r *http.Request) {
 		Q:             q.Get("q"),
 		HighFrequency: parseBoolQuery(q.Get("highFrequency")),
 		HasError:      parseBoolQuery(q.Get("hasError")),
+		IsVitality:    parseBoolQuery(q.Get("isVitality")),
+		IsAtlas:       parseBoolQuery(q.Get("isAtlas")),
+		IsVital:       parseBoolQuery(q.Get("isVital")),
+		IsModded:      parseBoolQuery(q.Get("isModded")),
+		IsOfficial:    parseBoolQuery(q.Get("isOfficial")),
+		IsBuild:       parseBoolQuery(q.Get("isBuild")),
 		SortBy:        q.Get("sortBy"),
 		SortOrder:     q.Get("sortOrder"),
 	}

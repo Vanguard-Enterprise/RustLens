@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/fraud"
 	"rustlens/backend/internal/ratelimit"
 )
@@ -94,24 +95,33 @@ func (h *Handler) ConsumeRateLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rateLimitBypass, err := h.postgres.DiscordHasPermission(r.Context(), req.DiscordID, rbac.PermCommandsRateLimitBypass)
+	if err != nil {
+		log.Printf("[backend] rate-limit bypass check error user=%s cmd=%s: %v", req.DiscordID, cmd, err)
+	}
+	fraudBypass, err := h.postgres.DiscordHasPermission(r.Context(), req.DiscordID, rbac.PermCommandsFraudBypass)
+	if err != nil {
+		log.Printf("[backend] fraud bypass check error user=%s cmd=%s: %v", req.DiscordID, cmd, err)
+	}
+
 	limiter := ratelimit.New(h.redis.Client())
 	detector := fraud.New(h.redis.Client())
 
-	key := req.DiscordID + ":" + cmd
-	res, err := limiter.Consume(r.Context(), key, cfg)
-	if err != nil {
-		log.Printf("[backend] rate-limit consume error user=%s cmd=%s: %v", req.DiscordID, cmd, err)
-		writeError(w, http.StatusInternalServerError, "rate limit unavailable")
-		return
+	resp := rateLimitConsumeResponse{Allowed: true}
+	if !rateLimitBypass {
+		key := req.DiscordID + ":" + cmd
+		res, err := limiter.Consume(r.Context(), key, cfg)
+		if err != nil {
+			log.Printf("[backend] rate-limit consume error user=%s cmd=%s: %v", req.DiscordID, cmd, err)
+			writeError(w, http.StatusInternalServerError, "rate limit unavailable")
+			return
+		}
+		resp.Allowed = res.Allowed
+		resp.RetryAfterSeconds = res.RetryAfterSeconds
+		resp.ViolationLevel = res.ViolationLevel
 	}
 
-	resp := rateLimitConsumeResponse{
-		Allowed:           res.Allowed,
-		RetryAfterSeconds: res.RetryAfterSeconds,
-		ViolationLevel:    res.ViolationLevel,
-	}
-
-	if res.Allowed {
+	if resp.Allowed && !fraudBypass {
 		if fcfg, ok := fraudCommandConfigs[cmd]; ok {
 			alert, err := detector.Record(r.Context(), req.GuildID, cmd, req.MemberCount, fcfg)
 			if err != nil {

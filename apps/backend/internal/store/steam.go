@@ -1047,3 +1047,27 @@ func (p *PostgresStore) DiscordUserHasAdminRole(ctx context.Context, discordID, 
 	}
 	return exists, nil
 }
+
+// DiscordHasPermission reports whether the given Discord user resolves
+// to an app_user holding permission permKey, either explicitly via
+// admin_role_permissions or implicitly via the superadmin role
+// (superadmin = all permissions; matches rbac.Store.PermissionsForUser).
+func (p *PostgresStore) DiscordHasPermission(ctx context.Context, discordID, permKey string) (bool, error) {
+	var exists bool
+	err := p.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM app_users u
+			JOIN admin_user_roles aur ON aur.user_id = u.id
+			JOIN admin_roles r ON r.id = aur.role_id
+			LEFT JOIN admin_role_permissions rp
+			  ON rp.role_id = r.id AND rp.permission_key = $2
+			WHERE u.discord_id = $1
+			  AND (r.key = 'superadmin' OR rp.permission_key IS NOT NULL)
+		)
+	`, discordID, permKey).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
