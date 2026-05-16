@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { adminApiKeyRotate } from "@/lib/rustlens-api";
+import { rotateApiKeyAction } from "../actions";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -36,8 +36,12 @@ export function RotateApiKeyDialog({
 		setSubmitting(true);
 		setError(null);
 		try {
-			const res = await adminApiKeyRotate(keyId, reason);
-			setSecret(res.secret);
+			const res = await rotateApiKeyAction(keyId, reason);
+			if (!res.ok) {
+				setError(res.error);
+				return;
+			}
+			setSecret(res.result.secret);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : "Failed to rotate key");
 		} finally {

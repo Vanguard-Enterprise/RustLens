@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { adminApiKeyRevoke } from "@/lib/rustlens-api";
+import { revokeApiKeyAction } from "../actions";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -34,7 +34,11 @@ export function RevokeApiKeyDialog({
 		setSubmitting(true);
 		setError(null);
 		try {
-			await adminApiKeyRevoke(keyId, reason);
+			const res = await revokeApiKeyAction(keyId, reason);
+			if (!res.ok) {
+				setError(res.error);
+				return;
+			}
 			onOpenChange(false);
 			router.refresh();
 		} catch (e) {

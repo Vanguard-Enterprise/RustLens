@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { adminApiKeyCreate, type AdminPermission } from "@/lib/rustlens-api";
+import type { AdminPermission } from "@/lib/rustlens-api";
+import { createApiKeyAction } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -51,11 +52,15 @@ export function CreateApiKeyDialog({
 			const expiresAt = days
 				? new Date(Date.now() + days * 86_400_000).toISOString()
 				: undefined;
-			const res = await adminApiKeyCreate(
+			const res = await createApiKeyAction(
 				{ name, permissions: Array.from(selected), expiresAt },
 				reason,
 			);
-			setSecret(res.secret);
+			if (!res.ok) {
+				setError(res.error);
+				return;
+			}
+			setSecret(res.result.secret);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : "Failed to create key");
 		} finally {
