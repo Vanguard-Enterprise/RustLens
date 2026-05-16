@@ -87,6 +87,7 @@ export default async function AdminApiKeysRoute({
 								data={data}
 								initialQuery={{ q, includeRevoked, page }}
 								availablePermissions={availablePermissions}
+								csrfToken={csrfToken}
 							/>
 						</div>
 					</div>

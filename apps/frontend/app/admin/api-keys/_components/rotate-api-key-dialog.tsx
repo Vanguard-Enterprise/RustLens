@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { rotateApiKeyAction } from "../actions";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -18,11 +17,13 @@ import { SecretRevealPanel } from "./secret-reveal-panel";
 export function RotateApiKeyDialog({
 	keyId,
 	keyName,
+	csrfToken,
 	open,
 	onOpenChange,
 }: {
 	keyId: string;
 	keyName: string;
+	csrfToken: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }) {
@@ -36,12 +37,24 @@ export function RotateApiKeyDialog({
 		setSubmitting(true);
 		setError(null);
 		try {
-			const res = await rotateApiKeyAction(keyId, reason);
-			if (!res.ok) {
-				setError(res.error);
+			const res = await fetch(
+				`/api/admin/api-keys/${encodeURIComponent(keyId)}/rotate`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ csrfToken, reason }),
+				},
+			);
+			const body = (await res.json().catch(() => ({}))) as {
+				ok?: boolean;
+				result?: { secret: string };
+				error?: string;
+			};
+			if (!res.ok || !body.ok) {
+				setError(body.error ?? `Request failed (${res.status})`);
 				return;
 			}
-			setSecret(res.result.secret);
+			setSecret(body.result?.secret ?? null);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : "Failed to rotate key");
 		} finally {

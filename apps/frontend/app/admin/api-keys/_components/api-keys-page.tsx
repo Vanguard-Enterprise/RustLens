@@ -13,10 +13,12 @@ export function ApiKeysPage({
 	data,
 	initialQuery,
 	availablePermissions,
+	csrfToken,
 }: {
 	data: AdminApiKeysPage;
 	initialQuery: { q?: string; includeRevoked?: boolean; page: number };
 	availablePermissions: AdminPermission[];
+	csrfToken: string;
 }) {
 	const router = useRouter();
 	const pathname = usePathname();
@@ -68,11 +70,12 @@ export function ApiKeysPage({
 					New API key
 				</Button>
 			</div>
-			<ApiKeysTable items={data.items} />
+			<ApiKeysTable items={data.items} csrfToken={csrfToken} />
 			<CreateApiKeyDialog
 				open={createOpen}
 				onOpenChange={setCreateOpen}
 				availablePermissions={availablePermissions}
+				csrfToken={csrfToken}
 			/>
 		</div>
 	);

@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { revokeApiKeyAction } from "../actions";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -17,11 +16,13 @@ import { Label } from "@/components/ui/label";
 export function RevokeApiKeyDialog({
 	keyId,
 	keyName,
+	csrfToken,
 	open,
 	onOpenChange,
 }: {
 	keyId: string;
 	keyName: string;
+	csrfToken: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }) {
@@ -34,9 +35,20 @@ export function RevokeApiKeyDialog({
 		setSubmitting(true);
 		setError(null);
 		try {
-			const res = await revokeApiKeyAction(keyId, reason);
-			if (!res.ok) {
-				setError(res.error);
+			const res = await fetch(
+				`/api/admin/api-keys/${encodeURIComponent(keyId)}/revoke`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ csrfToken, reason }),
+				},
+			);
+			const body = (await res.json().catch(() => ({}))) as {
+				ok?: boolean;
+				error?: string;
+			};
+			if (!res.ok || !body.ok) {
+				setError(body.error ?? `Request failed (${res.status})`);
 				return;
 			}
 			onOpenChange(false);

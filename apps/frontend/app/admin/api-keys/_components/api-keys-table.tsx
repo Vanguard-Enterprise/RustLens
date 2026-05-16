@@ -22,7 +22,13 @@ import {
 import { RotateApiKeyDialog } from "./rotate-api-key-dialog";
 import { RevokeApiKeyDialog } from "./revoke-api-key-dialog";
 
-export function ApiKeysTable({ items }: { items: AdminApiKey[] }) {
+export function ApiKeysTable({
+	items,
+	csrfToken,
+}: {
+	items: AdminApiKey[];
+	csrfToken: string;
+}) {
 	const [rotating, setRotating] = useState<{ id: string; name: string } | null>(null);
 	const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null);
 
@@ -97,6 +103,7 @@ export function ApiKeysTable({ items }: { items: AdminApiKey[] }) {
 				<RotateApiKeyDialog
 					keyId={rotating.id}
 					keyName={rotating.name}
+					csrfToken={csrfToken}
 					open={true}
 					onOpenChange={(o) => !o && setRotating(null)}
 				/>
@@ -105,6 +112,7 @@ export function ApiKeysTable({ items }: { items: AdminApiKey[] }) {
 				<RevokeApiKeyDialog
 					keyId={revoking.id}
 					keyName={revoking.name}
+					csrfToken={csrfToken}
 					open={true}
 					onOpenChange={(o) => !o && setRevoking(null)}
 				/>
