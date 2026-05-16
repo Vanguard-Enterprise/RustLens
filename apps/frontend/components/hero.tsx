@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ArrowRightIcon, UserPlusIcon } from "lucide-react";
-import { IconBrandDiscordFilled } from "@tabler/icons-react";
+import { FaDiscord } from "react-icons/fa6";
 
 export function HeroSection() {
 	return (
@@ -15,7 +15,7 @@ export function HeroSection() {
 					href="#link"
 				>
 					<div className="rounded-xs border bg-card px-1.5 py-0.5 shadow-sm">
-						<IconBrandDiscordFilled className="size-4" />
+						<FaDiscord aria-hidden="true" className="size-4 text-[#5865F2]" />
 					</div>
 
 					<span className="text-xs">Join Community</span>
