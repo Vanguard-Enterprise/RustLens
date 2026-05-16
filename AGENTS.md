@@ -164,6 +164,7 @@ apps/backend/
       events_handlers.go     # Cookie-authenticated SSE handler at /api/events/stream
       openapi.go             # Embedded OpenAPI spec + Scalar docs UI
     auth/jwt.go              # JWT signing/validation for bot service auth + app session token
+    clientip/                # Trusted-edge client-IP + country header extraction (CF-Connecting-IP / CF-IPCountry)
     appauth/                 # App-session auth: handler, repo, middleware, Discord-OAuth-driven session creation
     oauth/discord/           # Discord OAuth client + initiate/callback handlers backing /api/auth/discord
     admin/                   # Admin RBAC: roles, permissions, audit, action dispatcher
@@ -371,6 +372,9 @@ Each app has a `.env.example` — copy and fill before running.
 | `APP_BASE_URL` | `http://localhost:3000` |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | `` (required to enable `/api/auth/discord`) |
 | `APP_ADMIN_DISCORD_IDS` | `` (CSV; bootstraps internal-admin role) |
+| `TRUST_PROXY_HEADERS` | `false` (set `true` only behind a trusted edge that strips client-supplied copies of the headers below) |
+| `TRUST_PROXY_IP_HEADER` | `CF-Connecting-IP` (canonical client-IP header injected by Cloudflare) |
+| `TRUST_PROXY_GEO_HEADER` | `CF-IPCountry` (ISO-3166 alpha-2 country code injected by Cloudflare) |
 
 The BattleMetrics public API client is unauthenticated; there is no `BATTLEMETRICS_API_KEY` env var. Steam<->BM resolution is delegated to the external `bmmatch` service via `BM_MATCH_URL` + `BM_MATCH_TOKEN`.
 

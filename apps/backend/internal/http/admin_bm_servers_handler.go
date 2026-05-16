@@ -102,7 +102,7 @@ func (h *Handler) recordBmServerAudit(ctx context.Context, r *http.Request, acto
 	if errMsg != "" {
 		entry.ErrorMessage = &errMsg
 	}
-	if ip := clientIP(r); ip != "" {
+	if ip := h.clientIP(r); ip != "" {
 		entry.IPAddress = &ip
 	}
 	if ua := r.UserAgent(); ua != "" {

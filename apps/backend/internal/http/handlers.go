@@ -22,6 +22,7 @@ import (
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/bmmatch"
+	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/outboundhttp"
@@ -92,6 +93,11 @@ func NewHandler(
 		panic(fmt.Errorf("register admin actions: %w", err))
 	}
 	dispatcher := actions.NewDispatcher(registry, resolver, auditSinkAdapter{auditStore}, appSessionActor)
+	dispatcher.SetClientIPHeaders(clientip.Headers{
+		Trust:         cfg.TrustProxyHeaders,
+		IPHeader:      cfg.TrustProxyIPHeader,
+		CountryHeader: cfg.TrustProxyGeoHeader,
+	})
 	// The bulk wrapper needs a reference to the dispatcher so it can invoke
 	// registered sub-actions through the shared Dispatch() helper.
 	if err := registry.Register(actions.NewUsersBulkAction(dispatcher)); err != nil {
