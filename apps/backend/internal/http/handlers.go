@@ -138,6 +138,8 @@ func (a auditSinkAdapter) RecordEntry(ctx context.Context, e actions.AuditEntryI
 		ErrorMessage:      e.ErrorMessage,
 		IPAddress:         e.IPAddress,
 		UserAgent:         e.UserAgent,
+		ViaAPIKeyID:       e.ViaAPIKeyID,
+		ViaAPIKeyName:     e.ViaAPIKeyName,
 	})
 }
 
