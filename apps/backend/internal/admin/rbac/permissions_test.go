@@ -34,3 +34,35 @@ func TestPermissions_NoDuplicates(t *testing.T) {
 		seen[p.Key] = true
 	}
 }
+
+func TestAPIKeyPermissionsRegistered(t *testing.T) {
+	for _, key := range []string{
+		PermAPIKeysManage,
+		PermBotRoutesRead,
+		PermBotRoutesWrite,
+	} {
+		if !IsValidPermission(key) {
+			t.Errorf("expected permission %q to be registered", key)
+		}
+	}
+}
+
+func TestInfraAdminHasAPIKeysManage(t *testing.T) {
+	for _, role := range SystemRoles() {
+		if role.Key != RoleInfraAdmin {
+			continue
+		}
+		found := false
+		for _, p := range role.Permissions {
+			if p == PermAPIKeysManage {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected infra_admin to include %q", PermAPIKeysManage)
+		}
+		return
+	}
+	t.Fatalf("infra_admin role not found")
+}
