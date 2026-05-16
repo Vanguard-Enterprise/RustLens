@@ -6,6 +6,7 @@ import (
 
 	"rustlens/backend/internal/admin/actions"
 	"rustlens/backend/internal/admin/rbac"
+	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/store"
 )
 
@@ -13,7 +14,7 @@ func (h *Handler) ListAdminAPIKeys(w http.ResponseWriter, r *http.Request) {
 	var userID string
 	if k := actions.APIKeyAuthFromContext(r.Context()); k != nil {
 		userID = k.UserID
-	} else if session := appSessionFromContext(r.Context()); session != nil {
+	} else if session := appauth.SessionFromContext(r.Context()); session != nil && session.UserID != "" {
 		userID = session.UserID
 	} else {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthenticated"})
