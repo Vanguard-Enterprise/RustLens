@@ -49,7 +49,9 @@ Indexes:
 - `UNIQUE (prefix)` — primary lookup path
 - `(created_by_user_id, revoked_at)` — per-user list query
 
-### Modified table: `app_audit_events`
+### Modified table: `audit_events`
+
+(`audit_events` is the table that the admin dispatcher writes to via `internal/admin/audit/audit.go` — distinct from the browser-auth `app_audit_events` table, which is unaffected by this design.)
 
 Two new nullable columns, auto-migrated:
 
@@ -60,7 +62,7 @@ Two new nullable columns, auto-migrated:
 
 `actor_user_id` keeps pointing at the **creator** (the human). The two new columns are the metadata that say "this human's action was performed via API key X".
 
-No backfill required; existing rows have `NULL` in both columns.
+No backfill required; existing rows have `NULL` in both columns. The `audit.Entry` / `audit.Row` Go structs and `Store.Record` / `Store.Query` are extended additively to carry these fields.
 
 ## Auth flow
 
@@ -103,15 +105,19 @@ Out of scope. The SSE endpoint stays cookie-authenticated only.
 
 ### Bot-route writes (new path)
 
-Bot routes do not flow through the dispatcher. `requireBotRouteScope` writes one `app_audit_events` row per API-key-authenticated bot-route **write** (POST/PUT/DELETE/PATCH) on the way out, after the handler has produced a status code:
+Bot routes do not flow through the dispatcher. `requireBotRouteScope` writes one `audit_events` row per API-key-authenticated bot-route **write** (POST/PUT/DELETE/PATCH) on the way out, after the handler has produced a status code, using the same `audit.Store.Record` entry point the dispatcher uses:
 
 | Field | Value |
 |---|---|
 | `actor_user_id` | `apiKeyAuth.UserID` (the human creator) |
 | `via_api_key_id` / `via_api_key_name` | from `apiKeyAuth` |
-| `action` | `bot_route.write` |
-| `event_data` | `{"method": "POST", "path": "/api/internal/bot/setup/guilds/123/track-groups", "status": 200}` |
-| `reason` | empty (bot routes do not carry the dispatcher's reason capture) |
+| `action_type` | `bot_route.write` |
+| `resource_type` | `bot_route` |
+| `resource_id` | the request path, e.g. `/api/internal/bot/setup/guilds/123/track-groups` |
+| `params` | `{"method": "POST", "status": 200}` |
+| `result` | `success` if status < 400, `error` otherwise |
+| `ip_address` / `user_agent` | from the request, same as dispatcher |
+| `reason` | nil (bot routes do not carry the dispatcher's reason capture) |
 
 Reads (`GET`/`HEAD`) are **not** individually audited — `api_keys.last_used_at` + `last_used_ip` is the visibility for those. This keeps the audit log usable.
 
@@ -264,15 +270,15 @@ Tests live with the code they cover.
 
 ### `internal/admin/audit/audit_test.go` (extend)
 
-- An admin-dispatcher action performed via API key writes an `app_audit_events` row with `via_api_key_id` + `via_api_key_name` populated; `actor_user_id` still = the creator.
+- An admin-dispatcher action performed via API key writes an `audit_events` row with `via_api_key_id` + `via_api_key_name` populated; `actor_user_id` still = the creator.
 
 ### `internal/http/bot_route_scope_test.go` (new)
 
 - JWT-authenticated bot request → `requireBotRouteScope` is a no-op.
 - API-key authenticated GET → requires `bot_routes.read`; 403 on miss; 200 with the permission.
 - API-key authenticated POST → requires `bot_routes.write`; 403 on miss; 200 with the permission.
-- API-key authenticated POST with permission → writes one `app_audit_events` row with `action = bot_route.write` and `event_data` containing method/path/status.
-- API-key authenticated GET with permission → writes **no** `app_audit_events` row.
+- API-key authenticated POST with permission → writes one `audit_events` row with `action_type = bot_route.write`, `resource_id = <path>`, and `params` containing `{method, status}`.
+- API-key authenticated GET with permission → writes **no** `audit_events` row.
 
 ### `internal/admin/e2e_test.go` (extend)
 
