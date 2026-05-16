@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ShieldCheckIcon } from "lucide-react";
 import type { AdminPermission } from "@/lib/rustlens-api";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { RolePermissionsGrid } from "@/app/admin/roles/_components/role-permissions-grid";
 import { SecretRevealPanel } from "./secret-reveal-panel";
 
 const EXPIRY_PRESETS: Array<{ value: string; label: string; days: number | null }> = [
@@ -90,11 +91,14 @@ export function CreateApiKeyDialog({
 		router.refresh();
 	}
 
-	const grouped = availablePermissions.reduce<Record<string, AdminPermission[]>>((acc, p) => {
-		const ns = p.key.split(".")[0] ?? "other";
-		(acc[ns] ??= []).push(p);
-		return acc;
-	}, {});
+	function togglePerm(key: string, on: boolean) {
+		setSelected((prev) => {
+			const next = new Set(prev);
+			if (on) next.add(key);
+			else next.delete(key);
+			return next;
+		});
+	}
 
 	return (
 		<Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
@@ -121,36 +125,22 @@ export function CreateApiKeyDialog({
 								placeholder="deploy-bot"
 							/>
 						</div>
-						<div className="flex flex-col gap-1.5">
-							<Label>Permissions</Label>
-							<div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto rounded-md border p-3">
-								{Object.entries(grouped).map(([ns, perms]) => (
-									<div key={ns} className="col-span-2">
-										<div className="text-xs font-semibold uppercase text-muted-foreground">
-											{ns}
-										</div>
-										{perms.map((p) => (
-											<label
-												key={p.key}
-												className="flex items-center gap-2 py-1 text-sm"
-											>
-												<Checkbox
-													checked={selected.has(p.key)}
-													onCheckedChange={(checked) => {
-														setSelected((prev) => {
-															const next = new Set(prev);
-															if (checked) next.add(p.key);
-															else next.delete(p.key);
-															return next;
-														});
-													}}
-												/>
-												<span className="font-mono">{p.key}</span>
-												<span className="text-muted-foreground">— {p.description}</span>
-											</label>
-										))}
-									</div>
-								))}
+						<div className="grid gap-2">
+							<div className="flex items-center justify-between">
+								<Label className="flex items-center gap-2">
+									<ShieldCheckIcon className="size-4" />
+									Permissions
+								</Label>
+								<span className="text-xs text-muted-foreground">
+									{selected.size} selected
+								</span>
+							</div>
+							<div className="max-h-72 overflow-y-auto rounded-lg border bg-muted/30 p-3">
+								<RolePermissionsGrid
+									catalog={availablePermissions}
+									selected={selected}
+									onToggle={togglePerm}
+								/>
 							</div>
 						</div>
 						<div className="flex flex-col gap-1.5">
