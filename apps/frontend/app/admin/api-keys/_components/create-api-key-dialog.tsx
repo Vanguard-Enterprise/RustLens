@@ -2,19 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ShieldCheckIcon } from "lucide-react";
+import {
+	ClockIcon,
+	HashIcon,
+	MessageSquareTextIcon,
+	ShieldCheckIcon,
+} from "lucide-react";
 import type { AdminPermission } from "@/lib/rustlens-api";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
-	DialogFooter,
-	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { RolePermissionsGrid } from "@/app/admin/roles/_components/role-permissions-grid";
 import { SecretRevealPanel } from "./secret-reveal-panel";
@@ -25,6 +27,21 @@ const EXPIRY_PRESETS: Array<{ value: string; label: string; days: number | null 
 	{ value: "90", label: "90 days", days: 90 },
 	{ value: "365", label: "1 year", days: 365 },
 ];
+
+function SectionLabel({
+	icon: Icon,
+	children,
+}: {
+	icon: React.ComponentType<{ className?: string }>;
+	children: React.ReactNode;
+}) {
+	return (
+		<div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+			<Icon className="size-3.5" />
+			{children}
+		</div>
+	);
+}
 
 export function CreateApiKeyDialog({
 	open,
@@ -102,85 +119,107 @@ export function CreateApiKeyDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
-			<DialogContent className="max-w-2xl">
-				<DialogHeader>
-					<DialogTitle>{secret ? "Copy your key" : "New API key"}</DialogTitle>
-					{!secret && (
-						<DialogDescription>
-							Creates a new API key. You will only see the secret once.
-						</DialogDescription>
-					)}
-				</DialogHeader>
-				{secret ? (
-					<SecretRevealPanel secret={secret} onAcknowledge={close} />
-				) : (
-					<div className="flex flex-col gap-4">
-						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="ak-name">Name</Label>
-							<Input
-								id="ak-name"
-								value={name}
-								maxLength={64}
-								onChange={(e) => setName(e.target.value)}
-								placeholder="deploy-bot"
-							/>
+			<DialogContent className="max-w-2xl gap-0 overflow-hidden p-0 sm:max-w-2xl">
+				<div className="flex max-h-[85vh] flex-col">
+					{/* Hero */}
+					<div className="flex flex-col gap-2 border-b bg-gradient-to-b from-muted/40 to-transparent px-6 pt-5 pb-4 pr-14">
+						<div className="flex min-w-0 flex-col gap-1">
+							<DialogTitle className="text-lg font-semibold leading-tight">
+								{secret ? "Copy your key" : "New API key"}
+							</DialogTitle>
+							{!secret ? (
+								<DialogDescription>
+									Creates a new API key. You will only see the secret once.
+								</DialogDescription>
+							) : null}
 						</div>
-						<div className="grid gap-2">
-							<div className="flex items-center justify-between">
-								<Label className="flex items-center gap-2">
-									<ShieldCheckIcon className="size-4" />
-									Permissions
-								</Label>
-								<span className="text-xs text-muted-foreground">
-									{selected.size} selected
-								</span>
-							</div>
-							<div className="max-h-72 overflow-y-auto rounded-lg border bg-muted/30 p-3">
-								<RolePermissionsGrid
-									catalog={availablePermissions}
-									selected={selected}
-									onToggle={togglePerm}
-								/>
-							</div>
-						</div>
-						<div className="flex flex-col gap-1.5">
-							<Label>Expires</Label>
-							<RadioGroup value={expiry} onValueChange={setExpiry} className="flex gap-4">
-								{EXPIRY_PRESETS.map((p) => (
-									<label key={p.value} className="flex items-center gap-1.5 text-sm">
-										<RadioGroupItem value={p.value} />
-										{p.label}
-									</label>
-								))}
-							</RadioGroup>
-						</div>
-						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="ak-reason">Reason</Label>
-							<Input
-								id="ak-reason"
-								value={reason}
-								onChange={(e) => setReason(e.target.value)}
-								placeholder="Why is this key being issued?"
-							/>
-						</div>
-						{error && <div className="text-sm text-destructive">{error}</div>}
 					</div>
-				)}
-				{!secret && (
-					<DialogFooter>
-						<Button variant="outline" onClick={close} disabled={submitting}>
-							Cancel
-						</Button>
-						<Button
-							onClick={submit}
-							disabled={
-								submitting || name.trim().length === 0 || reason.trim().length === 0
-							}
-						>
-							{submitting ? "Creating…" : "Create key"}
-						</Button>
-					</DialogFooter>
-				)}
+
+					{/* Body */}
+					{secret ? (
+						<div className="overflow-y-auto px-6 py-4">
+							<SecretRevealPanel secret={secret} onAcknowledge={close} />
+						</div>
+					) : (
+						<>
+							<div className="flex flex-col gap-4 overflow-y-auto px-6 py-4">
+								<div className="grid gap-2">
+									<SectionLabel icon={HashIcon}>Name</SectionLabel>
+									<Input
+										id="ak-name"
+										value={name}
+										maxLength={64}
+										onChange={(e) => setName(e.target.value)}
+										placeholder="deploy-bot"
+									/>
+								</div>
+
+								<div className="grid gap-2">
+									<div className="flex items-center justify-between">
+										<SectionLabel icon={ShieldCheckIcon}>Permissions</SectionLabel>
+										<span className="text-xs text-muted-foreground">
+											{selected.size} selected
+										</span>
+									</div>
+									<div className="rounded-lg border bg-muted/30 p-3">
+										<RolePermissionsGrid
+											catalog={availablePermissions}
+											selected={selected}
+											onToggle={togglePerm}
+										/>
+									</div>
+								</div>
+
+								<div className="grid gap-2">
+									<SectionLabel icon={ClockIcon}>Expires</SectionLabel>
+									<RadioGroup
+										value={expiry}
+										onValueChange={setExpiry}
+										className="flex flex-wrap gap-4"
+									>
+										{EXPIRY_PRESETS.map((p) => (
+											<label
+												key={p.value}
+												htmlFor={`ak-expiry-${p.value}`}
+												className="flex items-center gap-1.5 text-sm"
+											>
+												<RadioGroupItem id={`ak-expiry-${p.value}`} value={p.value} />
+												{p.label}
+											</label>
+										))}
+									</RadioGroup>
+								</div>
+
+								<div className="grid gap-2">
+									<SectionLabel icon={MessageSquareTextIcon}>Reason</SectionLabel>
+									<Input
+										id="ak-reason"
+										value={reason}
+										onChange={(e) => setReason(e.target.value)}
+										placeholder="Why is this key being issued?"
+									/>
+								</div>
+
+								{error ? <p className="text-sm text-destructive">{error}</p> : null}
+							</div>
+
+							{/* Footer */}
+							<div className="flex items-center justify-end gap-2 border-t bg-muted/20 px-6 py-3">
+								<Button variant="outline" onClick={close} disabled={submitting}>
+									Cancel
+								</Button>
+								<Button
+									onClick={submit}
+									disabled={
+										submitting || name.trim().length === 0 || reason.trim().length === 0
+									}
+								>
+									{submitting ? "Creating…" : "Create key"}
+								</Button>
+							</div>
+						</>
+					)}
+				</div>
 			</DialogContent>
 		</Dialog>
 	);
