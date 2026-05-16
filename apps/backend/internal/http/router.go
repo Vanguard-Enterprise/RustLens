@@ -9,10 +9,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"rustlens/backend/internal/admin/actions"
+	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/bmmatch"
+	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/oauth/discord"
@@ -65,11 +68,36 @@ func NewRouter(
 	}
 	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher)
 
+	apiKeyStore := store.NewAPIKeyStore(postgres.Pool())
+	headers := clientip.Headers{
+		Trust:         cfg.TrustProxyHeaders,
+		IPHeader:      cfg.TrustProxyIPHeader,
+		CountryHeader: cfg.TrustProxyGeoHeader,
+	}
+	apiKeyAuthMW := appauth.NewAPIKeyAuth(apiKeyStore, &apiKeyUserLoader{pool: postgres.Pool()}, headers)
+
+	// bridgeAPIKeyPerms copies the key's snapshot permissions from the
+	// actions context onto the rbac resolver context so HasPermission /
+	// PermissionsForUser intersect correctly.
+	bridgeAPIKeyPerms := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if k := actions.APIKeyAuthFromContext(r.Context()); k != nil {
+				ctx := rbac.WithAPIKeyPermissions(r.Context(), k.KeyPermissions)
+				r = r.WithContext(ctx)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	// Run API-key auth globally so it fires before subrouter-level guards
+	// (including requireAppSecret on /api/app). Non-API-key requests are
+	// a no-op pass-through.
+	r.Use(apiKeyAuthMW)
 
 	r.Get("/api/docs", handler.DocsUI)
 	r.Get("/api/docs/", handler.DocsUI)
@@ -80,6 +108,8 @@ func NewRouter(
 	r.Post("/api/discord/webhook-events", handler.DiscordWebhookEvents)
 
 	r.Route("/api/internal/bot/shards", func(r chi.Router) {
+		r.Use(bridgeAPIKeyPerms)
+		r.Use(requireBotRouteScope(handler.rbacResolver, handler.auditSink, headers))
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Post("/register", handler.RegisterShardWorker)
 		r.Post("/heartbeat", handler.HeartbeatShardWorker)
@@ -88,6 +118,8 @@ func NewRouter(
 	})
 
 	r.Route("/api/internal/bot/owner", func(r chi.Router) {
+		r.Use(bridgeAPIKeyPerms)
+		r.Use(requireBotRouteScope(handler.rbacResolver, handler.auditSink, headers))
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Get("/stats", handler.GetOwnerStats)
 		r.Get("/proxies", handler.ListOwnerProxies)
@@ -97,6 +129,8 @@ func NewRouter(
 	})
 
 	r.Route("/api/internal/bot/setup", func(r chi.Router) {
+		r.Use(bridgeAPIKeyPerms)
+		r.Use(requireBotRouteScope(handler.rbacResolver, handler.auditSink, headers))
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Get("/guilds/{guildID}/settings", handler.GetGuildSettings)
 		r.Put("/guilds/{guildID}/settings", handler.UpdateGuildSettings)
@@ -218,7 +252,19 @@ func NewRouter(
 	})
 
 	r.Route("/api/app", func(r chi.Router) {
-		r.Use(requireAppSecret)
+		// requireAppSecret guards the /api/app surface from non-frontend callers.
+		// API-key-authenticated requests bypass it; they are already authenticated
+		// and scoped through the global apiKeyAuthMW above.
+		r.Use(func(next http.Handler) http.Handler {
+			secretMW := requireAppSecret(next)
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if actions.APIKeyAuthFromContext(r.Context()) != nil {
+					next.ServeHTTP(w, r)
+					return
+				}
+				secretMW.ServeHTTP(w, r)
+			})
+		})
 
 		r.Post("/auth/logout", appAuthHandler.Logout)
 
@@ -238,7 +284,19 @@ func NewRouter(
 		})
 
 		r.Route("/admin", func(r chi.Router) {
-			r.Use(requireSession)
+			r.Use(bridgeAPIKeyPerms)
+			// requireSession gates non-API-key requests; API-key requests skip it
+			// because the key middleware has already authenticated the caller.
+			r.Use(func(next http.Handler) http.Handler {
+				sessionMW := requireSession(next)
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if actions.APIKeyAuthFromContext(r.Context()) != nil {
+						next.ServeHTTP(w, r)
+						return
+					}
+					sessionMW.ServeHTTP(w, r)
+				})
+			})
 			r.Post("/actions/{type}", handler.actionDispatcher.ServeHTTP)
 			r.Get("/roles", handler.ListAdminRoles)
 			r.Get("/permissions", handler.ListAdminPermissions)
@@ -256,6 +314,7 @@ func NewRouter(
 			r.Post("/proxies/bulk", handler.BulkAdminProxies)
 			r.Patch("/proxies/{proxyID}", handler.UpdateAdminProxy)
 			r.Delete("/proxies/{proxyID}", handler.DeleteAdminProxy)
+			r.Get("/api-keys", handler.ListAdminAPIKeys)
 			r.Get("/bm-servers", handler.ListAdminBmServers)
 			r.Post("/bm-servers", handler.CreateAdminBmServer)
 			r.Post("/bm-servers/bulk", handler.BulkAdminBmServers)
@@ -270,6 +329,13 @@ func NewRouter(
 func botJWTMiddleware(validator *auth.Validator) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// API-key-authenticated requests bypass bot JWT validation; they are
+			// already authenticated and scoped through requireBotRouteScope.
+			if actions.APIKeyAuthFromContext(r.Context()) != nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			rawToken, err := auth.ExtractBearerToken(r.Header.Get("Authorization"))
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, err.Error())

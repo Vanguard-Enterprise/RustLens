@@ -51,6 +51,7 @@ func SystemRoles() []RoleSeed {
 				"bm_servers.read",
 				"bm_servers.edit",
 				"audit.read",
+				PermAPIKeysManage,
 			},
 		},
 		{

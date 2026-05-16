@@ -4,6 +4,7 @@ import {
 	BookOpenIcon,
 	ChartNoAxesColumnIcon,
 	GaugeIcon,
+	KeyIcon,
 	KeyRoundIcon,
 	Link2Icon,
 	NetworkIcon,
@@ -30,9 +31,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
 	{ href: "/admin/links", label: "Link Review", icon: ScanEyeIcon, permissions: ["links.review"] },
 	{ href: "/admin/guilds", label: "Guilds", icon: UserRoundIcon, permissions: ["guilds.untrack_server"] },
 	{ href: "/admin/user-installs", label: "User Apps", icon: UsersIcon, permissions: ["users.read"] },
-	{ href: "/admin/proxies", label: "Proxies", icon: NetworkIcon, permissions: ["proxies.edit"] },
 	{ href: "/admin/audit", label: "Audit", icon: ActivityIcon, permissions: ["audit.read"] },
 	{ href: "/admin/roles", label: "Roles", icon: KeyRoundIcon, permissions: ["admins.grant"] },
+];
+
+export const ADMIN_INFRA_NAV: AdminNavItem[] = [
+	{ href: "/admin/proxies", label: "Proxies", icon: NetworkIcon, permissions: ["proxies.read"] },
+	{ href: "/admin/bm-servers", label: "BM Servers", icon: ServerIcon, permissions: ["bm_servers.read"] },
+	{ href: "/admin/api-keys", label: "API Keys", icon: KeyIcon, permissions: ["api_keys.manage"] },
 ];
 
 export function filterNavByPermissions(
@@ -71,6 +77,7 @@ export function getNavGroups(
 ): SidebarNavGroup[] {
 	if (variant === "admin") {
 		const filtered = filterNavByPermissions(ADMIN_NAV, permissions);
+		const filteredInfra = filterNavByPermissions(ADMIN_INFRA_NAV, permissions);
 		const accessHrefs = new Set(["/admin/users", "/admin/roles", "/admin/audit"]);
 		const toItem = (item: AdminNavItem) => ({
 			title: item.label,
@@ -91,6 +98,10 @@ export function getNavGroups(
 					pathname,
 					filtered.filter((item) => accessHrefs.has(item.href)).map(toItem),
 				),
+			},
+			{
+				label: "Infrastructure",
+				items: withActive(pathname, filteredInfra.map(toItem)),
 			},
 			{
 				label: "Admin",

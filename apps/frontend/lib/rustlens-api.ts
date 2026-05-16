@@ -189,6 +189,8 @@ export type AdminPermissionItem = {
 	description: string;
 };
 
+export type AdminPermission = AdminPermissionItem;
+
 export type AuditEventItem = {
 	id: string;
 	actorUserId: string;
@@ -873,6 +875,83 @@ export async function deleteAdminUser(
 		{ userId, typedConfirmation },
 		reason,
 	);
+}
+
+// --- API keys ---
+
+export type AdminApiKey = {
+	id: string;
+	name: string;
+	prefix: string;
+	last4: string;
+	permissions: string[];
+	createdByUserId: string;
+	createdByDisplayName: string;
+	expiresAt: string | null;
+	revokedAt: string | null;
+	revokedReason: string | null;
+	lastUsedAt: string | null;
+	lastUsedIp: string | null;
+	createdAt: string;
+};
+
+export type AdminApiKeysPage = {
+	items: AdminApiKey[];
+	total: number;
+	page: number;
+	pageSize: number;
+};
+
+export type AdminApiKeysQuery = {
+	q?: string;
+	includeRevoked?: boolean;
+	page?: number;
+	pageSize?: number;
+};
+
+export async function getAdminApiKeys(
+	params: AdminApiKeysQuery = {},
+): Promise<AdminApiKeysPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	if (params.includeRevoked) sp.set("includeRevoked", "true");
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminApiKeysPage>(
+		`/api/app/admin/api-keys${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export type CreateApiKeyInput = {
+	name: string;
+	permissions: string[];
+	expiresAt?: string | null;
+};
+
+export type CreateApiKeyResponse = {
+	apiKey: AdminApiKey;
+	secret: string;
+};
+
+export async function adminApiKeyCreate(
+	input: CreateApiKeyInput,
+	reason: string,
+): Promise<CreateApiKeyResponse> {
+	return postAdminAction<CreateApiKeyResponse>("api_keys.create", input, reason);
+}
+
+export async function adminApiKeyRotate(
+	keyId: string,
+	reason: string,
+): Promise<{ secret: string }> {
+	return postAdminAction<{ secret: string }>("api_keys.rotate", { keyId }, reason);
+}
+
+export async function adminApiKeyRevoke(keyId: string, reason: string): Promise<void> {
+	await postAdminAction("api_keys.revoke", { keyId }, reason);
 }
 
 // --- Bulk action ---

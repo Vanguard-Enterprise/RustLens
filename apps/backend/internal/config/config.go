@@ -32,6 +32,9 @@ type Config struct {
 	DiscordClientSecret  string
 	DiscordAppPublicKey  string
 	AppOrigin            string
+	TrustProxyHeaders    bool
+	TrustProxyIPHeader   string
+	TrustProxyGeoHeader  string
 }
 
 func Load() Config {
@@ -65,6 +68,9 @@ func Load() Config {
 		DiscordClientSecret:  getEnv("DISCORD_CLIENT_SECRET", ""),
 		DiscordAppPublicKey:  strings.TrimSpace(getEnv("DISCORD_APP_PUBLIC_KEY", "")),
 		AppOrigin:            getEnv("APP_ORIGIN", "http://localhost"),
+		TrustProxyHeaders:    getEnvBool("TRUST_PROXY_HEADERS", false),
+		TrustProxyIPHeader:   strings.TrimSpace(getEnv("TRUST_PROXY_IP_HEADER", "CF-Connecting-IP")),
+		TrustProxyGeoHeader:  strings.TrimSpace(getEnv("TRUST_PROXY_GEO_HEADER", "CF-IPCountry")),
 	}
 }
 

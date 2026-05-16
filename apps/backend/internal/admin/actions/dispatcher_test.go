@@ -161,6 +161,10 @@ func TestDispatcher_ExecutionErrorWritesAuditError(t *testing.T) {
 	}
 }
 
+func TestDispatcherForwardsViaAPIKey(t *testing.T) {
+	t.Skip("Enable after Task 12 wires apiKeyAuth context. Pending: invoke ServeHTTP with a request whose context carries an apiKeyAuth and assert the recorded AuditEntryInput has ViaAPIKeyID and ViaAPIKeyName populated.")
+}
+
 // -- util --
 
 func mustJSON(t *testing.T, v any) []byte {
