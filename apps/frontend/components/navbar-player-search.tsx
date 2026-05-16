@@ -37,10 +37,7 @@ export function NavbarPlayerSearch({ isAuthed = true }: Props = {}) {
 	useEffect(() => {
 		const trimmed = q.trim();
 		if (trimmed.length < MIN_QUERY_LEN) return;
-		if (!isAuthed) {
-			setState({ kind: "unauthenticated" });
-			return;
-		}
+		if (!isAuthed) return;
 		const handle = setTimeout(async () => {
 			abortRef.current?.abort();
 			const ctl = new AbortController();
@@ -103,7 +100,14 @@ export function NavbarPlayerSearch({ isAuthed = true }: Props = {}) {
 					/>
 				</PopoverTrigger>
 				<PopoverContent align="end" className="w-80 p-0">
-					<NavbarSearchResults q={q} state={state} />
+					<NavbarSearchResults
+						q={q}
+						state={
+							!isAuthed && q.trim().length >= MIN_QUERY_LEN
+								? { kind: "unauthenticated" }
+								: state
+						}
+					/>
 				</PopoverContent>
 			</Popover>
 		</div>
