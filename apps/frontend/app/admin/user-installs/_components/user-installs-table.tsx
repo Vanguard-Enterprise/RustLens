@@ -7,13 +7,13 @@ import {
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
+  FileIcon,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -122,9 +122,6 @@ export function UserInstallsTable({
           className="max-w-md"
           aria-label="Search user app installs"
         />
-        <span className="text-sm text-muted-foreground">
-          {data.total} {data.total === 1 ? "user app" : "user apps"}
-        </span>
       </div>
 
       <div className="overflow-hidden rounded-lg border">
@@ -220,75 +217,79 @@ export function UserInstallsTable({
         </Table>
       </div>
 
-      <div className="flex items-center justify-between px-4">
-        <div className="hidden flex-1 text-sm text-muted-foreground lg:flex" />
-        <div className="flex w-full items-center gap-8 lg:w-fit">
-          <div className="hidden items-center gap-2 lg:flex">
-            <Label htmlFor="rows-per-page" className="text-sm font-medium">
-              Rows per page
-            </Label>
-            <Select
-              value={String(data.pageSize)}
-              onValueChange={(value) => setPageSize(Number(value))}
+      <div className="flex items-center gap-4">
+        <div className="flex flex-1 items-center">
+          <Select
+            value={String(data.pageSize)}
+            onValueChange={(value) => setPageSize(Number(value))}
+          >
+            <SelectTrigger
+              size="sm"
+              className="w-20"
+              id="rows-per-page"
+              aria-label="Rows per page"
             >
-              <SelectTrigger size="sm" className="w-20" id="rows-per-page">
-                <SelectValue placeholder={data.pageSize} />
-              </SelectTrigger>
-              <SelectContent side="top">
-                <SelectGroup>
-                  {pageSizeOptions.map((size) => (
-                    <SelectItem key={size} value={String(size)}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex w-fit items-center justify-center text-sm font-medium">
+              <FileIcon className="size-4 text-muted-foreground" />
+              <SelectValue placeholder={data.pageSize} />
+            </SelectTrigger>
+            <SelectContent side="top">
+              <SelectGroup>
+                {pageSizeOptions.map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="hidden size-8 lg:flex"
+            size="icon"
+            onClick={() => goToPage(1)}
+            disabled={!canPrev}
+          >
+            <span className="sr-only">Go to first page</span>
+            <ChevronsLeftIcon />
+          </Button>
+          <Button
+            variant="outline"
+            className="size-8"
+            size="icon"
+            onClick={() => goToPage(data.page - 1)}
+            disabled={!canPrev}
+          >
+            <span className="sr-only">Go to previous page</span>
+            <ChevronLeftIcon />
+          </Button>
+          <div className="min-w-[7rem] text-center text-sm font-medium">
             Page {data.page} of {totalPages}
           </div>
-          <div className="ml-auto flex items-center gap-2 lg:ml-0">
-            <Button
-              variant="outline"
-              className="hidden h-8 w-8 p-0 lg:flex"
-              onClick={() => goToPage(1)}
-              disabled={!canPrev}
-            >
-              <span className="sr-only">Go to first page</span>
-              <ChevronsLeftIcon />
-            </Button>
-            <Button
-              variant="outline"
-              className="size-8"
-              size="icon"
-              onClick={() => goToPage(data.page - 1)}
-              disabled={!canPrev}
-            >
-              <span className="sr-only">Go to previous page</span>
-              <ChevronLeftIcon />
-            </Button>
-            <Button
-              variant="outline"
-              className="size-8"
-              size="icon"
-              onClick={() => goToPage(data.page + 1)}
-              disabled={!canNext}
-            >
-              <span className="sr-only">Go to next page</span>
-              <ChevronRightIcon />
-            </Button>
-            <Button
-              variant="outline"
-              className="hidden size-8 lg:flex"
-              size="icon"
-              onClick={() => goToPage(totalPages)}
-              disabled={!canNext}
-            >
-              <span className="sr-only">Go to last page</span>
-              <ChevronsRightIcon />
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            className="size-8"
+            size="icon"
+            onClick={() => goToPage(data.page + 1)}
+            disabled={!canNext}
+          >
+            <span className="sr-only">Go to next page</span>
+            <ChevronRightIcon />
+          </Button>
+          <Button
+            variant="outline"
+            className="hidden size-8 lg:flex"
+            size="icon"
+            onClick={() => goToPage(totalPages)}
+            disabled={!canNext}
+          >
+            <span className="sr-only">Go to last page</span>
+            <ChevronsRightIcon />
+          </Button>
+        </div>
+        <div className="flex flex-1 justify-end text-sm text-muted-foreground">
+          {data.total} {data.total === 1 ? "user app" : "user apps"}
         </div>
       </div>
     </div>

@@ -66,6 +66,15 @@ func (svc *Service) ResolveToSteamID(ctx context.Context, input string) (string,
 			return "", err
 		}
 		return id, nil
+	case KindSteamVanity:
+		if svc.steam == nil {
+			return "", ErrNotFound
+		}
+		id, err := svc.steam.ResolveSteamID(ctx, "https://steamcommunity.com/id/"+q)
+		if err != nil {
+			return "", err
+		}
+		return id, nil
 	case KindBmID:
 		bmID, ok := ExtractBmIDFromInput(q)
 		if !ok {

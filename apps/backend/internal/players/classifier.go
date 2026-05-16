@@ -12,11 +12,12 @@ type QueryKind int
 
 // QueryKind values describe how the search box input was classified.
 const (
-	KindEmpty    QueryKind = iota // empty / whitespace-only input
-	KindSteamID                   // bare 17-digit Steam64 ID
-	KindBmID                      // bare BattleMetrics player ID or BM player URL
-	KindSteamURL                  // steamcommunity.com profile or vanity URL
-	KindName                      // free-form name search fallback
+	KindEmpty       QueryKind = iota // empty / whitespace-only input
+	KindSteamID                      // bare 17-digit Steam64 ID
+	KindBmID                         // bare BattleMetrics player ID or BM player URL
+	KindSteamURL                     // steamcommunity.com profile or vanity URL
+	KindSteamVanity                  // bare Steam vanity token (must be resolved via Steam API)
+	KindName                         // free-form name search fallback
 )
 
 var (
@@ -24,6 +25,11 @@ var (
 	bmIDPattern        = regexp.MustCompile(`^\d{6,16}$`)
 	steamURLPattern    = regexp.MustCompile(`^https?://(?:www\.)?steamcommunity\.com/(?:profiles/(\d{17})|id/[A-Za-z0-9_-]{1,32})/?(?:[?#].*)?$`)
 	bmPlayerURLPattern = regexp.MustCompile(`^https?://(?:www\.)?battlemetrics\.com/(?:rcon/)?players/(\d{6,16})(?:[/?#].*)?$`)
+	// steamVanityPattern matches a bare Steam vanity token: must start with
+	// a letter, total length 3-32, alphanumerics plus _ and -. Steam's own
+	// vanity rules are looser, but this conservative form avoids hijacking
+	// short generic name searches like "ash".
+	steamVanityPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{2,31}$`)
 )
 
 // ClassifyQuery returns the kind of input the search box was given.
@@ -46,6 +52,9 @@ func ClassifyQuery(input string) QueryKind {
 	}
 	if bmIDPattern.MatchString(q) {
 		return KindBmID
+	}
+	if steamVanityPattern.MatchString(q) {
+		return KindSteamVanity
 	}
 	return KindName
 }
