@@ -43,7 +43,10 @@ func (s *Store) SeedPermissionsAndRoles(ctx context.Context) error {
 			`INSERT INTO admin_roles (key, name, description, is_system)
 			 VALUES ($1, $2, $3, $4)
 			 ON CONFLICT (key) DO UPDATE
-			   SET name = EXCLUDED.name, description = EXCLUDED.description, updated_at = NOW()
+			   SET name = EXCLUDED.name,
+			       description = EXCLUDED.description,
+			       is_system = EXCLUDED.is_system,
+			       updated_at = NOW()
 			 RETURNING id`,
 			r.Key, r.Name, r.Description, r.IsSystem,
 		).Scan(&roleID)

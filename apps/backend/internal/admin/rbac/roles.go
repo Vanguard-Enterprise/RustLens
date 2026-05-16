@@ -8,6 +8,7 @@ const (
 	RoleUserSupport = "user_support"
 	RoleUserAdmin   = "user_admin"
 	RoleUserAuditor = "user_auditor"
+	RolePRO         = "PRO"
 )
 
 type RoleSeed struct {
@@ -91,6 +92,13 @@ func SystemRoles() []RoleSeed {
 			Description: "Read-only users view with audit trail",
 			IsSystem:    true,
 			Permissions: []string{PermUsersRead, PermUsersAuditRead},
+		},
+		{
+			Key:         RolePRO,
+			Name:        "PRO",
+			Description: "Role for PRO users",
+			IsSystem:    true,
+			Permissions: []string{},
 		},
 	}
 }

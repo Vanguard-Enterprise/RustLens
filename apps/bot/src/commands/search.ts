@@ -17,7 +17,7 @@ import {
 import { loadConfig } from "../config.js";
 import {
   createEmbed,
-  buildWebsiteAdminOnlyEmbed,
+  buildProOnlyFeatureEmbed,
 } from "../shared.js";
 import {
   buildProfileButtons,
@@ -25,7 +25,7 @@ import {
   fetchSteamProfileForView,
 } from "./view.js";
 import { mapProxiedRequests } from "../proxy-aware-parallelism.js";
-import { isWebsiteAdmin } from "../website-admin.js";
+import { hasProFeatureAccess } from "../website-admin.js";
 
 export const SEARCH_COMMAND_NAME = "search";
 
@@ -219,9 +219,9 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
     return true;
   }
 
-  if (!(await isWebsiteAdmin(interaction.user.id))) {
+  if (!(await hasProFeatureAccess(interaction.user.id))) {
     await interaction.reply({
-      embeds: [buildWebsiteAdminOnlyEmbed()],
+      embeds: [buildProOnlyFeatureEmbed()],
       flags: MessageFlags.Ephemeral,
     });
     return true;

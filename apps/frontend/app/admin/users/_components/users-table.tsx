@@ -163,7 +163,12 @@ export function UsersTable({ items, selected, onToggle, onToggleAll, sort, onSor
 											it.adminRoles.map((r) => (
 												<Badge
 													key={r}
-													variant={r === "superadmin" ? "destructive" : "secondary"}
+													variant={r === "superadmin" ? "destructive" : r === "PRO" ? "outline" : "secondary"}
+													className={
+														r === "PRO"
+															? "border-yellow-500/20 bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500/15 dark:text-yellow-300"
+															: undefined
+													}
 												>
 													{r}
 												</Badge>

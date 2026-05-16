@@ -2941,6 +2941,22 @@ func (h *Handler) IsDiscordWebsiteAdmin(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]bool{"isAdmin": isAdmin})
 }
 
+func (h *Handler) HasDiscordPRORole(w http.ResponseWriter, r *http.Request) {
+	discordID, ok := validateSnowflakePathParam(w, r, "discordID")
+	if !ok {
+		return
+	}
+
+	hasRole, err := h.postgres.DiscordUserHasAdminRole(r.Context(), discordID, rbac.RolePRO)
+	if err != nil {
+		log.Printf("[backend] HasDiscordPRORole error for %s: %v", discordID, err)
+		writeError(w, http.StatusInternalServerError, "failed to check PRO role")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"hasRole": hasRole})
+}
+
 type createSoftLinkRequest struct {
 	SteamID   string `json:"steamId"`
 	DiscordID string `json:"discordId"`

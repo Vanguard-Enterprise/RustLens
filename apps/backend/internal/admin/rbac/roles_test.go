@@ -49,3 +49,22 @@ func TestSystemRoles_ModeratorHasExpectedPermissions(t *testing.T) {
 		}
 	}
 }
+
+func TestSystemRoles_ContainsPRO(t *testing.T) {
+	roles := SystemRoles()
+	var pro *RoleSeed
+	for i := range roles {
+		if roles[i].Key == RolePRO {
+			pro = &roles[i]
+		}
+	}
+	if pro == nil {
+		t.Fatalf("expected %q in SystemRoles", RolePRO)
+	}
+	if !pro.IsSystem {
+		t.Errorf("PRO must be is_system")
+	}
+	if pro.Description != "Role for PRO users" {
+		t.Errorf("PRO description = %q, want Role for PRO users", pro.Description)
+	}
+}

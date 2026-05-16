@@ -39,10 +39,10 @@ export function logDiscordCatch<T>(
   };
 }
 
-export function buildWebsiteAdminOnlyEmbed() {
+export function buildProOnlyFeatureEmbed() {
   return createEmbed()
-    .setTitle("Error")
-    .setDescription("This is locked to website admins only.");
+    .setTitle("PRO only feature")
+    .setDescription("Purchase PRO at https://www.rustlens.com");
 }
 
 export type ModalComponentNode = {

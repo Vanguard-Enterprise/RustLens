@@ -36,9 +36,9 @@ import { loadConfig } from "../config.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "../embed-paginator.js";
 import { fetchGuildSettings, hasGuildAdminAccess } from "../guild-settings.js";
 import { buildNextBestOfflineFieldValue, computeNextBestOfflineWindow } from "../next-best-offline.js";
-import { createEmbed, buildFooter, getFieldValues, logDiscordCatch, logDiscordError } from "../shared.js";
+import { buildFooter, buildProOnlyFeatureEmbed, createEmbed, getFieldValues, logDiscordCatch, logDiscordError } from "../shared.js";
 import { renderTrackAnalyticsChart } from "../track-analytics-chart.js";
-import { isWebsiteAdmin } from "../website-admin.js";
+import { hasProFeatureAccess } from "../website-admin.js";
 
 export const TRACK_COMMAND_NAME = "track";
 
@@ -1613,9 +1613,9 @@ async function handleAnalyticsButton(
   groupId: number,
   targetPage: number,
 ) {
-  if (!(await isWebsiteAdmin(interaction.user.id))) {
+  if (!(await hasProFeatureAccess(interaction.user.id))) {
     await interaction.reply({
-      embeds: [buildErrorEmbed("Only website admins can view analytics.")],
+      embeds: [buildProOnlyFeatureEmbed()],
       flags: MessageFlags.Ephemeral,
     });
     return true;
@@ -1677,9 +1677,9 @@ async function handleAnalyticsPage(
   groupId: number,
   targetPage: number,
 ) {
-  if (!(await isWebsiteAdmin(interaction.user.id))) {
+  if (!(await hasProFeatureAccess(interaction.user.id))) {
     await interaction.reply({
-      embeds: [buildErrorEmbed("Only website admins can view analytics.")],
+      embeds: [buildProOnlyFeatureEmbed()],
       flags: MessageFlags.Ephemeral,
     });
     return true;

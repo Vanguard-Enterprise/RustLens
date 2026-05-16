@@ -13,6 +13,7 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { AdminRoleItem, AdminUserDetail } from "@/lib/rustlens-api";
+import { cn } from "@/lib/utils";
 
 
 
@@ -73,11 +74,17 @@ export function RolesSection({
 							const name = role?.name ?? roleKey;
 							const description = role?.description ?? null;
 							const isSuperadmin = roleKey === "superadmin";
+							const isPro = roleKey === "PRO";
 							return (
 								<Badge
 									key={roleKey}
-									variant={isSuperadmin ? "destructive" : "secondary"}
-									className="gap-1"
+									variant={isSuperadmin ? "destructive" : isPro ? "outline" : "secondary"}
+									className={cn(
+										"gap-1",
+										isPro
+											? "border-yellow-500/20 bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500/15 dark:text-yellow-300"
+											: null,
+									)}
 								>
 									{description ? (
 										<Tooltip>

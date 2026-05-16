@@ -1589,6 +1589,40 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/discord/{discordID}/has-pro-role": map[string]any{
+				"get": map[string]any{
+					"summary":     "Check Discord user's PRO role",
+					"description": "Returns whether the Discord user is linked to an app user with the seeded PRO admin role.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "discordID",
+							"in":          "path",
+							"required":    true,
+							"description": "Discord user ID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "PRO role status returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type":     "object",
+										"required": []string{"hasRole"},
+										"properties": map[string]any{
+											"hasRole": map[string]any{"type": "boolean"},
+										},
+									},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
 			"/api/internal/bot/setup/user-guilds": map[string]any{
 				"post": map[string]any{
 					"summary":     "Create user guild link",
