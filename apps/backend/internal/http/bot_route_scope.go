@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"rustlens/backend/internal/admin/actions"
+	"rustlens/backend/internal/clientip"
 )
 
 // requireBotRouteScope is mounted on the /api/internal/bot/* subrouter after
@@ -14,7 +15,7 @@ import (
 // bot_routes.read on GET/HEAD and bot_routes.write on everything else, and
 // writes one audit_events row per write. When apiKeyAuth is not on the
 // context the middleware is a no-op (bot JWT traffic).
-func requireBotRouteScope(perms actions.PermissionChecker, audit actions.AuditSink) func(http.Handler) http.Handler {
+func requireBotRouteScope(perms actions.PermissionChecker, audit actions.AuditSink, headers clientip.Headers) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			k := actions.APIKeyAuthFromContext(r.Context())
@@ -61,7 +62,7 @@ func requireBotRouteScope(perms actions.PermissionChecker, audit actions.AuditSi
 			})
 			id := k.KeyID
 			name := k.KeyName
-			ip := clientIP(r)
+			ip := clientip.Extract(r, headers)
 			_ = audit.RecordEntry(context.Background(), actions.AuditEntryInput{
 				ActionType:    "bot_route.write",
 				ActorUserID:   k.UserID,
@@ -93,3 +94,4 @@ func optionalStringPtr(s string) *string {
 	}
 	return &s
 }
+

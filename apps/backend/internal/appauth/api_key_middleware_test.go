@@ -11,11 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rustlens/backend/internal/admin/actions"
+	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/store"
 )
 
 func TestAPIKeyAuthPassesThroughWithoutHeader(t *testing.T) {
-	mw := NewAPIKeyAuth(nil, nil) // store/user-loader nil OK on the pass-through path
+	mw := NewAPIKeyAuth(nil, nil, clientip.Headers{}) // store/user-loader nil OK on the pass-through path
 	called := false
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
@@ -85,7 +86,7 @@ func newAPIKeyAuthTestRig(t *testing.T) (func(http.Handler) http.Handler, *store
 	pool := apiKeyTestPool(t)
 	ks := store.NewAPIKeyStore(pool)
 	ul := &activeUserLoader{}
-	mw := NewAPIKeyAuth(ks, ul)
+	mw := NewAPIKeyAuth(ks, ul, clientip.Headers{})
 	return mw, ks, ul
 }
 

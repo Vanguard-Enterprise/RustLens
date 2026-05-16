@@ -15,6 +15,7 @@ import (
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/bmmatch"
+	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/oauth/discord"
@@ -68,7 +69,12 @@ func NewRouter(
 	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher)
 
 	apiKeyStore := store.NewAPIKeyStore(postgres.Pool())
-	apiKeyAuthMW := appauth.NewAPIKeyAuth(apiKeyStore, &apiKeyUserLoader{pool: postgres.Pool()})
+	headers := clientip.Headers{
+		Trust:         cfg.TrustProxyHeaders,
+		IPHeader:      cfg.TrustProxyIPHeader,
+		CountryHeader: cfg.TrustProxyGeoHeader,
+	}
+	apiKeyAuthMW := appauth.NewAPIKeyAuth(apiKeyStore, &apiKeyUserLoader{pool: postgres.Pool()}, headers)
 
 	// bridgeAPIKeyPerms copies the key's snapshot permissions from the
 	// actions context onto the rbac resolver context so HasPermission /
@@ -103,7 +109,7 @@ func NewRouter(
 
 	r.Route("/api/internal/bot/shards", func(r chi.Router) {
 		r.Use(bridgeAPIKeyPerms)
-		r.Use(requireBotRouteScope(handler.rbacResolver, handler.auditSink))
+		r.Use(requireBotRouteScope(handler.rbacResolver, handler.auditSink, headers))
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Post("/register", handler.RegisterShardWorker)
 		r.Post("/heartbeat", handler.HeartbeatShardWorker)
@@ -113,7 +119,7 @@ func NewRouter(
 
 	r.Route("/api/internal/bot/owner", func(r chi.Router) {
 		r.Use(bridgeAPIKeyPerms)
-		r.Use(requireBotRouteScope(handler.rbacResolver, handler.auditSink))
+		r.Use(requireBotRouteScope(handler.rbacResolver, handler.auditSink, headers))
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Get("/stats", handler.GetOwnerStats)
 		r.Get("/proxies", handler.ListOwnerProxies)
@@ -124,7 +130,7 @@ func NewRouter(
 
 	r.Route("/api/internal/bot/setup", func(r chi.Router) {
 		r.Use(bridgeAPIKeyPerms)
-		r.Use(requireBotRouteScope(handler.rbacResolver, handler.auditSink))
+		r.Use(requireBotRouteScope(handler.rbacResolver, handler.auditSink, headers))
 		r.Use(botJWTMiddleware(handler.jwtValidator))
 		r.Get("/guilds/{guildID}/settings", handler.GetGuildSettings)
 		r.Put("/guilds/{guildID}/settings", handler.UpdateGuildSettings)

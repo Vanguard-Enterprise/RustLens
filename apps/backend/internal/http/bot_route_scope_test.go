@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"rustlens/backend/internal/admin/actions"
+	"rustlens/backend/internal/clientip"
 )
 
 type stubResolver struct{ perms map[string]bool }
@@ -23,7 +24,7 @@ func (s *stubAuditSink) RecordEntry(_ context.Context, e actions.AuditEntryInput
 }
 
 func TestBotRouteScopeNoOpWhenNoAPIKey(t *testing.T) {
-	mw := requireBotRouteScope(stubResolver{}, &stubAuditSink{})
+	mw := requireBotRouteScope(stubResolver{}, &stubAuditSink{}, clientip.Headers{})
 	called := false
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { called = true }))
 
@@ -37,7 +38,7 @@ func TestBotRouteScopeNoOpWhenNoAPIKey(t *testing.T) {
 
 func TestBotRouteScopeGETRequiresRead(t *testing.T) {
 	audit := &stubAuditSink{}
-	mw := requireBotRouteScope(stubResolver{perms: map[string]bool{}}, audit)
+	mw := requireBotRouteScope(stubResolver{perms: map[string]bool{}}, audit, clientip.Headers{})
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { t.Fatal("should not call") }))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/internal/bot/x", nil)
@@ -54,7 +55,7 @@ func TestBotRouteScopeGETRequiresRead(t *testing.T) {
 
 func TestBotRouteScopePOSTRequiresWriteAndAudits(t *testing.T) {
 	audit := &stubAuditSink{}
-	mw := requireBotRouteScope(stubResolver{perms: map[string]bool{"bot_routes.write": true}}, audit)
+	mw := requireBotRouteScope(stubResolver{perms: map[string]bool{"bot_routes.write": true}}, audit, clientip.Headers{})
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(201) }))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/internal/bot/x", nil)

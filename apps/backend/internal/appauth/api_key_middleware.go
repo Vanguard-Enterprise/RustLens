@@ -4,13 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"rustlens/backend/internal/admin/actions"
+	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/store"
 )
 
@@ -27,16 +27,17 @@ type UserLoader interface {
 
 // APIKeyAuth holds the state for the API-key authentication middleware.
 type APIKeyAuth struct {
-	store  *store.APIKeyStore
-	users  UserLoader
-	mu     sync.Mutex
-	recent map[string]time.Time // keyID -> last debounced write
+	store   *store.APIKeyStore
+	users   UserLoader
+	headers clientip.Headers
+	mu      sync.Mutex
+	recent  map[string]time.Time // keyID -> last debounced write
 }
 
 // NewAPIKeyAuth returns the middleware constructor. Both s and u may be nil
 // only on code paths where no Authorization header is presented (pass-through).
-func NewAPIKeyAuth(s *store.APIKeyStore, u UserLoader) func(http.Handler) http.Handler {
-	a := &APIKeyAuth{store: s, users: u, recent: map[string]time.Time{}}
+func NewAPIKeyAuth(s *store.APIKeyStore, u UserLoader, h clientip.Headers) func(http.Handler) http.Handler {
+	a := &APIKeyAuth{store: s, users: u, headers: h, recent: map[string]time.Time{}}
 	return a.handler
 }
 
@@ -100,7 +101,7 @@ func (a *APIKeyAuth) handler(next http.Handler) http.Handler {
 		})
 
 		// Best-effort debounced last-used update.
-		a.maybeUpdateLastUsed(key.ID, clientIP(r))
+		a.maybeUpdateLastUsed(key.ID, clientip.Extract(r, a.headers))
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -122,15 +123,3 @@ func (a *APIKeyAuth) maybeUpdateLastUsed(keyID, ip string) {
 	}()
 }
 
-func clientIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		return ip
-	}
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-	return r.RemoteAddr
-}
