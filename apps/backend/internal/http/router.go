@@ -314,6 +314,7 @@ func NewRouter(
 			r.Post("/proxies/bulk", handler.BulkAdminProxies)
 			r.Patch("/proxies/{proxyID}", handler.UpdateAdminProxy)
 			r.Delete("/proxies/{proxyID}", handler.DeleteAdminProxy)
+			r.Get("/api-keys", handler.ListAdminAPIKeys)
 			r.Get("/bm-servers", handler.ListAdminBmServers)
 			r.Post("/bm-servers", handler.CreateAdminBmServer)
 			r.Post("/bm-servers/bulk", handler.BulkAdminBmServers)
