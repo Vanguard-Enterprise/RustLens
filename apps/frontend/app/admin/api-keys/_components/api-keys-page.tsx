@@ -2,18 +2,21 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import type { AdminApiKeysPage } from "@/lib/rustlens-api";
+import type { AdminApiKeysPage, AdminPermission } from "@/lib/rustlens-api";
 import { ApiKeysTable } from "./api-keys-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { CreateApiKeyDialog } from "./create-api-key-dialog";
 
 export function ApiKeysPage({
 	data,
 	initialQuery,
+	availablePermissions,
 }: {
 	data: AdminApiKeysPage;
 	initialQuery: { q?: string; includeRevoked?: boolean; page: number };
+	availablePermissions: AdminPermission[];
 }) {
 	const router = useRouter();
 	const pathname = usePathname();
@@ -22,6 +25,7 @@ export function ApiKeysPage({
 	const [includeRevoked, setIncludeRevoked] = useState(
 		initialQuery.includeRevoked ?? false,
 	);
+	const [createOpen, setCreateOpen] = useState(false);
 
 	function applyFilters(next: { q?: string; includeRevoked?: boolean }) {
 		const sp = new URLSearchParams(search?.toString());
@@ -59,12 +63,17 @@ export function ApiKeysPage({
 				</label>
 				<Button
 					className="ml-auto"
-					onClick={() => alert("Create dialog wired in Task 19")}
+					onClick={() => setCreateOpen(true)}
 				>
 					New API key
 				</Button>
 			</div>
 			<ApiKeysTable items={data.items} />
+			<CreateApiKeyDialog
+				open={createOpen}
+				onOpenChange={setCreateOpen}
+				availablePermissions={availablePermissions}
+			/>
 		</div>
 	);
 }

@@ -189,6 +189,8 @@ export type AdminPermissionItem = {
 	description: string;
 };
 
+export type AdminPermission = AdminPermissionItem;
+
 export type AuditEventItem = {
 	id: string;
 	actorUserId: string;

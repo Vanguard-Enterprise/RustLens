@@ -5,6 +5,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getCsrfToken } from "@/lib/csrf";
 import {
 	getAdminApiKeys,
+	getAdminPermissions,
 	getCurrentUserSafe,
 } from "@/lib/rustlens-api";
 import { requirePermission } from "@/lib/session";
@@ -32,11 +33,20 @@ export default async function AdminApiKeysRoute({
 	const includeRevoked = pickStr(sp.includeRevoked) === "true";
 	const page = parsePositiveInt(pickStr(sp.page), 1);
 
-	const [csrfToken, currentUser, data] = await Promise.all([
+	const [csrfToken, currentUser, data, allPermissions] = await Promise.all([
 		getCsrfToken(),
 		getCurrentUserSafe(),
 		getAdminApiKeys({ q, includeRevoked, page, pageSize: 50 }),
+		getAdminPermissions(),
 	]);
+
+	const userPerms = new Set(session.permissions ?? []);
+	const isSuperadmin =
+		(session.permissions ?? []).includes("admins.grant") ||
+		(session.adminRoles ?? []).includes("superadmin");
+	const availablePermissions = allPermissions.filter(
+		(p) => isSuperadmin || userPerms.has(p.key),
+	);
 
 	const user = {
 		displayName: session.displayName,
@@ -76,6 +86,7 @@ export default async function AdminApiKeysRoute({
 							<ApiKeysPage
 								data={data}
 								initialQuery={{ q, includeRevoked, page }}
+								availablePermissions={availablePermissions}
 							/>
 						</div>
 					</div>
