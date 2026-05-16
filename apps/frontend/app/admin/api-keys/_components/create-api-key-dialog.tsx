@@ -54,7 +54,7 @@ export function CreateApiKeyDialog({
 			const expiresAt = days
 				? new Date(Date.now() + days * 86_400_000).toISOString()
 				: undefined;
-			const res = await fetch("/api/admin/api-keys", {
+			const res = await fetch("/admin/api-keys/create", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({

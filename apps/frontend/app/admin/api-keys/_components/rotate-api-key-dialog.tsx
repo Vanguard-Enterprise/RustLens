@@ -38,7 +38,7 @@ export function RotateApiKeyDialog({
 		setError(null);
 		try {
 			const res = await fetch(
-				`/api/admin/api-keys/${encodeURIComponent(keyId)}/rotate`,
+				`/admin/api-keys/${encodeURIComponent(keyId)}/rotate`,
 				{
 					method: "POST",
 					headers: { "Content-Type": "application/json" },

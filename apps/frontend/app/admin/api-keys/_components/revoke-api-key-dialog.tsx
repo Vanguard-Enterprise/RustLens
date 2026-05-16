@@ -36,7 +36,7 @@ export function RevokeApiKeyDialog({
 		setError(null);
 		try {
 			const res = await fetch(
-				`/api/admin/api-keys/${encodeURIComponent(keyId)}/revoke`,
+				`/admin/api-keys/${encodeURIComponent(keyId)}/revoke`,
 				{
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
