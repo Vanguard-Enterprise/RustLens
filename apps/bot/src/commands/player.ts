@@ -18,7 +18,7 @@ import {
   resolveSteamProfileInput,
 } from "../steam-input.js";
 import { buildProfileButtons, buildUserEmbed, fetchSteamProfileForView } from "./view.js";
-import { hasProFeatureAccess } from "../website-admin.js";
+import { hasProFeatureAccess, isWebsiteAdmin } from "../website-admin.js";
 
 export const PLAYER_COMMAND_NAME = "player";
 
@@ -114,8 +114,9 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
       return true;
     }
 
+    const callerIsAdmin = await isWebsiteAdmin(interaction.user.id);
     await runPlatformSyncSafely("discord", discordUser.id);
-    const { embed, components } = await buildDiscordLinksEmbed(discordUser);
+    const { embed, components } = await buildDiscordLinksEmbed(discordUser, callerIsAdmin);
     await interaction.editReply({ embeds: [embed], components });
     return true;
   }
@@ -442,7 +443,7 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       if (account?.steamId) {
         await runPlatformSyncSafely("steam", account.steamId);
       }
-      const embed = await buildBmOnlyLinksEmbed(bmId, true);
+      const embed = await buildBmOnlyLinksEmbed(bmId, await isWebsiteAdmin(interaction.user.id));
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       console.error("[bot] failed to load bm links", error);
@@ -470,7 +471,7 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
 
     try {
       await runPlatformSyncSafely("steam", steamId);
-      const embed = await buildSteamLinksEmbed(steamId, true);
+      const embed = await buildSteamLinksEmbed(steamId, await isWebsiteAdmin(interaction.user.id));
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       console.error("[bot] failed to load steam links", error);
@@ -672,7 +673,7 @@ async function ensureSteamAccountWithBm(steamId: string): Promise<SteamAccount |
   }
 }
 
-async function buildDiscordLinksEmbed(discordUser: User): Promise<{
+async function buildDiscordLinksEmbed(discordUser: User, isAdmin: boolean): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<StringSelectMenuBuilder>[];
 }> {
@@ -682,7 +683,7 @@ async function buildDiscordLinksEmbed(discordUser: User): Promise<{
     .getLinksByDiscordID(workerId, discordUser.id)
     .catch(() => ({ items: [] as SteamDiscordLink[] }));
 
-  const links = linksResponse.items;
+  const links = filterVisibleLinks(linksResponse.items, isAdmin);
   const { strongSteamIds, softSteamIds } = partitionLinksBySteam(links);
 
   const [strongAccounts, softAccounts] = await Promise.all([
@@ -704,14 +705,21 @@ async function buildDiscordLinksEmbed(discordUser: User): Promise<{
     name: "Strong links",
     value: formatSteamAccountList(strongSteamIds, strongAccounts),
   });
-  embed.addFields({
-    name: "Soft links",
-    value: formatSteamAccountList(softSteamIds, softAccounts),
-  });
-  embed.addFields({
-    name: "What do these mean?",
-    value: "> * A **strong link** is a link that is certainly valid\n> * A **soft link** is a link that is usually valid, but can also be invalid",
-  });
+  if (isAdmin) {
+    embed.addFields({
+      name: "Soft links",
+      value: formatSteamAccountList(softSteamIds, softAccounts),
+    });
+    embed.addFields({
+      name: "What do these mean?",
+      value: "> * A **strong link** is a link that is certainly valid\n> * A **soft link** is a link that is usually valid, but can also be invalid",
+    });
+  } else {
+    embed.addFields({
+      name: "What do these mean?",
+      value: "> * A **strong link** is a link that is certainly valid",
+    });
+  }
 
   const accountBySteamId = new Map<string, SteamAccount | null>();
   for (let i = 0; i < strongSteamIds.length; i++) {
@@ -725,6 +733,13 @@ async function buildDiscordLinksEmbed(discordUser: User): Promise<{
   const components = buildLinkedAccountsSelect(links, accountBySteamId);
 
   return { embed, components };
+}
+
+function filterVisibleLinks(links: readonly SteamDiscordLink[], isAdmin: boolean) {
+  if (isAdmin) {
+    return [...links];
+  }
+  return links.filter((link) => link.type === "hard");
 }
 
 function buildLinkedAccountsSelect(
@@ -874,5 +889,6 @@ export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
 export const __testables = {
   buildPrivateProfileEmbed,
   buildAnalyticsEmbed,
+  filterVisibleLinks,
   isBmPrivateProfileError,
 };

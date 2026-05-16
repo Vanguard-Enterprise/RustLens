@@ -22,4 +22,26 @@ describe("player", () => {
     expect(__testables.isBmPrivateProfileError(new Error("backend call failed (500): boom"))).toBe(false);
   });
 
+  it("hides soft links from non-admin PRO users", () => {
+    const links = [
+      {
+        steamId: "76561198000000000",
+        discordId: "100000000000000001",
+        type: "hard",
+        source: "battlemetrics",
+        createdAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        steamId: "76561198000000001",
+        discordId: "100000000000000001",
+        type: "soft",
+        source: "bot_command",
+        createdAt: "2026-01-02T00:00:00Z",
+      },
+    ] as const;
+
+    expect(__testables.filterVisibleLinks(links, false).map((link) => link.type)).toEqual(["hard"]);
+    expect(__testables.filterVisibleLinks(links, true).map((link) => link.type)).toEqual(["hard", "soft"]);
+  });
+
 });
