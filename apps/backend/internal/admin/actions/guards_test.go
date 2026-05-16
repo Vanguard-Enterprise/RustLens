@@ -11,6 +11,32 @@ import (
 	"rustlens/backend/internal/store"
 )
 
+func TestAssertPermissionsSubsetOfActor(t *testing.T) {
+	cases := []struct {
+		name      string
+		requested []string
+		actor     []string
+		wantErr   bool
+	}{
+		{"empty requested is allowed", nil, []string{"users.read"}, false},
+		{"strict subset is allowed", []string{"users.read"}, []string{"users.read", "users.edit"}, false},
+		{"equal set is allowed", []string{"users.read"}, []string{"users.read"}, false},
+		{"escalation rejected", []string{"users.delete"}, []string{"users.read"}, true},
+		{"partial overlap rejected", []string{"users.read", "users.delete"}, []string{"users.read"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := actions.AssertPermissionsSubsetOfActor(tc.requested, tc.actor)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("got err=%v, wantErr=%v", err, tc.wantErr)
+			}
+			if err != nil && !errors.Is(err, actions.ErrPermissionDenied) {
+				t.Errorf("expected ErrPermissionDenied, got %v", err)
+			}
+		})
+	}
+}
+
 func TestAssertNotSystemRole(t *testing.T) {
 	dsn := os.Getenv("TEST_POSTGRES_URL")
 	if dsn == "" {
