@@ -41,8 +41,8 @@ export function logDiscordCatch<T>(
 
 export function buildProOnlyFeatureEmbed() {
   return createEmbed()
-    .setTitle("PRO only feature")
-    .setDescription("Purchase PRO at https://www.rustlens.com");
+    .setTitle("Pro required to use this feature")
+    .setDescription("You can purchase RustLens PRO at https://rustlens.com");
 }
 
 export type ModalComponentNode = {
