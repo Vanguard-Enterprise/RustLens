@@ -29,6 +29,9 @@ const (
 	PermLinksApprove            = "links.approve"
 	PermGuildsUntrackServer     = "guilds.untrack_server"
 	PermAuditRead               = "audit.read"
+	PermAPIKeysManage           = "api_keys.manage"
+	PermBotRoutesRead           = "bot_routes.read"
+	PermBotRoutesWrite          = "bot_routes.write"
 )
 
 var permissions = []Permission{
@@ -54,6 +57,9 @@ var permissions = []Permission{
 	{Key: PermAuditRead, Description: "Read the admin audit log"},
 	{Key: PermCommandsRateLimitBypass, Description: "Bypass slash-command rate limits (no cooldown)"},
 	{Key: PermCommandsFraudBypass, Description: "Exempt slash-command invocations from fraud detection counters and alerts"},
+	{Key: PermAPIKeysManage, Description: "Create, rotate, and revoke API keys (cannot grant permissions the creator does not currently hold)"},
+	{Key: PermBotRoutesRead, Description: "Allow an API key to call GET endpoints under /api/internal/bot/*"},
+	{Key: PermBotRoutesWrite, Description: "Allow an API key to call POST/PUT/DELETE/PATCH endpoints under /api/internal/bot/*"},
 }
 
 func AllPermissions() []Permission {

@@ -22,6 +22,8 @@ type Entry struct {
 	ErrorMessage      *string
 	IPAddress         *string
 	UserAgent         *string
+	ViaAPIKeyID       *string
+	ViaAPIKeyName     *string
 }
 
 type Row struct {
@@ -38,6 +40,8 @@ type Row struct {
 	ErrorMessage      *string
 	IPAddress         *string
 	UserAgent         *string
+	ViaAPIKeyID       *string
+	ViaAPIKeyName     *string
 	CreatedAt         time.Time
 }
 
@@ -65,11 +69,13 @@ func (s *Store) Record(ctx context.Context, e Entry) error {
 		INSERT INTO audit_events (
 			action_type, actor_user_id, actor_role_snapshot,
 			resource_type, resource_id, target_user_id,
-			params, reason, result, error_message, ip_address, user_agent
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+			params, reason, result, error_message, ip_address, user_agent,
+			via_api_key_id, via_api_key_name
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 	`, e.ActionType, e.ActorUserID, e.ActorRoleSnapshot,
 		nullIfEmpty(e.ResourceType), nullIfEmpty(e.ResourceID), e.TargetUserID,
 		e.Params, e.Reason, e.Result, e.ErrorMessage, e.IPAddress, e.UserAgent,
+		e.ViaAPIKeyID, e.ViaAPIKeyName,
 	)
 	return err
 }
@@ -87,7 +93,8 @@ func (s *Store) Query(ctx context.Context, f QueryFilters) ([]Row, error) {
 	}
 	sql := `SELECT id, action_type, actor_user_id, actor_role_snapshot,
 		COALESCE(resource_type,''), COALESCE(resource_id,''), target_user_id,
-		params, reason, result, error_message, ip_address::text, user_agent, created_at
+		params, reason, result, error_message, ip_address::text, user_agent, created_at,
+		via_api_key_id::text, via_api_key_name
 		FROM audit_events WHERE 1=1`
 	args := []any{}
 	add := func(clause string, v any) {
@@ -135,6 +142,7 @@ func (s *Store) Query(ctx context.Context, f QueryFilters) ([]Row, error) {
 			&r.ID, &r.ActionType, &r.ActorUserID, &r.ActorRoleSnapshot,
 			&r.ResourceType, &r.ResourceID, &r.TargetUserID,
 			&r.Params, &r.Reason, &r.Result, &r.ErrorMessage, &r.IPAddress, &r.UserAgent, &r.CreatedAt,
+			&r.ViaAPIKeyID, &r.ViaAPIKeyName,
 		); err != nil {
 			return nil, err
 		}

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rustlens/backend/internal/admin/actions"
 	"rustlens/backend/internal/admin/audit"
@@ -27,6 +28,7 @@ import (
 	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/platformsync"
+	"rustlens/backend/internal/players"
 	"rustlens/backend/internal/proxycrypto"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
@@ -58,11 +60,13 @@ type Handler struct {
 	rbacStore           *rbac.Store
 	rbacResolver        *rbac.Resolver
 	auditStore          *audit.Store
+	auditSink           actions.AuditSink
 	actionRegistry      *actions.Registry
 	actionDispatcher    *actions.Dispatcher
 	outboundProvider    *outboundhttp.Provider
 	proxyCrypto         *proxycrypto.Crypto
 	publisher           events.Publisher
+	players             *players.Service
 }
 
 func NewHandler(
@@ -88,11 +92,19 @@ func NewHandler(
 	}
 	resolver := rbac.NewResolver(rbacStore)
 	auditStore := audit.NewStore(postgres.Pool())
+	sink := actions.AuditSink(auditSinkAdapter{auditStore})
 	registry := actions.NewRegistry(rbac.IsValidPermission)
 	if err := registerAdminActions(registry, postgres.Pool(), resolver, publisher, cfg.AppBaseURL); err != nil {
 		panic(fmt.Errorf("register admin actions: %w", err))
 	}
-	dispatcher := actions.NewDispatcher(registry, resolver, auditSinkAdapter{auditStore}, appSessionActor)
+	actorResolver := func(r *http.Request) (string, []string, error) {
+		if k := actions.APIKeyAuthFromContext(r.Context()); k != nil {
+			return k.UserID, nil, nil
+		}
+		return appSessionActor(r)
+	}
+
+	dispatcher := actions.NewDispatcher(registry, resolver, sink, actorResolver)
 	dispatcher.SetClientIPHeaders(clientip.Headers{
 		Trust:         cfg.TrustProxyHeaders,
 		IPHeader:      cfg.TrustProxyIPHeader,
@@ -119,12 +131,31 @@ func NewHandler(
 		rbacStore:           rbacStore,
 		rbacResolver:        resolver,
 		auditStore:          auditStore,
+		auditSink:           sink,
 		actionRegistry:      registry,
 		actionDispatcher:    dispatcher,
 		outboundProvider:    outboundProvider,
 		proxyCrypto:         proxyCrypto,
 		publisher:           publisher,
+		players:             players.NewService(postgres, steamClient, bmMatch),
 	}
+}
+
+// apiKeyUserLoader loads app_users status for the API-key middleware.
+type apiKeyUserLoader struct{ pool *pgxpool.Pool }
+
+func (l *apiKeyUserLoader) LoadUserStatus(ctx context.Context, userID string) (active, suspended, deleted bool, err error) {
+	var s, d *time.Time
+	err = l.pool.QueryRow(ctx,
+		`SELECT suspended_at, deleted_at FROM app_users WHERE id = $1`, userID,
+	).Scan(&s, &d)
+	if err != nil {
+		return false, false, false, err
+	}
+	suspended = s != nil
+	deleted = d != nil
+	active = !suspended && !deleted
+	return
 }
 
 // auditSinkAdapter bridges *audit.Store to the actions.AuditSink interface.
@@ -144,6 +175,8 @@ func (a auditSinkAdapter) RecordEntry(ctx context.Context, e actions.AuditEntryI
 		ErrorMessage:      e.ErrorMessage,
 		IPAddress:         e.IPAddress,
 		UserAgent:         e.UserAgent,
+		ViaAPIKeyID:       e.ViaAPIKeyID,
+		ViaAPIKeyName:     e.ViaAPIKeyName,
 	})
 }
 

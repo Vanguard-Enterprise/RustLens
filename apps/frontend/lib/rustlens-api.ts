@@ -189,6 +189,8 @@ export type AdminPermissionItem = {
 	description: string;
 };
 
+export type AdminPermission = AdminPermissionItem;
+
 export type AuditEventItem = {
 	id: string;
 	actorUserId: string;
@@ -296,7 +298,10 @@ async function backendFetch<T>(
 			const notice = noticeFromBackendError(errorCode);
 			redirect(`/login?notice=${notice}`);
 		}
-		throw new Error(message);
+		const error = new Error(message) as Error & { status?: number; errorCode?: string };
+		error.status = response.status;
+		error.errorCode = errorCode;
+		throw error;
 	}
 
 	return (await response.json()) as T;
@@ -875,6 +880,83 @@ export async function deleteAdminUser(
 	);
 }
 
+// --- API keys ---
+
+export type AdminApiKey = {
+	id: string;
+	name: string;
+	prefix: string;
+	last4: string;
+	permissions: string[];
+	createdByUserId: string;
+	createdByDisplayName: string;
+	expiresAt: string | null;
+	revokedAt: string | null;
+	revokedReason: string | null;
+	lastUsedAt: string | null;
+	lastUsedIp: string | null;
+	createdAt: string;
+};
+
+export type AdminApiKeysPage = {
+	items: AdminApiKey[];
+	total: number;
+	page: number;
+	pageSize: number;
+};
+
+export type AdminApiKeysQuery = {
+	q?: string;
+	includeRevoked?: boolean;
+	page?: number;
+	pageSize?: number;
+};
+
+export async function getAdminApiKeys(
+	params: AdminApiKeysQuery = {},
+): Promise<AdminApiKeysPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	if (params.includeRevoked) sp.set("includeRevoked", "true");
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminApiKeysPage>(
+		`/api/app/admin/api-keys${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export type CreateApiKeyInput = {
+	name: string;
+	permissions: string[];
+	expiresAt?: string | null;
+};
+
+export type CreateApiKeyResponse = {
+	apiKey: AdminApiKey;
+	secret: string;
+};
+
+export async function adminApiKeyCreate(
+	input: CreateApiKeyInput,
+	reason: string,
+): Promise<CreateApiKeyResponse> {
+	return postAdminAction<CreateApiKeyResponse>("api_keys.create", input, reason);
+}
+
+export async function adminApiKeyRotate(
+	keyId: string,
+	reason: string,
+): Promise<{ secret: string }> {
+	return postAdminAction<{ secret: string }>("api_keys.rotate", { keyId }, reason);
+}
+
+export async function adminApiKeyRevoke(keyId: string, reason: string): Promise<void> {
+	await postAdminAction("api_keys.revoke", { keyId }, reason);
+}
+
 // --- Bulk action ---
 
 export type BulkUserSubAction = "suspend" | "unsuspend" | "roles.grant" | "roles.revoke";
@@ -897,5 +979,84 @@ export async function bulkAdminUserAction(
 		{ action, userIds, params },
 		reason,
 	);
+}
+
+export type PlayerSearchHit = {
+	steamId: string;
+	bmId: string | null;
+	bmName: string | null;
+	avatarUrl: string | null;
+	currentServer: { bmId: string; name: string } | null;
+	isOnline: boolean;
+	lastSeenAt: string | null;
+};
+
+export type PlayerSearchResponse = {
+	items: PlayerSearchHit[];
+	mode: "identifier" | "name";
+};
+
+/**
+ * Mirror of the backend's steamProfileResponse, returned by both
+ * GET /api/app/players/{identifier}/profile and the bot-internal
+ * /api/internal/bot/setup/steam/{steamID}/profile path. Strings are empty
+ * (not null) when the underlying value is unset; only the explicitly
+ * pointer-typed Go fields surface as `null`.
+ */
+export type PlayerProfileHours = {
+	vitality: number;
+	atlas: number;
+	vital: number;
+	modded: number;
+	official: number;
+	build: number;
+	bm: number;
+	rust: number | null;
+};
+
+export type PlayerProfileNameGap = {
+	fromUnix: number;
+	toUnix: number;
+};
+
+export type PlayerProfileStatus = {
+	isOnline: boolean;
+	serverBmId: string;
+	serverName: string;
+	onlineUnix: number | null;
+	offlineUnix: number | null;
+};
+
+export type PlayerProfile = {
+	steamId: string;
+	bmId: string;
+	bmName: string;
+	personaName: string;
+	avatarImage: string;
+	firstSeenUnix: number | null;
+	hours: PlayerProfileHours;
+	serversPlayed: number;
+	nameGaps: PlayerProfileNameGap[];
+	status?: PlayerProfileStatus | null;
+};
+
+export async function searchPlayers(
+	q: string,
+	includeOffline = false,
+): Promise<PlayerSearchResponse> {
+	const params = new URLSearchParams({ q });
+	if (includeOffline) params.set("includeOffline", "true");
+	return backendFetch<PlayerSearchResponse>(
+		`/api/app/players/search?${params.toString()}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getPlayerProfile(identifier: string): Promise<PlayerProfile> {
+	const id = encodeURIComponent(identifier);
+	return backendFetch<PlayerProfile>(`/api/app/players/${id}/profile`, undefined, {
+		requireSession: true,
+	});
 }
 

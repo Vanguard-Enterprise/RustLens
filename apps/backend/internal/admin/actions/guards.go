@@ -72,3 +72,24 @@ func GuardLastSuperadminByUser(ctx context.Context, pool *pgxpool.Pool, userID s
 	}
 	return nil
 }
+
+// AssertPermissionsSubsetOfActor returns ErrPermissionDenied if `requested`
+// contains any permission key the actor does not currently hold. Used by
+// api_keys.create / api_keys.rotate to prevent privilege escalation when
+// minting keys. The caller is responsible for passing the actor's *current*
+// resolved permission set (via rbac.Resolver.PermissionsForUser).
+func AssertPermissionsSubsetOfActor(requested, actor []string) error {
+	if len(requested) == 0 {
+		return nil
+	}
+	have := make(map[string]bool, len(actor))
+	for _, p := range actor {
+		have[p] = true
+	}
+	for _, p := range requested {
+		if !have[p] {
+			return fmt.Errorf("%w: cannot grant permission %q the actor does not hold", ErrPermissionDenied, p)
+		}
+	}
+	return nil
+}

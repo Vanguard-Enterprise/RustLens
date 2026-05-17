@@ -94,6 +94,8 @@ apps/frontend/
     admin/bm-servers/page.tsx           # Admin tracked BattleMetrics servers management (bm_servers.read; edits require bm_servers.edit)
     dashboard/page.tsx                  # Authenticated user dashboard root
     dashboard/guilds/[guildId]/page.tsx # Per-guild authenticated dashboard view
+    search/page.tsx                     # Player search results page (?q=&includeOffline=); admin-only offline toggle
+    player/[steamId]/page.tsx           # Public player profile page (mirror of bot /player embed, charts deferred)
     privacy/page.tsx                    # Public privacy-policy page
     terms-of-service/page.tsx           # Public terms-of-service page
     refund-policy/page.tsx              # Public refund-policy page
@@ -113,6 +115,9 @@ apps/frontend/
     pricing-section.tsx        # Landing pricing block
     footer.tsx                 # Footer with FaDiscord (react-icons) social link
     auth-page.tsx              # "Sign in with Discord" panel (single OAuth button, no email/password UI)
+    navbar-player-search.tsx   # Discord-style player search popover injected into the dashboard/admin header
+    player-hover-card.tsx      # Hover wrapper around PlayerProfileCard with per-session in-memory cache
+    player-profile-card.tsx    # Shared profile card body used by /player and the hover preview
     auth-divider.tsx           # Divider used inside the auth panel
     not-found.tsx              # 404 panel reused by app/not-found.tsx
     legal-page.tsx / legal-toc.tsx       # Shared long-form legal page shell + TOC used by /privacy, /terms-of-service, /refund-policy
@@ -213,6 +218,7 @@ apps/backend/
 Key patterns:
 
 - Schema is auto-migrated at startup via `EnsureSchema()` (no migration tool).
+- App-facing player routes (`GET /api/app/players/search`, `GET /api/app/players/{identifier}/profile`) are session-authed via `requireSession`. The search route accepts identifier-shaped queries (Steam ID, BM ID, steamcommunity URL) for any logged-in user and falls back to a name-substring search across all globally tracked servers — capped at 20, deduped by Steam ID, online-first — that requires the caller to have at least one row in `admin_user_roles`. The profile route resolves any identifier to a Steam64 ID then delegates to the same pipeline as the bot-internal `/api/internal/bot/setup/steam/{steamID}/profile`. Both routes are rate-limited per session via Redis (`players_search`: 30/60s, `players_profile`: 60/60s). Shared lookup logic lives in `internal/players/`.
 - Bot routes (`/api/internal/bot/shards/*`) are JWT-protected via middleware.
 - Bot owner proxy routes (`/api/internal/bot/owner/proxies*`) are JWT-protected and back owner-guild-only `/manage proxy add|edit|list|remove`. Proxy URLs are encrypted at rest in `outbound_proxies` with AES-GCM using `PROXY_ENCRYPTION_KEY`; API responses and logs only expose credential-free `scheme://host:port` values. DB proxies are preferred over legacy `PROXY_ENDPOINTS`, and create/update/delete reloads the in-process outbound provider without a backend restart. The outbound provider tracks each proxy's request results over a 10-minute window and auto-disables DB proxies whose error rate reaches at least 50% after 10 or more requests.
 - Bot guild settings routes (`/api/internal/bot/setup/guilds/*/settings`) are JWT-protected and store per-guild log channels, the tracked-users category (under which `/track` creates per-group channels), the admin role, and the alert role pinged by enabled track alerts.
@@ -393,7 +399,7 @@ The BattleMetrics public API client is unauthenticated; there is no `BATTLEMETRI
 | `BOT_OWNER_GUILD_ID` / `BOT_OWNER_DISCORD_IDS` | required for owner-only `/manage` |
 | `PROXY_ENABLED` / `PROXY_ENDPOINTS` | `false` / `` (controls bot-side proxied request concurrency) |
 
-**Frontend** expects `APP_SESSION_SECRET` and `APP_API_INTERNAL_SECRET` (shared with backend), and usually `RUSTLENS_API_URL`. `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be the canonical external origin used for Discord OAuth callbacks. `DISCORD_CLIENT_ID` (server-side, shared with backend) is read by the dashboard to render the "Install Bot" sidebar link; if unset, the link is hidden. Auth-handler rate limiting uses `REDIS_URL` (or `RATE_LIMIT_REDIS_URL`) via `lib/rate-limit.ts`. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects a dedicated canonical client-IP header configured via `TRUST_PROXY_IP_HEADER` for the rate limiter.
+**Frontend** expects `APP_SESSION_SECRET` and `APP_API_INTERNAL_SECRET` (shared with backend), and usually `RUSTLENS_API_URL`. `APP_ORIGIN` (or legacy `NEXT_PUBLIC_APP_URL`) must be the canonical external origin used for Discord OAuth callbacks. `DISCORD_CLIENT_ID` (server-side, shared with backend) is read by the dashboard to render the "Install Bot" sidebar link; if unset, the link is hidden. Auth-handler rate limiting uses `REDIS_URL` (or `RATE_LIMIT_REDIS_URL`) via `lib/rate-limit.ts`. `TRUST_PROXY_HEADERS` defaults to `false` and should only be enabled when the deployment edge strips and re-injects a dedicated canonical client-IP header configured via `TRUST_PROXY_IP_HEADER` for the rate limiter. `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` **must be set** in any multi-replica deployment to a stable 32-byte base64 value (`openssl rand -base64 32`) shared by every frontend pod — without it, Next.js derives server-action IDs from per-build hashes and rolling deploys produce "Failed to find Server Action" errors when a client built against pod A calls the action on pod B.
 
 `/wipereact missing` requires the Discord Guild Members privileged intent because the shard worker requests `GatewayIntentBits.GuildMembers` (alongside `Guilds` and `GuildVoiceStates`).
 

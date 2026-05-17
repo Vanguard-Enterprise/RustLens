@@ -27,6 +27,7 @@ import {
 	CameraIcon,
 	CircleHelpIcon,
 	FileTextIcon,
+	KeyIcon,
 	KeyRoundIcon,
 	LayoutDashboardIcon,
 	NetworkIcon,
@@ -239,6 +240,14 @@ export function DashboardAppSidebar({
 									path: "/admin/bm-servers",
 									icon: ServerIcon,
 									isActive: pathname === "/admin/bm-servers" || pathname.startsWith("/admin/bm-servers/"),
+								});
+							}
+							if (permissions.includes("api_keys.manage")) {
+								infraItems.push({
+									title: "API Keys",
+									path: "/admin/api-keys",
+									icon: KeyIcon,
+									isActive: pathname === "/admin/api-keys" || pathname.startsWith("/admin/api-keys/"),
 								});
 							}
 							return infraItems.length > 0 ? (

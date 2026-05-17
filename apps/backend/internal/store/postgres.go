@@ -832,6 +832,40 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create user_notification_preferences: %w", err)
 	}
 
+	// api_keys — admin API key management with permissions and lifecycle tracking.
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS api_keys (
+		    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		    name TEXT NOT NULL,
+		    prefix TEXT NOT NULL UNIQUE,
+		    last4 TEXT NOT NULL,
+		    secret_hash BYTEA NOT NULL,
+		    created_by_user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+		    permissions TEXT[] NOT NULL DEFAULT '{}',
+		    expires_at TIMESTAMPTZ,
+		    revoked_at TIMESTAMPTZ,
+		    revoked_reason TEXT,
+		    last_used_at TIMESTAMPTZ,
+		    last_used_ip INET,
+		    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS api_keys_created_by_idx
+		    ON api_keys (created_by_user_id, revoked_at);
+	`); err != nil {
+		return fmt.Errorf("create api_keys table: %w", err)
+	}
+
+	// Add via_api_key_* columns to audit_events for tracking API key usage.
+	if _, err := p.pool.Exec(ctx, `
+		ALTER TABLE audit_events
+		    ADD COLUMN IF NOT EXISTS via_api_key_id UUID REFERENCES api_keys(id) ON DELETE SET NULL,
+		    ADD COLUMN IF NOT EXISTS via_api_key_name TEXT;
+	`); err != nil {
+		return fmt.Errorf("alter audit_events for api keys: %w", err)
+	}
+
 	// Drop tables from the retired email/password auth stack. Auth is
 	// Discord-OAuth-only now, so these are dead weight in any environment
 	// that ran the older schema. Idempotent: harmless on fresh DBs.

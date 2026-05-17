@@ -15,6 +15,15 @@ import (
 // the parameter is kept on the call site so future token-generating actions
 // can be wired here without churn.
 func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *rbac.Resolver, pub events.Publisher, _ string) error {
+	if err := reg.Register(actions.NewAPIKeysCreateAction(pool, resolver)); err != nil {
+		return err
+	}
+	if err := reg.Register(actions.NewAPIKeysRotateAction(pool)); err != nil {
+		return err
+	}
+	if err := reg.Register(actions.NewAPIKeysRevokeAction(pool)); err != nil {
+		return err
+	}
 	if err := reg.Register(actions.NewRolesCreateAction(pool)); err != nil {
 		return err
 	}

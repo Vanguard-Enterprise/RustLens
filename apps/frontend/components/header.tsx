@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { DesktopNav } from "@/components/desktop-nav";
 import { MobileNav } from "@/components/mobile-nav";
 import { NavUser } from "@/components/nav-user";
+import { NavbarPlayerSearch } from "@/components/navbar-player-search";
 import { useScroll } from "@/hooks/use-scroll";
 import Image from "next/image";
 import Link from "next/link";
@@ -51,6 +52,7 @@ export function Header({ csrfToken, user }: HeaderProps = {}) {
 					<DesktopNav />
 				</div>
 				<div className="hidden items-center gap-2 md:flex">
+					<NavbarPlayerSearch isAuthed={Boolean(user)} />
 					{user && csrfToken ? (
 						<NavUser csrfToken={csrfToken} user={user} />
 					) : (

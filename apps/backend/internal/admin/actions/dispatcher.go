@@ -70,6 +70,28 @@ type AuditEntryInput struct {
 	ErrorMessage      *string
 	IPAddress         *string
 	UserAgent         *string
+	ViaAPIKeyID       *string
+	ViaAPIKeyName     *string
+}
+
+type apiKeyAuthKey struct{}
+
+// APIKeyAuthContext is the shape stored on the request context by the API key
+// middleware.
+type APIKeyAuthContext struct {
+	KeyID          string
+	KeyName        string
+	UserID         string
+	KeyPermissions []string
+}
+
+func APIKeyAuthFromContext(ctx context.Context) *APIKeyAuthContext {
+	v, _ := ctx.Value(apiKeyAuthKey{}).(*APIKeyAuthContext)
+	return v
+}
+
+func WithAPIKeyAuth(ctx context.Context, v *APIKeyAuthContext) context.Context {
+	return context.WithValue(ctx, apiKeyAuthKey{}, v)
 }
 
 // AuditSink persists audit entries.
@@ -169,6 +191,12 @@ func (d *Dispatcher) Dispatch(ctx context.Context, actorID string, roles []strin
 		TargetUserID:      validated.TargetUserID,
 		Params:            redacted,
 		Reason:            optionalString(reason),
+	}
+	if k := APIKeyAuthFromContext(ctx); k != nil {
+		id := k.KeyID
+		name := k.KeyName
+		entry.ViaAPIKeyID = &id
+		entry.ViaAPIKeyName = &name
 	}
 	if execErr != nil {
 		msg := execErr.Error()
@@ -354,6 +382,13 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Reason:            optionalString(body.Reason),
 		IPAddress:         optionalString(ip),
 		UserAgent:         optionalString(ua),
+	}
+
+	if k := APIKeyAuthFromContext(ctx); k != nil {
+		id := k.KeyID
+		name := k.KeyName
+		entry.ViaAPIKeyID = &id
+		entry.ViaAPIKeyName = &name
 	}
 
 	// 11a. Execution error — write audit with a separate background context so
