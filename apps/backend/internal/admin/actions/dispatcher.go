@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+
+	"rustlens/backend/internal/clientip"
 )
 
 // PermissionChecker checks whether a user holds a given permission key.
@@ -112,6 +113,13 @@ type Dispatcher struct {
 	actor       ActorResolver
 	rateLimiter *rateLimiter
 	idemCache   *idempotencyCache
+	ipHeaders   clientip.Headers
+}
+
+// SetClientIPHeaders configures which request headers the dispatcher reads
+// when capturing the actor IP for audit entries. Defaults to RemoteAddr-only.
+func (d *Dispatcher) SetClientIPHeaders(h clientip.Headers) {
+	d.ipHeaders = h
 }
 
 // NewDispatcher constructs a Dispatcher. reg, perms, audit and actor must all
@@ -361,7 +369,7 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	result, execErr := action.Execute(ctx, input)
 
 	// 10. Build the base audit entry (fields shared by success and error paths).
-	ip := clientIP(r)
+	ip := clientip.Extract(r, d.ipHeaders)
 	ua := r.UserAgent()
 	entry := AuditEntryInput{
 		ActionType:        action.Type(),
@@ -475,19 +483,3 @@ func optionalString(s string) *string {
 	return &s
 }
 
-// clientIP extracts the best-guess client IP from the request headers.
-func clientIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		return ip
-	}
-	// http.Request.RemoteAddr is "host:port"; the `inet` column only accepts
-	// bare IPs, so strip the port if present.
-	addr := r.RemoteAddr
-	if host, _, err := net.SplitHostPort(addr); err == nil {
-		return host
-	}
-	return addr
-}

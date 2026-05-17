@@ -23,6 +23,7 @@ import (
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/bmmatch"
+	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/outboundhttp"
@@ -96,7 +97,6 @@ func NewHandler(
 	if err := registerAdminActions(registry, postgres.Pool(), resolver, publisher, cfg.AppBaseURL); err != nil {
 		panic(fmt.Errorf("register admin actions: %w", err))
 	}
-
 	actorResolver := func(r *http.Request) (string, []string, error) {
 		if k := actions.APIKeyAuthFromContext(r.Context()); k != nil {
 			return k.UserID, nil, nil
@@ -105,6 +105,11 @@ func NewHandler(
 	}
 
 	dispatcher := actions.NewDispatcher(registry, resolver, sink, actorResolver)
+	dispatcher.SetClientIPHeaders(clientip.Headers{
+		Trust:         cfg.TrustProxyHeaders,
+		IPHeader:      cfg.TrustProxyIPHeader,
+		CountryHeader: cfg.TrustProxyGeoHeader,
+	})
 	// The bulk wrapper needs a reference to the dispatcher so it can invoke
 	// registered sub-actions through the shared Dispatch() helper.
 	if err := registry.Register(actions.NewUsersBulkAction(dispatcher)); err != nil {

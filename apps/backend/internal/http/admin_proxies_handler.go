@@ -13,6 +13,7 @@ import (
 	"rustlens/backend/internal/admin/audit"
 	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/appauth"
+	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/store"
 )
 
@@ -106,7 +107,7 @@ func (h *Handler) recordProxyAudit(ctx context.Context, r *http.Request, actorID
 	if errMsg != "" {
 		entry.ErrorMessage = &errMsg
 	}
-	if ip := clientIP(r); ip != "" {
+	if ip := h.clientIP(r); ip != "" {
 		entry.IPAddress = &ip
 	}
 	if ua := r.UserAgent(); ua != "" {
@@ -117,14 +118,14 @@ func (h *Handler) recordProxyAudit(ctx context.Context, r *http.Request, actorID
 	}
 }
 
-func clientIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		return ip
-	}
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-	return r.RemoteAddr
+// clientIP returns the actor IP for audit entries, honoring the
+// TRUST_PROXY_HEADERS / TRUST_PROXY_IP_HEADER configuration.
+func (h *Handler) clientIP(r *http.Request) string {
+	return clientip.Extract(r, clientip.Headers{
+		Trust:         h.cfg.TrustProxyHeaders,
+		IPHeader:      h.cfg.TrustProxyIPHeader,
+		CountryHeader: h.cfg.TrustProxyGeoHeader,
+	})
 }
 
 // ListAdminProxies returns a paginated, optionally-filtered slice of outbound
