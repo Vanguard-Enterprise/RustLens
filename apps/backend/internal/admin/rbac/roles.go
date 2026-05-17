@@ -8,7 +8,7 @@ const (
 	RoleUserSupport = "user_support"
 	RoleUserAdmin   = "user_admin"
 	RoleUserAuditor = "user_auditor"
-	RolePRO         = "PRO"
+	RolePRO         = "pro"
 )
 
 type RoleSeed struct {

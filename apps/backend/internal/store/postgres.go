@@ -680,6 +680,16 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return err
 	}
 
+	// Rename legacy PRO role key to lowercase. Runs before SeedPermissionsAndRoles
+	// so the upsert-by-key updates the existing row (preserving member assignments)
+	// instead of inserting a duplicate "pro" alongside an orphaned "PRO".
+	if _, err := p.pool.Exec(ctx, `
+		UPDATE admin_roles SET key = 'pro'
+		WHERE key = 'PRO' AND NOT EXISTS (SELECT 1 FROM admin_roles WHERE key = 'pro')
+	`); err != nil {
+		return fmt.Errorf("rename admin_roles PRO -> pro: %w", err)
+	}
+
 	// app_users — Discord-only identity. discord_id is the sole login key.
 	// user_emails / user_connected_accounts / user_password_credentials and the
 	// email-token tables are intentionally absent; the email/password auth
