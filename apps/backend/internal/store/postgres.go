@@ -413,6 +413,32 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS auto_disabled_at TIMESTAMPTZ;
 
+		-- Purge any legacy rows that inherited the '\x'::bytea default. By
+		-- definition they cannot be decrypted (zero-length ciphertext) so they
+		-- are useless and dangerous to keep in rotation. Then drop the empty
+		-- default and enforce a non-empty CHECK so a future code path that
+		-- omits ciphertext on insert fails loudly instead of silently parking
+		-- an undecryptable row.
+		DELETE FROM outbound_proxies
+		 WHERE octet_length(endpoint_ciphertext) = 0
+		    OR octet_length(endpoint_nonce) = 0;
+
+		ALTER TABLE outbound_proxies ALTER COLUMN endpoint_ciphertext DROP DEFAULT;
+		ALTER TABLE outbound_proxies ALTER COLUMN endpoint_nonce DROP DEFAULT;
+
+		DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM pg_constraint
+				 WHERE conname = 'outbound_proxies_ciphertext_nonempty'
+			) THEN
+				ALTER TABLE outbound_proxies
+				 ADD CONSTRAINT outbound_proxies_ciphertext_nonempty
+				 CHECK (octet_length(endpoint_ciphertext) > 0
+				    AND octet_length(endpoint_nonce) > 0);
+			END IF;
+		END $$;
+
 		CREATE INDEX IF NOT EXISTS outbound_proxies_enabled_idx
 		ON outbound_proxies (enabled, id);
 
