@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { ComponentType } from "../builders/index.js";
 import { __testables } from "./wipereact.js";
 
+function modalInteraction(values: Record<string, unknown>) {
+  return {
+    fields: {
+      getField: (customId: string) => ({ value: values[customId], values: values[customId] }),
+      fields: new Map(),
+    },
+    components: [],
+  } as any;
+}
+
 describe("wipereact command", () => {
   it("builds the create modal with timezone input and checkbox options", () => {
     const modal = __testables.buildWipeReactModal("wipereact_create_modal").toJSON();
@@ -29,7 +39,7 @@ describe("wipereact command", () => {
       type: ComponentType.TextInput,
       custom_id: "wipereact_timezone",
       style: 1,
-      placeholder: "Defaults to Europe/London",
+      placeholder: "Europe/London or London",
       max_length: 100,
       required: false,
       value: "",
@@ -44,6 +54,66 @@ describe("wipereact command", () => {
         { label: "Ask for late reason?", value: "ask_late_reason" },
         { label: "Ask for declined reason?", value: "ask_declined_reason" },
       ],
+    });
+  });
+
+  it("resolves city-only timezone inputs to canonical IANA timezones", () => {
+    expect(__testables.resolveTimeZone("London")).toEqual({
+      timeZone: "Europe/London",
+      error: null,
+    });
+    expect(__testables.resolveTimeZone("new york")).toEqual({
+      timeZone: "America/New_York",
+      error: null,
+    });
+    expect(__testables.resolveTimeZone("Los Angeles")).toEqual({
+      timeZone: "America/Los_Angeles",
+      error: null,
+    });
+  });
+
+  it("prefills retry modal values exactly as submitted", () => {
+    const modal = __testables.buildWipeReactModal("wipereact_create_modal", {
+      name: "Friday Wipe",
+      description: "Be online early",
+      timeInput: "bad date",
+      timeZone: "Londn",
+      askLateReason: true,
+      askDeclinedReason: false,
+    }).toJSON() as any;
+
+    expect(modal.components[0].component.value).toBe("Friday Wipe");
+    expect(modal.components[1].component.value).toBe("Be online early");
+    expect(modal.components[2].component.value).toBe("bad date");
+    expect(modal.components[3].component.value).toBe("Londn");
+    expect(modal.components[4].component.options).toEqual([
+      { label: "Ask for late reason?", value: "ask_late_reason", default: true },
+      { label: "Ask for declined reason?", value: "ask_declined_reason" },
+    ]);
+  });
+
+  it("builds a gray continue button for invalid modal retries", () => {
+    const rows = __testables.createModalRetryButtons("draft-1").map((row) => row.toJSON());
+
+    expect(rows[0]?.type).toBe(1);
+    expect(rows[0]?.components[0]).toMatchObject({
+      type: 2,
+      custom_id: "wipereact_modal_retry:draft-1",
+      label: "Continue",
+      emoji: { name: "📝" },
+      style: 2,
+    });
+  });
+
+  it("builds a green Force Wipe defaults button when requested", () => {
+    const rows = __testables.createModalRetryButtons("draft-1", true).map((row) => row.toJSON());
+
+    expect(rows[0]?.components[1]).toMatchObject({
+      type: 2,
+      custom_id: "wipereact_force_defaults:draft-1",
+      label: "Use Force Wipe Defaults",
+      emoji: { name: "✅" },
+      style: 3,
     });
   });
 
@@ -64,6 +134,42 @@ describe("wipereact command", () => {
 
     const reactGroup = options.find((option) => option.name === "react");
     expect((reactGroup?.options ?? []).map((option: any) => option.name)).toEqual(["add", "remove"]);
+  });
+
+  it("includes timezone in wipe react autocomplete labels", () => {
+    expect(__testables.formatWipeReactChoiceName({
+      name: "Friday Wipe",
+      description: "",
+      timeZone: "Europe/London",
+      scheduledUnix: 1774557951,
+      creatorId: "123",
+      askLateReason: false,
+      askDeclinedReason: false,
+      acceptedUserIds: [],
+      declinedUserIds: [],
+      lateUserIds: [],
+      embedTimestamp: "2026-03-02T20:44:18.917Z",
+    })).toContain("Europe/London");
+  });
+
+  it("includes schedule names and timezones in schedule autocomplete labels", () => {
+    expect(__testables.formatScheduleChoiceName({
+      id: 12,
+      guildId: "1",
+      channelId: "2",
+      days: ["friday"],
+      includesForceWipe: false,
+      time: "18:00",
+      timeZone: "Europe/London",
+      repeat: "weekly",
+      postBefore: "1d",
+      name: "Main Wipe",
+      description: "",
+      askLateReason: false,
+      askDeclinedReason: false,
+      createdBy: "3",
+      lastPostedForUnix: 0,
+    })).toBe("Main Wipe | #12 | Friday | 18:00 | Europe/London");
   });
 
   it("parses flexible date and time formats", () => {
@@ -164,6 +270,87 @@ describe("wipereact command", () => {
     }).data;
 
     expect(embed.description).toBeUndefined();
+  });
+
+  it("mentions when the default wipe react timezone was used", () => {
+    const embed = __testables.buildWipeReactEmbed({
+      name: "EU Monday",
+      description: "",
+      timeZone: "Europe/London",
+      timeZoneWasDefault: true,
+      scheduledUnix: 1774557951,
+      creatorId: "999",
+      askLateReason: true,
+      askDeclinedReason: true,
+      acceptedUserIds: [],
+      declinedUserIds: [],
+      lateUserIds: [],
+      embedTimestamp: "2026-03-02T20:44:18.917Z",
+    }).data;
+
+    expect(embed.fields).toContainEqual({
+      name: "Timezone note",
+      value: "Europe/London was used because no timezone was entered.",
+    });
+  });
+
+  it("marks default schedule timezone in summaries", () => {
+    expect(__testables.formatScheduleSummary({
+      days: ["friday"],
+      includesForceWipe: false,
+      time: "18:00",
+      timeZone: "Europe/London",
+      timeZoneWasDefault: true,
+      repeat: "weekly",
+      postBefore: "1d",
+      name: "Main Wipe",
+      description: "",
+      askLateReason: false,
+      askDeclinedReason: false,
+    })).toContain("**Timezone:** Europe/London (default)");
+  });
+
+  it("uses the fixed Force Wipe time and timezone when time fields are blank", () => {
+    expect(__testables.validateScheduleModalSubmission(modalInteraction({
+      wipereact_schedule_days: ["force_wipe"],
+      wipereact_schedule_time: "",
+      wipereact_schedule_timezone: "",
+      wipereact_schedule_repeat: [],
+      wipereact_schedule_post_before: ["1d"],
+    }))).toEqual({
+      config: {
+        days: [],
+        includesForceWipe: true,
+        time: "19:00",
+        timeZone: "Europe/London",
+        timeZoneWasDefault: false,
+        repeat: null,
+        postBefore: "1d",
+        name: "",
+        description: "",
+        askLateReason: false,
+        askDeclinedReason: false,
+      },
+      error: null,
+    });
+  });
+
+  it("rejects custom Force Wipe time and timezone values", () => {
+    expect(__testables.validateScheduleModalSubmission(modalInteraction({
+      wipereact_schedule_days: ["force_wipe"],
+      wipereact_schedule_time: "18:00",
+      wipereact_schedule_timezone: "",
+      wipereact_schedule_repeat: [],
+      wipereact_schedule_post_before: ["1d"],
+    })).error).toBe("Force Wipe always uses 19:00 Europe/London. Leave the time field blank.");
+
+    expect(__testables.validateScheduleModalSubmission(modalInteraction({
+      wipereact_schedule_days: ["force_wipe"],
+      wipereact_schedule_time: "",
+      wipereact_schedule_timezone: "London",
+      wipereact_schedule_repeat: [],
+      wipereact_schedule_post_before: ["1d"],
+    })).error).toBe("Force Wipe always uses 19:00 Europe/London. Leave the timezone field blank.");
   });
 
   it("parses the wipe react message state from embeds and buttons", () => {
