@@ -6,6 +6,7 @@ import {
 	getPlayerProfile,
 	searchPlayers,
 } from "@/lib/rustlens-api";
+import { getSession } from "@/lib/session";
 
 function statusOf(err: unknown): number | undefined {
 	return err instanceof Error
@@ -33,6 +34,7 @@ export async function searchPlayersAction(
 	| { error: "rate_limited" }
 	| { error: "unknown" }
 > {
+	if (!(await getSession())) return { error: "unauthenticated" };
 	try {
 		return await searchPlayers(q, includeOffline);
 	} catch (err) {
@@ -53,6 +55,7 @@ export async function getPlayerProfileAction(
 	| { error: "private" }
 	| { error: "unknown" }
 > {
+	if (!(await getSession())) return { error: "unauthenticated" };
 	try {
 		return await getPlayerProfile(identifier);
 	} catch (err) {
