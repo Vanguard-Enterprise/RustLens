@@ -89,6 +89,41 @@ func NewRouter(
 		})
 	}
 
+	// requireAdminPerm gates a route on a single permission. Works for both
+	// API-key and session callers — it resolves the actor's user ID from
+	// whichever auth context is present and intersects against the rbac
+	// resolver (which itself respects WithAPIKeyPermissions).
+	requireAdminPerm := func(perm string) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var userID string
+				if k := actions.APIKeyAuthFromContext(r.Context()); k != nil {
+					userID = k.UserID
+				} else if s := appauth.SessionFromContext(r.Context()); s != nil {
+					userID = s.UserID
+				}
+				if userID == "" {
+					writeError(w, http.StatusUnauthorized, "unauthenticated")
+					return
+				}
+				if handler.rbacResolver == nil {
+					writeError(w, http.StatusInternalServerError, "rbac unavailable")
+					return
+				}
+				ok, err := handler.rbacResolver.HasPermission(r.Context(), userID, perm)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "permission_check_failed")
+					return
+				}
+				if !ok {
+					writeError(w, http.StatusForbidden, "forbidden")
+					return
+				}
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
+
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -304,17 +339,17 @@ func NewRouter(
 				})
 			})
 			r.Post("/actions/{type}", handler.actionDispatcher.ServeHTTP)
-			r.Get("/roles", handler.ListAdminRoles)
-			r.Get("/permissions", handler.ListAdminPermissions)
-			r.Get("/users", handler.ListAdminUsers)
-			r.Get("/users/{id}", handler.GetAdminUser)
-			r.Get("/users/{id}/audit", handler.ListAdminUserAudit)
-			r.Get("/guilds", handler.ListAdminGuilds)
-			r.Get("/user-installs", handler.ListAdminUserInstalls)
-			r.Get("/servers", handler.ListAdminServers)
-			r.Get("/audit", handler.ListAdminAudit)
-			r.Get("/audit/event-types", handler.ListAdminAuditEventTypes)
-			r.Get("/audit/{id}", handler.GetAdminAuditEvent)
+			r.With(requireAdminPerm(rbac.PermRolesRead)).Get("/roles", handler.ListAdminRoles)
+			r.With(requireAdminPerm(rbac.PermRolesRead)).Get("/permissions", handler.ListAdminPermissions)
+			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/users", handler.ListAdminUsers)
+			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/users/{id}", handler.GetAdminUser)
+			r.With(requireAdminPerm(rbac.PermUsersAuditRead)).Get("/users/{id}/audit", handler.ListAdminUserAudit)
+			r.With(requireAdminPerm(rbac.PermGuildsRead)).Get("/guilds", handler.ListAdminGuilds)
+			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/user-installs", handler.ListAdminUserInstalls)
+			r.With(requireAdminPerm(rbac.PermBmServersRead)).Get("/servers", handler.ListAdminServers)
+			r.With(requireAdminPerm(rbac.PermAuditRead)).Get("/audit", handler.ListAdminAudit)
+			r.With(requireAdminPerm(rbac.PermAuditRead)).Get("/audit/event-types", handler.ListAdminAuditEventTypes)
+			r.With(requireAdminPerm(rbac.PermAuditRead)).Get("/audit/{id}", handler.GetAdminAuditEvent)
 			r.Get("/proxies", handler.ListAdminProxies)
 			r.Post("/proxies", handler.CreateAdminProxy)
 			r.Post("/proxies/bulk", handler.BulkAdminProxies)

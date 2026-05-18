@@ -28,6 +28,8 @@ const (
 	PermLinksReview             = "links.review"
 	PermLinksApprove            = "links.approve"
 	PermGuildsUntrackServer     = "guilds.untrack_server"
+	PermGuildsRead              = "guilds.read"
+	PermRolesRead               = "roles.read"
 	PermAuditRead               = "audit.read"
 	PermAPIKeysManage           = "api_keys.manage"
 	PermBotRoutesRead           = "bot_routes.read"
@@ -53,6 +55,8 @@ var permissions = []Permission{
 	{Key: PermLinksReview, Description: "View the Steam-Discord link review queue"},
 	{Key: PermLinksApprove, Description: "Approve or reject queued Steam-Discord links"},
 	{Key: PermGuildsUntrackServer, Description: "Remove a server from a guild's tracked set"},
+	{Key: PermGuildsRead, Description: "View the admin guilds list"},
+	{Key: PermRolesRead, Description: "View the admin role catalog and members"},
 	{Key: PermAdminsGrant, Description: "Grant or revoke admin roles; edit role-permission mappings"},
 	{Key: PermAuditRead, Description: "Read the admin audit log"},
 	{Key: PermCommandsRateLimitBypass, Description: "Bypass slash-command rate limits (no cooldown)"},

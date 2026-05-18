@@ -38,6 +38,7 @@ func SystemRoles() []RoleSeed {
 				"links.review",
 				"links.approve",
 				"audit.read",
+				PermRolesRead,
 			},
 		},
 		{
@@ -52,6 +53,7 @@ func SystemRoles() []RoleSeed {
 				"bm_servers.edit",
 				"audit.read",
 				PermAPIKeysManage,
+				PermRolesRead,
 			},
 		},
 		{
@@ -61,6 +63,8 @@ func SystemRoles() []RoleSeed {
 			Permissions: []string{
 				"guilds.untrack_server",
 				"audit.read",
+				PermGuildsRead,
+				PermRolesRead,
 			},
 		},
 		{
@@ -72,6 +76,7 @@ func SystemRoles() []RoleSeed {
 				PermUsersRead, PermUsersAuditRead,
 				PermUsersSecurityReset,
 				PermUsersEdit,
+				PermRolesRead,
 			},
 		},
 		{
@@ -85,6 +90,7 @@ func SystemRoles() []RoleSeed {
 				PermUsersSecurityReset,
 				PermUsersCreate, PermUsersConnectionsManage,
 				PermUsersDelete,
+				PermRolesRead,
 			},
 		},
 		{
@@ -92,7 +98,7 @@ func SystemRoles() []RoleSeed {
 			Name:        "User Auditor",
 			Description: "Read-only users view with audit trail",
 			IsSystem:    true,
-			Permissions: []string{PermUsersRead, PermUsersAuditRead},
+			Permissions: []string{PermUsersRead, PermUsersAuditRead, PermRolesRead},
 		},
 		{
 			Key:         RolePRO,
