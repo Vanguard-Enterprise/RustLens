@@ -311,7 +311,11 @@ func NewRouter(
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(appSessionMiddleware(handler.appSessions))
+			// requireSession validates the session epoch + suspended_at +
+			// deleted_at on every request. The previous appSessionMiddleware
+			// only checked the HMAC + expiry, so a force-logged-out, suspended,
+			// or deleted user retained access for up to 14 days.
+			r.Use(requireSession)
 			r.Get("/me/connections", handler.GetCurrentAppUserConnections)
 			r.Get("/me/guilds", handler.GetCurrentAppUserGuilds)
 			r.Get("/me/guilds/installed", handler.GetCurrentAppUserInstalledGuilds)
