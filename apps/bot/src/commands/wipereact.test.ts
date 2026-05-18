@@ -29,7 +29,7 @@ describe("wipereact command", () => {
       type: ComponentType.TextInput,
       custom_id: "wipereact_timezone",
       style: 1,
-      placeholder: "Defaults to Europe/London",
+      placeholder: "Europe/London or London",
       max_length: 100,
       required: false,
       value: "",
@@ -44,6 +44,54 @@ describe("wipereact command", () => {
         { label: "Ask for late reason?", value: "ask_late_reason" },
         { label: "Ask for declined reason?", value: "ask_declined_reason" },
       ],
+    });
+  });
+
+  it("resolves city-only timezone inputs to canonical IANA timezones", () => {
+    expect(__testables.resolveTimeZone("London")).toEqual({
+      timeZone: "Europe/London",
+      error: null,
+    });
+    expect(__testables.resolveTimeZone("new york")).toEqual({
+      timeZone: "America/New_York",
+      error: null,
+    });
+    expect(__testables.resolveTimeZone("Los Angeles")).toEqual({
+      timeZone: "America/Los_Angeles",
+      error: null,
+    });
+  });
+
+  it("prefills retry modal values exactly as submitted", () => {
+    const modal = __testables.buildWipeReactModal("wipereact_create_modal", {
+      name: "Friday Wipe",
+      description: "Be online early",
+      timeInput: "bad date",
+      timeZone: "Londn",
+      askLateReason: true,
+      askDeclinedReason: false,
+    }).toJSON() as any;
+
+    expect(modal.components[0].component.value).toBe("Friday Wipe");
+    expect(modal.components[1].component.value).toBe("Be online early");
+    expect(modal.components[2].component.value).toBe("bad date");
+    expect(modal.components[3].component.value).toBe("Londn");
+    expect(modal.components[4].component.options).toEqual([
+      { label: "Ask for late reason?", value: "ask_late_reason", default: true },
+      { label: "Ask for declined reason?", value: "ask_declined_reason" },
+    ]);
+  });
+
+  it("builds a gray continue button for invalid modal retries", () => {
+    const rows = __testables.createModalRetryButton("draft-1").map((row) => row.toJSON());
+
+    expect(rows[0]?.type).toBe(1);
+    expect(rows[0]?.components[0]).toMatchObject({
+      type: 2,
+      custom_id: "wipereact_modal_retry:draft-1",
+      label: "Continue",
+      emoji: { name: "📝" },
+      style: 2,
     });
   });
 
