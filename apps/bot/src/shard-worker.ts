@@ -24,6 +24,7 @@ import {
   enforceBanForAutocomplete,
 } from "./ban-check.js";
 import { enforceRateLimit } from "./rate-limit.js";
+import { ensureAppUser } from "./ensure-app-user.js";
 import {
   ensureBindCommand,
   handleBindButtonInteraction,
@@ -332,6 +333,7 @@ function reportUserInstallSeen(interaction: Interaction): void {
 
 client.on("interactionCreate", async (interaction) => {
   reportUserInstallSeen(interaction);
+  ensureAppUser(interaction);
   try {
     if (interaction.isAutocomplete()) {
       if (await handleManageAutocomplete(interaction)) {
