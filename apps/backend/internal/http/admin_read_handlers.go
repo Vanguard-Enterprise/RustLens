@@ -244,6 +244,138 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListAdminMembers: GET /api/app/admin/members
+//
+// Inverse of ListAdminUsers — returns app_users rows that hold zero admin
+// roles (i.e. no role with any permission grant). Query params mirror
+// ListAdminUsers exactly except that the `role` param is ignored: members
+// have no admin roles by definition, so role-key filtering is meaningless.
+func (h *Handler) ListAdminMembers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	pool := h.postgres.Pool()
+	q := r.URL.Query()
+
+	page := 1
+	pageSize := 50
+	if v := q.Get("page"); v != "" {
+		parseLimit(v, &page)
+		if page < 1 {
+			page = 1
+		}
+	}
+	if v := q.Get("pageSize"); v != "" {
+		parseLimit(v, &pageSize)
+	}
+	if pageSize < 1 || pageSize > 200 {
+		pageSize = 50
+	}
+	offset := (page - 1) * pageSize
+
+	whereSQL, args, orderBy, err := buildUsersQuery(q)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Append the members-only restriction.
+	if whereSQL == "" {
+		whereSQL = "WHERE " + membersOnlyClause
+	} else {
+		whereSQL = whereSQL + " AND " + membersOnlyClause
+	}
+
+	var total int
+	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM app_users u %s`, whereSQL)
+	if err := pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	args = append(args, pageSize, offset)
+	listSQL := fmt.Sprintf(`
+		SELECT u.id,
+		       COALESCE(
+		           NULLIF(u.display_name, ''),
+		           NULLIF(u.discord_global_name, ''),
+		           NULLIF(u.discord_username, ''),
+		           ''
+		       ) AS display_name,
+		       COALESCE(
+		           NULLIF(u.avatar_url, ''),
+		           CASE
+		               WHEN NULLIF(u.discord_avatar, '') IS NOT NULL
+		                    AND NULLIF(u.discord_id, '') IS NOT NULL
+		               THEN 'https://cdn.discordapp.com/avatars/'
+		                    || u.discord_id || '/' || u.discord_avatar || '.png'
+		               ELSE ''
+		           END
+		       ) AS avatar_url,
+		       u.roles::text,
+		       u.created_at, u.updated_at, u.last_login_at,
+		       u.suspended_at, u.deleted_at,
+		       COALESCE(u.discord_id, ''),
+		       COALESCE(u.discord_username, ''),
+		       COALESCE(u.discord_global_name, ''),
+		       COALESCE(u.discord_avatar, ''),
+		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = u.discord_id AND g.left_at IS NULL), 0),
+		       0 AS steam_count,
+		       ARRAY[]::text[] AS admin_role_keys
+		FROM app_users u
+		%s
+		ORDER BY %s
+		LIMIT $%d OFFSET $%d
+	`, whereSQL, orderBy, len(args)-1, len(args))
+
+	rows, err := pool.Query(ctx, listSQL, args...)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rows.Close()
+
+	items := []adminUserItem{}
+	for rows.Next() {
+		var it adminUserItem
+		var rolesLegacyJSON string
+		var suspendedAt, deletedAt *time.Time
+		var guildCount, steamCount int64
+		var adminRoleKeys []string
+		if err := rows.Scan(
+			&it.User.ID, &it.User.DisplayName, &it.User.AvatarURL, &rolesLegacyJSON,
+			&it.User.CreatedAt, &it.User.UpdatedAt, &it.User.LastLoginAt,
+			&suspendedAt, &deletedAt,
+			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
+			&guildCount, &steamCount, &adminRoleKeys,
+		); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if rolesLegacyJSON != "" {
+			_ = json.Unmarshal([]byte(rolesLegacyJSON), &it.User.Roles)
+		}
+		if it.User.Roles == nil {
+			it.User.Roles = []string{}
+		}
+		it.GuildCount = int(guildCount)
+		it.SteamConnectionCount = int(steamCount)
+		it.AdminRoles = adminRoleKeys
+		if it.AdminRoles == nil {
+			it.AdminRoles = []string{}
+		}
+		if suspendedAt != nil {
+			t := suspendedAt.Format(time.RFC3339)
+			it.SuspendedAt = &t
+		}
+		if deletedAt != nil {
+			t := deletedAt.Format(time.RFC3339)
+			it.DeletedAt = &t
+		}
+		items = append(items, it)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items, "total": total, "page": page, "pageSize": pageSize,
+	})
+}
+
 // ListAdminGuilds: GET /api/app/admin/guilds
 // Query:
 //   q=<substring>            matches bot_guilds.name (substring), guild_id (prefix), owner_username (substring); ILIKE

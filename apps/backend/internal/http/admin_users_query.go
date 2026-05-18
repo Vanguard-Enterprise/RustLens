@@ -95,6 +95,18 @@ func buildUsersQuery(q url.Values) (string, []any, string, error) {
 	return whereSQL, args, orderBy, nil
 }
 
+// membersOnlyClause is an extra SQL fragment that, when appended via AND to
+// the WHERE clause built by buildUsersQuery, restricts results to users who
+// hold no admin role (i.e. no role that has any row in admin_role_permissions).
+// It takes no positional arguments — safe to concatenate without shifting
+// argument indices.
+const membersOnlyClause = `NOT EXISTS (
+    SELECT 1
+    FROM admin_user_roles aur
+    JOIN admin_role_permissions arp ON arp.role_id = aur.role_id
+    WHERE aur.user_id = u.id
+)`
+
 func orderByClause(q url.Values) string {
 	sort := q.Get("sort")
 	desc := strings.HasPrefix(sort, "-")
