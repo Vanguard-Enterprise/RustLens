@@ -86,17 +86,30 @@ async function processGuild(guild: Guild) {
   }
 
   const changes = diffSnapshot(previousSnapshot, currentSnapshot);
+  // Start the next snapshot from the current state, then for every change we
+  // FAIL to emit, copy the previous state for that key back in so the
+  // transition is re-detected on the next tick. Previously this loop did
+  // `break` on first error AND unconditionally stored currentSnapshot, which
+  // permanently dropped every subsequent join/leave event in the tick.
+  const nextSnapshot = new Map(currentSnapshot);
   for (const event of changes) {
     const embed = buildLogEmbed(event);
     try {
       await (channel as { send: (payload: { embeds: EmbedBuilder[] }) => Promise<unknown> }).send({ embeds: [embed] });
     } catch (error) {
       console.error(`[bot] failed to post tracked-server-log embed for guild ${guild.id}`, error);
-      break;
+      const key = snapshotKey(event);
+      const previousState = previousSnapshot.get(key);
+      if (previousState) {
+        nextSnapshot.set(key, previousState);
+      } else {
+        nextSnapshot.delete(key);
+      }
+      continue;
     }
   }
 
-  previousSnapshots.set(guild.id, currentSnapshot);
+  previousSnapshots.set(guild.id, nextSnapshot);
 }
 
 export function buildLogEmbed(event: TrackedServerLogEvent) {
