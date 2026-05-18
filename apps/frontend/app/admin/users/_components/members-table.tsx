@@ -33,6 +33,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { toast } from "sonner";
+
 import { userAvatarUrl } from "@/lib/discord-cdn";
 import type { AdminUserItem, AdminUsersPage } from "@/lib/rustlens-api";
 
@@ -128,6 +130,23 @@ export function MembersTable({
     });
   };
 
+  const copySelectedIds = async () => {
+    const ids = data.items
+      .filter((u) => selectedIds.has(u.user.id))
+      .map((u) => u.discordId);
+    if (ids.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(ids.join("\n"));
+      toast.success(
+        `Copied ${ids.length} Discord ${ids.length === 1 ? "ID" : "IDs"}`,
+      );
+    } catch {
+      toast.error("Could not copy to clipboard");
+    }
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
   const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
   const canPrev = data.page > 1;
   const canNext = data.page < totalPages;
@@ -168,6 +187,21 @@ export function MembersTable({
           aria-label="Search members"
         />
       </div>
+
+      {selectedIds.size > 0 ? (
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+          <span className="text-sm font-medium">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex-1" />
+          <Button variant="ghost" size="sm" onClick={clearSelection}>
+            Clear
+          </Button>
+          <Button variant="outline" size="sm" onClick={copySelectedIds}>
+            Copy IDs
+          </Button>
+        </div>
+      ) : null}
 
       <div className="overflow-hidden rounded-lg border">
         <Table>
