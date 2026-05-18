@@ -590,4 +590,38 @@ describe("BackendClient", () => {
     expect(url).toBe("http://localhost:8080/api/internal/bot/setup/bot-guilds/reconcile");
     expect(JSON.parse(init?.body as string)).toEqual({ shardId: 1, shardCount: 4, guildIds: ["1", "2"] });
   });
+
+  it("ensures an app_users row exists for a discord user", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({ userId: "usr_abcdef0123456789abcdef01", created: true }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient(
+      "http://localhost:8080",
+      "secret",
+      "rustlens-bot",
+      "rustlens-backend",
+    );
+    const result = await client.ensureAppUser("worker-a", {
+      discordId:  "111222333444555666",
+      username:   "alice",
+      globalName: "Alice",
+      avatarHash: "deadbeef",
+    });
+
+    expect(result).toEqual({ userId: "usr_abcdef0123456789abcdef01", created: true });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/users/ensure");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({
+      discordId:  "111222333444555666",
+      username:   "alice",
+      globalName: "Alice",
+      avatarHash: "deadbeef",
+    });
+  });
 });

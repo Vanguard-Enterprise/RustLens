@@ -1074,6 +1074,28 @@ export class BackendClient {
     );
   }
 
+  ensureAppUser(
+    workerId: string,
+    payload: {
+      discordId:  string;
+      username:   string;
+      globalName: string | null;
+      avatarHash: string | null;
+    },
+  ): Promise<{ userId: string; created: boolean }> {
+    return this.call<{ userId: string; created: boolean }>(
+      workerId,
+      `/api/internal/bot/setup/users/ensure`,
+      "POST",
+      {
+        discordId:  payload.discordId,
+        username:   payload.username,
+        globalName: payload.globalName,
+        avatarHash: payload.avatarHash,
+      },
+    );
+  }
+
   createGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
     return this.call<GuildSteamDiscordLink>(
       workerId,
