@@ -1,5 +1,7 @@
 import { AppSidebar } from "../_components/app-sidebar";
 import { UsersPage } from "./_components/users-page";
+import { effectiveRoleFilter } from "./_components/role-filter";
+import { UsersPageEmptyState } from "./_components/users-page-empty-state";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getCsrfToken } from "@/lib/csrf";
@@ -39,7 +41,7 @@ export default async function AdminUsersRoute({
 	const session = await requirePermission("users.read");
 	const sp = await searchParams;
 
-	const query: AdminUsersQuery = {
+	const urlQuery: AdminUsersQuery = {
 		q: pickStr(sp.q),
 		role: pickArr(sp.role),
 		status: (pickStr(sp.status) as AdminUsersQuery["status"]) ?? "active",
@@ -50,11 +52,14 @@ export default async function AdminUsersRoute({
 			: DEFAULT_PAGE_SIZE,
 	};
 
-	const [csrfToken, currentUser, users, roles] = await Promise.all([
+	const allRoles = await getAdminRoles();
+	const adminRoles = allRoles.filter((r) => r.permissions.length > 0);
+	const adminRoleKeys = adminRoles.map((r) => r.key);
+	const canGrantSuperadmin = (session.permissions ?? []).includes("admins.grant");
+
+	const [csrfToken, currentUser] = await Promise.all([
 		getCsrfToken(),
 		getCurrentUserSafe(),
-		getAdminUsers(query),
-		getAdminRoles(),
 	]);
 
 	const user = {
@@ -65,6 +70,25 @@ export default async function AdminUsersRoute({
 			(session.adminRoles?.length ?? 0) > 0 ||
 			session.roles.includes("internal_admin"),
 	};
+
+	let body: React.ReactNode;
+	if (adminRoleKeys.length === 0) {
+		body = <UsersPageEmptyState />;
+	} else {
+		const effectiveRoles = effectiveRoleFilter(urlQuery.role ?? [], adminRoleKeys);
+		const query: AdminUsersQuery = { ...urlQuery, role: effectiveRoles };
+		const users = await getAdminUsers(query);
+		body = (
+			<UsersPage
+				initialPage={users}
+				roles={adminRoles}
+				initialQuery={query}
+				pageSizeOptions={PAGE_SIZE_OPTIONS}
+				permissions={session.permissions ?? []}
+				canGrantSuperadmin={canGrantSuperadmin}
+			/>
+		);
+	}
 
 	return (
 		<SidebarProvider
@@ -89,16 +113,10 @@ export default async function AdminUsersRoute({
 							<div>
 								<h1 className="text-2xl font-semibold">Users</h1>
 								<p className="text-sm text-muted-foreground">
-									Find users, assign admin roles, and manage account state.
+									Find admin users, assign roles, and manage account state.
 								</p>
 							</div>
-							<UsersPage
-								initialPage={users}
-								roles={roles}
-								initialQuery={query}
-								pageSizeOptions={PAGE_SIZE_OPTIONS}
-								permissions={session.permissions ?? []}
-							/>
+							{body}
 						</div>
 					</div>
 				</div>
