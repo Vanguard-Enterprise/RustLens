@@ -14,15 +14,19 @@ import (
 )
 
 type usersRolesRevokeAction struct {
-	pool *pgxpool.Pool
-	pub  events.Publisher
+	pool     *pgxpool.Pool
+	resolver *rbac.Resolver
+	pub      events.Publisher
 }
 
 // NewUsersRolesRevokeAction revokes an admin role from a user. Revoking the
 // last remaining "superadmin" is blocked with a 409 conflict so the system
-// cannot be locked out of elevated access.
-func NewUsersRolesRevokeAction(pool *pgxpool.Pool, pub events.Publisher) AdminAction {
-	return &usersRolesRevokeAction{pool: pool, pub: pub}
+// cannot be locked out of elevated access. Revoking the "superadmin" role
+// from any user additionally requires the actor to hold admins.grant — the
+// same gate that protects granting the role — so coordinated demotion of a
+// superadmin cannot happen via users.roles.assign alone.
+func NewUsersRolesRevokeAction(pool *pgxpool.Pool, resolver *rbac.Resolver, pub events.Publisher) AdminAction {
+	return &usersRolesRevokeAction{pool: pool, resolver: resolver, pub: pub}
 }
 
 func (a *usersRolesRevokeAction) Type() string                 { return "users.roles.revoke" }
@@ -63,6 +67,14 @@ func (a *usersRolesRevokeAction) Execute(ctx context.Context, in ActionInput) (A
 	}
 
 	if p.RoleKey == rbac.RoleSuperadmin {
+		ok, err := a.resolver.HasPermission(ctx, in.ActorUserID, rbac.PermAdminsGrant)
+		if err != nil {
+			return ActionResult{}, err
+		}
+		if !ok {
+			return ActionResult{}, fmt.Errorf("%w: revoke of superadmin requires %s", ErrPermissionDenied, rbac.PermAdminsGrant)
+		}
+
 		var count int
 		if err := a.pool.QueryRow(ctx, `
 			SELECT COUNT(*) FROM admin_user_roles aur
