@@ -254,6 +254,9 @@ func (h *Handler) ListAdminMembers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pool := h.postgres.Pool()
 	q := r.URL.Query()
+	// `role` is meaningless here — members hold no admin roles. Drop it so
+	// buildUsersQuery does not attach a contradicting EXISTS clause.
+	q.Del("role")
 
 	page := 1
 	pageSize := 50
