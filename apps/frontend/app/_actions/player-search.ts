@@ -6,6 +6,7 @@ import {
 	getPlayerProfile,
 	searchPlayers,
 } from "@/lib/rustlens-api";
+import { consumeRateLimit } from "@/lib/rate-limit";
 import { getSession } from "@/lib/session";
 
 function statusOf(err: unknown): number | undefined {
@@ -34,7 +35,16 @@ export async function searchPlayersAction(
 	| { error: "rate_limited" }
 	| { error: "unknown" }
 > {
-	if (!(await getSession())) return { error: "unauthenticated" };
+	const session = await getSession();
+	if (!session) return { error: "unauthenticated" };
+	// Defensive rate limit on the frontend so a logged-in user can't run a
+	// tight loop pinging the backend; backend also enforces its own per-session
+	// limit. 30 req / 60s matches the backend players_search budget.
+	const limit = await consumeRateLimit(`fe:player-search:${session.userId}`, {
+		max: 30,
+		windowMs: 60_000,
+	});
+	if (!limit.allowed) return { error: "rate_limited" };
 	try {
 		return await searchPlayers(q, includeOffline);
 	} catch (err) {
@@ -53,9 +63,16 @@ export async function getPlayerProfileAction(
 	| { error: "unauthenticated" }
 	| { error: "not_found" }
 	| { error: "private" }
+	| { error: "rate_limited" }
 	| { error: "unknown" }
 > {
-	if (!(await getSession())) return { error: "unauthenticated" };
+	const session = await getSession();
+	if (!session) return { error: "unauthenticated" };
+	const limit = await consumeRateLimit(`fe:player-profile:${session.userId}`, {
+		max: 60,
+		windowMs: 60_000,
+	});
+	if (!limit.allowed) return { error: "rate_limited" };
 	try {
 		return await getPlayerProfile(identifier);
 	} catch (err) {
