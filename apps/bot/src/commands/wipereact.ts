@@ -150,6 +150,7 @@ type WipeReactConfig = {
   name: string;
   description: string;
   timeZone: string;
+  timeZoneWasDefault?: boolean;
   scheduledUnix: number;
   askLateReason: boolean;
   askDeclinedReason: boolean;
@@ -768,6 +769,12 @@ function buildWipeReactEmbed(state: WipeReactMessageState) {
       buildStatusField(WIPE_REACT_DECLINED_FIELD_PREFIX, state.declinedUserIds),
       buildStatusField(WIPE_REACT_LATE_FIELD_PREFIX, state.lateUserIds),
     );
+  if (state.timeZoneWasDefault) {
+    embed.addFields({
+      name: "Timezone note",
+      value: `${DEFAULT_WIPEREACT_TIMEZONE} was used because no timezone was entered.`,
+    });
+  }
   if (state.description.length > 0) embed.setDescription(state.description);
   return embed;
 }
@@ -972,6 +979,7 @@ type ScheduleWipeReactConfig = {
   includesForceWipe: boolean;
   time: string | null;
   timeZone: string;
+  timeZoneWasDefault?: boolean;
   repeat: string | null;
   postBefore: string;
   name: string;
@@ -1013,6 +1021,12 @@ function validateScheduleModalSubmission(
   const includesForceWipe = selectedDays.includes(SCHEDULE_FORCE_WIPE_VALUE);
   const regularDays = selectedDays.filter((day) => day !== SCHEDULE_FORCE_WIPE_VALUE);
   const hasRegularDays = regularDays.length > 0;
+  if (includesForceWipe && hasRegularDays) {
+    return {
+      config: null,
+      error: "Choose either Force Wipe or regular weekdays, not both.",
+    };
+  }
 
   const rawTime = getFieldValues(interaction, WIPEREACT_SCHEDULE_TIME_CUSTOM_ID)[0]?.trim() ?? "";
   let time: string | null = null;
@@ -1062,6 +1076,7 @@ function validateScheduleModalSubmission(
       includesForceWipe,
       time,
       timeZone: timeZoneResult.timeZone,
+      timeZoneWasDefault: (getFieldValues(interaction, WIPEREACT_SCHEDULE_TIMEZONE_CUSTOM_ID)[0]?.trim() ?? "").length === 0,
       repeat,
       postBefore: postBeforeValues[0],
       name: "",
@@ -1082,7 +1097,7 @@ function formatScheduleSummary(config: ScheduleWipeReactConfig) {
     );
     lines.push(`**Days:** ${dayLabels.join(", ")}`);
     lines.push(`**Time:** ${config.time}`);
-    lines.push(`**Timezone:** ${config.timeZone}`);
+    lines.push(`**Timezone:** ${config.timeZone}${config.timeZoneWasDefault ? " (default)" : ""}`);
     const repeatLabel = SCHEDULE_REPEAT_OPTIONS.find((option) => option.value === config.repeat)?.label ?? config.repeat;
     lines.push(`**Repeat:** ${repeatLabel}`);
   }
@@ -1379,7 +1394,24 @@ async function replyWithModalRetry(
     createdAt: Date.now(),
   } as ModalRetryDraft);
 
-  await replyEphemeral(interaction, message, createModalRetryButton(draftId));
+  const embed = createEmbed()
+    .setTitle("Check your wipe react details")
+    .setDescription(message);
+
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply({
+      content: "",
+      embeds: [embed],
+      components: createModalRetryButton(draftId),
+    });
+    return;
+  }
+
+  await interaction.reply({
+    embeds: [embed],
+    components: createModalRetryButton(draftId),
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 function buildWipeReactStateFromModal(
@@ -1390,6 +1422,7 @@ function buildWipeReactStateFromModal(
   const timeZoneResult = resolveTimeZone(
     getFieldValues(interaction, WIPEREACT_TIMEZONE_CUSTOM_ID)[0],
   );
+  const timeZoneWasDefault = (getFieldValues(interaction, WIPEREACT_TIMEZONE_CUSTOM_ID)[0]?.trim() ?? "").length === 0;
   if (timeZoneResult.error || !timeZoneResult.timeZone) {
     return {
       state: null,
@@ -1430,6 +1463,7 @@ function buildWipeReactStateFromModal(
       name,
       description,
       timeZone: timeZoneResult.timeZone,
+      timeZoneWasDefault,
       scheduledUnix: Math.floor(parsedDate.date.getTime() / 1000),
       creatorId,
       askLateReason: options.has(WIPEREACT_OPTION_ASK_LATE_REASON),
@@ -2065,9 +2099,16 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
         return true;
       }
 
+      const schedule = await getBackend().getWipeReactSchedule(getWipeReactWorkerID(), interaction.guildId, scheduleId).catch(() => null);
+      if (!schedule) {
+        await replyEphemeral(interaction, "That schedule could not be found.");
+        return true;
+      }
+
       try {
         await getBackend().deleteWipeReactSchedule(getWipeReactWorkerID(), interaction.guildId, scheduleId);
-        await replyEphemeral(interaction, "Schedule deleted.");
+        const label = schedule.name.trim().length > 0 ? ` "${schedule.name.trim()}"` : "";
+        await replyEphemeral(interaction, `Schedule #${schedule.id}${label} deleted.`);
       } catch {
         await replyEphemeral(interaction, "That schedule could not be found.");
       }

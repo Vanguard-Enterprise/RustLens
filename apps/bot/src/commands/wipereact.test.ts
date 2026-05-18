@@ -250,6 +250,44 @@ describe("wipereact command", () => {
     expect(embed.description).toBeUndefined();
   });
 
+  it("mentions when the default wipe react timezone was used", () => {
+    const embed = __testables.buildWipeReactEmbed({
+      name: "EU Monday",
+      description: "",
+      timeZone: "Europe/London",
+      timeZoneWasDefault: true,
+      scheduledUnix: 1774557951,
+      creatorId: "999",
+      askLateReason: true,
+      askDeclinedReason: true,
+      acceptedUserIds: [],
+      declinedUserIds: [],
+      lateUserIds: [],
+      embedTimestamp: "2026-03-02T20:44:18.917Z",
+    }).data;
+
+    expect(embed.fields).toContainEqual({
+      name: "Timezone note",
+      value: "Europe/London was used because no timezone was entered.",
+    });
+  });
+
+  it("marks default schedule timezone in summaries", () => {
+    expect(__testables.formatScheduleSummary({
+      days: ["friday"],
+      includesForceWipe: false,
+      time: "18:00",
+      timeZone: "Europe/London",
+      timeZoneWasDefault: true,
+      repeat: "weekly",
+      postBefore: "1d",
+      name: "Main Wipe",
+      description: "",
+      askLateReason: false,
+      askDeclinedReason: false,
+    })).toContain("**Timezone:** Europe/London (default)");
+  });
+
   it("parses the wipe react message state from embeds and buttons", () => {
     const state = __testables.parseWipeReactMessage({
       embeds: [
