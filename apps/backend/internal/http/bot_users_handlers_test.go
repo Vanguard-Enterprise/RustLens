@@ -87,7 +87,7 @@ func TestEnsureAppUser_CreatesThenReturnsExisting(t *testing.T) {
 }
 
 func TestEnsureAppUser_RejectsInvalidSnowflake(t *testing.T) {
-	h := newEnsureTestHandler(t)
+	h := &Handler{}
 
 	body, _ := json.Marshal(map[string]any{
 		"discordId":  "not-a-snowflake",
