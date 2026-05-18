@@ -405,6 +405,25 @@ export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<Admin
 	);
 }
 
+export async function getAdminMembers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	if (params.status) sp.set("status", params.status);
+	if (params.discord) sp.set("discord", params.discord);
+	if (params.steam) sp.set("steam", params.steam);
+	if (params.sort) sp.set("sort", params.sort);
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	// Backend ignores `role` for /admin/members — members have no admin roles
+	// by definition. Drop it from the querystring entirely.
+	const qs = sp.toString();
+	return backendFetch<AdminUsersPage>(
+		`/api/app/admin/members${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
 export async function getAdminGuilds(params: AdminGuildsQuery = {}): Promise<AdminGuildsPage> {
 	const sp = new URLSearchParams();
 	if (params.q) sp.set("q", params.q);
