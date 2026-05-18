@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { ComponentType } from "../builders/index.js";
 import { __testables } from "./wipereact.js";
 
+function modalInteraction(values: Record<string, unknown>) {
+  return {
+    fields: {
+      getField: (customId: string) => ({ value: values[customId], values: values[customId] }),
+      fields: new Map(),
+    },
+    components: [],
+  } as any;
+}
+
 describe("wipereact command", () => {
   it("builds the create modal with timezone input and checkbox options", () => {
     const modal = __testables.buildWipeReactModal("wipereact_create_modal").toJSON();
@@ -83,7 +93,7 @@ describe("wipereact command", () => {
   });
 
   it("builds a gray continue button for invalid modal retries", () => {
-    const rows = __testables.createModalRetryButton("draft-1").map((row) => row.toJSON());
+    const rows = __testables.createModalRetryButtons("draft-1").map((row) => row.toJSON());
 
     expect(rows[0]?.type).toBe(1);
     expect(rows[0]?.components[0]).toMatchObject({
@@ -92,6 +102,18 @@ describe("wipereact command", () => {
       label: "Continue",
       emoji: { name: "📝" },
       style: 2,
+    });
+  });
+
+  it("builds a green Force Wipe defaults button when requested", () => {
+    const rows = __testables.createModalRetryButtons("draft-1", true).map((row) => row.toJSON());
+
+    expect(rows[0]?.components[1]).toMatchObject({
+      type: 2,
+      custom_id: "wipereact_force_defaults:draft-1",
+      label: "Use Force Wipe Defaults",
+      emoji: { name: "✅" },
+      style: 3,
     });
   });
 
@@ -286,6 +308,49 @@ describe("wipereact command", () => {
       askLateReason: false,
       askDeclinedReason: false,
     })).toContain("**Timezone:** Europe/London (default)");
+  });
+
+  it("uses the fixed Force Wipe time and timezone when time fields are blank", () => {
+    expect(__testables.validateScheduleModalSubmission(modalInteraction({
+      wipereact_schedule_days: ["force_wipe"],
+      wipereact_schedule_time: "",
+      wipereact_schedule_timezone: "",
+      wipereact_schedule_repeat: [],
+      wipereact_schedule_post_before: ["1d"],
+    }))).toEqual({
+      config: {
+        days: [],
+        includesForceWipe: true,
+        time: "19:00",
+        timeZone: "Europe/London",
+        timeZoneWasDefault: false,
+        repeat: null,
+        postBefore: "1d",
+        name: "",
+        description: "",
+        askLateReason: false,
+        askDeclinedReason: false,
+      },
+      error: null,
+    });
+  });
+
+  it("rejects custom Force Wipe time and timezone values", () => {
+    expect(__testables.validateScheduleModalSubmission(modalInteraction({
+      wipereact_schedule_days: ["force_wipe"],
+      wipereact_schedule_time: "18:00",
+      wipereact_schedule_timezone: "",
+      wipereact_schedule_repeat: [],
+      wipereact_schedule_post_before: ["1d"],
+    })).error).toBe("Force Wipe always uses 19:00 Europe/London. Leave the time field blank.");
+
+    expect(__testables.validateScheduleModalSubmission(modalInteraction({
+      wipereact_schedule_days: ["force_wipe"],
+      wipereact_schedule_time: "",
+      wipereact_schedule_timezone: "London",
+      wipereact_schedule_repeat: [],
+      wipereact_schedule_post_before: ["1d"],
+    })).error).toBe("Force Wipe always uses 19:00 Europe/London. Leave the timezone field blank.");
   });
 
   it("parses the wipe react message state from embeds and buttons", () => {

@@ -76,6 +76,7 @@ const WIPEREACT_LATE_BUTTON_PREFIX = "wipereact_late:";
 const WIPEREACT_EDIT_BUTTON_CUSTOM_ID = "wipereact_edit";
 const WIPEREACT_EDIT_BUTTON_PREFIX = "wipereact_edit:";
 const WIPEREACT_MODAL_RETRY_BUTTON_PREFIX = "wipereact_modal_retry:";
+const WIPEREACT_FORCE_WIPE_DEFAULTS_BUTTON_PREFIX = "wipereact_force_defaults:";
 const WIPEREACT_TARGET_OPTION_NAME = "wipereact";
 const WIPEREACT_MESSAGE_OPTION_NAME = "message";
 const WIPEREACT_SCOPE_OPTION_NAME = "scope";
@@ -107,6 +108,8 @@ const WIPEREACT_SCHEDULE_OPTION_ASK_DECLINED_REASON = "ask_declined_reason";
 const SCHEDULE_DRAFT_TTL_MS = 15 * 60 * 1000;
 const MODAL_RETRY_DRAFT_TTL_MS = 15 * 60 * 1000;
 const SCHEDULE_FORCE_WIPE_VALUE = "force_wipe";
+const FORCE_WIPE_TIME = "19:00";
+const FORCE_WIPE_TIMEZONE = "Europe/London";
 const SCHEDULE_DAY_OPTIONS = [
   { label: "Monday", value: "monday" },
   { label: "Tuesday", value: "tuesday" },
@@ -1003,6 +1006,10 @@ function parseScheduleTime(value: string): { hours: number; minutes: number } | 
   return { hours, minutes };
 }
 
+function validPostBeforeValue(value: string | null | undefined): value is string {
+  return SCHEDULE_POST_BEFORE_OPTIONS.some((option) => option.value === value);
+}
+
 function validateScheduleModalSubmission(
   interaction: ModalSubmitInteraction,
 ): { config: ScheduleWipeReactConfig; error: null } | { config: null; error: string } {
@@ -1029,7 +1036,10 @@ function validateScheduleModalSubmission(
   }
 
   const rawTime = getFieldValues(interaction, WIPEREACT_SCHEDULE_TIME_CUSTOM_ID)[0]?.trim() ?? "";
+  const rawTimeZone = getFieldValues(interaction, WIPEREACT_SCHEDULE_TIMEZONE_CUSTOM_ID)[0]?.trim() ?? "";
   let time: string | null = null;
+  let timeZone = FORCE_WIPE_TIMEZONE;
+  let timeZoneWasDefault = rawTimeZone.length === 0;
   if (hasRegularDays) {
     if (rawTime.length === 0) {
       return { config: null, error: "Time is required when a regular day is selected." };
@@ -1039,13 +1049,30 @@ function validateScheduleModalSubmission(
       return { config: null, error: "Time must be in HH:MM format (24-hour)." };
     }
     time = `${String(parsed.hours).padStart(2, "0")}:${String(parsed.minutes).padStart(2, "0")}`;
+
+    const timeZoneResult = resolveTimeZone(rawTimeZone);
+    if (timeZoneResult.error || !timeZoneResult.timeZone) {
+      return { config: null, error: timeZoneResult.error ?? "Timezone is invalid." };
+    }
+    timeZone = timeZoneResult.timeZone;
   }
 
-  const timeZoneResult = resolveTimeZone(
-    getFieldValues(interaction, WIPEREACT_SCHEDULE_TIMEZONE_CUSTOM_ID)[0],
-  );
-  if (timeZoneResult.error || !timeZoneResult.timeZone) {
-    return { config: null, error: timeZoneResult.error ?? "Timezone is invalid." };
+  if (includesForceWipe) {
+    if (rawTime.length > 0) {
+      return {
+        config: null,
+        error: `Force Wipe always uses ${FORCE_WIPE_TIME} ${FORCE_WIPE_TIMEZONE}. Leave the time field blank.`,
+      };
+    }
+    if (rawTimeZone.length > 0) {
+      return {
+        config: null,
+        error: `Force Wipe always uses ${FORCE_WIPE_TIME} ${FORCE_WIPE_TIMEZONE}. Leave the timezone field blank.`,
+      };
+    }
+    time = FORCE_WIPE_TIME;
+    timeZone = FORCE_WIPE_TIMEZONE;
+    timeZoneWasDefault = false;
   }
 
   const repeatValues = getFieldValues(interaction, WIPEREACT_SCHEDULE_REPEAT_CUSTOM_ID);
@@ -1060,13 +1087,18 @@ function validateScheduleModalSubmission(
     }
     repeat = repeatValues[0];
   }
+  if (includesForceWipe && repeatValues.length > 0) {
+    return {
+      config: null,
+      error: "Force Wipe is already monthly. Leave repeat blank.",
+    };
+  }
 
   const postBeforeValues = getFieldValues(interaction, WIPEREACT_SCHEDULE_POST_BEFORE_CUSTOM_ID);
   if (postBeforeValues.length === 0) {
     return { config: null, error: "When to post is required." };
   }
-  const validPostBeforeValues: Set<string> = new Set(SCHEDULE_POST_BEFORE_OPTIONS.map((option) => option.value));
-  if (!validPostBeforeValues.has(postBeforeValues[0])) {
+  if (!validPostBeforeValue(postBeforeValues[0])) {
     return { config: null, error: "Invalid post-before value." };
   }
 
@@ -1075,8 +1107,8 @@ function validateScheduleModalSubmission(
       days: regularDays,
       includesForceWipe,
       time,
-      timeZone: timeZoneResult.timeZone,
-      timeZoneWasDefault: (getFieldValues(interaction, WIPEREACT_SCHEDULE_TIMEZONE_CUSTOM_ID)[0]?.trim() ?? "").length === 0,
+      timeZone,
+      timeZoneWasDefault,
       repeat,
       postBefore: postBeforeValues[0],
       name: "",
@@ -1103,7 +1135,7 @@ function formatScheduleSummary(config: ScheduleWipeReactConfig) {
   }
 
   if (config.includesForceWipe) {
-    lines.push(`**Force Wipe:** First Thursday of the month at 19:00 Europe/London`);
+    lines.push(`**Force Wipe:** First Thursday of the month at ${FORCE_WIPE_TIME} ${FORCE_WIPE_TIMEZONE}`);
   }
 
   const postBeforeLabel = SCHEDULE_POST_BEFORE_OPTIONS.find(
@@ -1209,15 +1241,27 @@ function createScheduleConfirmButtons(draftId: string, disabled = false) {
   ];
 }
 
-function createModalRetryButton(draftId: string) {
-  return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
+function createModalRetryButtons(draftId: string, includeForceWipeDefaults = false) {
+  const buttons = [
+    new ButtonBuilder()
+      .setCustomId(`${WIPEREACT_MODAL_RETRY_BUTTON_PREFIX}${draftId}`)
+      .setLabel("Continue")
+      .setEmoji("📝")
+      .setStyle(ButtonStyle.Secondary),
+  ];
+
+  if (includeForceWipeDefaults) {
+    buttons.push(
       new ButtonBuilder()
-        .setCustomId(`${WIPEREACT_MODAL_RETRY_BUTTON_PREFIX}${draftId}`)
-        .setLabel("Continue")
-        .setEmoji("📝")
-        .setStyle(ButtonStyle.Secondary),
-    ),
+        .setCustomId(`${WIPEREACT_FORCE_WIPE_DEFAULTS_BUTTON_PREFIX}${draftId}`)
+        .setLabel("Use Force Wipe Defaults")
+        .setEmoji("✅")
+        .setStyle(ButtonStyle.Success),
+    );
+  }
+
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons),
   ];
 }
 
@@ -1375,10 +1419,39 @@ function readScheduleStepTwoModalValues(interaction: ModalSubmitInteraction): Sc
   };
 }
 
+function buildForceWipeDefaultScheduleConfig(
+  values: ScheduleModalValues,
+): { config: ScheduleWipeReactConfig; error: null } | { config: null; error: string } {
+  if (!values.includesForceWipe) {
+    return { config: null, error: "Force Wipe was not selected." };
+  }
+  if (!validPostBeforeValue(values.postBefore)) {
+    return { config: null, error: "When to post is required." };
+  }
+
+  return {
+    config: {
+      days: [],
+      includesForceWipe: true,
+      time: FORCE_WIPE_TIME,
+      timeZone: FORCE_WIPE_TIMEZONE,
+      timeZoneWasDefault: false,
+      repeat: null,
+      postBefore: values.postBefore,
+      name: "",
+      description: "",
+      askLateReason: false,
+      askDeclinedReason: false,
+    },
+    error: null,
+  };
+}
+
 async function replyWithModalRetry(
   interaction: ModalSubmitInteraction,
   message: string,
   draft: Omit<ModalRetryDraft, "userId" | "guildId" | "createdAt">,
+  options?: { includeForceWipeDefaults?: boolean },
 ) {
   if (!interaction.guildId) {
     await replyEphemeral(interaction, message);
@@ -1402,14 +1475,14 @@ async function replyWithModalRetry(
     await interaction.editReply({
       content: "",
       embeds: [embed],
-      components: createModalRetryButton(draftId),
+      components: createModalRetryButtons(draftId, options?.includeForceWipeDefaults ?? false),
     });
     return;
   }
 
   await interaction.reply({
     embeds: [embed],
-    components: createModalRetryButton(draftId),
+    components: createModalRetryButtons(draftId, options?.includeForceWipeDefaults ?? false),
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -2495,6 +2568,80 @@ export async function handleWipeReactButtonInteraction(interaction: ButtonIntera
     return processWipeReactAction(interaction, interaction.message, action.type);
   }
 
+  if (interaction.customId.startsWith(WIPEREACT_FORCE_WIPE_DEFAULTS_BUTTON_PREFIX)) {
+    const retryDraftId = interaction.customId.slice(WIPEREACT_FORCE_WIPE_DEFAULTS_BUTTON_PREFIX.length);
+    pruneExpiredModalRetryDrafts();
+    const retryDraft = modalRetryDrafts.get(retryDraftId);
+    if (
+      !retryDraft ||
+      retryDraft.kind !== "schedule" ||
+      retryDraft.userId !== interaction.user.id ||
+      retryDraft.guildId !== interaction.guildId
+    ) {
+      await replyEphemeral(interaction, "That form draft expired. Start again from the command.");
+      return true;
+    }
+
+    const result = buildForceWipeDefaultScheduleConfig(retryDraft.values);
+    if (result.error || !result.config) {
+      const embed = createEmbed()
+        .setTitle("Check your wipe react details")
+        .setDescription(result.error ?? "Invalid schedule configuration.");
+      await interaction.update({
+        content: "",
+        embeds: [embed],
+        components: createModalRetryButtons(retryDraftId),
+      });
+      return true;
+    }
+
+    let editScheduleId: number | null = null;
+    let existing: WipeReactSchedule | null = null;
+    if (retryDraft.customId.startsWith(WIPEREACT_SCHEDULE_EDIT_MODAL_PREFIX)) {
+      const parsedScheduleId = Number(retryDraft.customId.slice(WIPEREACT_SCHEDULE_EDIT_MODAL_PREFIX.length));
+      if (Number.isInteger(parsedScheduleId) && parsedScheduleId > 0) {
+        editScheduleId = parsedScheduleId;
+        existing = await getBackend().getWipeReactSchedule(
+          getWipeReactWorkerID(),
+          retryDraft.guildId,
+          parsedScheduleId,
+        ).catch(() => null);
+      }
+    }
+
+    modalRetryDrafts.delete(retryDraftId);
+    pruneExpiredScheduleDrafts();
+    const scheduleDraftId = randomUUID();
+    scheduleDrafts.set(scheduleDraftId, {
+      userId: interaction.user.id,
+      guildId: retryDraft.guildId,
+      config: {
+        ...result.config,
+        name: existing?.name ?? "",
+        description: existing?.description ?? "",
+        askLateReason: existing?.askLateReason ?? false,
+        askDeclinedReason: existing?.askDeclinedReason ?? false,
+      },
+      editScheduleId,
+      createdAt: Date.now(),
+    });
+
+    await interaction.update({
+      content: "Force Wipe defaults applied. Click continue to set the title, description, and options.",
+      embeds: [],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${WIPEREACT_SCHEDULE_CONTINUE_BUTTON_PREFIX}${scheduleDraftId}`)
+            .setLabel("Continue")
+            .setEmoji("⚙️")
+            .setStyle(ButtonStyle.Success),
+        ),
+      ],
+    });
+    return true;
+  }
+
   if (interaction.customId.startsWith(WIPEREACT_MODAL_RETRY_BUTTON_PREFIX)) {
     const draftId = interaction.customId.slice(WIPEREACT_MODAL_RETRY_BUTTON_PREFIX.length);
     pruneExpiredModalRetryDrafts();
@@ -2667,14 +2814,16 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
 
     const result = validateScheduleModalSubmission(interaction);
     if (result.error || !result.config) {
+      const values = readScheduleModalValues(interaction);
       await replyWithModalRetry(
         interaction,
         result.error ?? "Invalid schedule configuration.",
         {
           kind: "schedule",
           customId: WIPEREACT_SCHEDULE_MODAL_CUSTOM_ID,
-          values: readScheduleModalValues(interaction),
+          values,
         },
+        { includeForceWipeDefaults: values.includesForceWipe },
       );
       return true;
     }
@@ -2719,14 +2868,16 @@ export async function handleWipeReactModalSubmit(interaction: ModalSubmitInterac
 
     const result = validateScheduleModalSubmission(interaction);
     if (result.error || !result.config) {
+      const values = readScheduleModalValues(interaction);
       await replyWithModalRetry(
         interaction,
         result.error ?? "Invalid schedule configuration.",
         {
           kind: "schedule",
           customId: interaction.customId,
-          values: readScheduleModalValues(interaction),
+          values,
         },
+        { includeForceWipeDefaults: values.includesForceWipe },
       );
       return true;
     }
@@ -3131,7 +3282,7 @@ export const __testables = {
   buildSchedulePayload,
   buildScheduleStepTwoModal,
   buildScheduleWipeReactModal,
-  createModalRetryButton,
+  createModalRetryButtons,
   buildWipeReactEmbed,
   buildMissingReactantsEmbed,
   buildWipeReactModal,
@@ -3148,5 +3299,6 @@ export const __testables = {
   parseWipeReactMessage,
   resolveTimeZone,
   scheduleDrafts,
+  validateScheduleModalSubmission,
   wipeReactCommand,
 };
