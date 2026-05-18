@@ -56,7 +56,15 @@ func (r *RedisStore) MarkWorker(ctx context.Context, workerID string, ttl time.D
 }
 
 func (r *RedisStore) RefreshWorker(ctx context.Context, workerID string, ttl time.Duration) error {
-	return r.client.SetEx(ctx, workerHeartbeatPref+workerID, "1", ttl).Err()
+	// Re-SAdd to workersKey on every heartbeat: if a worker's TTL key ever
+	// expired (transient blip, GC pause, backend restart), ActiveWorkers would
+	// have SREM'd the worker from the set. Without this re-add a single missed
+	// heartbeat permanently removes the worker until the bot process restarts.
+	pipe := r.client.TxPipeline()
+	pipe.SAdd(ctx, workersKey, workerID)
+	pipe.SetEx(ctx, workerHeartbeatPref+workerID, "1", ttl)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (r *RedisStore) RemoveWorker(ctx context.Context, workerID string) error {

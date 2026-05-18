@@ -321,12 +321,14 @@ func (p *PostgresStore) GetCurrentUserByID(ctx context.Context, userID string) (
 	steamRows, err := p.pool.Query(ctx, `
 		SELECT DISTINCT sa.steam_id,
 			COALESCE(sa.bm_id, ''),
-			COALESCE(sa.bm_name, ''),
-			COALESCE(sa.avatar_image, ''),
+			COALESCE(bpc.bm_name, ''),
+			COALESCE(sac.avatar_image, ''),
 			sdl.type,
 			sdl.source
 		FROM steam_discord_links sdl
 		INNER JOIN steam_accounts sa ON sa.steam_id = sdl.steam_id
+		LEFT JOIN bm_profile_cache bpc ON bpc.bm_id = sa.bm_id
+		LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
 		WHERE sdl.discord_id = $1
 		ORDER BY sa.steam_id
 	`, current.DiscordAccount.ProviderAccountID)
