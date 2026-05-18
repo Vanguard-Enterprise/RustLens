@@ -8,8 +8,10 @@ import {
 	deleteAdminUser,
 	editAdminUser,
 	revokeAdminUserRole,
+	searchAdminUsers,
 	suspendAdminUser,
 	unsuspendAdminUser,
+	type AdminUserItem,
 	type BulkUserResult,
 	type BulkUserSubAction,
 	type EditUserPatch,
@@ -160,4 +162,11 @@ export async function bulkUserAction(
 	} catch (err) {
 		return { ok: false, error: (err as Error).message };
 	}
+}
+
+export async function searchUsersForGrantAction(
+	q: string,
+): Promise<AdminUserItem[]> {
+	await requirePermission("users.roles.assign");
+	return searchAdminUsers(q);
 }
