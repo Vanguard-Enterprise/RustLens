@@ -7,10 +7,19 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
+	"time"
 
 	"rustlens/backend/internal/config"
 )
+
+// freshTimestamp returns the current Unix timestamp as a string. The webhook
+// handler rejects timestamps outside a ±5 minute window so test signatures
+// must be re-signed against "now".
+func freshTimestamp() string {
+	return strconv.FormatInt(time.Now().Unix(), 10)
+}
 
 func newHandlerWithDiscordKey(t *testing.T) (*Handler, ed25519.PrivateKey) {
 	t.Helper()
@@ -33,7 +42,7 @@ func TestDiscordWebhookEvents_AcksPingWithValidSignature(t *testing.T) {
 	h, priv := newHandlerWithDiscordKey(t)
 
 	body := []byte(`{"version":1,"application_id":"123","type":0}`)
-	ts := "1700000000"
+	ts := freshTimestamp()
 	sig := signed(t, priv, ts, body)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/discord/webhook-events", bytes.NewReader(body))
@@ -101,7 +110,7 @@ func TestDiscordWebhookEvents_IgnoresGuildInstallAuthorizedEvent(t *testing.T) {
 			        "guild":{"id":"999","name":"g","icon":null}}
 		}
 	}`)
-	ts := "1700000001"
+	ts := freshTimestamp()
 	sig := signed(t, priv, ts, body)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/discord/webhook-events", bytes.NewReader(body))
