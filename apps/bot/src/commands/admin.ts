@@ -2,8 +2,8 @@ import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "../backend-client.js";
 import { loadConfig } from "../config.js";
-import { hasGuildAdminAccess } from "../guild-settings.js";
-import { createEmbed } from "../shared.js";
+import { fetchGuildSettings, hasGuildAdminAccess, resolveConfiguredGuildChannel } from "../guild-settings.js";
+import { createEmbed, logDiscordCatch } from "../shared.js";
 import { resolveSteamInputErrorMessage } from "../steam-input.js";
 
 export const ADMIN_COMMAND_NAME = "admin";
@@ -77,6 +77,91 @@ function buildAdminSteamEmbed(title: string, description: string) {
   return createEmbed()
     .setTitle(title)
     .setDescription(description);
+}
+
+function buildAdminSetSteamLogEmbed(
+  interaction: ChatInputCommandInteraction,
+  targetUserId: string,
+  steamId: string,
+  bmId: string | null,
+  replacedSteamIds: string[],
+) {
+  const embed = createEmbed()
+    .setTitle("Steam account linked by admin")
+    .setAuthor({
+      name: interaction.user.tag,
+      iconURL: interaction.user.displayAvatarURL({ size: 128 }),
+    })
+    .addFields(
+      { name: "User", value: `<@${targetUserId}>`, inline: true },
+      { name: "Steam ID", value: `\`${steamId}\``, inline: true },
+      { name: "Admin", value: `<@${interaction.user.id}>`, inline: true },
+    );
+
+  if (bmId) {
+    embed.addFields({ name: "BM ID", value: `\`${bmId}\``, inline: true });
+  }
+
+  if (replacedSteamIds.length > 0) {
+    embed.addFields({
+      name: "Replaced",
+      value: replacedSteamIds.map((id) => `\`${id}\``).join(", "),
+      inline: false,
+    });
+  }
+
+  return embed;
+}
+
+function buildAdminRemoveSteamLogEmbed(
+  interaction: ChatInputCommandInteraction,
+  targetUserId: string,
+  removedSteamIds: string[],
+) {
+  return createEmbed()
+    .setTitle("Steam account removed by admin")
+    .setAuthor({
+      name: interaction.user.tag,
+      iconURL: interaction.user.displayAvatarURL({ size: 128 }),
+    })
+    .addFields(
+      { name: "User", value: `<@${targetUserId}>`, inline: true },
+      { name: "Admin", value: `<@${interaction.user.id}>`, inline: true },
+      {
+        name: "Removed Steam ID" + (removedSteamIds.length === 1 ? "" : "s"),
+        value: removedSteamIds.map((id) => `\`${id}\``).join(", "),
+        inline: false,
+      },
+    );
+}
+
+async function sendAdminSteamLog(
+  interaction: ChatInputCommandInteraction,
+  embed: EmbedBuilder,
+  action: string,
+) {
+  if (!interaction.guildId || !interaction.guild) {
+    return;
+  }
+
+  const settings = await fetchGuildSettings(interaction.guildId).catch(logDiscordCatch(`fetch /admin ${action} linking log settings`, null, {
+    guildId: interaction.guildId,
+    discordId: interaction.user.id,
+  }));
+  if (!settings?.linkingLogChannelId) {
+    return;
+  }
+
+  const channel = await resolveConfiguredGuildChannel(interaction.guild, settings.linkingLogChannelId);
+  if (!channel?.isTextBased() || !("send" in channel)) {
+    return;
+  }
+
+  await channel.send({ embeds: [embed] }).catch(logDiscordCatch(`send /admin ${action} linking log`, undefined, {
+    guildId: interaction.guildId,
+    channelId: channel.id,
+    discordId: interaction.user.id,
+  }));
 }
 
 async function replyEphemeralEmbed(
@@ -197,8 +282,9 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
       }
     }
 
+    let removed: { steamId: string }[] = [];
     try {
-      await removeGuildSteamLinks(interaction.guildId, targetUser.id);
+      removed = await removeGuildSteamLinks(interaction.guildId, targetUser.id);
       await getBackend().createGuildLink(getWorkerID(), interaction.guildId, targetUser.id, steamID);
     } catch {
       await replyEphemeralEmbed(
@@ -207,6 +293,19 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
       );
       return true;
     }
+
+    const steamAccount = await getBackend().getSteamAccount(getWorkerID(), steamID).catch(() => null);
+    await sendAdminSteamLog(
+      interaction,
+      buildAdminSetSteamLogEmbed(
+        interaction,
+        targetUser.id,
+        steamID,
+        steamAccount?.bmId ?? null,
+        removed.map((link) => link.steamId).filter((id) => id !== steamID),
+      ),
+      "setsteam",
+    );
 
     await replyEphemeralEmbed(
       interaction,
@@ -236,6 +335,16 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
       );
       return true;
     }
+
+    await sendAdminSteamLog(
+      interaction,
+      buildAdminRemoveSteamLogEmbed(
+        interaction,
+        targetUser.id,
+        removed.map((link) => link.steamId),
+      ),
+      "removesteam",
+    );
 
     await replyEphemeralEmbed(
       interaction,
