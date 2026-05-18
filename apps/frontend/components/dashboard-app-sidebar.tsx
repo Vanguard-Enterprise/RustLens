@@ -34,6 +34,7 @@ import {
 	SearchIcon,
 	ServerIcon,
 	Settings2Icon,
+	UserIcon,
 	UsersIcon,
 	UsersRoundIcon,
 } from "lucide-react";
@@ -190,6 +191,16 @@ export function DashboardAppSidebar({
 											isActive:
 												pathname === "/admin/user-installs" ||
 												pathname.startsWith("/admin/user-installs/"),
+										}]
+									: []),
+								...(permissions.includes("users.read")
+									? [{
+											title: "Members",
+											path: "/admin/members",
+											icon: UserIcon,
+											isActive:
+												pathname === "/admin/members" ||
+												pathname.startsWith("/admin/members/"),
 										}]
 									: []),
 							]}
