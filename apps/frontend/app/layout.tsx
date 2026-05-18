@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Fraunces, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -29,11 +30,14 @@ export const metadata: Metadata = {
 		"Discord-first operating layer for Rust communities managing tracked servers, BattleMetrics visibility, and wipe coordination.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
 	children,
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
+	// Read the per-request CSP nonce injected by middleware.ts. Both inline
+	// scripts below must carry it so they execute under 'strict-dynamic'.
+	const nonce = (await headers()).get("x-nonce") ?? undefined;
 	return (
 		<html
 			className={`${bodyFont.variable} ${monoFont.variable} ${headingFont.variable} h-full antialiased`}
@@ -42,12 +46,14 @@ export default function RootLayout({
 		>
 			<body className="min-h-full flex flex-col">
 				<script
+					nonce={nonce}
 					// biome-ignore lint/security/noDangerouslySetInnerHtml: inline guard runs before hydration
 					dangerouslySetInnerHTML={{
 						__html: `(()=>{try{var n=performance.getEntriesByType('navigation')[0];if(n&&n.type==='back_forward'&&!sessionStorage.getItem('__bfReloaded')){sessionStorage.setItem('__bfReloaded','1');location.reload();}else{sessionStorage.removeItem('__bfReloaded');}addEventListener('pageshow',function(e){if(e.persisted){location.reload();}});}catch(_){}})();`,
 					}}
 				/>
 				<script
+					nonce={nonce}
 					// biome-ignore lint/security/noDangerouslySetInnerHtml: inline pointer tracker runs before hydration
 					dangerouslySetInnerHTML={{
 						__html: `(()=>{try{var r=document.documentElement;var x=-9999,y=-9999,t=0;r.style.setProperty('--mx','-9999px');r.style.setProperty('--my','-9999px');var f=function(){r.style.setProperty('--mx',x+'px');r.style.setProperty('--my',y+'px');t=0;};addEventListener('mousemove',function(e){x=e.clientX;y=e.clientY;if(!t)t=requestAnimationFrame(f);},{passive:true});document.addEventListener('mouseleave',function(){x=-9999;y=-9999;if(!t)t=requestAnimationFrame(f);});}catch(_){}})();`,
