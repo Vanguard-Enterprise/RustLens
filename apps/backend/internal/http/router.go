@@ -66,7 +66,8 @@ func NewRouter(
 	if publisher == nil {
 		publisher = events.NopPublisher{}
 	}
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher)
+	appAuthRepo := appauth.NewRepo(postgres.Pool())
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher, appAuthRepo)
 
 	apiKeyStore := store.NewAPIKeyStore(postgres.Pool())
 	headers := clientip.Headers{
@@ -225,7 +226,6 @@ func NewRouter(
 		r.Get("/guilds/{guildID}/track-groups/{groupID}/analytics", handler.GetTrackGroupAnalytics)
 	})
 
-	appAuthRepo := appauth.NewRepo(postgres.Pool())
 	appAuthHandler := appauth.NewHandler(appAuthRepo)
 	requireAppSecret := appauth.RequireAppSecret(cfg.AppAPIInternalSecret)
 	requireSession := appauth.RequireSession(cfg.AppSessionSecret, postgres.Pool())
