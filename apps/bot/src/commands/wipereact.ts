@@ -1208,6 +1208,11 @@ function createModalRetryButton(draftId: string) {
 
 function formatScheduleChoiceName(schedule: WipeReactSchedule) {
   const parts: string[] = [];
+  const trimmedName = schedule.name.trim();
+  if (trimmedName.length > 0) {
+    parts.push(trimmedName);
+  }
+  parts.push(`#${schedule.id}`);
   if (schedule.days.length > 0) {
     const dayLabels = schedule.days.map(
       (day) => SCHEDULE_DAY_OPTIONS.find((option) => option.value === day)?.label ?? day,
@@ -1220,7 +1225,10 @@ function formatScheduleChoiceName(schedule: WipeReactSchedule) {
   if (schedule.time) {
     parts.push(schedule.time);
   }
-  const label = `#${schedule.id} | ${parts.join(" | ")}`;
+  if (schedule.timeZone) {
+    parts.push(schedule.timeZone);
+  }
+  const label = parts.join(" | ");
   return label.length <= 100 ? label : `${label.slice(0, 97)}...`;
 }
 
@@ -1750,7 +1758,7 @@ function formatWipeReactChoiceName(state: WipeReactMessageState) {
     minute: "2-digit",
     hour12: false,
   }).format(new Date(state.scheduledUnix * 1000));
-  const label = `${state.name} | ${dateLabel}`;
+  const label = `${state.name} | ${dateLabel} | ${state.timeZone}`;
   return label.length <= 100 ? label : `${label.slice(0, 97)}...`;
 }
 
@@ -2145,7 +2153,12 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
       ? await getPersistedWipeReact(interaction.guildId, selectedMessageId).catch(() => null)
       : pickDefaultNotReactedWipeReact(await listActiveWipeReacts(interaction.guildId).catch(() => []));
     if (!record) {
-      await replyEphemeral(interaction, "That wipe react could not be found.");
+      await replyEphemeral(
+        interaction,
+        selectedMessageId
+          ? "That wipe react could not be found."
+          : "No active wipe reacts found. Create one with /wipereact create.",
+      );
       return true;
     }
 
@@ -3085,6 +3098,7 @@ export const __testables = {
   createWipeReactButtons,
   formatScheduleChoiceName,
   formatScheduleSummary,
+  formatWipeReactChoiceName,
   formatTimestampForInput,
   getUserReactionType,
   parseActionButton,

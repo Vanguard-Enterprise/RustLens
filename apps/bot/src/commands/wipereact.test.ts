@@ -114,6 +114,42 @@ describe("wipereact command", () => {
     expect((reactGroup?.options ?? []).map((option: any) => option.name)).toEqual(["add", "remove"]);
   });
 
+  it("includes timezone in wipe react autocomplete labels", () => {
+    expect(__testables.formatWipeReactChoiceName({
+      name: "Friday Wipe",
+      description: "",
+      timeZone: "Europe/London",
+      scheduledUnix: 1774557951,
+      creatorId: "123",
+      askLateReason: false,
+      askDeclinedReason: false,
+      acceptedUserIds: [],
+      declinedUserIds: [],
+      lateUserIds: [],
+      embedTimestamp: "2026-03-02T20:44:18.917Z",
+    })).toContain("Europe/London");
+  });
+
+  it("includes schedule names and timezones in schedule autocomplete labels", () => {
+    expect(__testables.formatScheduleChoiceName({
+      id: 12,
+      guildId: "1",
+      channelId: "2",
+      days: ["friday"],
+      includesForceWipe: false,
+      time: "18:00",
+      timeZone: "Europe/London",
+      repeat: "weekly",
+      postBefore: "1d",
+      name: "Main Wipe",
+      description: "",
+      askLateReason: false,
+      askDeclinedReason: false,
+      createdBy: "3",
+      lastPostedForUnix: 0,
+    })).toBe("Main Wipe | #12 | Friday | 18:00 | Europe/London");
+  });
+
   it("parses flexible date and time formats", () => {
     const now = new Date(Date.UTC(2026, 2, 28, 12, 0, 0, 0));
 
