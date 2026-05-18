@@ -175,7 +175,12 @@ export async function setSession(session: SessionUser) {
 	cookieStore.set(SESSION_COOKIE, serializeSession(session), {
 		httpOnly: true,
 		sameSite: "lax",
-		secure: process.env.NODE_ENV === "production",
+		// Always Secure on the server side. Next dev over http://localhost
+		// still accepts Secure cookies (Chrome treats localhost as secure),
+		// so gating this on NODE_ENV opened a window where a staging build
+		// served behind HTTPS but running with NODE_ENV !== "production"
+		// would ship the session cookie without the Secure flag.
+		secure: true,
 		path: "/",
 		maxAge: SESSION_TTL_SECONDS,
 	});

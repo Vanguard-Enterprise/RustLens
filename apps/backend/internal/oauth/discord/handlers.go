@@ -100,6 +100,7 @@ func setShortCookie(w http.ResponseWriter, name, value string) {
 		Path:     "/",
 		MaxAge:   CookieMaxAgeSeconds,
 		HttpOnly: true,
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -233,6 +234,7 @@ func (h *Handler) mintAndRedirect(w http.ResponseWriter, r *http.Request, userID
 		Path:     "/",
 		MaxAge:   60 * 60 * 24 * 14,
 		HttpOnly: true,
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, h.frontendURL(target), http.StatusFound)
@@ -245,6 +247,7 @@ func clearCookie(w http.ResponseWriter, name string) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
