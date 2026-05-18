@@ -133,7 +133,7 @@ export function UsersPage({
 					onChange={updateQuery}
 				/>
 				{canAssignRoles ? (
-					<Button size="sm" onClick={() => setAddOpen(true)}>
+					<Button onClick={() => setAddOpen(true)}>
 						<UserPlusIcon className="size-4" />
 						Add user
 					</Button>
