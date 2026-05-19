@@ -44,6 +44,7 @@ import {
   resolveConfiguredGuildChannel,
 } from "../guild-settings.js";
 import {
+  chunkRawMentionsCodeBlocks,
   createEmbed,
   FOOTER_TEXT,
   buildFooter,
@@ -77,6 +78,8 @@ const WIPEREACT_EDIT_BUTTON_CUSTOM_ID = "wipereact_edit";
 const WIPEREACT_EDIT_BUTTON_PREFIX = "wipereact_edit:";
 const WIPEREACT_MODAL_RETRY_BUTTON_PREFIX = "wipereact_modal_retry:";
 const WIPEREACT_FORCE_WIPE_DEFAULTS_BUTTON_PREFIX = "wipereact_force_defaults:";
+const WIPEREACT_NOT_REACTED_RAW_BUTTON_PREFIX = "wipereact_notreacted_raw:";
+const WIPEREACT_CLIPBOARD_EMOJI = "<:clipboard:1506366160235397262>";
 const WIPEREACT_TARGET_OPTION_NAME = "wipereact";
 const WIPEREACT_MESSAGE_OPTION_NAME = "message";
 const WIPEREACT_SCOPE_OPTION_NAME = "scope";
@@ -1730,6 +1733,43 @@ function buildMissingReactantsEmbed(
     .addFields(...fields);
 }
 
+async function handleNotReactedRawButton(interaction: ButtonInteraction) {
+  const ownerId = interaction.customId.slice(WIPEREACT_NOT_REACTED_RAW_BUTTON_PREFIX.length);
+  if (interaction.user.id !== ownerId) {
+    await replyEphemeral(interaction, "Only the user who ran /wipereact notreacted can use this button.");
+    return;
+  }
+
+  const usersField = interaction.message.embeds[0]?.fields?.find((field) => field.name === "Users");
+  const userIds = usersField
+    ? [...usersField.value.matchAll(/<@!?(\d+)>/g)].map((match) => match[1])
+    : [];
+
+  if (userIds.length === 0) {
+    await replyEphemeral(interaction, "No missing reactants to copy.");
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const chunks = chunkRawMentionsCodeBlocks(userIds);
+  await interaction.editReply({ content: chunks[0] });
+  for (let index = 1; index < chunks.length; index += 1) {
+    await interaction.followUp({ content: chunks[index], flags: MessageFlags.Ephemeral });
+  }
+}
+
+function buildNotReactedRawButtons(ownerId: string) {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${WIPEREACT_NOT_REACTED_RAW_BUTTON_PREFIX}${ownerId}`)
+        .setLabel("View Raw")
+        .setEmoji(WIPEREACT_CLIPBOARD_EMOJI)
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
 function buildNotReactedDmEmbed(message: string, wipeReactURL: string) {
   return createEmbed()
     .setTitle("You have not reacted to the wipe react")
@@ -2347,7 +2387,7 @@ export async function handleWipeReactChatInput(interaction: ChatInputCommandInte
 
     await interaction.editReply({
       embeds: [buildMissingReactantsEmbed(toWipeReactState(record), missingUserIds, messageStatus)],
-      components: [],
+      components: missingUserIds.length > 0 ? buildNotReactedRawButtons(interaction.user.id) : [],
     });
     return true;
   }
@@ -2523,6 +2563,11 @@ export async function handleWipeReactAutocomplete(interaction: AutocompleteInter
 }
 
 export async function handleWipeReactButtonInteraction(interaction: ButtonInteraction) {
+  if (interaction.customId.startsWith(WIPEREACT_NOT_REACTED_RAW_BUTTON_PREFIX)) {
+    await handleNotReactedRawButton(interaction);
+    return true;
+  }
+
   const action = parseActionButton(interaction.customId);
   if (action) {
     if (!interaction.guildId) {

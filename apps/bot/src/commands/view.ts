@@ -17,7 +17,13 @@ import { loadConfig } from "../config.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "../embed-paginator.js";
 import { getGuildMembers } from "../guild-member-cache.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
-import { createEmbed, buildFooter, FOOTER_TEXT, RUSTLENS_EMBED_COLOR } from "../shared.js";
+import {
+  chunkRawMentionsCodeBlocks,
+  createEmbed,
+  buildFooter,
+  FOOTER_TEXT,
+  RUSTLENS_EMBED_COLOR,
+} from "../shared.js";
 import {
   resolveSteamInputErrorMessage,
   resolveSteamProfileInput,
@@ -31,7 +37,6 @@ const VIEW_NOSTEAM_SUBCOMMAND = "nosteam";
 const VIEW_ALL_PAGE_SIZE = 20;
 const VIEW_ALL_PAGE_CUSTOM_ID_PREFIX = "view:all:page:";
 const VIEW_NOSTEAM_RAW_CUSTOM_ID_PREFIX = "view:nosteam:raw:";
-const DISCORD_MESSAGE_MAX_LENGTH = 2000;
 
 const discordMentionPattern = /^<@!?(\d{16,20})>$/;
 const VIEW_EMOJIS = {
@@ -605,33 +610,6 @@ function buildNoSteamRawButtons(ownerId: string) {
   ];
 }
 
-const CODE_BLOCK_WRAPPER_LENGTH = "```\n\n```".length;
-
-function chunkRawMentions(userIds: readonly string[], maxLength = DISCORD_MESSAGE_MAX_LENGTH) {
-  const innerLimit = maxLength - CODE_BLOCK_WRAPPER_LENGTH;
-  const chunks: string[] = [];
-  let current = "";
-  for (const id of userIds) {
-    const mention = `<@${id}>`;
-    const candidate = current.length === 0 ? mention : `${current}\n${mention}`;
-    if (candidate.length > innerLimit) {
-      if (current.length === 0) {
-        chunks.push(`\`\`\`\n${mention.slice(0, innerLimit)}\n\`\`\``);
-        current = "";
-      } else {
-        chunks.push(`\`\`\`\n${current}\n\`\`\``);
-        current = mention;
-      }
-    } else {
-      current = candidate;
-    }
-  }
-  if (current.length > 0) {
-    chunks.push(`\`\`\`\n${current}\n\`\`\``);
-  }
-  return chunks;
-}
-
 function sortMembers(left: GuildMember, right: GuildMember) {
   const leftName = left.displayName.toLocaleLowerCase();
   const rightName = right.displayName.toLocaleLowerCase();
@@ -935,7 +913,7 @@ async function handleViewNoSteamRawButton(interaction: ButtonInteraction, ownerI
     return;
   }
 
-  const chunks = chunkRawMentions(missingUserIds);
+  const chunks = chunkRawMentionsCodeBlocks(missingUserIds);
   await interaction.editReply({ content: chunks[0] });
   for (let index = 1; index < chunks.length; index += 1) {
     await interaction.followUp({ content: chunks[index], flags: MessageFlags.Ephemeral });

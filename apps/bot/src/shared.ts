@@ -39,6 +39,38 @@ export function logDiscordCatch<T>(
   };
 }
 
+export const DISCORD_MESSAGE_MAX_LENGTH = 2000;
+
+const CODE_BLOCK_WRAPPER_LENGTH = "```\n\n```".length;
+
+export function chunkRawMentionsCodeBlocks(
+  userIds: readonly string[],
+  maxLength = DISCORD_MESSAGE_MAX_LENGTH,
+) {
+  const innerLimit = maxLength - CODE_BLOCK_WRAPPER_LENGTH;
+  const chunks: string[] = [];
+  let current = "";
+  for (const id of userIds) {
+    const mention = `<@${id}>`;
+    const candidate = current.length === 0 ? mention : `${current}\n${mention}`;
+    if (candidate.length > innerLimit) {
+      if (current.length === 0) {
+        chunks.push(`\`\`\`\n${mention.slice(0, innerLimit)}\n\`\`\``);
+        current = "";
+      } else {
+        chunks.push(`\`\`\`\n${current}\n\`\`\``);
+        current = mention;
+      }
+    } else {
+      current = candidate;
+    }
+  }
+  if (current.length > 0) {
+    chunks.push(`\`\`\`\n${current}\n\`\`\``);
+  }
+  return chunks;
+}
+
 export function buildProOnlyFeatureEmbed() {
   return createEmbed()
     .setTitle("Pro required to use this feature")
