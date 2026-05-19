@@ -605,18 +605,21 @@ function buildNoSteamRawButtons(ownerId: string) {
   ];
 }
 
+const CODE_BLOCK_WRAPPER_LENGTH = "```\n\n```".length;
+
 function chunkRawMentions(userIds: readonly string[], maxLength = DISCORD_MESSAGE_MAX_LENGTH) {
+  const innerLimit = maxLength - CODE_BLOCK_WRAPPER_LENGTH;
   const chunks: string[] = [];
   let current = "";
   for (const id of userIds) {
     const mention = `<@${id}>`;
     const candidate = current.length === 0 ? mention : `${current}\n${mention}`;
-    if (candidate.length > maxLength) {
+    if (candidate.length > innerLimit) {
       if (current.length === 0) {
-        chunks.push(mention.slice(0, maxLength));
+        chunks.push(`\`\`\`\n${mention.slice(0, innerLimit)}\n\`\`\``);
         current = "";
       } else {
-        chunks.push(current);
+        chunks.push(`\`\`\`\n${current}\n\`\`\``);
         current = mention;
       }
     } else {
@@ -624,7 +627,7 @@ function chunkRawMentions(userIds: readonly string[], maxLength = DISCORD_MESSAG
     }
   }
   if (current.length > 0) {
-    chunks.push(current);
+    chunks.push(`\`\`\`\n${current}\n\`\`\``);
   }
   return chunks;
 }
