@@ -28,7 +28,6 @@ check_cmd node "Install Node.js LTS"
 check_cmd pnpm "Enable corepack and pnpm"
 check_cmd go "Install Go"
 check_cmd git "Install Git"
-check_cmd make "Install GNU make"
 
 if [[ $missing -ne 0 ]]; then
   echo "One or more required tools are missing."

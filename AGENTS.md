@@ -22,34 +22,38 @@ RustLens is a monorepo with three services:
 | `apps/frontend` | Next.js 16 (React 19, TypeScript, App Router, Tailwind v4, shadcn/ui) | Marketing site plus browser-authenticated user dashboard at `/dashboard` and internal ops dashboard at `/admin` |
 | `apps/bot` | Discord.js (TypeScript, ESM) | Sharded worker runtime |
 
-Orchestrated with **pnpm 10 workspaces** + **Turborepo** for the frontend and bot packages. The Go backend is outside the pnpm workspace graph but integrated via the root `dev:all` script and Makefile targets.
+Orchestrated with **pnpm 10 workspaces** + **Turborepo** for the frontend and bot packages. The Go backend is outside the pnpm workspace graph but integrated via root pnpm scripts (`dev`, `dev:backend`, `lint:all`, `test:all`, `build:all`).
 
 ## Common Commands
 
 All commands run from the repo root unless noted.
 
 ```bash
-make doctor          # Verify toolchain (Node, pnpm, Go, Docker, etc.)
-make setup           # pnpm install + go mod tidy + install Air
-make dev             # Start infra (Postgres, Redis, Traefik) + hot-reload backend, frontend, and bot
-make infra-up        # Start only infra containers
-make infra-down      # Stop infra containers
+pnpm run doctor      # Verify toolchain (Node, pnpm, Go, Docker, etc.)
+pnpm run setup       # pnpm install + go mod tidy + install Air
+pnpm dev             # Start infra (Postgres, Redis, Traefik) + hot-reload backend, frontend, and bot
+pnpm infra:up        # Start only infra containers
+pnpm infra:down      # Stop infra containers
 ```
+
+> `pnpm run` is required for `setup` and `doctor` because the unprefixed forms collide with pnpm built-in commands.
 
 ### Per-service dev
 
 ```bash
-make dev-backend     # Air hot-reload for Go backend
-make dev-frontend    # Next.js dev server for the landing app
-make dev-bot         # tsx watch for bot
+pnpm dev:backend     # Air hot-reload for Go backend
+pnpm dev:frontend    # Next.js dev server for the landing app
+pnpm dev:bot         # tsx watch for bot
 ```
 
 ### Lint / Test / Build
 
+`pnpm lint` / `pnpm test` / `pnpm build` cover the pnpm workspace (frontend + bot). The `:all` variants additionally run the Go backend's equivalent step.
+
 ```bash
-make lint            # pnpm lint (frontend + bot) + go vet
-make test            # pnpm test (frontend + bot) + go test
-make build           # pnpm build (frontend + bot) + go build
+pnpm lint:all        # pnpm lint (frontend + bot) + go vet
+pnpm test:all        # pnpm test (frontend + bot) + go test
+pnpm build:all       # pnpm build (frontend + bot) + go build
 ```
 
 ### Running a single app's tests

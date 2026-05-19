@@ -29,7 +29,6 @@ Check-Cmd "node" "Install Node.js LTS"
 Check-Cmd "pnpm" "Enable corepack and pnpm"
 Check-Cmd "go" "Install Go"
 Check-Cmd "git" "Install Git"
-Check-Cmd "make" "Install GNU make"
 
 if ($missing) {
   throw "One or more required developer tools are missing."
