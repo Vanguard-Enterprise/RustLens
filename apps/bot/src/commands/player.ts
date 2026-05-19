@@ -1,5 +1,5 @@
-import type { ButtonBuilder, ButtonInteraction, ChatInputCommandInteraction, Client, StringSelectMenuInteraction, User } from "discord.js";
-import { ActionRowBuilder, ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder, StringSelectMenuBuilder } from "discord.js";
+import type { ButtonInteraction, ChatInputCommandInteraction, Client, StringSelectMenuInteraction, User } from "discord.js";
+import { ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder, StringSelectMenuBuilder } from "discord.js";
 import {
   BackendClient,
   type SteamAccount,
@@ -170,7 +170,10 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
   const account = lookup.account;
   const profileResult = await fetchPlayerProfile(account.steamId);
   if (profileResult.kind === "private") {
-    await interaction.editReply({ embeds: [buildPrivateProfileEmbed(account.steamId, account.bmId)] });
+    await interaction.editReply({
+      embeds: [buildPrivateProfileEmbed(account.steamId, account.bmId)],
+      components: buildPrivateProfileButtons(account.steamId, account.bmId),
+    });
     return true;
   }
   if (profileResult.kind === "error") {
@@ -222,7 +225,10 @@ export async function handlePlayerSelectInteraction(interaction: StringSelectMen
   const account = lookup.account;
   const profileResult = await fetchPlayerProfile(account.steamId);
   if (profileResult.kind === "private") {
-    await interaction.editReply({ embeds: [buildPrivateProfileEmbed(account.steamId, account.bmId)] });
+    await interaction.editReply({
+      embeds: [buildPrivateProfileEmbed(account.steamId, account.bmId)],
+      components: buildPrivateProfileButtons(account.steamId, account.bmId),
+    });
     return true;
   }
   if (profileResult.kind === "error") {
@@ -302,6 +308,25 @@ function buildPrivateProfileEmbed(steamId: string, bmId: string | null) {
 
   embed.addFields({ name: "Information", value: info.join("\n") });
   return embed;
+}
+
+function buildPrivateProfileButtons(steamId: string, bmId: string | null) {
+  const trimmedSteam = steamId.trim();
+  const trimmedBm = (bmId ?? "").trim();
+  const linksId = steamIDPattern.test(trimmedSteam)
+    ? `player:links:${trimmedSteam}`
+    : trimmedBm
+    ? `player:links-bm:${trimmedBm}`
+    : "player:links:";
+
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(linksId)
+        .setEmoji("🔗")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
 }
 
 async function resolveLookupIdentifier(identifier: string) {
