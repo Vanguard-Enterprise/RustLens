@@ -30,6 +30,8 @@ const VIEW_ALL_SUBCOMMAND = "all";
 const VIEW_NOSTEAM_SUBCOMMAND = "nosteam";
 const VIEW_ALL_PAGE_SIZE = 20;
 const VIEW_ALL_PAGE_CUSTOM_ID_PREFIX = "view:all:page:";
+const VIEW_NOSTEAM_RAW_CUSTOM_ID_PREFIX = "view:nosteam:raw:";
+const DISCORD_MESSAGE_MAX_LENGTH = 2000;
 
 const discordMentionPattern = /^<@!?(\d{16,20})>$/;
 const VIEW_EMOJIS = {
@@ -45,6 +47,7 @@ const VIEW_EMOJIS = {
   official: "<:official:1487583814271242461>",
   build: "<:build:1487584253775450225>",
   rust: "<:rust:1444010153803382957>",
+  clipboard: "<:clipboard:1506366160235397262>",
 } as const;
 
 const RISK_EMOJIS = {
@@ -590,6 +593,42 @@ function buildNoSteamEmbed(userIds: readonly string[]) {
     .setDescription(description);
 }
 
+function buildNoSteamRawButtons(ownerId: string) {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${VIEW_NOSTEAM_RAW_CUSTOM_ID_PREFIX}${ownerId}`)
+        .setLabel("View Raw")
+        .setEmoji(VIEW_EMOJIS.clipboard)
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+function chunkRawMentions(userIds: readonly string[], maxLength = DISCORD_MESSAGE_MAX_LENGTH) {
+  const chunks: string[] = [];
+  let current = "";
+  for (const id of userIds) {
+    const mention = `<@${id}>`;
+    const candidate = current.length === 0 ? mention : `${current}\n${mention}`;
+    if (candidate.length > maxLength) {
+      if (current.length === 0) {
+        chunks.push(mention.slice(0, maxLength));
+        current = "";
+      } else {
+        chunks.push(current);
+        current = mention;
+      }
+    } else {
+      current = candidate;
+    }
+  }
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+  return chunks;
+}
+
 function sortMembers(left: GuildMember, right: GuildMember) {
   const leftName = left.displayName.toLocaleLowerCase();
   const rightName = right.displayName.toLocaleLowerCase();
@@ -737,6 +776,12 @@ async function handleViewAll(interaction: ChatInputCommandInteraction) {
 }
 
 export async function handleViewButtonInteraction(interaction: ButtonInteraction) {
+  const rawParsed = parseNoSteamRawCustomId(interaction.customId);
+  if (rawParsed) {
+    await handleViewNoSteamRawButton(interaction, rawParsed.ownerId);
+    return true;
+  }
+
   const parsed = parseViewAllPageCustomId(interaction.customId);
   if (!parsed) {
     return false;
@@ -825,7 +870,73 @@ async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
 
   await interaction.editReply({
     embeds: [buildNoSteamEmbed(missingUserIds)],
+    components: missingUserIds.length > 0 ? buildNoSteamRawButtons(interaction.user.id) : [],
   });
+}
+
+function parseNoSteamRawCustomId(customId: string) {
+  if (!customId.startsWith(VIEW_NOSTEAM_RAW_CUSTOM_ID_PREFIX)) {
+    return null;
+  }
+  const ownerId = customId.slice(VIEW_NOSTEAM_RAW_CUSTOM_ID_PREFIX.length);
+  if (ownerId.length === 0) {
+    return null;
+  }
+  return { ownerId };
+}
+
+async function handleViewNoSteamRawButton(interaction: ButtonInteraction, ownerId: string) {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) {
+    await interaction.reply({
+      content: "This button can only be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (interaction.user.id !== ownerId) {
+    await interaction.reply({
+      content: "Only the user who ran /view nosteam can use this button.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await interaction.reply({
+      content: "Only the configured admin role or administrators can use /view.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const backend = getBackend();
+  const workerId = getWorkerID();
+
+  const [members, links] = await Promise.all([
+    getGuildMembers(interaction.guild),
+    backend.listGuildLinks(workerId, interaction.guildId),
+  ]);
+
+  const linkedDiscordIds = new Set(links.items.map((link) => link.discordId));
+  const missingUserIds = [...members.values()]
+    .filter((member) => !member.user.bot)
+    .sort(sortMembers)
+    .filter((member) => !linkedDiscordIds.has(member.id))
+    .map((member) => member.id);
+
+  if (missingUserIds.length === 0) {
+    await interaction.editReply({ content: "No unlinked users." });
+    return;
+  }
+
+  const chunks = chunkRawMentions(missingUserIds);
+  await interaction.editReply({ content: chunks[0] });
+  for (let index = 1; index < chunks.length; index += 1) {
+    await interaction.followUp({ content: chunks[index], flags: MessageFlags.Ephemeral });
+  }
 }
 
 export const __testables = {
