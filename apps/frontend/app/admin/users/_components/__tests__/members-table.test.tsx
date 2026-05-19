@@ -86,6 +86,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(2)}
         canSuspend={false}
@@ -102,6 +103,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(0)}
         canSuspend={false}
@@ -115,6 +117,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(3)}
         canSuspend={false}
@@ -139,6 +142,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(3)}
         canSuspend={false}
@@ -156,6 +160,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(2)}
         canSuspend={false}
@@ -169,6 +174,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(3)}
         canSuspend={false}
@@ -195,6 +201,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(3)}
         canSuspend={false}
@@ -230,6 +237,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(3)}
         canSuspend
@@ -278,6 +286,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(2)}
         canSuspend
@@ -317,6 +326,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(2)}
         canSuspend
@@ -343,6 +353,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(2)}
         canSuspend={false}
@@ -365,6 +376,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(2)}
         canSuspend={false}
@@ -392,6 +404,7 @@ describe("MembersTable", () => {
     render(
       <MembersTable
         initialQuery=""
+        initialStatus="active"
         pageSizeOptions={[10, 20, 30, 40, 50]}
         data={fixturePage(2)}
         canSuspend

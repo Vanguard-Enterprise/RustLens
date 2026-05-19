@@ -10,13 +10,22 @@ import {
   ChevronsLeftIcon,
   ChevronsRightIcon,
   FileIcon,
+  FilterIcon,
   UserCheckIcon,
+  XIcon,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -36,13 +45,27 @@ import {
 import { toast } from "sonner";
 
 import { userAvatarUrl } from "@/lib/discord-cdn";
-import type { AdminUserItem, AdminUsersPage } from "@/lib/rustlens-api";
+import type {
+  AdminUserItem,
+  AdminUsersPage,
+  AdminUsersQuery,
+} from "@/lib/rustlens-api";
 
 import { bulkUserAction, suspendUserAction, unsuspendUserAction } from "../actions";
 import { SuspendDialog } from "./suspend-dialog";
 
+type MemberStatus = NonNullable<AdminUsersQuery["status"]>;
+
+const STATUSES: ReadonlyArray<MemberStatus> = [
+  "active",
+  "suspended",
+  "deleted",
+  "any",
+];
+
 type MembersTableProps = {
   initialQuery: string;
+  initialStatus: MemberStatus;
   pageSizeOptions: number[];
   data: AdminUsersPage;
   canSuspend: boolean;
@@ -90,6 +113,7 @@ function memberInitial(u: AdminUserItem): string {
 
 export function MembersTable({
   initialQuery,
+  initialStatus,
   pageSizeOptions,
   data,
   canSuspend,
@@ -201,10 +225,15 @@ export function MembersTable({
   const goToPage = (p: number) => pushParams({ page: String(p) });
   const setPageSize = (size: number) =>
     pushParams({ pageSize: String(size), page: null });
+  const setStatus = (s: MemberStatus) =>
+    pushParams({ status: s === "active" ? null : s, page: null });
+
+  const activeFilterCount = initialStatus !== "active" ? 1 : 0;
+  const hasActiveFilters = activeFilterCount > 0;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           placeholder="Search by username, global name, or Discord ID…"
           value={searchValue}
@@ -212,6 +241,53 @@ export function MembersTable({
           className="max-w-md"
           aria-label="Search members"
         />
+        <ButtonGroup>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <FilterIcon className="size-4" />
+                Filters
+                {hasActiveFilters ? (
+                  <Badge variant="secondary" className="ml-1 px-1.5">
+                    {activeFilterCount}
+                  </Badge>
+                ) : null}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80">
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium uppercase text-muted-foreground">
+                    Status
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {STATUSES.map((s) => (
+                      <Button
+                        key={s}
+                        variant={initialStatus === s ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setStatus(s)}
+                      >
+                        {s}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+          {hasActiveFilters ? (
+            <Button
+              variant="outline"
+              className="px-2"
+              aria-label="Clear filters"
+              title="Clear filters"
+              onClick={() => setStatus("active")}
+            >
+              <XIcon className="size-4" />
+            </Button>
+          ) : null}
+        </ButtonGroup>
       </div>
 
       {selectedIds.size > 0 ? (
