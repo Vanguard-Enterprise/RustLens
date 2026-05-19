@@ -17,7 +17,7 @@ import {
   resolveSteamInputErrorMessage,
   resolveSteamProfileInput,
 } from "../steam-input.js";
-import { buildProfileButtons, buildUserEmbed, fetchSteamProfileForView } from "./view.js";
+import { buildProfileButtons, buildUserEmbed } from "./view.js";
 import { hasProFeatureAccess, isWebsiteAdmin } from "../website-admin.js";
 
 export const PLAYER_COMMAND_NAME = "player";
@@ -169,8 +169,12 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
 
   const account = lookup.account;
   const profileResult = await fetchPlayerProfile(account.steamId);
-  if (profileResult.privateProfile) {
+  if (profileResult.kind === "private") {
     await interaction.editReply({ embeds: [buildPrivateProfileEmbed(account.steamId, account.bmId)] });
+    return true;
+  }
+  if (profileResult.kind === "error") {
+    await interaction.editReply({ content: "RustLens could not load that player's profile right now. Try again shortly." });
     return true;
   }
 
@@ -217,8 +221,12 @@ export async function handlePlayerSelectInteraction(interaction: StringSelectMen
 
   const account = lookup.account;
   const profileResult = await fetchPlayerProfile(account.steamId);
-  if (profileResult.privateProfile) {
+  if (profileResult.kind === "private") {
     await interaction.editReply({ embeds: [buildPrivateProfileEmbed(account.steamId, account.bmId)] });
+    return true;
+  }
+  if (profileResult.kind === "error") {
+    await interaction.editReply({ content: "RustLens could not load that player's profile right now. Try again shortly." });
     return true;
   }
 
@@ -250,17 +258,23 @@ export async function deferPlayerChatInput(interaction: ChatInputCommandInteract
   }
 }
 
-async function fetchPlayerProfile(steamId: string) {
+type PlayerProfileResult =
+  | { kind: "ok"; profile: SteamProfile }
+  | { kind: "private" }
+  | { kind: "error" };
+
+async function fetchPlayerProfile(steamId: string): Promise<PlayerProfileResult> {
   const { backend, workerId } = getBackend();
 
   try {
-    return { privateProfile: false as const, profile: await backend.getSteamProfile(workerId, steamId) };
+    const profile = await backend.getSteamProfile(workerId, steamId);
+    return { kind: "ok", profile };
   } catch (error) {
     if (isBmPrivateProfileError(error)) {
-      return { privateProfile: true as const, profile: null };
+      return { kind: "private" };
     }
-
-    return { privateProfile: false as const, profile: await fetchSteamProfileForView(steamId) };
+    console.error(`[bot] /player getSteamProfile failed for ${steamId}:`, error);
+    return { kind: "error" };
   }
 }
 

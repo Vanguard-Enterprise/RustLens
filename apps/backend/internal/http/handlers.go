@@ -2312,11 +2312,19 @@ func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID stri
 	fullProfile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, bmID)
 	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
 		// bmmatch resolved the linkage but BM doesn't see the player yet.
-		// Record the bare steam↔bm linkage so the bot doesn't 404; caches
-		// will warm on a later refresh once BM indexes the player.
+		// Record the bare steam↔bm linkage and warm the Steam-only cache so
+		// the immediately-following GetSteamProfile call doesn't have to do a
+		// cold Steam fetch under interaction latency. The BM cache stays empty
+		// until BM indexes the player; a later refresh will warm it.
 		bmIDCopy := bmID
-		if _, err := h.postgres.UpsertSteamAccount(ctx, steamID, &bmIDCopy); err != nil {
-			return store.SteamAccount{}, err
+		account, upsertErr := h.postgres.UpsertSteamAccount(ctx, steamID, &bmIDCopy)
+		if upsertErr != nil {
+			return store.SteamAccount{}, upsertErr
+		}
+		if steamCache, warmErr := h.refreshSteamOnlyCache(ctx, account); warmErr != nil {
+			log.Printf("[backend] resolveSteamAccountBySteamID steam-only warm error for %s: %v", steamID, warmErr)
+		} else if _, cacheErr := h.postgres.UpsertSteamAccountCache(ctx, steamCache); cacheErr != nil {
+			log.Printf("[backend] resolveSteamAccountBySteamID steam cache upsert error for %s: %v", steamID, cacheErr)
 		}
 		return h.postgres.GetSteamAccountBySteamID(ctx, steamID)
 	}

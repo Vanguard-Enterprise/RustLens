@@ -129,10 +129,6 @@ async function fetchSteamProfile(steamId: string): Promise<SteamProfile | null> 
   }
 }
 
-export async function fetchSteamProfileForView(steamId: string) {
-  return fetchSteamProfile(steamId);
-}
-
 function normalizeDiscordIdentifier(identifier: string) {
   const trimmed = identifier.trim();
   const mentionMatch = discordMentionPattern.exec(trimmed);
