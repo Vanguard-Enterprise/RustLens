@@ -38,7 +38,7 @@ import { toast } from "sonner";
 import { userAvatarUrl } from "@/lib/discord-cdn";
 import type { AdminUserItem, AdminUsersPage } from "@/lib/rustlens-api";
 
-import { suspendUserAction, unsuspendUserAction } from "../actions";
+import { bulkUserAction, suspendUserAction, unsuspendUserAction } from "../actions";
 import { SuspendDialog } from "./suspend-dialog";
 
 type MembersTableProps = {
@@ -55,6 +55,8 @@ type SuspendTarget = {
 };
 
 const SEARCH_DEBOUNCE_MS = 300;
+
+type BulkAction = "suspend" | "unsuspend";
 
 function formatRelative(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -96,9 +98,12 @@ export function MembersTable({
   const searchParams = useSearchParams();
   const [searchValue, setSearchValue] = React.useState(initialQuery);
   const [suspendTarget, setSuspendTarget] = React.useState<SuspendTarget | null>(null);
+  const [bulkAction, setBulkAction] = React.useState<BulkAction | null>(null);
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
 
+  // Clear selection when the data page changes (navigation/filter).
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedIds(new Set());
   }, [data]);
 
@@ -143,6 +148,26 @@ export function MembersTable({
     } catch {
       toast.error("Could not copy to clipboard");
     }
+  };
+
+  const runBulk = async (action: BulkAction, reason: string) => {
+    const ids = Array.from(selectedIds);
+    const res = await bulkUserAction(action, ids, {}, reason);
+    if (!res.ok) throw new Error(res.error);
+    const { succeeded, failed, results } = res.result;
+    const verb = action === "suspend" ? "suspended" : "unsuspended";
+    if (failed === 0) {
+      toast.success(`${succeeded} ${succeeded === 1 ? "user" : "users"} ${verb}`);
+      setSelectedIds(new Set());
+    } else {
+      const firstError = results.find((r) => !r.ok)?.error;
+      toast.warning(
+        `${succeeded} of ${succeeded + failed} ${verb}. ${failed} failed.`,
+        firstError ? { description: firstError } : undefined,
+      );
+      setSelectedIds(new Set(results.filter((r) => !r.ok).map((r) => r.userId)));
+    }
+    router.refresh();
   };
 
   const clearSelection = () => setSelectedIds(new Set());
@@ -197,6 +222,24 @@ export function MembersTable({
           <Button variant="ghost" size="sm" onClick={clearSelection}>
             Clear
           </Button>
+          {canSuspend ? (
+            <>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setBulkAction("suspend")}
+              >
+                Suspend
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBulkAction("unsuspend")}
+              >
+                Unsuspend
+              </Button>
+            </>
+          ) : null}
           <Button variant="outline" size="sm" onClick={copySelectedIds}>
             Copy IDs
           </Button>
@@ -328,22 +371,37 @@ export function MembersTable({
       </div>
 
       {canSuspend ? (
-        <SuspendDialog
-          open={suspendTarget !== null}
-          onOpenChange={(o) => {
-            if (!o) setSuspendTarget(null);
-          }}
-          mode={suspendTarget?.mode ?? "suspend"}
-          userId={suspendTarget?.userId ?? ""}
-          displayName={suspendTarget?.displayName ?? ""}
-          onConfirm={async (userId, reason) => {
-            const action =
-              suspendTarget?.mode === "unsuspend" ? unsuspendUserAction : suspendUserAction;
-            const res = await action(userId, reason);
-            if (!res.ok) throw new Error(res.error);
-            router.refresh();
-          }}
-        />
+        <>
+          <SuspendDialog
+            open={suspendTarget !== null}
+            onOpenChange={(o) => {
+              if (!o) setSuspendTarget(null);
+            }}
+            mode={suspendTarget?.mode ?? "suspend"}
+            userId={suspendTarget?.userId ?? ""}
+            displayName={suspendTarget?.displayName ?? ""}
+            onConfirm={async (userId, reason) => {
+              const action =
+                suspendTarget?.mode === "unsuspend" ? unsuspendUserAction : suspendUserAction;
+              const res = await action(userId, reason);
+              if (!res.ok) throw new Error(res.error);
+              router.refresh();
+            }}
+          />
+          <SuspendDialog
+            variant="bulk"
+            open={bulkAction !== null}
+            onOpenChange={(o) => {
+              if (!o) setBulkAction(null);
+            }}
+            mode={bulkAction ?? "suspend"}
+            count={selectedIds.size}
+            onConfirm={async (reason) => {
+              if (!bulkAction) return;
+              await runBulk(bulkAction, reason);
+            }}
+          />
+        </>
       ) : null}
 
       <div className="flex items-center gap-4">

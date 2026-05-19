@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MembersTable } from "../members-table";
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -20,10 +20,30 @@ vi.mock("sonner", () => ({
   },
 }));
 
+const bulkUser = vi.fn();
+const suspendUser = vi.fn();
+const unsuspendUser = vi.fn();
+
+vi.mock("../../actions", () => ({
+  suspendUserAction: (userId: string, reason: string) =>
+    suspendUser(userId, reason),
+  unsuspendUserAction: (userId: string, reason: string) =>
+    unsuspendUser(userId, reason),
+  bulkUserAction: (
+    action: string,
+    userIds: string[],
+    params: Record<string, unknown>,
+    reason: string,
+  ) => bulkUser(action, userIds, params, reason),
+}));
+
 beforeEach(() => {
   toastSuccess.mockReset();
   toastError.mockReset();
   toastWarning.mockReset();
+  bulkUser.mockReset();
+  suspendUser.mockReset();
+  unsuspendUser.mockReset();
 });
 
 function fixturePage(items: number) {
@@ -186,5 +206,153 @@ describe("MembersTable", () => {
     expect(writeText).toHaveBeenCalledWith("1000000000000000\n1000000000000002");
     await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
     expect(toastSuccess.mock.calls[0][0]).toMatch(/2 discord ids/i);
+  });
+
+  it("bulk suspend opens a dialog titled with the count and dispatches the action", async () => {
+    bulkUser.mockResolvedValue({
+      ok: true,
+      result: {
+        action: "suspend",
+        succeeded: 2,
+        failed: 0,
+        results: [
+          { userId: "usr_0", ok: true },
+          { userId: "usr_2", ok: true },
+        ],
+      },
+    });
+
+    render(
+      <MembersTable
+        initialQuery=""
+        pageSizeOptions={[10, 20, 30, 40, 50]}
+        data={fixturePage(3)}
+        canSuspend
+      />,
+    );
+
+    const rowChecks = screen.getAllByRole("checkbox", { name: /select row/i });
+    fireEvent.click(rowChecks[0]);
+    fireEvent.click(rowChecks[2]);
+
+    fireEvent.click(screen.getByRole("button", { name: /^suspend$/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: /suspend 2 users/i }),
+    ).toBeInTheDocument();
+
+    const reasonInput = screen.getByLabelText(/^reason$/i);
+    fireEvent.change(reasonInput, { target: { value: "spamming" } });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /^suspend$/i, hidden: false }),
+    );
+
+    await waitFor(() => expect(bulkUser).toHaveBeenCalledTimes(1));
+    expect(bulkUser).toHaveBeenCalledWith(
+      "suspend",
+      ["usr_0", "usr_2"],
+      {},
+      "spamming",
+    );
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+    expect(toastSuccess.mock.calls[0][0]).toMatch(/2 users suspended/i);
+  });
+
+  it("bulk unsuspend dispatches the unsuspend sub-action", async () => {
+    bulkUser.mockResolvedValue({
+      ok: true,
+      result: {
+        action: "unsuspend",
+        succeeded: 1,
+        failed: 0,
+        results: [{ userId: "usr_1", ok: true }],
+      },
+    });
+
+    render(
+      <MembersTable
+        initialQuery=""
+        pageSizeOptions={[10, 20, 30, 40, 50]}
+        data={fixturePage(2)}
+        canSuspend
+      />,
+    );
+
+    const rowChecks = screen.getAllByRole("checkbox", { name: /select row/i });
+    fireEvent.click(rowChecks[1]);
+
+    fireEvent.click(screen.getByRole("button", { name: /^unsuspend$/i }));
+    expect(
+      await screen.findByRole("heading", { name: /unsuspend 1 user/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /^unsuspend$/i }).at(-1)!,
+    );
+
+    await waitFor(() => expect(bulkUser).toHaveBeenCalledTimes(1));
+    expect(bulkUser).toHaveBeenCalledWith("unsuspend", ["usr_1"], {}, "");
+  });
+
+  it("partial bulk failures produce a warning toast", async () => {
+    bulkUser.mockResolvedValue({
+      ok: true,
+      result: {
+        action: "suspend",
+        succeeded: 1,
+        failed: 1,
+        results: [
+          { userId: "usr_0", ok: true },
+          { userId: "usr_1", ok: false, error: "already_suspended" },
+        ],
+      },
+    });
+
+    render(
+      <MembersTable
+        initialQuery=""
+        pageSizeOptions={[10, 20, 30, 40, 50]}
+        data={fixturePage(2)}
+        canSuspend
+      />,
+    );
+
+    const rowChecks = screen.getAllByRole("checkbox", { name: /select row/i });
+    fireEvent.click(rowChecks[0]);
+    fireEvent.click(rowChecks[1]);
+
+    fireEvent.click(screen.getByRole("button", { name: /^suspend$/i }));
+    fireEvent.change(screen.getByLabelText(/^reason$/i), {
+      target: { value: "spamming" },
+    });
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /^suspend$/i }).at(-1)!,
+    );
+
+    await waitFor(() => expect(toastWarning).toHaveBeenCalled());
+    expect(toastWarning.mock.calls[0][0]).toMatch(/1 of 2/i);
+  });
+
+  it("does not render bulk suspend buttons without canSuspend", () => {
+    render(
+      <MembersTable
+        initialQuery=""
+        pageSizeOptions={[10, 20, 30, 40, 50]}
+        data={fixturePage(2)}
+        canSuspend={false}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("checkbox", { name: /select row/i })[0],
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /^suspend$/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^unsuspend$/i }),
+    ).not.toBeInTheDocument();
   });
 });
