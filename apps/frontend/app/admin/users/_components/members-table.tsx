@@ -101,7 +101,8 @@ export function MembersTable({
   const [bulkAction, setBulkAction] = React.useState<BulkAction | null>(null);
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
 
-  // Clear selection when the data page changes (navigation/filter).
+  // Reset selection whenever the server-rendered data prop changes
+  // (pagination, search, page-size). The cascade is intentional.
   React.useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedIds(new Set());

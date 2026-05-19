@@ -3,8 +3,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { MembersTable } from "../members-table";
 
+const routerPush = vi.fn();
+const routerRefresh = vi.fn();
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push: routerPush, refresh: routerRefresh }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -44,6 +47,8 @@ beforeEach(() => {
   bulkUser.mockReset();
   suspendUser.mockReset();
   unsuspendUser.mockReset();
+  routerPush.mockReset();
+  routerRefresh.mockReset();
 });
 
 function fixturePage(items: number) {
@@ -354,5 +359,56 @@ describe("MembersTable", () => {
     expect(
       screen.queryByRole("button", { name: /^unsuspend$/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("clicking a row checkbox does not trigger row navigation", () => {
+    render(
+      <MembersTable
+        initialQuery=""
+        pageSizeOptions={[10, 20, 30, 40, 50]}
+        data={fixturePage(2)}
+        canSuspend={false}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("checkbox", { name: /select row/i })[0],
+    );
+
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it("calls router.refresh after a successful bulk suspend", async () => {
+    bulkUser.mockResolvedValue({
+      ok: true,
+      result: {
+        action: "suspend",
+        succeeded: 1,
+        failed: 0,
+        results: [{ userId: "usr_0", ok: true }],
+      },
+    });
+
+    render(
+      <MembersTable
+        initialQuery=""
+        pageSizeOptions={[10, 20, 30, 40, 50]}
+        data={fixturePage(2)}
+        canSuspend
+      />,
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("checkbox", { name: /select row/i })[0],
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^suspend$/i }));
+    fireEvent.change(screen.getByLabelText(/^reason$/i), {
+      target: { value: "spamming" },
+    });
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /^suspend$/i }).at(-1)!,
+    );
+
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1));
   });
 });
