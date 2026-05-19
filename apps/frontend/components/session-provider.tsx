@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 import type { CurrentUser } from "@/lib/rustlens-api";
 import { refreshCurrentUser } from "@/lib/session-actions";
@@ -29,13 +29,19 @@ export function SessionProvider({
 		setSnapshot(next);
 	}, []);
 
-	const value: SessionContextValue = {
-		user: snapshot?.user ?? null,
-		roles: snapshot?.user.roles ?? [],
-		adminRoles: snapshot?.adminRoles ?? [],
-		permissions: snapshot?.permissions ?? [],
-		refresh,
-	};
+	// Memoize the context value so consumers depending on `session` identity
+	// (notably the SSE-opening effect in SessionEvents) don't tear down and
+	// re-open the stream on every unrelated parent re-render.
+	const value = useMemo<SessionContextValue>(
+		() => ({
+			user: snapshot?.user ?? null,
+			roles: snapshot?.user.roles ?? [],
+			adminRoles: snapshot?.adminRoles ?? [],
+			permissions: snapshot?.permissions ?? [],
+			refresh,
+		}),
+		[snapshot, refresh],
+	);
 
 	return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

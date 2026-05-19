@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -77,7 +78,20 @@ func (h *Handler) SearchPlayers(w http.ResponseWriter, r *http.Request) {
 	includeOffline := r.URL.Query().Get("includeOffline") == "true"
 
 	kind := players.ClassifyQuery(q)
-	isAdmin := session != nil && len(session.AdminRoles) > 0
+	// Resolve admin live from rbac rather than from session.AdminRoles, which
+	// is baked into the cookie at sign-in and only refreshed when the
+	// frontend's sliding-TTL kicks in (up to 7 days). A demoted user kept
+	// name-search across all tracked servers until that refresh.
+	isAdmin := false
+	if userID != "" && h.rbacResolver != nil {
+		perms, err := h.rbacResolver.PermissionsForUser(r.Context(), userID)
+		if err != nil {
+			log.Printf("[backend] SearchPlayers permission lookup error for %s: %v", userID, err)
+			writeError(w, http.StatusInternalServerError, "permission_check_failed")
+			return
+		}
+		isAdmin = len(perms) > 0
+	}
 
 	if kind == players.KindName {
 		if !isAdmin {

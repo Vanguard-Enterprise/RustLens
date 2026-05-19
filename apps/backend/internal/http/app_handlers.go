@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/store"
 )
 
@@ -84,12 +85,21 @@ func currentUserToMap(current store.CurrentUser) map[string]any {
 }
 
 func requireAppActor(r *http.Request, postgres *store.PostgresStore) (store.AppUser, bool, int, string) {
-	session := appSessionFromContext(r.Context())
-	if session == nil || session.UserID == "" {
+	// Prefer the revocation-checked session attached by appauth.RequireSession;
+	// fall back to the lax appSessionContextKey only for routes that haven't
+	// been migrated yet (none today). RequireSession validates the session
+	// epoch + suspended/deleted state on every request.
+	var userID string
+	if s := appauth.SessionFromContext(r.Context()); s != nil {
+		userID = s.UserID
+	} else if s := appSessionFromContext(r.Context()); s != nil {
+		userID = s.UserID
+	}
+	if userID == "" {
 		return store.AppUser{}, false, http.StatusUnauthorized, "missing app session"
 	}
 
-	user, err := postgres.GetAppUserByID(r.Context(), session.UserID)
+	user, err := postgres.GetAppUserByID(r.Context(), userID)
 	if errors.Is(err, store.ErrAppUserNotFound) {
 		// Session signature is valid but the underlying user was deleted (or
 		// the DB was wiped). Treat this as an invalid session so the frontend

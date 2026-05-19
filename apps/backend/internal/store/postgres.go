@@ -57,7 +57,60 @@ func (p *PostgresStore) Ping(ctx context.Context) error {
 	return p.pool.Ping(ctx)
 }
 
+// applyMigration runs sql in a transaction iff schema_migrations has no row
+// for `version`. Records (version, name, applied_at) on success. Idempotent
+// across boots so destructive operations (DROP COLUMN, DROP TABLE, type
+// changes, data backfills that aren't safely re-runnable) execute exactly
+// once per database instead of every startup.
+//
+// Use this for any future destructive schema change. Pure
+// `CREATE/ALTER ... IF NOT EXISTS` blocks remain safe in the big EnsureSchema
+// Exec since they self-gate.
+func applyMigration(ctx context.Context, pool *pgxpool.Pool, version int, name, sql string) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("migration %d %q: begin: %w", version, name, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var exists bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`,
+		version,
+	).Scan(&exists); err != nil {
+		return fmt.Errorf("migration %d %q: lookup: %w", version, name, err)
+	}
+	if exists {
+		return tx.Commit(ctx)
+	}
+
+	if _, err := tx.Exec(ctx, sql); err != nil {
+		return fmt.Errorf("migration %d %q: exec: %w", version, name, err)
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO schema_migrations (version, name) VALUES ($1, $2)`,
+		version, name,
+	); err != nil {
+		return fmt.Errorf("migration %d %q: record: %w", version, name, err)
+	}
+	return tx.Commit(ctx)
+}
+
 func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
+	// Ensure the migration journal exists before anything else so applyMigration
+	// can record progress. Subsequent destructive migrations should call
+	// applyMigration(...) instead of inlining DROP COLUMN/DROP TABLE in the
+	// big idempotent block below.
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version    INTEGER PRIMARY KEY,
+			name       TEXT NOT NULL,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+	`); err != nil {
+		return fmt.Errorf("ensure schema_migrations: %w", err)
+	}
+
 	if _, err := p.pool.Exec(ctx, `
 		CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -412,6 +465,32 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 		ALTER TABLE outbound_proxies ADD COLUMN IF NOT EXISTS auto_disabled_at TIMESTAMPTZ;
+
+		-- Purge any legacy rows that inherited the '\x'::bytea default. By
+		-- definition they cannot be decrypted (zero-length ciphertext) so they
+		-- are useless and dangerous to keep in rotation. Then drop the empty
+		-- default and enforce a non-empty CHECK so a future code path that
+		-- omits ciphertext on insert fails loudly instead of silently parking
+		-- an undecryptable row.
+		DELETE FROM outbound_proxies
+		 WHERE octet_length(endpoint_ciphertext) = 0
+		    OR octet_length(endpoint_nonce) = 0;
+
+		ALTER TABLE outbound_proxies ALTER COLUMN endpoint_ciphertext DROP DEFAULT;
+		ALTER TABLE outbound_proxies ALTER COLUMN endpoint_nonce DROP DEFAULT;
+
+		DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM pg_constraint
+				 WHERE conname = 'outbound_proxies_ciphertext_nonempty'
+			) THEN
+				ALTER TABLE outbound_proxies
+				 ADD CONSTRAINT outbound_proxies_ciphertext_nonempty
+				 CHECK (octet_length(endpoint_ciphertext) > 0
+				    AND octet_length(endpoint_nonce) > 0);
+			END IF;
+		END $$;
 
 		CREATE INDEX IF NOT EXISTS outbound_proxies_enabled_idx
 		ON outbound_proxies (enabled, id);

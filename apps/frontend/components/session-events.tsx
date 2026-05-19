@@ -20,13 +20,16 @@ const REVOKED_NOTICE = {
  * server-pushed events to Sonner + session refresh + redirect. No DOM output.
  */
 export function SessionEvents() {
-	const session = useSession();
+	const { refresh } = useSession();
 	const router = useRouter();
 
+	// Depend on the stable `refresh` callback only — not the whole `session`
+	// object — so refreshing the snapshot doesn't tear down and re-open the
+	// EventSource (which would burn through the 5-connections-per-user cap).
 	useEffect(() => {
 		const close = openSessionEventStream({
 			async onRolesChanged() {
-				await session.refresh();
+				await refresh();
 				router.refresh();
 				toast.success("Your permissions were updated");
 			},
@@ -55,7 +58,7 @@ export function SessionEvents() {
 			},
 		});
 		return close;
-	}, [router, session]);
+	}, [router, refresh]);
 
 	return null;
 }
