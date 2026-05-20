@@ -2439,6 +2439,110 @@ func buildOpenAPIDocument() map[string]any {
 					},
 				},
 			},
+			"/api/internal/bot/setup/command-usage": map[string]any{
+				"post": map[string]any{
+					"summary":     "Record a bot interaction (command, button, modal, string-select)",
+					"description": "Persists one command_usage row for the app user identified by discordId. Silently returns 204 if no matching app_users row exists.",
+					"security":    []map[string][]string{{"bearerAuth": {}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{
+									"type":     "object",
+									"required": []string{"discordId", "interactionType", "command", "outcome", "latencyMs"},
+									"properties": map[string]any{
+										"discordId":       map[string]any{"type": "string"},
+										"guildId":         map[string]any{"type": "string", "nullable": true},
+										"channelId":       map[string]any{"type": "string", "nullable": true},
+										"interactionType": map[string]any{"type": "string", "enum": []string{"command", "button", "modal", "string_select"}},
+										"command":         map[string]any{"type": "string"},
+										"subcommand":      map[string]any{"type": "string", "nullable": true},
+										"target":          map[string]any{"type": "string", "nullable": true},
+										"options":         map[string]any{"type": "object", "additionalProperties": true},
+										"outcome":         map[string]any{"type": "string", "enum": []string{"success", "error", "banned", "denied"}},
+										"errorCode":       map[string]any{"type": "string", "nullable": true},
+										"latencyMs":       map[string]any{"type": "integer", "minimum": 0},
+									},
+								},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"204": map[string]any{"description": "Recorded (or silently dropped if no app_users row)"},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/app/admin/users/{id}/command-usage": map[string]any{
+				"get": map[string]any{
+					"summary":     "List bot command usage for a user (paginated + 90-day summary)",
+					"description": "Returns paginated command_usage rows for the given app user plus a 90-day summary with total count, error count, error rate, and top commands.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "id",
+							"in":          "path",
+							"required":    true,
+							"description": "App user UUID.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "page",
+							"in":          "query",
+							"required":    false,
+							"description": "1-based page number. Default 1.",
+							"schema":      map[string]any{"type": "integer", "default": 1, "minimum": 1},
+						},
+						{
+							"name":        "pageSize",
+							"in":          "query",
+							"required":    false,
+							"description": "Page size, default 25, capped at 100.",
+							"schema":      map[string]any{"type": "integer", "default": 25, "minimum": 1, "maximum": 100},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Paginated rows and 90-day summary returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"items":    map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+											"total":    map[string]any{"type": "integer"},
+											"page":     map[string]any{"type": "integer"},
+											"pageSize": map[string]any{"type": "integer"},
+											"summary": map[string]any{
+												"type": "object",
+												"properties": map[string]any{
+													"totalCount":  map[string]any{"type": "integer"},
+													"errorCount":  map[string]any{"type": "integer"},
+													"errorRate":   map[string]any{"type": "number", "format": "float"},
+													"topCommands": map[string]any{
+														"type": "array",
+														"items": map[string]any{
+															"type": "object",
+															"properties": map[string]any{
+																"command": map[string]any{"type": "string"},
+																"count":   map[string]any{"type": "integer"},
+															},
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"securitySchemes": map[string]any{
