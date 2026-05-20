@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -224,5 +225,53 @@ func TestCommandUsage_CascadeOnUserDelete(t *testing.T) {
 	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM command_usage WHERE app_user_id='usr_test4'`).Scan(&count)
 	if count != 0 {
 		t.Fatalf("expected cascade delete, got %d rows", count)
+	}
+}
+
+func TestInsertCommandUsage_TargetsCappedAt500(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	appUserID := "usr_cap_test"
+
+	// Clean up any leftover rows from prior runs (non-transactional test DB).
+	_, _ = s.pool.Exec(ctx, `DELETE FROM app_users WHERE id = 'usr_cap_test'`)
+
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_cap_test', '888888888888888888', 'cap_tester', 'cap_tester')
+	`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	targets := make([]CommandUsageTargetInsert, 0, 600)
+	for i := range 600 {
+		targets = append(targets, CommandUsageTargetInsert{
+			Kind: "user", Snowflake: fmt.Sprintf("%018d", i), Relation: "recipient",
+		})
+	}
+
+	err := s.InsertCommandUsage(ctx, CommandUsageInsert{
+		AppUserID:       appUserID,
+		DiscordID:       "222222222222222222",
+		InteractionType: "command",
+		Command:         "announce",
+		Outcome:         "success",
+		Options:         []byte(`{}`),
+		Targets:         targets,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	var count int
+	if err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM command_usage_targets t
+		JOIN command_usage cu ON cu.id = t.command_usage_id
+		WHERE cu.app_user_id = $1
+	`, appUserID).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != MaxTargetsPerUsage {
+		t.Fatalf("want %d, got %d", MaxTargetsPerUsage, count)
 	}
 }
