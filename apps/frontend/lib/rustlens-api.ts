@@ -511,6 +511,53 @@ export async function getAdminUserAudit(
 	);
 }
 
+export type AdminCommandUsageItem = {
+	id:              number;
+	appUserId:       string;
+	discordId:       string;
+	guildId:         string | null;
+	channelId:       string | null;
+	interactionType: "command" | "button" | "modal" | "string_select";
+	command:         string;
+	subcommand:      string | null;
+	target:          string | null;
+	options:         Record<string, unknown>;
+	outcome:         "success" | "error" | "banned" | "denied";
+	errorCode:       string | null;
+	latencyMs:       number;
+	createdAt:       string;
+};
+
+export type AdminCommandUsageSummary = {
+	totalCount:  number;
+	errorCount:  number;
+	errorRate:   number;
+	topCommands: Array<{ command: string; count: number }>;
+};
+
+export type AdminCommandUsagePage = {
+	items:    AdminCommandUsageItem[];
+	total:    number;
+	page:     number;
+	pageSize: number;
+	summary:  AdminCommandUsageSummary;
+};
+
+export async function getAdminUserCommandUsage(
+	userId: string,
+	opts: { page?: number; pageSize?: number } = {},
+): Promise<AdminCommandUsagePage> {
+	const sp = new URLSearchParams();
+	if (opts.page)     sp.set("page",     String(opts.page));
+	if (opts.pageSize) sp.set("pageSize", String(opts.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminCommandUsagePage>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}/command-usage${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
 export async function getAuditEvents(limit = 30) {
 	const payload = await backendFetch<{ items: AuditEventItem[] }>(
 		`/api/app/admin/audit?limit=${limit}`,
