@@ -408,8 +408,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleSummonChatInput(interaction)) {
-        return;
+      {
+        const result = await handleSummonChatInput(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       {
