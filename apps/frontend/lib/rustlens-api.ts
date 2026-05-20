@@ -551,6 +551,19 @@ export type AdminCommandUsageItem = {
 	createdAt:       string;
 	targets:         AdminCommandUsageTarget[];
 	targetTotal?:    number;
+	correlationId?:  string | null;
+	parentUsageId?:  number | null;
+	// Number of follow-up rows (modal submits / button presses / select
+	// interactions) the backend linked to this row via parent_usage_id. Always
+	// 0 for children, since the list endpoint filters parent_usage_id IS NULL.
+	childCount?:     number;
+	// Where the interaction was dispatched. Drives the "Where" column render.
+	channelKind?:    "guild" | "dm" | "group_dm" | "unknown" | null;
+	channelName?:    string | null;
+	// Backend-joined snapshot of the row's guild (when guildId is set) — name +
+	// icon from bot_guilds. May be null if the bot is not in that guild anymore.
+	guildName?:      string | null;
+	guildIcon?:      string | null;
 };
 
 export type AdminCommandUsageSummary = {
@@ -622,6 +635,17 @@ export async function getAdminUserCommandUsageTargets(
 ): Promise<{ targets: AdminCommandUsageTarget[] }> {
 	return backendFetch<{ targets: AdminCommandUsageTarget[] }>(
 		`/api/app/admin/users/${encodeURIComponent(userId)}/command-usage/${usageId}/targets`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getAdminUserCommandUsageChildren(
+	userId: string,
+	usageId: number,
+): Promise<{ items: AdminCommandUsageItem[] }> {
+	return backendFetch<{ items: AdminCommandUsageItem[] }>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}/command-usage/${usageId}/children`,
 		undefined,
 		{ requireSession: true },
 	);

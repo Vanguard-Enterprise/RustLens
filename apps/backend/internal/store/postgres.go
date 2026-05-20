@@ -914,14 +914,31 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 			outcome          TEXT NOT NULL,
 			error_code       TEXT,
 			latency_ms       INTEGER NOT NULL,
+			correlation_id   TEXT,
+			parent_usage_id  BIGINT REFERENCES command_usage(id) ON DELETE SET NULL,
+			channel_kind     TEXT,
+			channel_name     TEXT,
 			created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
+
+		ALTER TABLE command_usage ADD COLUMN IF NOT EXISTS correlation_id TEXT;
+		ALTER TABLE command_usage ADD COLUMN IF NOT EXISTS parent_usage_id BIGINT REFERENCES command_usage(id) ON DELETE SET NULL;
+		ALTER TABLE command_usage ADD COLUMN IF NOT EXISTS channel_kind TEXT;
+		ALTER TABLE command_usage ADD COLUMN IF NOT EXISTS channel_name TEXT;
 
 		CREATE INDEX IF NOT EXISTS command_usage_user_created_idx
 		ON command_usage (app_user_id, created_at DESC);
 
 		CREATE INDEX IF NOT EXISTS command_usage_created_idx
 		ON command_usage (created_at DESC);
+
+		CREATE INDEX IF NOT EXISTS command_usage_correlation_idx
+		ON command_usage (app_user_id, correlation_id)
+		WHERE correlation_id IS NOT NULL;
+
+		CREATE INDEX IF NOT EXISTS command_usage_parent_idx
+		ON command_usage (parent_usage_id)
+		WHERE parent_usage_id IS NOT NULL;
 	`); err != nil {
 		return fmt.Errorf("create command_usage table: %w", err)
 	}

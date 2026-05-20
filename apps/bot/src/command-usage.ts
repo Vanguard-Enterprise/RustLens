@@ -1,7 +1,8 @@
-import type { Interaction } from "discord.js";
+import { ChannelType, type Interaction } from "discord.js";
 
 import { BackendClient, type CommandUsagePayload, type CommandUsageTarget } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { getOrAssignCorrelationId, getParentCorrelation } from "./correlation.js";
 
 export type Outcome = "success" | "error" | "banned" | "denied";
 
@@ -29,6 +30,10 @@ function getWorkerID(): string {
 
 const MAX_ERROR_CODE_LEN = 256;
 
+// The dispatcher in shard-worker.ts has already stripped any trailing
+// `#<correlation>` tag off `interaction.customId` and stashed the correlation
+// for retrieval via getParentCorrelation. Here we only need to split on the
+// legacy ':' separator to recover command + target.
 function splitCustomId(customId: string): { command: string; target: string | null } {
   const idx = customId.indexOf(":");
   if (idx === -1) return { command: customId, target: null };
@@ -42,6 +47,24 @@ function asString(v: unknown): string | null {
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   return null;
+}
+
+// Classifies the interaction's surface so the admin "Where" column can pick
+// the right rendering (guild avatar+name, group DM name with badge, or DM/unknown
+// label). `interaction.channel` may be null even for guild interactions when
+// the bot lacks channel-scoped intents, so we trust `guildId` first.
+function detectChannelKind(
+  interaction: Interaction,
+): { kind: "guild" | "dm" | "group_dm" | "unknown"; name: string | null } {
+  if (interaction.guildId) return { kind: "guild", name: null };
+  const ch = (interaction as unknown as { channel?: { type?: number; name?: string | null } | null }).channel;
+  if (!ch) return { kind: "unknown", name: null };
+  if (ch.type === ChannelType.DM) return { kind: "dm", name: null };
+  if (ch.type === ChannelType.GroupDM) {
+    const name = typeof ch.name === "string" && ch.name.length > 0 ? ch.name : null;
+    return { kind: "group_dm", name };
+  }
+  return { kind: "unknown", name: null };
 }
 
 /**
@@ -59,13 +82,16 @@ export function buildCommandUsagePayload(
       ? null
       : errorCode.slice(0, MAX_ERROR_CODE_LEN);
 
+  const channelCtx = detectChannelKind(interaction);
   const base = {
-    discordId:  interaction.user?.id ?? "",
-    guildId:    interaction.guildId ?? null,
-    channelId:  interaction.channelId ?? null,
+    discordId:    interaction.user?.id ?? "",
+    guildId:      interaction.guildId ?? null,
+    channelId:    interaction.channelId ?? null,
+    channelKind:  channelCtx.kind,
+    channelName:  channelCtx.name,
     outcome,
-    errorCode:  trimmedError,
-    latencyMs:  Math.max(0, Math.floor(latencyMs)),
+    errorCode:    trimmedError,
+    latencyMs:    Math.max(0, Math.floor(latencyMs)),
   };
 
   if (interaction.isChatInputCommand?.()) {
@@ -91,6 +117,7 @@ export function buildCommandUsagePayload(
       subcommand,
       target:     firstStringValue == null ? null : asString(firstStringValue),
       options:    opts,
+      correlationId: getOrAssignCorrelationId(interaction),
     };
   }
 
@@ -103,6 +130,8 @@ export function buildCommandUsagePayload(
       subcommand: null,
       target,
       options: { customId: interaction.customId },
+      correlationId: getOrAssignCorrelationId(interaction),
+      parentCorrelationId: getParentCorrelation(interaction),
     };
   }
 
@@ -120,6 +149,8 @@ export function buildCommandUsagePayload(
       subcommand: null,
       target,
       options: opts,
+      correlationId: getOrAssignCorrelationId(interaction),
+      parentCorrelationId: getParentCorrelation(interaction),
     };
   }
 
@@ -132,6 +163,8 @@ export function buildCommandUsagePayload(
       subcommand: null,
       target,
       options: { customId: interaction.customId, values: interaction.values },
+      correlationId: getOrAssignCorrelationId(interaction),
+      parentCorrelationId: getParentCorrelation(interaction),
     };
   }
 

@@ -26,6 +26,7 @@ import {
 import { enforceRateLimit } from "./rate-limit.js";
 import { ensureAppUser } from "./ensure-app-user.js";
 import { recordCommandUsage, type Outcome } from "./command-usage.js";
+import { parseCustomId, rememberParentCorrelation } from "./correlation.js";
 import {
   ensureBindCommand,
   handleBindButtonInteraction,
@@ -333,6 +334,37 @@ function reportUserInstallSeen(interaction: Interaction): void {
 }
 
 client.on("interactionCreate", async (interaction) => {
+  // Strip any trailing `#<correlation>` tag from incoming customIds before
+  // handlers see them. The raw correlation is recovered by command-usage.ts
+  // via the same parseCustomId helper, but every handler in this codebase
+  // compares interaction.customId against a static constant — without this
+  // strip, those comparisons would all break the moment we start minting
+  // correlation-tagged customIds in modal/button/select responses.
+  if (
+    interaction.isButton?.() ||
+    interaction.isModalSubmit?.() ||
+    interaction.isAnySelectMenu?.()
+  ) {
+    const raw = interaction.customId;
+    const { base, correlation } = parseCustomId(raw);
+    if (correlation) {
+      rememberParentCorrelation(interaction, correlation);
+      try {
+        Object.defineProperty(interaction, "customId", {
+          value:        base,
+          configurable: true,
+          writable:     false,
+          enumerable:   true,
+        });
+      } catch {
+        // Falling through with the raw customId still preserves correct routing
+        // for legacy customIds that don't carry correlation. Discord.js v14
+        // exposes customId as a getter; defineProperty installs an own property
+        // that shadows it, but we don't want a future runtime change to crash
+        // the interaction handler.
+      }
+    }
+  }
   reportUserInstallSeen(interaction);
   ensureAppUser(interaction);
   const trackUsage = !interaction.isAutocomplete();

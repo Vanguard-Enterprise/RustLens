@@ -4,7 +4,7 @@ import { ComponentType, TextInputStyle } from "../builders/index.js";
 
 describe("bind command", () => {
   it("builds the first fullkit modal within Discord's 5 component limit", () => {
-    const modal = __testables.buildBindFullkitStartModal().toJSON();
+    const modal = __testables.buildBindFullkitStartModal("").toJSON();
 
     expect(modal.title).toBe("Bind Fullkit");
     expect(modal.custom_id).toBe("bind_fullkit_modal_step_1");
@@ -82,7 +82,7 @@ describe("bind command", () => {
   });
 
   it("builds the second fullkit modal within Discord's 5 component limit", () => {
-    const modal = __testables.buildBindFullkitFinishModal("draft-123").toJSON();
+    const modal = __testables.buildBindFullkitFinishModal("draft-123", "").toJSON();
 
     expect(modal.title).toBe("Bind Fullkit");
     expect(modal.custom_id).toBe("bind_fullkit_modal_step_2:draft-123");
@@ -156,7 +156,7 @@ describe("bind command", () => {
   });
 
   it("builds the turret modal within Discord's 5 component limit", () => {
-    const modal = __testables.buildBindTurretModal().toJSON();
+    const modal = __testables.buildBindTurretModal("").toJSON();
 
     expect(modal.title).toBe("Bind Turret");
     expect(modal.custom_id).toBe("bind_turret_modal");
@@ -230,7 +230,7 @@ describe("bind command", () => {
   });
 
   it("builds the rocket modal", () => {
-    const modal = __testables.buildBindRocketModal().toJSON();
+    const modal = __testables.buildBindRocketModal("").toJSON();
 
     expect(modal.title).toBe("Bind Rocket");
     expect(modal.custom_id).toBe("bind_rocket_modal");
@@ -275,7 +275,7 @@ describe("bind command", () => {
   });
 
   it("builds the c4 modal", () => {
-    const modal = __testables.buildBindC4Modal().toJSON();
+    const modal = __testables.buildBindC4Modal("").toJSON();
 
     expect(modal.title).toBe("Bind C4");
     expect(modal.custom_id).toBe("bind_c4_modal");

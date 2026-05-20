@@ -44,6 +44,15 @@ var validTargetRelations = map[string]struct{}{
 	"subject":   {},
 }
 
+var validChannelKinds = map[string]struct{}{
+	"guild":    {},
+	"dm":       {},
+	"group_dm": {},
+	"unknown":  {},
+}
+
+const maxChannelNameLen = 100
+
 type recordCommandUsageTarget struct {
 	Kind        string  `json:"kind"`
 	Snowflake   string  `json:"snowflake"`
@@ -53,18 +62,50 @@ type recordCommandUsageTarget struct {
 }
 
 type recordCommandUsageRequest struct {
-	DiscordID       string                     `json:"discordId"`
-	GuildID         *string                    `json:"guildId,omitempty"`
-	ChannelID       *string                    `json:"channelId,omitempty"`
-	InteractionType string                     `json:"interactionType"`
-	Command         string                     `json:"command"`
-	Subcommand      *string                    `json:"subcommand,omitempty"`
-	Target          *string                    `json:"target,omitempty"`
-	Options         json.RawMessage            `json:"options"`
-	Outcome         string                     `json:"outcome"`
-	ErrorCode       *string                    `json:"errorCode,omitempty"`
-	LatencyMs       int                        `json:"latencyMs"`
-	Targets         []recordCommandUsageTarget `json:"targets,omitempty"`
+	DiscordID           string                     `json:"discordId"`
+	GuildID             *string                    `json:"guildId,omitempty"`
+	ChannelID           *string                    `json:"channelId,omitempty"`
+	InteractionType     string                     `json:"interactionType"`
+	Command             string                     `json:"command"`
+	Subcommand          *string                    `json:"subcommand,omitempty"`
+	Target              *string                    `json:"target,omitempty"`
+	Options             json.RawMessage            `json:"options"`
+	Outcome             string                     `json:"outcome"`
+	ErrorCode           *string                    `json:"errorCode,omitempty"`
+	LatencyMs           int                        `json:"latencyMs"`
+	CorrelationID       *string                    `json:"correlationId,omitempty"`
+	ParentCorrelationID *string                    `json:"parentCorrelationId,omitempty"`
+	ChannelKind         *string                    `json:"channelKind,omitempty"`
+	ChannelName         *string                    `json:"channelName,omitempty"`
+	Targets             []recordCommandUsageTarget `json:"targets,omitempty"`
+}
+
+const maxCorrelationIDLen = 64
+
+func validateCorrelationID(s *string) bool {
+	if s == nil {
+		return true
+	}
+	if *s == "" {
+		return true
+	}
+	if len(*s) > maxCorrelationIDLen {
+		return false
+	}
+	// Restrict to safe characters so customIds can round-trip cleanly. Discord
+	// custom_ids are user-controlled, so we reject anything that could embed
+	// shell metacharacters or whitespace.
+	for _, r := range *s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // RecordCommandUsage: POST /api/internal/bot/setup/command-usage
@@ -116,6 +157,25 @@ func (h *Handler) RecordCommandUsage(w http.ResponseWriter, r *http.Request) {
 		runes := []rune(*req.ErrorCode)
 		trimmed := string(runes[:maxErrorCodeLen])
 		req.ErrorCode = &trimmed
+	}
+	if !validateCorrelationID(req.CorrelationID) {
+		writeError(w, http.StatusBadRequest, "correlationId invalid")
+		return
+	}
+	if !validateCorrelationID(req.ParentCorrelationID) {
+		writeError(w, http.StatusBadRequest, "parentCorrelationId invalid")
+		return
+	}
+	if req.ChannelKind != nil && *req.ChannelKind != "" {
+		if _, ok := validChannelKinds[*req.ChannelKind]; !ok {
+			writeError(w, http.StatusBadRequest, "channelKind invalid")
+			return
+		}
+	}
+	if req.ChannelName != nil && utf8.RuneCountInString(*req.ChannelName) > maxChannelNameLen {
+		runes := []rune(*req.ChannelName)
+		trimmed := string(runes[:maxChannelNameLen])
+		req.ChannelName = &trimmed
 	}
 	if h.appauth == nil {
 		writeError(w, http.StatusInternalServerError, "appauth repo not configured")
@@ -171,19 +231,23 @@ func (h *Handler) RecordCommandUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.postgres.InsertCommandUsage(r.Context(), store.CommandUsageInsert{
-		AppUserID:       appUserID,
-		DiscordID:       req.DiscordID,
-		GuildID:         req.GuildID,
-		ChannelID:       req.ChannelID,
-		InteractionType: req.InteractionType,
-		Command:         req.Command,
-		Subcommand:      req.Subcommand,
-		Target:          req.Target,
-		Options:         req.Options,
-		Outcome:         req.Outcome,
-		ErrorCode:       req.ErrorCode,
-		LatencyMs:       req.LatencyMs,
-		Targets:         storeTargets,
+		AppUserID:           appUserID,
+		DiscordID:           req.DiscordID,
+		GuildID:             req.GuildID,
+		ChannelID:           req.ChannelID,
+		InteractionType:     req.InteractionType,
+		Command:             req.Command,
+		Subcommand:          req.Subcommand,
+		Target:              req.Target,
+		Options:             req.Options,
+		Outcome:             req.Outcome,
+		ErrorCode:           req.ErrorCode,
+		LatencyMs:           req.LatencyMs,
+		CorrelationID:       req.CorrelationID,
+		ParentCorrelationID: req.ParentCorrelationID,
+		ChannelKind:         req.ChannelKind,
+		ChannelName:         req.ChannelName,
+		Targets:             storeTargets,
 	}); err != nil {
 		log.Printf("[backend] RecordCommandUsage insert error: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to record usage")

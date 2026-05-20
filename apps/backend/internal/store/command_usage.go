@@ -16,19 +16,23 @@ const MaxTargetsPerUsage = 500
 // invocation. AppUserID is a hard FK; the caller must resolve it before
 // calling InsertCommandUsage.
 type CommandUsageInsert struct {
-	AppUserID       string
-	DiscordID       string
-	GuildID         *string
-	ChannelID       *string
-	InteractionType string // 'command' | 'button' | 'modal' | 'string_select'
-	Command         string
-	Subcommand      *string
-	Target          *string
-	Options         json.RawMessage // JSONB; must be a valid JSON object
-	Outcome         string          // 'success' | 'error' | 'banned' | 'denied'
-	ErrorCode       *string
-	LatencyMs       int
-	Targets         []CommandUsageTargetInsert // capped at 500; excess silently dropped
+	AppUserID           string
+	DiscordID           string
+	GuildID             *string
+	ChannelID           *string
+	InteractionType     string // 'command' | 'button' | 'modal' | 'string_select'
+	Command             string
+	Subcommand          *string
+	Target              *string
+	Options             json.RawMessage // JSONB; must be a valid JSON object
+	Outcome             string          // 'success' | 'error' | 'banned' | 'denied'
+	ErrorCode           *string
+	LatencyMs           int
+	CorrelationID       *string                    // identifies this invocation across child interactions; nil for one-shot interactions
+	ParentCorrelationID *string                    // when set, resolved to ParentUsageID at insert time against the same app_user_id
+	ChannelKind         *string                    // 'guild'|'dm'|'group_dm'|'unknown'; nil from older clients
+	ChannelName         *string                    // user-visible name for non-guild contexts (e.g. group DM name)
+	Targets             []CommandUsageTargetInsert // capped at 500; excess silently dropped
 }
 
 // CommandUsageTargetInsert is one target row to associate with a usage row.
@@ -65,6 +69,12 @@ type CommandUsageRow struct {
 	Outcome         string          `json:"outcome"`
 	ErrorCode       *string         `json:"errorCode"`
 	LatencyMs       int             `json:"latencyMs"`
+	CorrelationID   *string         `json:"correlationId,omitempty"`
+	ParentUsageID   *int64          `json:"parentUsageId,omitempty"`
+	ChannelKind     *string         `json:"channelKind,omitempty"`
+	ChannelName     *string         `json:"channelName,omitempty"`
+	GuildName       *string         `json:"guildName,omitempty"`
+	GuildIcon       *string         `json:"guildIcon,omitempty"`
 	CreatedAt       time.Time       `json:"createdAt"`
 }
 
@@ -99,19 +109,39 @@ func (p *PostgresStore) InsertCommandUsage(ctx context.Context, row CommandUsage
 	}
 	defer tx.Rollback(ctx)
 
+	// Resolve parent usage row from the bot-supplied parentCorrelationId,
+	// constrained to the same app_user_id so unrelated rows can never be linked.
+	var parentUsageID *int64
+	if row.ParentCorrelationID != nil && *row.ParentCorrelationID != "" {
+		var resolved int64
+		err := tx.QueryRow(ctx, `
+			SELECT id FROM command_usage
+			WHERE app_user_id = $1 AND correlation_id = $2
+			ORDER BY id DESC
+			LIMIT 1
+		`, row.AppUserID, *row.ParentCorrelationID).Scan(&resolved)
+		if err == nil {
+			parentUsageID = &resolved
+		}
+		// No match: silently fall through with a null parent. Old/expired/never-recorded
+		// parents shouldn't fail the child insert.
+	}
+
 	var usageID int64
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO command_usage (
 			app_user_id, discord_id, guild_id, channel_id,
 			interaction_type, command, subcommand, target,
-			options, outcome, error_code, latency_ms
+			options, outcome, error_code, latency_ms,
+			correlation_id, parent_usage_id, channel_kind, channel_name
 		)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16)
 		RETURNING id
 	`,
 		row.AppUserID, row.DiscordID, row.GuildID, row.ChannelID,
 		row.InteractionType, row.Command, row.Subcommand, row.Target,
 		string(row.Options), row.Outcome, row.ErrorCode, row.LatencyMs,
+		row.CorrelationID, parentUsageID, row.ChannelKind, row.ChannelName,
 	).Scan(&usageID); err != nil {
 		return fmt.Errorf("insert command_usage: %w", err)
 	}
@@ -164,7 +194,8 @@ func (p *PostgresStore) ListUserCommandUsage(ctx context.Context, appUserID stri
 	rows, err := p.pool.Query(ctx, `
 		SELECT id, app_user_id, discord_id, guild_id, channel_id,
 		       interaction_type, command, subcommand, target,
-		       options, outcome, error_code, latency_ms, created_at
+		       options, outcome, error_code, latency_ms,
+		       correlation_id, parent_usage_id, channel_kind, channel_name, created_at
 		FROM command_usage
 		WHERE app_user_id = $1
 		ORDER BY created_at DESC, id DESC
@@ -180,7 +211,8 @@ func (p *PostgresStore) ListUserCommandUsage(ctx context.Context, appUserID stri
 		if err := rows.Scan(
 			&r.ID, &r.AppUserID, &r.DiscordID, &r.GuildID, &r.ChannelID,
 			&r.InteractionType, &r.Command, &r.Subcommand, &r.Target,
-			&r.Options, &r.Outcome, &r.ErrorCode, &r.LatencyMs, &r.CreatedAt,
+			&r.Options, &r.Outcome, &r.ErrorCode, &r.LatencyMs,
+			&r.CorrelationID, &r.ParentUsageID, &r.ChannelKind, &r.ChannelName, &r.CreatedAt,
 		); err != nil {
 			return page, fmt.Errorf("scan command_usage: %w", err)
 		}
@@ -253,6 +285,7 @@ type CommandUsageRowWithTargets struct {
 	CommandUsageRow
 	Targets     []CommandUsageTargetRow `json:"targets"`
 	TargetTotal *int                    `json:"targetTotal,omitempty"`
+	ChildCount  int                     `json:"childCount"`
 }
 
 type CommandUsagePageWithTargets struct {
@@ -281,7 +314,10 @@ func (p *PostgresStore) ListUserCommandUsageFiltered(
 	}
 
 	args := []any{appUserID}
-	where := []string{"cu.app_user_id = $1"}
+	// Children of a slash command (modal/button/select submits that share its
+	// correlation) are folded into the parent in the UI — never surfaced as
+	// independent rows. Filtering here keeps pagination math honest.
+	where := []string{"cu.app_user_id = $1", "cu.parent_usage_id IS NULL"}
 
 	if filters.WindowDays > 0 {
 		args = append(args, time.Now().Add(-time.Duration(filters.WindowDays)*24*time.Hour))
@@ -337,7 +373,9 @@ func (p *PostgresStore) ListUserCommandUsageFiltered(
 		SELECT
 			cu.id, cu.app_user_id, cu.discord_id, cu.guild_id, cu.channel_id,
 			cu.interaction_type, cu.command, cu.subcommand, cu.target,
-			cu.options, cu.outcome, cu.error_code, cu.latency_ms, cu.created_at,
+			cu.options, cu.outcome, cu.error_code, cu.latency_ms,
+			cu.correlation_id, cu.parent_usage_id, cu.channel_kind, cu.channel_name, cu.created_at,
+			bg.name AS guild_name, bg.icon_hash AS guild_icon,
 			COALESCE(
 				(SELECT jsonb_agg(jsonb_build_object(
 					'kind', t.kind,
@@ -355,8 +393,10 @@ func (p *PostgresStore) ListUserCommandUsageFiltered(
 				 ) t),
 				'[]'::jsonb
 			) AS targets_json,
-			(SELECT COUNT(*) FROM command_usage_targets WHERE command_usage_id = cu.id) AS target_total
+			(SELECT COUNT(*) FROM command_usage_targets WHERE command_usage_id = cu.id) AS target_total,
+			(SELECT COUNT(*) FROM command_usage child WHERE child.parent_usage_id = cu.id) AS child_count
 		FROM command_usage cu
+		LEFT JOIN bot_guilds bg ON bg.guild_id = cu.guild_id
 		WHERE %s
 		ORDER BY cu.created_at DESC, cu.id DESC
 		LIMIT $%d OFFSET $%d
@@ -371,15 +411,19 @@ func (p *PostgresStore) ListUserCommandUsageFiltered(
 		var r CommandUsageRowWithTargets
 		var targetsJSON []byte
 		var targetTotal int64
+		var childCount int64
 		if err := rows.Scan(
 			&r.ID, &r.AppUserID, &r.DiscordID, &r.GuildID, &r.ChannelID,
 			&r.InteractionType, &r.Command, &r.Subcommand, &r.Target,
-			&r.Options, &r.Outcome, &r.ErrorCode, &r.LatencyMs, &r.CreatedAt,
-			&targetsJSON, &targetTotal,
+			&r.Options, &r.Outcome, &r.ErrorCode, &r.LatencyMs,
+			&r.CorrelationID, &r.ParentUsageID, &r.ChannelKind, &r.ChannelName, &r.CreatedAt,
+			&r.GuildName, &r.GuildIcon,
+			&targetsJSON, &targetTotal, &childCount,
 		); err != nil {
 			rows.Close()
 			return page, fmt.Errorf("scan filtered command_usage: %w", err)
 		}
+		r.ChildCount = int(childCount)
 		if err := json.Unmarshal(targetsJSON, &r.Targets); err != nil {
 			rows.Close()
 			return page, fmt.Errorf("unmarshal targets: %w", err)
@@ -595,6 +639,83 @@ func (p *PostgresStore) ListCommandUsageTargets(
 			return out, fmt.Errorf("scan target: %w", err)
 		}
 		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// ListUserCommandUsageChildren returns the follow-up rows (modal submits,
+// button presses, select interactions) that share the given parent's id,
+// scoped to the owning app user. Each child carries its targets, target
+// total, and correlation/parent metadata so the UI can render them inside
+// the parent's expanded view.
+func (p *PostgresStore) ListUserCommandUsageChildren(
+	ctx context.Context,
+	appUserID string,
+	parentUsageID int64,
+) ([]CommandUsageRowWithTargets, error) {
+	out := []CommandUsageRowWithTargets{}
+
+	listSQL := fmt.Sprintf(`
+		SELECT
+			cu.id, cu.app_user_id, cu.discord_id, cu.guild_id, cu.channel_id,
+			cu.interaction_type, cu.command, cu.subcommand, cu.target,
+			cu.options, cu.outcome, cu.error_code, cu.latency_ms,
+			cu.correlation_id, cu.parent_usage_id, cu.channel_kind, cu.channel_name, cu.created_at,
+			bg.name AS guild_name, bg.icon_hash AS guild_icon,
+			COALESCE(
+				(SELECT jsonb_agg(jsonb_build_object(
+					'kind', t.kind,
+					'snowflake', t.snowflake,
+					'displayName', t.display_name,
+					'avatarHash', t.avatar_hash,
+					'relation', t.relation
+				) ORDER BY t.id)
+				 FROM (
+					SELECT id, kind, snowflake, display_name, avatar_hash, relation
+					FROM command_usage_targets
+					WHERE command_usage_id = cu.id
+					ORDER BY id ASC
+					LIMIT %d
+				 ) t),
+				'[]'::jsonb
+			) AS targets_json,
+			(SELECT COUNT(*) FROM command_usage_targets WHERE command_usage_id = cu.id) AS target_total
+		FROM command_usage cu
+		LEFT JOIN bot_guilds bg ON bg.guild_id = cu.guild_id
+		WHERE cu.parent_usage_id = $1 AND cu.app_user_id = $2
+		ORDER BY cu.created_at ASC, cu.id ASC
+	`, InlineTargetCap)
+
+	rows, err := p.pool.Query(ctx, listSQL, parentUsageID, appUserID)
+	if err != nil {
+		return out, fmt.Errorf("list command_usage children: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r CommandUsageRowWithTargets
+		var targetsJSON []byte
+		var targetTotal int64
+		if err := rows.Scan(
+			&r.ID, &r.AppUserID, &r.DiscordID, &r.GuildID, &r.ChannelID,
+			&r.InteractionType, &r.Command, &r.Subcommand, &r.Target,
+			&r.Options, &r.Outcome, &r.ErrorCode, &r.LatencyMs,
+			&r.CorrelationID, &r.ParentUsageID, &r.ChannelKind, &r.ChannelName, &r.CreatedAt,
+			&r.GuildName, &r.GuildIcon,
+			&targetsJSON, &targetTotal,
+		); err != nil {
+			return out, fmt.Errorf("scan command_usage child: %w", err)
+		}
+		if err := json.Unmarshal(targetsJSON, &r.Targets); err != nil {
+			return out, fmt.Errorf("unmarshal child targets: %w", err)
+		}
+		if r.Targets == nil {
+			r.Targets = []CommandUsageTargetRow{}
+		}
+		if targetTotal > int64(InlineTargetCap) {
+			total := int(targetTotal)
+			r.TargetTotal = &total
+		}
+		out = append(out, r)
 	}
 	return out, rows.Err()
 }

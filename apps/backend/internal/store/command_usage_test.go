@@ -426,3 +426,150 @@ func TestCommandUsageFilterOptions_DistinctCommandsAndGuilds(t *testing.T) {
 		t.Fatalf("want 1 guild %s, got %+v", gid, opts.Guilds)
 	}
 }
+
+func TestCommandUsage_CorrelationLinkingAndChildren(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	appUserID := "usr_corr_a"
+	otherUserID := "usr_corr_b"
+
+	_, _ = s.pool.Exec(ctx, `DELETE FROM app_users WHERE id = ANY($1)`,
+		[]string{appUserID, otherUserID})
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ($1, '888888888888888881', 'corr_a', 'corr_a'),
+		       ($2, '888888888888888882', 'corr_b', 'corr_b')
+	`, appUserID, otherUserID); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	corr := "abc123"
+	parent := CommandUsageInsert{
+		AppUserID:       appUserID,
+		DiscordID:       "888888888888888881",
+		InteractionType: "command",
+		Command:         "bind",
+		Subcommand:      strPtr("c4"),
+		Options:         []byte("{}"),
+		Outcome:         "success",
+		LatencyMs:       50,
+		CorrelationID:   &corr,
+	}
+	if err := s.InsertCommandUsage(ctx, parent); err != nil {
+		t.Fatalf("insert parent: %v", err)
+	}
+
+	// Child references the parent via parentCorrelationId — should be linked.
+	child := CommandUsageInsert{
+		AppUserID:           appUserID,
+		DiscordID:           "888888888888888881",
+		InteractionType:     "modal",
+		Command:             "bind_c4_modal",
+		Options:             []byte("{}"),
+		Outcome:             "success",
+		LatencyMs:           20,
+		ParentCorrelationID: &corr,
+	}
+	if err := s.InsertCommandUsage(ctx, child); err != nil {
+		t.Fatalf("insert child: %v", err)
+	}
+
+	// Same correlation id from a different user must NOT match the first user's
+	// parent — scoping protects against cross-user link forgery.
+	stray := CommandUsageInsert{
+		AppUserID:           otherUserID,
+		DiscordID:           "888888888888888882",
+		InteractionType:     "modal",
+		Command:             "bind_c4_modal",
+		Options:             []byte("{}"),
+		Outcome:             "success",
+		ParentCorrelationID: &corr,
+	}
+	if err := s.InsertCommandUsage(ctx, stray); err != nil {
+		t.Fatalf("insert stray: %v", err)
+	}
+
+	// Top-level list omits the child.
+	page, err := s.ListUserCommandUsageFiltered(ctx, appUserID, CommandUsageListFilters{}, 25, 0)
+	if err != nil {
+		t.Fatalf("list filtered: %v", err)
+	}
+	if page.Total != 1 {
+		t.Fatalf("want top-level total=1 (parent only), got %d", page.Total)
+	}
+	if page.Items[0].Command != "bind" {
+		t.Fatalf("want top-level command=bind, got %s", page.Items[0].Command)
+	}
+	if page.Items[0].ChildCount != 1 {
+		t.Fatalf("want childCount=1, got %d", page.Items[0].ChildCount)
+	}
+	parentID := page.Items[0].ID
+
+	// Children listing returns the child only.
+	children, err := s.ListUserCommandUsageChildren(ctx, appUserID, parentID)
+	if err != nil {
+		t.Fatalf("list children: %v", err)
+	}
+	if len(children) != 1 || children[0].Command != "bind_c4_modal" {
+		t.Fatalf("unexpected children: %+v", children)
+	}
+	if children[0].ParentUsageID == nil || *children[0].ParentUsageID != parentID {
+		t.Fatalf("child not linked to parent: %+v", children[0].ParentUsageID)
+	}
+
+	// The other user's stray modal must show up at the top level (no parent in
+	// their scope) and have no children.
+	otherPage, err := s.ListUserCommandUsageFiltered(ctx, otherUserID, CommandUsageListFilters{}, 25, 0)
+	if err != nil {
+		t.Fatalf("list filtered other: %v", err)
+	}
+	if otherPage.Total != 1 || otherPage.Items[0].ParentUsageID != nil {
+		t.Fatalf("stray should be unlinked top-level row, got %+v", otherPage.Items)
+	}
+}
+
+func TestCommandUsage_ChildrenScopedToUser(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	owner := "usr_kids_owner"
+	other := "usr_kids_other"
+
+	_, _ = s.pool.Exec(ctx, `DELETE FROM app_users WHERE id = ANY($1)`,
+		[]string{owner, other})
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ($1, '999999999999999991', 'kids_o', 'kids_o'),
+		       ($2, '999999999999999992', 'kids_x', 'kids_x')
+	`, owner, other); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	corr := "deadbeef"
+	if err := s.InsertCommandUsage(ctx, CommandUsageInsert{
+		AppUserID: owner, DiscordID: "999999999999999991", InteractionType: "command",
+		Command: "bind", Options: []byte("{}"), Outcome: "success", CorrelationID: &corr,
+	}); err != nil {
+		t.Fatalf("seed parent: %v", err)
+	}
+	if err := s.InsertCommandUsage(ctx, CommandUsageInsert{
+		AppUserID: owner, DiscordID: "999999999999999991", InteractionType: "modal",
+		Command: "bind_modal", Options: []byte("{}"), Outcome: "success", ParentCorrelationID: &corr,
+	}); err != nil {
+		t.Fatalf("seed child: %v", err)
+	}
+
+	page, err := s.ListUserCommandUsageFiltered(ctx, owner, CommandUsageListFilters{}, 25, 0)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	parentID := page.Items[0].ID
+
+	// Asking for the other user's view of the same parent id returns nothing.
+	children, err := s.ListUserCommandUsageChildren(ctx, other, parentID)
+	if err != nil {
+		t.Fatalf("children other: %v", err)
+	}
+	if len(children) != 0 {
+		t.Fatalf("expected zero children for other user, got %d", len(children))
+	}
+}

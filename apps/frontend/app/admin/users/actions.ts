@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import {
+	getAdminUserCommandUsageChildren,
+	getAdminUserCommandUsageTargets,
 	grantAdminUserRole,
 	bulkAdminUserAction,
 	deleteAdminUser,
@@ -11,6 +13,8 @@ import {
 	searchAdminUsers,
 	suspendAdminUser,
 	unsuspendAdminUser,
+	type AdminCommandUsageItem,
+	type AdminCommandUsageTarget,
 	type AdminUserItem,
 	type BulkUserResult,
 	type BulkUserSubAction,
@@ -175,4 +179,20 @@ export async function searchUsersForGrantAction(
 ): Promise<AdminUserItem[]> {
 	await requirePermission("users.roles.assign");
 	return searchAdminUsers(q);
+}
+
+export async function getUserCommandUsageTargetsAction(
+	userId: string,
+	usageId: number,
+): Promise<{ targets: AdminCommandUsageTarget[] }> {
+	await requirePermission("users.read");
+	return getAdminUserCommandUsageTargets(userId, usageId);
+}
+
+export async function getUserCommandUsageChildrenAction(
+	userId: string,
+	usageId: number,
+): Promise<{ items: AdminCommandUsageItem[] }> {
+	await requirePermission("users.read");
+	return getAdminUserCommandUsageChildren(userId, usageId);
 }

@@ -513,18 +513,31 @@ export type CommandUsageTarget = {
 };
 
 export type CommandUsagePayload = {
-  discordId:       string;
-  guildId:         string | null;
-  channelId:       string | null;
-  interactionType: "command" | "button" | "modal" | "string_select";
-  command:         string;
-  subcommand:      string | null;
-  target:          string | null;
-  options:         Record<string, unknown>;
-  outcome:         "success" | "error" | "banned" | "denied";
-  errorCode:       string | null;
-  latencyMs:       number;
-  targets?:        CommandUsageTarget[];
+  discordId:           string;
+  guildId:             string | null;
+  channelId:           string | null;
+  interactionType:     "command" | "button" | "modal" | "string_select";
+  command:             string;
+  subcommand:          string | null;
+  target:              string | null;
+  options:             Record<string, unknown>;
+  outcome:             "success" | "error" | "banned" | "denied";
+  errorCode:           string | null;
+  latencyMs:           number;
+  // Per-invocation id (a-z, A-Z, 0-9, -, _; <=64 chars). Embedded by the bot
+  // in any modal/button/select customId it builds so follow-up submits can
+  // round-trip it back as parentCorrelationId.
+  correlationId?:      string | null;
+  // When set, the backend resolves this to the most recent command_usage row
+  // for the same user with a matching correlationId and stores its id as
+  // parent_usage_id so the admin UI can fold follow-ups into the parent row.
+  parentCorrelationId?: string | null;
+  // Where the interaction was dispatched. The backend uses this so the
+  // admin UI can render the right kind of label/avatar in the Where column.
+  channelKind?:        "guild" | "dm" | "group_dm" | "unknown" | null;
+  // Display name for non-guild channels (e.g. group DM name). Capped at 100 chars by the backend.
+  channelName?:        string | null;
+  targets?:            CommandUsageTarget[];
 };
 
 type UpsertBotGuildPayload = {

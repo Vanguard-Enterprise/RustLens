@@ -2460,9 +2460,13 @@ func buildOpenAPIDocument() map[string]any {
 										"subcommand":      map[string]any{"type": "string", "nullable": true},
 										"target":          map[string]any{"type": "string", "nullable": true},
 										"options":         map[string]any{"type": "object", "additionalProperties": true},
-										"outcome":         map[string]any{"type": "string", "enum": []string{"success", "error", "banned", "denied"}},
-										"errorCode":       map[string]any{"type": "string", "nullable": true},
-										"latencyMs":       map[string]any{"type": "integer", "minimum": 0},
+										"outcome":             map[string]any{"type": "string", "enum": []string{"success", "error", "banned", "denied"}},
+										"errorCode":           map[string]any{"type": "string", "nullable": true},
+										"latencyMs":           map[string]any{"type": "integer", "minimum": 0},
+										"correlationId":       map[string]any{"type": "string", "nullable": true, "description": "Opaque per-invocation id (a-z, A-Z, 0-9, -, _; <=64 chars). Lets follow-up modal/button submits link back to this row."},
+										"parentCorrelationId": map[string]any{"type": "string", "nullable": true, "description": "When set, the backend resolves this to the most recent command_usage row for the same user with a matching correlationId and stores its id as parent_usage_id."},
+										"channelKind":         map[string]any{"type": "string", "nullable": true, "enum": []string{"guild", "dm", "group_dm", "unknown"}, "description": "Where the interaction was dispatched. 'guild' = server, 'dm' = 1:1 DM with the bot, 'group_dm' = multi-user DM, 'unknown' = could not classify."},
+										"channelName":         map[string]any{"type": "string", "nullable": true, "description": "User-visible name of the channel for non-guild contexts (e.g. group DM name). Truncated to 100 chars."},
 									},
 								},
 							},
@@ -2472,6 +2476,35 @@ func buildOpenAPIDocument() map[string]any {
 						"204": map[string]any{"description": "Recorded (or silently dropped if no app_users row)"},
 						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
 						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+					},
+				},
+			},
+			"/api/app/admin/users/{id}/command-usage/{usageId}/children": map[string]any{
+				"get": map[string]any{
+					"summary":     "List follow-up rows (modal/button/select) linked to a command_usage row",
+					"description": "Returns the rows whose parent_usage_id equals usageId, scoped to the owning app user. Returns an empty list when the usage row belongs to another user.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"parameters": []map[string]any{
+						{"name": "id", "in": "path", "required": true, "description": "App user UUID.", "schema": map[string]any{"type": "string"}},
+						{"name": "usageId", "in": "path", "required": true, "description": "Parent command_usage row id.", "schema": map[string]any{"type": "integer"}},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Follow-up rows returned (possibly empty)",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"items": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+										},
+									},
+								},
+							},
+						},
+						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
 					},
 				},
 			},

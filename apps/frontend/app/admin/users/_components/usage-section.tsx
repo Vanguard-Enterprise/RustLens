@@ -16,7 +16,10 @@ import type {
 	AdminCommandUsagePage,
 	AdminCommandUsageTarget,
 } from "@/lib/rustlens-api";
-import { getAdminUserCommandUsageTargets } from "@/lib/rustlens-api";
+import {
+	getUserCommandUsageChildrenAction,
+	getUserCommandUsageTargetsAction,
+} from "../actions";
 import { UsageFilterBar } from "./usage-filter-bar";
 import { UsageRecipientStack } from "./usage-recipient-stack";
 
@@ -64,6 +67,7 @@ export function UsageSection({ userId, data, filterOptions }: Props) {
 	const [sortKey, setSortKey] = React.useState<SortKey>("when");
 	const [sortDir, setSortDir] = React.useState<SortDir>("desc");
 	const [fullTargetsCache, setFullTargetsCache] = React.useState<Record<number, AdminCommandUsageTarget[]>>({});
+	const [childrenCache, setChildrenCache] = React.useState<Record<number, AdminCommandUsageItem[]>>({});
 
 	const { items, total, page, pageSize, summary } = data;
 	const topCommands = summary.topCommands ?? [];
@@ -85,10 +89,20 @@ export function UsageSection({ userId, data, filterOptions }: Props) {
 	const fetchFullTargets = async (item: AdminCommandUsageItem) => {
 		if (!item.targetTotal || fullTargetsCache[item.id]) return;
 		try {
-			const res = await getAdminUserCommandUsageTargets(userId, item.id);
+			const res = await getUserCommandUsageTargetsAction(userId, item.id);
 			setFullTargetsCache((m) => ({ ...m, [item.id]: res.targets }));
 		} catch (err) {
 			console.warn("[usage] failed to load full targets", err);
+		}
+	};
+
+	const fetchChildren = async (item: AdminCommandUsageItem) => {
+		if (!item.childCount || childrenCache[item.id]) return;
+		try {
+			const res = await getUserCommandUsageChildrenAction(userId, item.id);
+			setChildrenCache((m) => ({ ...m, [item.id]: res.items }));
+		} catch (err) {
+			console.warn("[usage] failed to load children", err);
 		}
 	};
 
@@ -141,6 +155,7 @@ export function UsageSection({ userId, data, filterOptions }: Props) {
 						<TableHeader>
 							<TableRow>
 								<SortHeader<SortKey> label="When"     sortKey="when"    currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+								<TableHead>Where</TableHead>
 								<TableHead>Type</TableHead>
 								<SortHeader<SortKey> label="Command"  sortKey="command" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
 								<TableHead>Target / Recipients</TableHead>
@@ -158,17 +173,30 @@ export function UsageSection({ userId, data, filterOptions }: Props) {
 											className="cursor-pointer"
 											onClick={() => {
 												setExpandedId(expanded ? null : item.id);
-												if (!expanded) void fetchFullTargets(item);
+												if (!expanded) {
+													void fetchFullTargets(item);
+													void fetchChildren(item);
+												}
 											}}
 										>
 											<TableCell className="text-xs text-muted-foreground">
 												<RelativeTime iso={item.createdAt} />
 											</TableCell>
 											<TableCell>
+												<WhereCell item={item} />
+											</TableCell>
+											<TableCell>
 												<Badge variant="outline">{item.interactionType}</Badge>
 											</TableCell>
 											<TableCell>
-												<code className="rounded bg-muted px-1 py-0.5 text-xs">{commandLabel(item)}</code>
+												<div className="flex items-center gap-1.5">
+													<code className="rounded bg-muted px-1 py-0.5 text-xs">{commandLabel(item)}</code>
+													{item.childCount && item.childCount > 0 ? (
+														<Badge variant="outline" className="text-[10px]" title={`${item.childCount} follow-up interaction${item.childCount === 1 ? "" : "s"}`}>
+															+{item.childCount}
+														</Badge>
+													) : null}
+												</div>
 											</TableCell>
 											<TableCell>
 												{buckets.recipients.length > 0 ? (
@@ -190,10 +218,11 @@ export function UsageSection({ userId, data, filterOptions }: Props) {
 										</TableRow>
 										{expanded && (
 											<TableRow>
-												<TableCell colSpan={6} className="bg-muted/30">
+												<TableCell colSpan={7} className="bg-muted/30">
 													<ExpandedRow
 														item={item}
 														fullTargets={fullTargetsCache[item.id]}
+														children={childrenCache[item.id]}
 														guildId={item.guildId}
 													/>
 												</TableCell>
@@ -211,6 +240,48 @@ export function UsageSection({ userId, data, filterOptions }: Props) {
 				<UsagePagination userId={userId} page={page} pageSize={pageSize} total={total} />
 			)}
 		</section>
+	);
+}
+
+function WhereCell({ item }: { item: AdminCommandUsageItem }) {
+	// Prefer the backend-supplied channelKind when present. Older rows may not
+	// have it — fall back to guildId-presence so we still render something useful.
+	const kind = item.channelKind ?? (item.guildId ? "guild" : "unknown");
+
+	if (kind === "guild" && item.guildId) {
+		const name = item.guildName?.trim() || item.guildId;
+		const src  = guildIconUrl(item.guildId, item.guildIcon ?? null, 64);
+		return (
+			<div className="flex items-center gap-2">
+				<Avatar className="size-5">
+					{src && <AvatarImage src={src} alt={name} />}
+					<AvatarFallback className="text-[10px]">{name.charAt(0).toUpperCase()}</AvatarFallback>
+				</Avatar>
+				<span className="truncate text-sm">{name}</span>
+			</div>
+		);
+	}
+
+	if (kind === "group_dm") {
+		const name = item.channelName?.trim() || "Group DM";
+		return (
+			<div className="flex items-center gap-2">
+				<span className="truncate text-sm">{name}</span>
+				<Badge variant="outline" className="text-[10px]">GC</Badge>
+			</div>
+		);
+	}
+
+	if (kind === "dm") {
+		return <Badge variant="outline">DM</Badge>;
+	}
+
+	// Unknown / missing — surface the channelId if we have one so admins can still
+	// trace the row in Discord, otherwise fall through to an em-dash.
+	return (
+		<span className="text-xs text-muted-foreground">
+			{item.channelId ? <code>{item.channelId}</code> : "—"}
+		</span>
 	);
 }
 
@@ -246,14 +317,17 @@ function TargetChip({ t }: { t: AdminCommandUsageTarget }) {
 function ExpandedRow({
 	item,
 	fullTargets,
+	children,
 	guildId,
 }: {
 	item: AdminCommandUsageItem;
 	fullTargets: AdminCommandUsageTarget[] | undefined;
+	children: AdminCommandUsageItem[] | undefined;
 	guildId: string | null;
 }) {
 	const targets = fullTargets ?? item.targets;
 	const buckets = relationBucket(targets);
+	const childCount = item.childCount ?? 0;
 	return (
 		<div className="grid grid-cols-1 gap-3 p-3 text-xs">
 			{guildId && (
@@ -283,9 +357,54 @@ function ExpandedRow({
 					)}
 				</div>
 			)}
+			{childCount > 0 && (
+				<FollowupsBlock count={childCount} items={children} />
+			)}
 			<div className="text-muted-foreground">
 				{item.outcome}{item.errorCode ? ` — ${item.errorCode}` : ""} · {item.latencyMs}ms
 			</div>
+		</div>
+	);
+}
+
+function FollowupsBlock({
+	count,
+	items,
+}: {
+	count: number;
+	items: AdminCommandUsageItem[] | undefined;
+}) {
+	return (
+		<div>
+			<div className="font-semibold text-muted-foreground">
+				Follow-ups ({count})
+			</div>
+			{!items ? (
+				<div className="mt-1 text-muted-foreground">Loading…</div>
+			) : items.length === 0 ? (
+				<div className="mt-1 text-muted-foreground">No follow-ups linked.</div>
+			) : (
+				<div className="mt-1 flex flex-col gap-2">
+					{items.map((child) => (
+						<div key={child.id} className="rounded border bg-background p-2">
+							<div className="flex flex-wrap items-center gap-2">
+								<Badge variant="outline">{child.interactionType}</Badge>
+								<RelativeTime iso={child.createdAt} />
+								<Badge variant={outcomeBadgeVariant(child.outcome)}>{child.outcome}</Badge>
+								<span className="tabular-nums text-muted-foreground">{child.latencyMs}ms</span>
+								{child.errorCode ? (
+									<span className="text-muted-foreground">— {child.errorCode}</span>
+								) : null}
+							</div>
+							{child.options && Object.keys(child.options).length > 0 && (
+								<pre className="mt-1 whitespace-pre-wrap break-words">
+									{JSON.stringify(child.options, null, 2)}
+								</pre>
+							)}
+						</div>
+					))}
+				</div>
+			)}
 		</div>
 	);
 }

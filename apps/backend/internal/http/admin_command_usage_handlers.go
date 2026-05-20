@@ -141,6 +141,36 @@ func (h *Handler) AdminGetUserCommandUsageFilterOptions(w http.ResponseWriter, r
 	writeJSON(w, http.StatusOK, opts)
 }
 
+// AdminGetCommandUsageChildren: GET /api/app/admin/users/{id}/command-usage/{usageId}/children
+//
+// Returns follow-up rows (modal submits, button presses, select interactions)
+// that share the given parent's id, scoped to the user in the URL path. A
+// usageId that exists but belongs to a different user returns an empty list
+// (not 404) so admins can't enumerate other users' usage row IDs.
+func (h *Handler) AdminGetCommandUsageChildren(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing id")
+		return
+	}
+	idStr := chi.URLParam(r, "usageId")
+	usageID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || usageID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid usageId")
+		return
+	}
+	children, err := h.postgres.ListUserCommandUsageChildren(ctx, id, usageID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load children")
+		return
+	}
+	if children == nil {
+		children = []store.CommandUsageRowWithTargets{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": children})
+}
+
 // AdminGetCommandUsageTargets: GET /api/app/admin/users/{id}/command-usage/{usageId}/targets
 //
 // Returns the full target list for a single usage row, scoped to the user

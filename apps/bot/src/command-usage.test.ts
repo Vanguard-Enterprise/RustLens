@@ -6,6 +6,7 @@ import {
   __setBackendForTests,
   __resetForTests,
 } from "./command-usage.js";
+import { rememberParentCorrelation } from "./correlation.js";
 
 function fakeChatInput(opts: {
   command: string;
@@ -166,6 +167,77 @@ describe("buildCommandUsagePayload", () => {
       user: { id: "111" },
     };
     expect(buildCommandUsagePayload(interaction as never, "success", null, 1)).toBeNull();
+  });
+
+  test("chat input mints a stable correlationId", () => {
+    const interaction = fakeChatInput({ command: "bind", subcommand: "c4" });
+    const p1 = buildCommandUsagePayload(interaction as never, "success", null, 1);
+    const p2 = buildCommandUsagePayload(interaction as never, "success", null, 2);
+    expect(p1!.correlationId).toBeTruthy();
+    // Same interaction → same correlation. Two calls in a row must agree so
+    // any customId minted earlier in the handler is recoverable when the row
+    // is recorded later in the `finally` block.
+    expect(p1!.correlationId).toBe(p2!.correlationId);
+    expect(p1!.parentCorrelationId).toBeFalsy();
+  });
+
+  test("modal follow-up carries parentCorrelationId stashed by the dispatcher", () => {
+    const modal = fakeModal("bind_c4_modal", { bind_c4_bind: "Z" });
+    // Dispatcher would have stripped #abc12345 off the raw customId and
+    // stashed the correlation against the interaction via this helper.
+    rememberParentCorrelation(modal as never, "abc12345");
+    const p = buildCommandUsagePayload(modal as never, "success", null, 5);
+    expect(p!.parentCorrelationId).toBe("abc12345");
+    // Modal itself still gets its OWN correlation so any further nested
+    // follow-up could chain through.
+    expect(p!.correlationId).toBeTruthy();
+    expect(p!.correlationId).not.toBe("abc12345");
+  });
+
+  test("classifies guild interactions via guildId regardless of channel", () => {
+    const p = buildCommandUsagePayload(
+      fakeChatInput({ command: "player", guildId: "g1", channelId: "c1" }) as never,
+      "success",
+      null,
+      1,
+    );
+    expect(p!.channelKind).toBe("guild");
+    expect(p!.channelName).toBeNull();
+  });
+
+  test("classifies a 1:1 DM as 'dm' with no name", () => {
+    // discord.js ChannelType.DM = 1
+    const dm = {
+      ...fakeChatInput({ command: "ping", channelId: "c1" }),
+      guildId: null,
+      channel: { type: 1, name: null },
+    };
+    const p = buildCommandUsagePayload(dm as never, "success", null, 1);
+    expect(p!.channelKind).toBe("dm");
+    expect(p!.channelName).toBeNull();
+  });
+
+  test("classifies a group DM as 'group_dm' and forwards its name", () => {
+    // discord.js ChannelType.GroupDM = 3
+    const gc = {
+      ...fakeChatInput({ command: "ping", channelId: "c1" }),
+      guildId: null,
+      channel: { type: 3, name: "Raid Squad" },
+    };
+    const p = buildCommandUsagePayload(gc as never, "success", null, 1);
+    expect(p!.channelKind).toBe("group_dm");
+    expect(p!.channelName).toBe("Raid Squad");
+  });
+
+  test("falls back to 'unknown' when guildId is null and channel is missing", () => {
+    const orphan = {
+      ...fakeChatInput({ command: "ping" }),
+      guildId: null,
+      channel: null,
+    };
+    const p = buildCommandUsagePayload(orphan as never, "success", null, 1);
+    expect(p!.channelKind).toBe("unknown");
+    expect(p!.channelName).toBeNull();
   });
 
   test("error outcome carries errorCode (capped to 256)", () => {
