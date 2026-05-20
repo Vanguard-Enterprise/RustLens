@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"unicode/utf8"
 
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/store"
@@ -59,6 +60,14 @@ func (h *Handler) RecordCommandUsage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "discordId must be a valid Discord snowflake")
 		return
 	}
+	if req.GuildID != nil && *req.GuildID != "" && !validateSnowflakeValue(*req.GuildID) {
+		writeError(w, http.StatusBadRequest, "guildId must be a valid Discord snowflake")
+		return
+	}
+	if req.ChannelID != nil && *req.ChannelID != "" && !validateSnowflakeValue(*req.ChannelID) {
+		writeError(w, http.StatusBadRequest, "channelId must be a valid Discord snowflake")
+		return
+	}
 	if _, ok := validInteractionTypes[req.InteractionType]; !ok {
 		writeError(w, http.StatusBadRequest, "interactionType invalid")
 		return
@@ -78,8 +87,9 @@ func (h *Handler) RecordCommandUsage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "options payload too large")
 		return
 	}
-	if req.ErrorCode != nil && len(*req.ErrorCode) > maxErrorCodeLen {
-		trimmed := (*req.ErrorCode)[:maxErrorCodeLen]
+	if req.ErrorCode != nil && utf8.RuneCountInString(*req.ErrorCode) > maxErrorCodeLen {
+		runes := []rune(*req.ErrorCode)
+		trimmed := string(runes[:maxErrorCodeLen])
 		req.ErrorCode = &trimmed
 	}
 	if h.appauth == nil {
