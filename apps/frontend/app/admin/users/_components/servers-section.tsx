@@ -1,11 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
 	Table,
@@ -15,6 +13,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { SortHeader, type SortDir } from "@/components/admin/sort-header";
 import { guildIconUrl, userAvatarUrl } from "@/lib/discord-cdn";
 import type { AdminUserGuild } from "@/lib/rustlens-api";
 
@@ -23,7 +22,6 @@ type Props = {
 };
 
 type SortKey = "name" | "guildId" | "owner" | "members" | "bot";
-type SortDir = "asc" | "desc";
 
 function formatNumber(n: number | null): string {
 	if (n === null) return "—";
@@ -89,49 +87,6 @@ function compareGuilds(a: AdminUserGuild, b: AdminUserGuild, key: SortKey): numb
 	}
 }
 
-type SortHeaderProps = {
-	label: string;
-	sortKey: SortKey;
-	currentKey: SortKey;
-	currentDir: SortDir;
-	onSort: (key: SortKey) => void;
-	className?: string;
-	align?: "left" | "right";
-};
-
-function SortHeader({
-	label,
-	sortKey,
-	currentKey,
-	currentDir,
-	onSort,
-	className,
-	align = "left",
-}: SortHeaderProps) {
-	const active = currentKey === sortKey;
-	const Icon = active
-		? currentDir === "asc"
-			? ArrowUpIcon
-			: ArrowDownIcon
-		: ArrowUpDownIcon;
-	return (
-		<TableHead className={className}>
-			<Button
-				variant="ghost"
-				size="sm"
-				onClick={() => onSort(sortKey)}
-				className={`-mx-2 h-auto px-2 py-1 font-medium ${
-					align === "right" ? "ml-auto" : ""
-				}`}
-			>
-				{label}
-				<Icon
-					className={`ml-1 size-3.5 ${active ? "" : "text-muted-foreground/60"}`}
-				/>
-			</Button>
-		</TableHead>
-	);
-}
 
 export function ServersSection({ guilds }: Props) {
 	const [search, setSearch] = React.useState("");
