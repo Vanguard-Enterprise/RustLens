@@ -46,6 +46,7 @@ func TestRunOnceCallsAllPurgesWithRetentionCutoffs(t *testing.T) {
 		Interval:                time.Hour,
 		WipeReactRetention:      7 * 24 * time.Hour,
 		AnalyticsCacheRetention: 48 * time.Hour,
+		CommandUsageRetention:   90 * 24 * time.Hour,
 	}
 	svc := NewService(store, cfg)
 
@@ -53,7 +54,7 @@ func TestRunOnceCallsAllPurgesWithRetentionCutoffs(t *testing.T) {
 	svc.runOnce(context.Background())
 	after := time.Now()
 
-	if store.wipeReactCalls != 1 || store.analyticsCalls != 1 {
+	if store.wipeReactCalls != 1 || store.analyticsCalls != 1 || store.commandUsageCalls != 1 {
 		t.Fatalf("expected 1 call per purge, got %+v", store)
 	}
 
@@ -67,6 +68,7 @@ func TestRunOnceCallsAllPurgesWithRetentionCutoffs(t *testing.T) {
 	}
 	checkCutoff("wipeReact", store.wipeReactCutoffs[0], cfg.WipeReactRetention)
 	checkCutoff("analytics", store.analyticsCutoffs[0], cfg.AnalyticsCacheRetention)
+	checkCutoff("commandUsage", store.commandUsageCutoffs[0], cfg.CommandUsageRetention)
 }
 
 func TestConfigDefaultsAreConservative(t *testing.T) {
