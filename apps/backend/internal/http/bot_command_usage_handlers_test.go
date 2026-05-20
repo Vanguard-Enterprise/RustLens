@@ -91,6 +91,7 @@ func TestRecordCommandUsage_HappyPath(t *testing.T) {
 }
 
 func TestRecordCommandUsage_MissingAppUserIsSilentSuccess(t *testing.T) {
+	ctx := context.Background()
 	fx := newCommandUsageTestFixture(t)
 
 	b, _ := json.Marshal(map[string]any{
@@ -107,6 +108,14 @@ func TestRecordCommandUsage_MissingAppUserIsSilentSuccess(t *testing.T) {
 
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("expected 204 (silent drop) got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var count int
+	if err := fx.pool.QueryRow(ctx, `SELECT COUNT(*) FROM command_usage`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 rows (silent drop) got %d", count)
 	}
 }
 
