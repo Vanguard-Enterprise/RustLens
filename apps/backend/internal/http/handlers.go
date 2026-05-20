@@ -44,7 +44,6 @@ const steamAccountCacheTTL = 24 * time.Hour
 const steamGameBanCacheTTL = 6 * time.Hour
 const recentGameBanWindow = 90 * 24 * time.Hour
 const steamPlayerBanBatchSize = 100
-const deepGameBanRecentHardLinkWindow = 30 * 24 * time.Hour
 const deepGameBanPlatformSyncLimit = 100
 
 type Handler struct {
@@ -3498,17 +3497,11 @@ func guildLinksToGameBanCandidates(links []store.GuildSteamDiscordLink) []gameBa
 
 func (h *Handler) deepGameBanCandidates(ctx context.Context, guildID string, links []store.GuildSteamDiscordLink) ([]gameBanCandidate, error) {
 	discordIDs := uniqueGuildDiscordIDs(links)
-	recentHardLinkByDiscordID, err := h.postgres.RecentVisibleHardLinkDiscordIDs(ctx, discordIDs, time.Now().UTC().Add(-deepGameBanRecentHardLinkWindow))
+	eligibleForSync, err := h.stalePlatformSyncDiscordIDs(ctx, discordIDs, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
 
-	eligibleForSync := make([]string, 0, len(discordIDs))
-	for _, discordID := range discordIDs {
-		if !recentHardLinkByDiscordID[discordID] {
-			eligibleForSync = append(eligibleForSync, discordID)
-		}
-	}
 	if len(eligibleForSync) <= deepGameBanPlatformSyncLimit {
 		for _, discordID := range eligibleForSync {
 			if _, _, err := h.syncPlatformIdentity(ctx, "discord", discordID); err != nil {
@@ -3530,6 +3523,24 @@ func (h *Handler) deepGameBanCandidates(ctx context.Context, guildID string, lin
 		})
 	}
 	return candidates, nil
+}
+
+func (h *Handler) stalePlatformSyncDiscordIDs(ctx context.Context, discordIDs []string, now time.Time) ([]string, error) {
+	stale := make([]string, 0, len(discordIDs))
+	for _, discordID := range discordIDs {
+		state, err := h.postgres.GetPlatformSyncState(ctx, "discord", discordID)
+		if errors.Is(err, store.ErrSteamAccountNotFound) {
+			stale = append(stale, discordID)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if now.Sub(state.LastPlatformSyncAt) >= platformSyncTTL {
+			stale = append(stale, discordID)
+		}
+	}
+	return stale, nil
 }
 
 func (h *Handler) gameBanCacheForSteamIDs(ctx context.Context, guildID string, steamIDs []string, now time.Time) (map[string]store.SteamGameBanCache, error) {
