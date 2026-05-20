@@ -17,6 +17,7 @@ const (
 	workerHeartbeatPref           = "rustlens:bot:worker:heartbeat:"
 	workerStatsPref               = "rustlens:bot:worker:stats:"
 	trackNotificationClaimPref    = "rustlens:track:notification:claim:"
+	battleMetricsPollerCadenceKey = "rustlens:battlemetrics:poller:cadence"
 	battleMetricsPollerLockKey    = "rustlens:battlemetrics:poller:lock"
 	serverAnalyticsRefreshLockKey = "rustlens:server-analytics:refresh:lock"
 )
@@ -202,6 +203,10 @@ func (r *RedisStore) CurrentAssignments(ctx context.Context) (map[string][]int, 
 
 func (r *RedisStore) TryAcquireBattleMetricsPollerLock(ctx context.Context, owner string, ttl time.Duration) (bool, error) {
 	return r.client.SetNX(ctx, battleMetricsPollerLockKey, owner, ttl).Result()
+}
+
+func (r *RedisStore) TryReserveBattleMetricsPollerCycle(ctx context.Context, owner string, ttl time.Duration) (bool, error) {
+	return r.client.SetNX(ctx, battleMetricsPollerCadenceKey, owner, ttl).Result()
 }
 
 func (r *RedisStore) ReleaseBattleMetricsPollerLock(ctx context.Context, owner string) error {
