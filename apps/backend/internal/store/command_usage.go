@@ -393,3 +393,93 @@ func (p *PostgresStore) ListUserCommandUsageFiltered(
 	}
 	return page, rows.Err()
 }
+
+type CommandUsageFilterGuild struct {
+	GuildID  string  `json:"guildId"`
+	Name     string  `json:"name"`
+	IconHash *string `json:"iconHash"`
+}
+
+type CommandUsageFilterOptions struct {
+	Commands []string                  `json:"commands"`
+	Guilds   []CommandUsageFilterGuild `json:"guilds"`
+}
+
+func (p *PostgresStore) CommandUsageFilterOptions(
+	ctx context.Context,
+	appUserID string,
+	windowDays int,
+) (CommandUsageFilterOptions, error) {
+	out := CommandUsageFilterOptions{
+		Commands: []string{},
+		Guilds:   []CommandUsageFilterGuild{},
+	}
+	if windowDays <= 0 {
+		windowDays = 90
+	}
+	cutoff := time.Now().Add(-time.Duration(windowDays) * 24 * time.Hour)
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT DISTINCT command
+		FROM command_usage
+		WHERE app_user_id = $1 AND created_at >= $2
+		ORDER BY command ASC
+	`, appUserID, cutoff)
+	if err != nil {
+		return out, fmt.Errorf("filter commands: %w", err)
+	}
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			rows.Close()
+			return out, fmt.Errorf("scan filter command: %w", err)
+		}
+		out.Commands = append(out.Commands, c)
+	}
+	rows.Close()
+
+	guildRows, err := p.pool.Query(ctx, `
+		SELECT DISTINCT cu.guild_id, COALESCE(bg.name, '') AS name, bg.icon_hash
+		FROM command_usage cu
+		LEFT JOIN bot_guilds bg ON bg.guild_id = cu.guild_id
+		WHERE cu.app_user_id = $1 AND cu.created_at >= $2 AND cu.guild_id IS NOT NULL
+		ORDER BY name ASC, cu.guild_id ASC
+	`, appUserID, cutoff)
+	if err != nil {
+		return out, fmt.Errorf("filter guilds: %w", err)
+	}
+	defer guildRows.Close()
+	for guildRows.Next() {
+		var g CommandUsageFilterGuild
+		if err := guildRows.Scan(&g.GuildID, &g.Name, &g.IconHash); err != nil {
+			return out, fmt.Errorf("scan filter guild: %w", err)
+		}
+		out.Guilds = append(out.Guilds, g)
+	}
+	return out, guildRows.Err()
+}
+
+func (p *PostgresStore) ListCommandUsageTargets(
+	ctx context.Context,
+	usageID int64,
+) ([]CommandUsageTargetRow, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT kind, snowflake, display_name, avatar_hash, relation
+		FROM command_usage_targets
+		WHERE command_usage_id = $1
+		ORDER BY id ASC
+	`, usageID)
+	if err != nil {
+		return nil, fmt.Errorf("list targets: %w", err)
+	}
+	defer rows.Close()
+	out := []CommandUsageTargetRow{}
+	for rows.Next() {
+		var t CommandUsageTargetRow
+		if err := rows.Scan(&t.Kind, &t.Snowflake, &t.DisplayName, &t.AvatarHash, &t.Relation); err != nil {
+			return nil, fmt.Errorf("scan target: %w", err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}

@@ -314,3 +314,45 @@ func TestInsertCommandUsage_TargetsCappedAt500(t *testing.T) {
 		t.Fatalf("want %d, got %d", MaxTargetsPerUsage, count)
 	}
 }
+
+func TestCommandUsageFilterOptions_DistinctCommandsAndGuilds(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	appUserID := "usr_filter_opts"
+
+	// Clean up any leftover rows from prior runs (non-transactional test DB).
+	_, _ = s.pool.Exec(ctx, `DELETE FROM app_users WHERE id = 'usr_filter_opts'`)
+
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_filter_opts', '777777777777777777', 'filter_opts_tester', 'filter_opts_tester')
+	`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	gid := "111111111111111111"
+	for _, c := range []string{"track", "track", "announce"} {
+		if err := s.InsertCommandUsage(ctx, CommandUsageInsert{
+			AppUserID:       appUserID,
+			DiscordID:       "222222222222222222",
+			GuildID:         &gid,
+			InteractionType: "command",
+			Command:         c,
+			Outcome:         "success",
+			Options:         []byte(`{}`),
+		}); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	opts, err := s.CommandUsageFilterOptions(ctx, appUserID, 90)
+	if err != nil {
+		t.Fatalf("filter opts: %v", err)
+	}
+	if len(opts.Commands) != 2 {
+		t.Fatalf("want 2 distinct commands, got %d: %v", len(opts.Commands), opts.Commands)
+	}
+	if len(opts.Guilds) != 1 || opts.Guilds[0].GuildID != gid {
+		t.Fatalf("want 1 guild %s, got %+v", gid, opts.Guilds)
+	}
+}
