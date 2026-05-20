@@ -222,7 +222,7 @@ export function UsageSection({ userId, data, filterOptions }: Props) {
 													<ExpandedRow
 														item={item}
 														fullTargets={fullTargetsCache[item.id]}
-														children={childrenCache[item.id]}
+														followups={childrenCache[item.id]}
 														guildId={item.guildId}
 													/>
 												</TableCell>
@@ -317,12 +317,12 @@ function TargetChip({ t }: { t: AdminCommandUsageTarget }) {
 function ExpandedRow({
 	item,
 	fullTargets,
-	children,
+	followups,
 	guildId,
 }: {
 	item: AdminCommandUsageItem;
 	fullTargets: AdminCommandUsageTarget[] | undefined;
-	children: AdminCommandUsageItem[] | undefined;
+	followups: AdminCommandUsageItem[] | undefined;
 	guildId: string | null;
 }) {
 	const targets = fullTargets ?? item.targets;
@@ -358,7 +358,7 @@ function ExpandedRow({
 				</div>
 			)}
 			{childCount > 0 && (
-				<FollowupsBlock count={childCount} items={children} />
+				<FollowupsBlock count={childCount} items={followups} />
 			)}
 			<div className="text-muted-foreground">
 				{item.outcome}{item.errorCode ? ` — ${item.errorCode}` : ""} · {item.latencyMs}ms
