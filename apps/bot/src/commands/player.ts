@@ -12,6 +12,7 @@ import { loadConfig } from "../config.js";
 import {
   createEmbed,
   buildProOnlyFeatureEmbed,
+  formatDiscordUserName,
 } from "../shared.js";
 import {
   resolveSteamInputErrorMessage,
@@ -785,7 +786,7 @@ async function buildDiscordLinksEmbed(discordUser: User, isAdmin: boolean): Prom
     Promise.all(softSteamIds.map((sid) => ensureSteamAccountWithBm(sid))),
   ]);
 
-  const discordName = discordUser.displayName ?? discordUser.username ?? discordUser.tag;
+  const discordName = formatDiscordUserName(discordUser);
   const embed = createEmbed()
     .setTitle(`Links - ${discordName}`);
 
@@ -929,7 +930,7 @@ async function fetchDiscordNames(client: Client | undefined, discordIds: readonl
     unique.map(async (discordId) => {
       try {
         const user = await client.users.fetch(discordId);
-        return [discordId, user.globalName || user.username] as const;
+        return [discordId, formatDiscordUserName(user)] as const;
       } catch {
         return null;
       }

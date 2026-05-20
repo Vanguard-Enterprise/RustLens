@@ -3,7 +3,7 @@ import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, Messa
 import { BackendClient } from "../backend-client.js";
 import { loadConfig } from "../config.js";
 import { fetchGuildSettings, hasGuildAdminAccess, resolveConfiguredGuildChannel } from "../guild-settings.js";
-import { createEmbed, logDiscordCatch } from "../shared.js";
+import { createEmbed, formatDiscordUserName, logDiscordCatch } from "../shared.js";
 import { resolveSteamInputErrorMessage } from "../steam-input.js";
 
 export const ADMIN_COMMAND_NAME = "admin";
@@ -89,7 +89,7 @@ function buildAdminSetSteamLogEmbed(
   const embed = createEmbed()
     .setTitle("Steam account linked by admin")
     .setAuthor({
-      name: interaction.user.tag,
+      name: formatDiscordUserName(interaction.user),
       iconURL: interaction.user.displayAvatarURL({ size: 128 }),
     })
     .addFields(
@@ -121,7 +121,7 @@ function buildAdminRemoveSteamLogEmbed(
   return createEmbed()
     .setTitle("Steam account removed by admin")
     .setAuthor({
-      name: interaction.user.tag,
+      name: formatDiscordUserName(interaction.user),
       iconURL: interaction.user.displayAvatarURL({ size: 128 }),
     })
     .addFields(

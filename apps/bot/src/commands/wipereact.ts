@@ -46,6 +46,7 @@ import {
 import {
   chunkRawMentionsCodeBlocks,
   createEmbed,
+  formatDiscordUserName,
   FOOTER_TEXT,
   buildFooter,
   getFieldValues,
@@ -1657,12 +1658,12 @@ function actionLogColor(action: WipeReactAction) {
 function buildReactionLogEmbed(
   state: WipeReactMessageState,
   action: WipeReactAction,
-  user: { tag: string; id: string; displayAvatarURL: (options?: { size?: number }) => string },
+  user: { globalName?: string | null; username?: string | null; tag?: string | null; id: string; displayAvatarURL: (options?: { size?: number }) => string },
   reason?: string,
 ) {
   const embed = createEmbed()
     .setColor(actionLogColor(action))
-    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ size: 128 }) })
+    .setAuthor({ name: formatDiscordUserName(user), iconURL: user.displayAvatarURL({ size: 128 }) })
     .setFooter(buildFooter(`${FOOTER_TEXT} • ${state.name}`))
     .addFields(
       {
@@ -1681,12 +1682,12 @@ function buildReactionLogEmbed(
 function buildReactionRemovalLogEmbed(
   state: WipeReactMessageState,
   action: WipeReactAction,
-  user: { tag: string; id: string; displayAvatarURL: (options?: { size?: number }) => string },
+  user: { globalName?: string | null; username?: string | null; tag?: string | null; id: string; displayAvatarURL: (options?: { size?: number }) => string },
   reason: string,
 ) {
   return createEmbed()
     .setColor(LOG_REMOVED_COLOR)
-    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ size: 128 }) })
+    .setAuthor({ name: formatDiscordUserName(user), iconURL: user.displayAvatarURL({ size: 128 }) })
     .setFooter(buildFooter(`${FOOTER_TEXT} • ${state.name}`))
     .addFields(
       {

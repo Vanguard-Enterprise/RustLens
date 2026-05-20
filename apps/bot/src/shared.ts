@@ -10,6 +10,15 @@ export function buildFooter(text: string = FOOTER_TEXT) {
   return { text, iconURL: RUSTLENS_EMBED_ICON_URL };
 }
 
+export function formatDiscordUserName(user: {
+  globalName?: string | null;
+  username?: string | null;
+  tag?: string | null;
+  id?: string | null;
+}) {
+  return user.globalName?.trim() || user.username?.trim() || user.tag?.trim() || user.id?.trim() || "Unknown user";
+}
+
 export function createEmbed() {
   return new EmbedBuilder()
     .setColor(RUSTLENS_EMBED_COLOR)

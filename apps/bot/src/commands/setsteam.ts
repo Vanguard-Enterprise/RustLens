@@ -4,7 +4,7 @@ import { BackendClient, type SetSteamCandidate } from "../backend-client.js";
 import { ModalV2Builder, StringSelectBuilder, TextInputBuilder, TextInputStyle } from "../builders/index.js";
 import { loadConfig } from "../config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "../guild-settings.js";
-import { createEmbed, buildFooter, getFieldValues, logDiscordCatch, RUSTLENS_EMBED_COLOR } from "../shared.js";
+import { createEmbed, buildFooter, formatDiscordUserName, getFieldValues, logDiscordCatch, RUSTLENS_EMBED_COLOR } from "../shared.js";
 import { resolveSteamInputErrorMessage } from "../steam-input.js";
 import { buildProfileButtons, buildUserEmbed } from "./view.js";
 
@@ -90,7 +90,7 @@ function buildLinkingLogEmbed(
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
     .setAuthor({
-      name: interaction.user.tag,
+      name: formatDiscordUserName(interaction.user),
       iconURL: interaction.user.displayAvatarURL({ size: 128 }),
     })
     .setFooter(buildFooter())
