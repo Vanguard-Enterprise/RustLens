@@ -463,6 +463,7 @@ func (p *PostgresStore) ListCommandUsageTargets(
 	ctx context.Context,
 	usageID int64,
 ) ([]CommandUsageTargetRow, error) {
+	out := []CommandUsageTargetRow{}
 	rows, err := p.pool.Query(ctx, `
 		SELECT kind, snowflake, display_name, avatar_hash, relation
 		FROM command_usage_targets
@@ -470,14 +471,13 @@ func (p *PostgresStore) ListCommandUsageTargets(
 		ORDER BY id ASC
 	`, usageID)
 	if err != nil {
-		return nil, fmt.Errorf("list targets: %w", err)
+		return out, fmt.Errorf("list targets: %w", err)
 	}
 	defer rows.Close()
-	out := []CommandUsageTargetRow{}
 	for rows.Next() {
 		var t CommandUsageTargetRow
 		if err := rows.Scan(&t.Kind, &t.Snowflake, &t.DisplayName, &t.AvatarHash, &t.Relation); err != nil {
-			return nil, fmt.Errorf("scan target: %w", err)
+			return out, fmt.Errorf("scan target: %w", err)
 		}
 		out = append(out, t)
 	}
