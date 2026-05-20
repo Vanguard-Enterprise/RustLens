@@ -196,4 +196,31 @@ describe("recordCommandUsage", () => {
     ).not.toThrow();
     expect(spy).toHaveBeenCalledTimes(1);
   });
+
+  test("does not call backend when interaction has no user id", () => {
+    __resetForTests();
+    const spy = vi.fn().mockResolvedValue(undefined);
+    __setBackendForTests({ recordCommandUsage: spy } as never);
+
+    // chat input fake but with empty user id
+    const interaction = {
+      isChatInputCommand: () => true,
+      isButton: () => false,
+      isModalSubmit: () => false,
+      isStringSelectMenu: () => false,
+      isAutocomplete: () => false,
+      commandName: "player",
+      options: {
+        getSubcommand: () => null,
+        data: [],
+      },
+      guildId:  null,
+      channelId: null,
+      user: { id: "" },
+    };
+
+    recordCommandUsage(interaction as never, "success", null, Date.now());
+
+    expect(spy).not.toHaveBeenCalled();
+  });
 });

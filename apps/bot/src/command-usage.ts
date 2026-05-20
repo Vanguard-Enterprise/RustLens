@@ -165,7 +165,7 @@ export function recordCommandUsage(
   getBackend()
     .recordCommandUsage(getWorkerID(), payload)
     .catch((err: unknown) => {
-      console.error(JSON.stringify({
+      console.warn(JSON.stringify({
         level:   "warn",
         message: "[bot] recordCommandUsage failed",
         userId:  payload.discordId,
