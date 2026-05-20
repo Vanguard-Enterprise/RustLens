@@ -504,6 +504,20 @@ export type TrackGroupAnalyticsResponse = {
   days: TrackGroupAnalyticsDay[];
 };
 
+export type CommandUsagePayload = {
+  discordId:       string;
+  guildId:         string | null;
+  channelId:       string | null;
+  interactionType: "command" | "button" | "modal" | "string_select";
+  command:         string;
+  subcommand:      string | null;
+  target:          string | null;
+  options:         Record<string, unknown>;
+  outcome:         "success" | "error" | "banned" | "denied";
+  errorCode:       string | null;
+  latencyMs:       number;
+};
+
 type UpsertBotGuildPayload = {
   guildId: string;
   name: string;
@@ -1094,6 +1108,24 @@ export class BackendClient {
         avatarHash: payload.avatarHash,
       },
     );
+  }
+
+  async recordCommandUsage(workerId: string, payload: CommandUsagePayload): Promise<void> {
+    const response = await fetch(`${this.backendUrl}/api/internal/bot/setup/command-usage`, {
+      method:  "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization:  `Bearer ${this.token(workerId)}`,
+      },
+      body:   JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      const error = new Error(`backend call failed (${response.status}): ${message}`);
+      (error as any).status = response.status;
+      throw error;
+    }
   }
 
   createGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
