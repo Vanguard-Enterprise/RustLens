@@ -14,9 +14,11 @@ import (
 )
 
 // GuildSyncer reconciles the caller's user_guilds rows against an authoritative
-// list of guild IDs (typically from Discord's /users/@me/guilds endpoint).
+// guild list (typically Discord's /users/@me/guilds response). Implementations
+// receive the full guild objects so they can persist per-user metadata
+// (name/icon/member-count/owner-flag) for guilds the bot isn't necessarily in.
 type GuildSyncer interface {
-	SyncUserGuildsForUser(ctx context.Context, discordID string, guildIDs []string) error
+	SyncUserGuildsForUser(ctx context.Context, discordID string, guilds []UserGuild) error
 }
 
 // HandlerConfig wires runtime dependencies into the OAuth handlers.
@@ -164,11 +166,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 			// Log-and-continue: a stale user_guilds list must not block sign-in.
 			log.Printf("discord callback: FetchUserGuilds(%s): %v", profile.ID, err)
 		} else {
-			ids := make([]string, 0, len(guilds))
-			for _, g := range guilds {
-				ids = append(ids, g.ID)
-			}
-			if err := h.cfg.GuildSyncer.SyncUserGuildsForUser(ctx, profile.ID, ids); err != nil {
+			if err := h.cfg.GuildSyncer.SyncUserGuildsForUser(ctx, profile.ID, guilds); err != nil {
 				log.Printf("discord callback: SyncUserGuildsForUser(%s): %v", profile.ID, err)
 			}
 		}

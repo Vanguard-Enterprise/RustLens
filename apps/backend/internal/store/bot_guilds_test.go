@@ -164,7 +164,10 @@ func TestSyncUserGuildsForUser_UpsertsAndMarksLeft(t *testing.T) {
 		}
 	}
 
-	if err := s.SyncUserGuildsForUser(ctx, discordID, []string{guildA, guildB}); err != nil {
+	if err := s.SyncUserGuildsForUser(ctx, discordID, []SyncUserGuildInput{
+		{GuildID: guildA},
+		{GuildID: guildB},
+	}); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
 	for _, gid := range []string{guildA, guildB} {
@@ -181,7 +184,10 @@ func TestSyncUserGuildsForUser_UpsertsAndMarksLeft(t *testing.T) {
 	}
 
 	// Second sync: user dropped guildB, joined guildC. guildB should be marked left.
-	if err := s.SyncUserGuildsForUser(ctx, discordID, []string{guildA, guildC}); err != nil {
+	if err := s.SyncUserGuildsForUser(ctx, discordID, []SyncUserGuildInput{
+		{GuildID: guildA},
+		{GuildID: guildC},
+	}); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
 

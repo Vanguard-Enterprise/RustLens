@@ -212,7 +212,15 @@ export type AuditEventItem = {
 
 export type AdminUserGuild = {
 	guildId: string;
-	nick?: string;
+	name: string;
+	iconHash: string | null;
+	ownerDiscordId: string | null;
+	ownerUsername: string | null;
+	ownerGlobalName: string | null;
+	ownerAvatarHash: string | null;
+	approximateMemberCount: number | null;
+	isInstalled: boolean;
+	leftAt: string | null;
 };
 
 export type AdminUserAuditItem = AuditEventItem;

@@ -462,6 +462,10 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ;
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS icon_hash TEXT;
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS approximate_member_count INTEGER;
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS is_owner BOOLEAN NOT NULL DEFAULT FALSE;
 
 		DO $$
 		BEGIN

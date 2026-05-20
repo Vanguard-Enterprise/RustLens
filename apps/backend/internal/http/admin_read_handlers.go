@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -95,8 +96,16 @@ type auditEventItem struct {
 }
 
 type adminUserGuild struct {
-	GuildID string `json:"guildId"`
-	Nick    string `json:"nick,omitempty"`
+	GuildID                string  `json:"guildId"`
+	Name                   string  `json:"name"`
+	IconHash               *string `json:"iconHash"`
+	OwnerDiscordID         *string `json:"ownerDiscordId"`
+	OwnerUsername          *string `json:"ownerUsername"`
+	OwnerGlobalName        *string `json:"ownerGlobalName"`
+	OwnerAvatarHash        *string `json:"ownerAvatarHash"`
+	ApproximateMemberCount *int32  `json:"approximateMemberCount"`
+	IsInstalled            bool    `json:"isInstalled"`
+	LeftAt                 *string `json:"leftAt"`
 }
 
 type adminUserDetail struct {
@@ -882,17 +891,65 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 	rrows.Close()
 
 	// Guilds via the user's discord_id (stored directly on app_users now).
+	// Prefer bot_guilds metadata (authoritative when the bot is in the guild);
+	// otherwise fall back to user_guilds (captured from /users/@me/guilds during
+	// OAuth login) so unknown guilds still show name/icon/member count. When
+	// user_guilds.is_owner is TRUE and bot_guilds has no owner, the requesting
+	// user IS the owner — surface their identity via owner_app.
 	d.Guilds = []adminUserGuild{}
 	if d.DiscordID != "" {
-		grows, err := pool.Query(ctx, `SELECT guild_id, COALESCE(nickname,'') FROM user_guilds WHERE discord_id = $1 AND left_at IS NULL ORDER BY guild_id`, d.DiscordID)
-		if err == nil {
-			for grows.Next() {
-				var g adminUserGuild
-				if err := grows.Scan(&g.GuildID, &g.Nick); err == nil {
-					d.Guilds = append(d.Guilds, g)
-				}
+		grows, err := pool.Query(ctx, `
+			SELECT
+				ug.guild_id,
+				COALESCE(NULLIF(bg.name, ''), ug.name, ''),
+				COALESCE(bg.icon_hash, ug.icon_hash),
+				COALESCE(bg.owner_discord_id, CASE WHEN ug.is_owner THEN owner_app.discord_id END),
+				COALESCE(bg.owner_username, CASE WHEN ug.is_owner THEN owner_app.discord_username END),
+				COALESCE(bg.owner_global_name, CASE WHEN ug.is_owner THEN owner_app.discord_global_name END),
+				COALESCE(bg.owner_avatar_hash, CASE WHEN ug.is_owner THEN owner_app.discord_avatar END),
+				COALESCE(bg.approximate_member_count, ug.approximate_member_count),
+				COALESCE(bg.is_installed, FALSE),
+				bg.left_at
+			FROM user_guilds ug
+			LEFT JOIN bot_guilds bg ON bg.guild_id = ug.guild_id
+			LEFT JOIN app_users owner_app ON owner_app.discord_id = ug.discord_id
+			WHERE ug.discord_id = $1 AND ug.left_at IS NULL
+			ORDER BY COALESCE(NULLIF(bg.name, ''), NULLIF(ug.name, ''), ug.guild_id)
+		`, d.DiscordID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		for grows.Next() {
+			var (
+				g      adminUserGuild
+				leftAt *time.Time
+			)
+			if err := grows.Scan(
+				&g.GuildID,
+				&g.Name,
+				&g.IconHash,
+				&g.OwnerDiscordID,
+				&g.OwnerUsername,
+				&g.OwnerGlobalName,
+				&g.OwnerAvatarHash,
+				&g.ApproximateMemberCount,
+				&g.IsInstalled,
+				&leftAt,
+			); err != nil {
+				log.Printf("GetAdminUser: scan user_guilds row for %s: %v", d.DiscordID, err)
+				continue
 			}
-			grows.Close()
+			if leftAt != nil {
+				s := leftAt.Format(time.RFC3339)
+				g.LeftAt = &s
+			}
+			d.Guilds = append(d.Guilds, g)
+		}
+		grows.Close()
+		if err := grows.Err(); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
 	}
 

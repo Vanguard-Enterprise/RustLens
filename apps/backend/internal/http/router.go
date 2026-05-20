@@ -239,7 +239,7 @@ func NewRouter(
 		SessionSecret: cfg.AppSessionSecret,
 		Repo:          appAuthRepo,
 		Pool:          postgres.Pool(),
-		GuildSyncer:   postgres,
+		GuildSyncer:   discordGuildSyncerAdapter{s: postgres},
 	})
 
 	r.Route("/api/auth/discord", func(r chi.Router) {
@@ -400,4 +400,25 @@ func appSessionMiddleware(validator *auth.AppSessionValidator) func(next http.Ha
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// discordGuildSyncerAdapter bridges the discord OAuth handler's GuildSyncer
+// interface (which speaks discord.UserGuild) to the store's SyncUserGuildInput,
+// keeping the store and oauth/discord packages decoupled.
+type discordGuildSyncerAdapter struct {
+	s *store.PostgresStore
+}
+
+func (a discordGuildSyncerAdapter) SyncUserGuildsForUser(ctx context.Context, discordID string, guilds []discord.UserGuild) error {
+	in := make([]store.SyncUserGuildInput, len(guilds))
+	for i, g := range guilds {
+		in[i] = store.SyncUserGuildInput{
+			GuildID:                g.ID,
+			Name:                   g.Name,
+			IconHash:               g.IconHash,
+			ApproximateMemberCount: g.ApproximateMemberCount,
+			IsOwner:                g.Owner,
+		}
+	}
+	return a.s.SyncUserGuildsForUser(ctx, discordID, in)
 }
