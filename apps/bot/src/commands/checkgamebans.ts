@@ -30,7 +30,7 @@ const checkGameBansCommand = new SlashCommandBuilder()
   .addRoleOption((opt) =>
     opt
       .setName(CHECK_GAME_BANS_SCOPE_OPTION)
-      .setDescription("Only check linked users with this role")
+      .setDescription("Only check members with this role")
       .setRequired(false),
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
