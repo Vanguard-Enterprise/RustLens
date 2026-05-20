@@ -139,7 +139,7 @@ func (p *PostgresStore) ListUserCommandUsage(ctx context.Context, appUserID stri
 }
 
 func (p *PostgresStore) SummarizeUserCommandUsage(ctx context.Context, appUserID string, window time.Duration) (CommandUsageSummary, error) {
-	var sum CommandUsageSummary
+	sum := CommandUsageSummary{TopCommands: []CommandUsageTopCommand{}}
 	cutoff := time.Now().Add(-window)
 
 	if err := p.pool.QueryRow(ctx, `

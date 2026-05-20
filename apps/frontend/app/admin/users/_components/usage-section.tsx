@@ -42,6 +42,7 @@ function commandLabel(item: AdminCommandUsageItem): string {
 export function UsageSection({ userId, data }: Props) {
 	const [expandedId, setExpandedId] = useState<number | null>(null);
 	const { items, total, page, pageSize, summary } = data;
+	const topCommands = summary.topCommands ?? [];
 
 	return (
 		<section id="usage" className="flex flex-col gap-4 rounded-lg border bg-card p-4">
@@ -67,10 +68,10 @@ export function UsageSection({ userId, data }: Props) {
 				<div className="rounded-md border p-3">
 					<div className="text-xs uppercase text-muted-foreground">Top commands</div>
 					<div className="mt-1 flex flex-wrap gap-1">
-						{summary.topCommands.length === 0 ? (
+						{topCommands.length === 0 ? (
 							<span className="text-sm text-muted-foreground">—</span>
 						) : (
-							summary.topCommands.map((tc) => (
+							topCommands.map((tc) => (
 								<Badge key={tc.command} variant="secondary">
 									{tc.command} · {tc.count}
 								</Badge>
