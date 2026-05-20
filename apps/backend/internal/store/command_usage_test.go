@@ -315,6 +315,76 @@ func TestInsertCommandUsage_TargetsCappedAt500(t *testing.T) {
 	}
 }
 
+func TestListUserCommandUsageFiltered_EnrichesUserTargets(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	actorID := "usr_enrich_actor"
+	targetDiscordID := "666666666666666666"
+
+	// Clean up any leftover rows from prior runs.
+	_, _ = s.pool.Exec(ctx, `DELETE FROM app_users WHERE id = $1 OR discord_id = $2`, actorID, targetDiscordID)
+
+	// Seed the actor (the user who ran the command).
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_enrich_actor', '600000000000000000', 'enrich_actor', 'enrich_actor')
+	`); err != nil {
+		t.Fatalf("seed actor: %v", err)
+	}
+
+	// Seed the target user — this is whose profile we expect to be enriched.
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, discord_global_name, discord_avatar)
+		VALUES ('usr_enrich_target', '666666666666666666', 'alice', 'globalAlice', 'avatar_abc')
+	`); err != nil {
+		t.Fatalf("seed target user: %v", err)
+	}
+
+	// Snapshot name at write time is stale — enrichment should replace it with live value.
+	staleDisplayName := "stale_alice"
+	err := s.InsertCommandUsage(ctx, CommandUsageInsert{
+		AppUserID:       actorID,
+		DiscordID:       "600000000000000000",
+		InteractionType: "command",
+		Command:         "announce",
+		Outcome:         "success",
+		Options:         []byte(`{}`),
+		Targets: []CommandUsageTargetInsert{
+			{Kind: "user", Snowflake: targetDiscordID, DisplayName: &staleDisplayName, Relation: "recipient"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	page, err := s.ListUserCommandUsageFiltered(ctx, actorID, CommandUsageListFilters{}, 25, 0)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("expected 1 item, got total=%d items=%d", page.Total, len(page.Items))
+	}
+
+	targets := page.Items[0].Targets
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target, got %d", len(targets))
+	}
+	target := targets[0]
+
+	// AppUserID must be populated by enrichment.
+	if target.AppUserID == nil || *target.AppUserID != "usr_enrich_target" {
+		t.Fatalf("expected AppUserID='usr_enrich_target', got %v", target.AppUserID)
+	}
+	// DisplayName must be the live global name, not the stale snapshot.
+	if target.DisplayName == nil || *target.DisplayName != "globalAlice" {
+		t.Fatalf("expected DisplayName='globalAlice', got %v", target.DisplayName)
+	}
+	// AvatarHash must be populated from discord_avatar.
+	if target.AvatarHash == nil || *target.AvatarHash != "avatar_abc" {
+		t.Fatalf("expected AvatarHash='avatar_abc', got %v", target.AvatarHash)
+	}
+}
+
 func TestCommandUsageFilterOptions_DistinctCommandsAndGuilds(t *testing.T) {
 	ctx := context.Background()
 	s := newTestPostgres(t)

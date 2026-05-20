@@ -47,6 +47,7 @@ type CommandUsageTargetRow struct {
 	DisplayName *string `json:"displayName"`
 	AvatarHash  *string `json:"avatarHash"`
 	Relation    string  `json:"relation"`
+	AppUserID   *string `json:"appUserId,omitempty"`
 }
 
 // CommandUsageRow is the read-side shape returned to handlers.
@@ -365,7 +366,6 @@ func (p *PostgresStore) ListUserCommandUsageFiltered(
 	if err != nil {
 		return page, fmt.Errorf("list filtered command_usage: %w", err)
 	}
-	defer rows.Close()
 
 	for rows.Next() {
 		var r CommandUsageRowWithTargets
@@ -377,9 +377,11 @@ func (p *PostgresStore) ListUserCommandUsageFiltered(
 			&r.Options, &r.Outcome, &r.ErrorCode, &r.LatencyMs, &r.CreatedAt,
 			&targetsJSON, &targetTotal,
 		); err != nil {
+			rows.Close()
 			return page, fmt.Errorf("scan filtered command_usage: %w", err)
 		}
 		if err := json.Unmarshal(targetsJSON, &r.Targets); err != nil {
+			rows.Close()
 			return page, fmt.Errorf("unmarshal targets: %w", err)
 		}
 		if r.Targets == nil {
@@ -391,7 +393,120 @@ func (p *PostgresStore) ListUserCommandUsageFiltered(
 		}
 		page.Items = append(page.Items, r)
 	}
-	return page, rows.Err()
+	// Capture rows.Err() before closing so we can return it after enrichment.
+	rowsErr := rows.Err()
+	// Explicitly close before enrichment queries — pgx does not allow a second
+	// query on the same connection while a rows iterator is still open.
+	rows.Close()
+	if rowsErr != nil {
+		return page, rowsErr
+	}
+
+	// Collect all distinct user-target snowflakes and guild snowflakes across the page.
+	userSnowflakes := map[string]struct{}{}
+	guildSnowflakes := map[string]struct{}{}
+	for _, item := range page.Items {
+		for _, t := range item.Targets {
+			switch t.Kind {
+			case "user":
+				userSnowflakes[t.Snowflake] = struct{}{}
+			case "guild":
+				guildSnowflakes[t.Snowflake] = struct{}{}
+			}
+		}
+	}
+
+	type userEnrichment struct {
+		AppUserID   string
+		DisplayName *string
+		AvatarHash  *string
+	}
+	userMap := map[string]userEnrichment{}
+	if len(userSnowflakes) > 0 {
+		ids := make([]string, 0, len(userSnowflakes))
+		for s := range userSnowflakes {
+			ids = append(ids, s)
+		}
+		uRows, err := p.pool.Query(ctx, `
+			SELECT discord_id, id, COALESCE(discord_global_name, discord_username), discord_avatar
+			FROM app_users
+			WHERE discord_id = ANY($1)
+		`, ids)
+		if err != nil {
+			return page, fmt.Errorf("enrich users: %w", err)
+		}
+		for uRows.Next() {
+			var discordID, appUserID string
+			var displayName string
+			var avatar *string
+			if err := uRows.Scan(&discordID, &appUserID, &displayName, &avatar); err != nil {
+				uRows.Close()
+				return page, fmt.Errorf("scan enrich user: %w", err)
+			}
+			dn := displayName
+			userMap[discordID] = userEnrichment{AppUserID: appUserID, DisplayName: &dn, AvatarHash: avatar}
+		}
+		uRows.Close()
+	}
+
+	type guildEnrichment struct {
+		Name     string
+		IconHash *string
+	}
+	guildMap := map[string]guildEnrichment{}
+	if len(guildSnowflakes) > 0 {
+		ids := make([]string, 0, len(guildSnowflakes))
+		for s := range guildSnowflakes {
+			ids = append(ids, s)
+		}
+		gRows, err := p.pool.Query(ctx, `
+			SELECT guild_id, name, icon_hash
+			FROM bot_guilds
+			WHERE guild_id = ANY($1)
+		`, ids)
+		if err != nil {
+			return page, fmt.Errorf("enrich guilds: %w", err)
+		}
+		for gRows.Next() {
+			var gid, name string
+			var icon *string
+			if err := gRows.Scan(&gid, &name, &icon); err != nil {
+				gRows.Close()
+				return page, fmt.Errorf("scan enrich guild: %w", err)
+			}
+			guildMap[gid] = guildEnrichment{Name: name, IconHash: icon}
+		}
+		gRows.Close()
+	}
+
+	// Apply enrichment: live values win over snapshot.
+	for i := range page.Items {
+		for j := range page.Items[i].Targets {
+			t := &page.Items[i].Targets[j]
+			switch t.Kind {
+			case "user":
+				if u, ok := userMap[t.Snowflake]; ok {
+					if u.DisplayName != nil {
+						t.DisplayName = u.DisplayName
+					}
+					if u.AvatarHash != nil {
+						t.AvatarHash = u.AvatarHash
+					}
+					t.AppUserID = &u.AppUserID
+				}
+			case "guild":
+				if g, ok := guildMap[t.Snowflake]; ok {
+					name := g.Name
+					t.DisplayName = &name
+					if g.IconHash != nil {
+						t.AvatarHash = g.IconHash
+					}
+				}
+			}
+		}
+	}
+
+	return page, nil
 }
 
 type CommandUsageFilterGuild struct {
