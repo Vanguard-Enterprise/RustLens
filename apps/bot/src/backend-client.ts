@@ -1154,9 +1154,10 @@ export class BackendClient {
     workerId: string,
     guildId: string,
     method: "light" | "deep" = "light",
+    timeframe: "30d" | "90d" | "180d" | "all" = "90d",
     scopeDiscordIds: readonly string[] = [],
   ) {
-    const query = new URLSearchParams({ method });
+    const query = new URLSearchParams({ method, timeframe });
     for (const discordId of scopeDiscordIds) {
       query.append("scopeDiscordId", discordId);
     }

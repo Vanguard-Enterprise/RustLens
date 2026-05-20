@@ -42,7 +42,6 @@ var bmIDPattern = regexp.MustCompile(`^\d{1,16}$`)
 const maxRequestBodyBytes = 1 << 20 // 1 MB
 const steamAccountCacheTTL = 24 * time.Hour
 const steamGameBanCacheTTL = 6 * time.Hour
-const recentGameBanWindow = 90 * 24 * time.Hour
 const steamPlayerBanBatchSize = 100
 const deepGameBanPlatformSyncLimit = 100
 
@@ -3436,6 +3435,11 @@ func (h *Handler) CheckGuildGameBans(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "method must be light or deep")
 		return
 	}
+	timeframe, err := parseGameBanTimeframe(r.URL.Query().Get("timeframe"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	links, err := h.postgres.ListGuildLinks(r.Context(), guildID)
 	if err != nil {
@@ -3487,7 +3491,7 @@ func (h *Handler) CheckGuildGameBans(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recent := recentGameBansFromCandidates(candidates, cacheBySteamID, now)
+	recent := recentGameBansFromCandidates(candidates, cacheBySteamID, now, timeframe)
 	sort.SliceStable(recent, func(i, j int) bool {
 		return recent[i].GameBannedAt.After(recent[j].GameBannedAt)
 	})
@@ -3502,6 +3506,26 @@ type gameBanCandidate struct {
 }
 
 var errDeepGameBanScopeTooLarge = errors.New("deep game ban scope too large")
+
+type gameBanTimeframe struct {
+	Value  string
+	Window time.Duration
+}
+
+func parseGameBanTimeframe(value string) (gameBanTimeframe, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "90d":
+		return gameBanTimeframe{Value: "90d", Window: 90 * 24 * time.Hour}, nil
+	case "30d":
+		return gameBanTimeframe{Value: "30d", Window: 30 * 24 * time.Hour}, nil
+	case "180d":
+		return gameBanTimeframe{Value: "180d", Window: 180 * 24 * time.Hour}, nil
+	case "all":
+		return gameBanTimeframe{Value: "all"}, nil
+	default:
+		return gameBanTimeframe{}, errors.New("timeframe must be 30d, 90d, 180d, or all")
+	}
+}
 
 func gameBanScopeDiscordIDs(values []string) (map[string]bool, error) {
 	if len(values) == 0 {
@@ -3639,14 +3663,14 @@ func (h *Handler) gameBanCacheForSteamIDs(ctx context.Context, guildID string, s
 	return cacheBySteamID, nil
 }
 
-func recentGameBansFromCandidates(candidates []gameBanCandidate, cacheBySteamID map[string]store.SteamGameBanCache, now time.Time) []store.GuildRecentGameBan {
+func recentGameBansFromCandidates(candidates []gameBanCandidate, cacheBySteamID map[string]store.SteamGameBanCache, now time.Time, timeframe gameBanTimeframe) []store.GuildRecentGameBan {
 	recent := make([]store.GuildRecentGameBan, 0)
 	for _, candidate := range candidates {
 		cache, ok := cacheBySteamID[candidate.SteamID]
 		if !ok || !cache.GameBanned || cache.GameBannedAt == nil {
 			continue
 		}
-		if now.Sub(*cache.GameBannedAt) > recentGameBanWindow {
+		if timeframe.Window > 0 && now.Sub(*cache.GameBannedAt) > timeframe.Window {
 			continue
 		}
 		recent = append(recent, store.GuildRecentGameBan{

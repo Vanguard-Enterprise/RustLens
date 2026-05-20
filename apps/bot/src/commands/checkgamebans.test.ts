@@ -19,7 +19,14 @@ describe("checkgamebans", () => {
   it("renders an empty-state description when there are no recent game bans", () => {
     const embed = __testables.buildGameBansEmbed([]);
 
-    expect(embed.data.title).toBe("Gamebans < 90 days");
+    expect(embed.data.title).toBe("Gamebans - 90 days");
     expect(embed.data.description).toBe("No linked users have a game ban in the last 90 days.");
+  });
+
+  it("renders the selected timeframe in the empty state", () => {
+    const embed = __testables.buildGameBansEmbed([], "180d");
+
+    expect(embed.data.title).toBe("Gamebans - 180 days");
+    expect(embed.data.description).toBe("No linked users have a game ban in the last 180 days.");
   });
 });

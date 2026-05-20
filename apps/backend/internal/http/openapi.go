@@ -1678,7 +1678,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/internal/bot/setup/guilds/{guildID}/game-bans": map[string]any{
 				"get": map[string]any{
 					"summary":     "Check guild game bans",
-					"description": "Refreshes stale Steam game-ban cache entries using a 6 hour TTL and returns only game bans from the last 90 days. method=light checks visible guild-linked Steam IDs. method=deep expands to visible global hard links for guild-linked Discord users after refreshing up to 100 stale or missing Discord platformsync states using the shared 14 day platformsync TTL.",
+					"description": "Refreshes stale Steam game-ban cache entries using a 6 hour TTL and returns game bans filtered by timeframe. method=light checks visible guild-linked Steam IDs. method=deep expands to visible global hard links for guild-linked Discord users after refreshing up to 100 stale or missing Discord platformsync states using the shared 14 day platformsync TTL.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -1694,6 +1694,13 @@ func buildOpenAPIDocument() map[string]any {
 							"required":    false,
 							"description": "Scan method. Defaults to light.",
 							"schema":      map[string]any{"type": "string", "enum": []string{"light", "deep"}},
+						},
+						{
+							"name":        "timeframe",
+							"in":          "query",
+							"required":    false,
+							"description": "Game-ban timeframe filter. Defaults to 90d.",
+							"schema":      map[string]any{"type": "string", "enum": []string{"30d", "90d", "180d", "all"}},
 						},
 						{
 							"name":        "scopeDiscordId",

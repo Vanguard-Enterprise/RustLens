@@ -10,9 +10,26 @@ import { hasProFeatureAccess } from "../website-admin.js";
 export const CHECK_GAME_BANS_COMMAND_NAME = "checkgamebans";
 const CHECK_GAME_BANS_METHOD_OPTION = "method";
 const CHECK_GAME_BANS_SCOPE_OPTION = "scope";
+const CHECK_GAME_BANS_TIMEFRAME_OPTION = "timeframe";
 const CHECK_GAME_BANS_METHOD_LIGHT = "light";
 const CHECK_GAME_BANS_METHOD_DEEP = "deep";
+const CHECK_GAME_BANS_TIMEFRAME_30D = "30d";
+const CHECK_GAME_BANS_TIMEFRAME_90D = "90d";
+const CHECK_GAME_BANS_TIMEFRAME_180D = "180d";
+const CHECK_GAME_BANS_TIMEFRAME_ALL = "all";
 type CheckGameBansMethod = typeof CHECK_GAME_BANS_METHOD_LIGHT | typeof CHECK_GAME_BANS_METHOD_DEEP;
+type CheckGameBansTimeframe =
+  | typeof CHECK_GAME_BANS_TIMEFRAME_30D
+  | typeof CHECK_GAME_BANS_TIMEFRAME_90D
+  | typeof CHECK_GAME_BANS_TIMEFRAME_180D
+  | typeof CHECK_GAME_BANS_TIMEFRAME_ALL;
+
+const CHECK_GAME_BANS_TIMEFRAME_LABELS: Record<CheckGameBansTimeframe, string> = {
+  [CHECK_GAME_BANS_TIMEFRAME_30D]: "30 days",
+  [CHECK_GAME_BANS_TIMEFRAME_90D]: "90 days",
+  [CHECK_GAME_BANS_TIMEFRAME_180D]: "180 days",
+  [CHECK_GAME_BANS_TIMEFRAME_ALL]: "all time",
+};
 
 const checkGameBansCommand = new SlashCommandBuilder()
   .setName(CHECK_GAME_BANS_COMMAND_NAME)
@@ -25,6 +42,18 @@ const checkGameBansCommand = new SlashCommandBuilder()
       .addChoices(
         { name: "Light", value: CHECK_GAME_BANS_METHOD_LIGHT },
         { name: "Deep", value: CHECK_GAME_BANS_METHOD_DEEP },
+      ),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName(CHECK_GAME_BANS_TIMEFRAME_OPTION)
+      .setDescription("Only show game bans within this timeframe")
+      .setRequired(false)
+      .addChoices(
+        { name: "30d", value: CHECK_GAME_BANS_TIMEFRAME_30D },
+        { name: "90d", value: CHECK_GAME_BANS_TIMEFRAME_90D },
+        { name: "180d", value: CHECK_GAME_BANS_TIMEFRAME_180D },
+        { name: "All time", value: CHECK_GAME_BANS_TIMEFRAME_ALL },
       ),
   )
   .addRoleOption((opt) =>
@@ -59,13 +88,15 @@ function buildGameBanLine(item: GuildRecentGameBan) {
   return `> * <@${item.discordId}> - **[${item.steamId}](https://steamcommunity.com/profiles/${item.steamId})** - <t:${item.gameBannedUnix}:R>`;
 }
 
-function buildGameBansEmbed(items: GuildRecentGameBan[]) {
+function buildGameBansEmbed(items: GuildRecentGameBan[], timeframe: CheckGameBansTimeframe = CHECK_GAME_BANS_TIMEFRAME_90D) {
+  const timeframeLabel = CHECK_GAME_BANS_TIMEFRAME_LABELS[timeframe];
+  const emptyTimeframeText = timeframe === CHECK_GAME_BANS_TIMEFRAME_ALL ? "all time" : `the last ${timeframeLabel}`;
   return createEmbed()
-    .setTitle("Gamebans < 90 days")
+    .setTitle(`Gamebans - ${timeframeLabel}`)
     .setDescription(
       items.length > 0
         ? items.map(buildGameBanLine).join("\n")
-        : "No linked users have a game ban in the last 90 days.",
+        : `No linked users have a game ban in ${emptyTimeframeText}.`,
     );
 }
 
@@ -123,6 +154,9 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
   }
 
   const method = interaction.options.getString(CHECK_GAME_BANS_METHOD_OPTION, true) as CheckGameBansMethod;
+  const timeframe =
+    (interaction.options.getString(CHECK_GAME_BANS_TIMEFRAME_OPTION, false) as CheckGameBansTimeframe | null) ??
+    CHECK_GAME_BANS_TIMEFRAME_90D;
   const scope = interaction.options.getRole(CHECK_GAME_BANS_SCOPE_OPTION, false);
   if (method === CHECK_GAME_BANS_METHOD_DEEP && !(await hasProFeatureAccess(interaction.user.id))) {
     await interaction.reply({
@@ -143,13 +177,13 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
         .map((member) => member.id);
 
       if (scopeDiscordIds.length === 0) {
-        await interaction.editReply({ embeds: [buildGameBansEmbed([])] });
+        await interaction.editReply({ embeds: [buildGameBansEmbed([], timeframe)] });
         return true;
       }
     }
 
-    const response = await getBackend().listGuildRecentGameBans(getWorkerID(), interaction.guildId, method, scopeDiscordIds);
-    await interaction.editReply({ embeds: [buildGameBansEmbed(response.items)] });
+    const response = await getBackend().listGuildRecentGameBans(getWorkerID(), interaction.guildId, method, timeframe, scopeDiscordIds);
+    await interaction.editReply({ embeds: [buildGameBansEmbed(response.items, timeframe)] });
   } catch (error) {
     if ((error as { status?: number }).status === 422) {
       await interaction.editReply({ embeds: [buildDeepScopeTooLargeEmbed()] });
