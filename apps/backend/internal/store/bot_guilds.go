@@ -95,6 +95,31 @@ func (p *PostgresStore) BulkUpsertUserGuilds(ctx context.Context, guildID string
 	return err
 }
 
+func (p *PostgresStore) ListActiveUserGuildDiscordIDs(ctx context.Context, guildID string) ([]string, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT discord_id
+		FROM user_guilds
+		WHERE guild_id = $1
+		  AND is_active = TRUE
+		  AND left_at IS NULL
+		ORDER BY discord_id ASC
+	`, guildID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	discordIDs := make([]string, 0)
+	for rows.Next() {
+		var discordID string
+		if err := rows.Scan(&discordID); err != nil {
+			return nil, err
+		}
+		discordIDs = append(discordIDs, discordID)
+	}
+	return discordIDs, rows.Err()
+}
+
 // SyncUserGuildsForUser reconciles the user_guilds rows for a single user
 // against the authoritative list of guilds returned by Discord's
 // /users/@me/guilds endpoint. Listed guilds are upserted active; rows for

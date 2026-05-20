@@ -3453,8 +3453,14 @@ func (h *Handler) CheckGuildGameBans(w http.ResponseWriter, r *http.Request) {
 	}
 
 	candidates := guildLinksToGameBanCandidates(links)
-	if method == "deep" && len(links) > 0 {
-		deepCandidates, err := h.deepGameBanCandidates(r.Context(), guildID, links)
+	if method == "deep" {
+		deepDiscordIDs, err := h.deepGameBanDiscordIDs(r.Context(), guildID, links, scopeDiscordIDs)
+		if err != nil {
+			log.Printf("[backend] deep game ban guild member error for guild %s: %v", guildID, err)
+			writeError(w, http.StatusInternalServerError, "failed to prepare deep game ban scan")
+			return
+		}
+		deepCandidates, err := h.deepGameBanCandidates(r.Context(), guildID, deepDiscordIDs)
 		if errors.Is(err, errDeepGameBanScopeTooLarge) {
 			writeError(w, http.StatusUnprocessableEntity, "More than 100 people in the current scope need a deep lookup. Try setting a smaller scope or use light mode.")
 			return
@@ -3522,6 +3528,19 @@ func filterGuildLinksByDiscordIDs(links []store.GuildSteamDiscordLink, scope map
 	return filtered
 }
 
+func (h *Handler) deepGameBanDiscordIDs(ctx context.Context, guildID string, links []store.GuildSteamDiscordLink, scope map[string]bool) ([]string, error) {
+	if len(scope) > 0 {
+		return mapKeys(scope), nil
+	}
+
+	activeDiscordIDs, err := h.postgres.ListActiveUserGuildDiscordIDs(ctx, guildID)
+	if err != nil {
+		return nil, err
+	}
+
+	return uniqueStrings(append(activeDiscordIDs, uniqueGuildDiscordIDs(links)...)), nil
+}
+
 func guildLinksToGameBanCandidates(links []store.GuildSteamDiscordLink) []gameBanCandidate {
 	candidates := make([]gameBanCandidate, 0, len(links))
 	for _, link := range links {
@@ -3534,8 +3553,10 @@ func guildLinksToGameBanCandidates(links []store.GuildSteamDiscordLink) []gameBa
 	return candidates
 }
 
-func (h *Handler) deepGameBanCandidates(ctx context.Context, guildID string, links []store.GuildSteamDiscordLink) ([]gameBanCandidate, error) {
-	discordIDs := uniqueGuildDiscordIDs(links)
+func (h *Handler) deepGameBanCandidates(ctx context.Context, guildID string, discordIDs []string) ([]gameBanCandidate, error) {
+	if len(discordIDs) == 0 {
+		return nil, nil
+	}
 	eligibleForSync, err := h.stalePlatformSyncDiscordIDs(ctx, discordIDs, time.Now().UTC())
 	if err != nil {
 		return nil, err
@@ -3650,6 +3671,29 @@ func uniqueGuildDiscordIDs(links []store.GuildSteamDiscordLink) []string {
 	}
 	sort.Strings(discordIDs)
 	return discordIDs
+}
+
+func mapKeys(values map[string]bool) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	sort.Strings(unique)
+	return unique
 }
 
 func dedupeGameBanCandidates(candidates []gameBanCandidate) []gameBanCandidate {
