@@ -1,6 +1,12 @@
 import type { ChatInputCommandInteraction, Client, GuildMember } from "discord.js";
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "../backend-client.js";
+import type { CommandUsageTarget } from "../backend-client.js";
+
+export type NicknameHandlerResult = {
+  handled: true;
+  targets: CommandUsageTarget[];
+};
 import { loadConfig } from "../config.js";
 import { getGuildMembers } from "../guild-member-cache.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
@@ -228,7 +234,7 @@ export async function ensureNicknameCommand(client: Client, shardID: number) {
   console.log("[bot] ensured /nickname command (global)");
 }
 
-export async function handleNicknameChatInput(interaction: ChatInputCommandInteraction) {
+export async function handleNicknameChatInput(interaction: ChatInputCommandInteraction): Promise<false | true | NicknameHandlerResult> {
   if (interaction.commandName !== NICKNAME_COMMAND_NAME) {
     return false;
   }
@@ -259,6 +265,7 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
   let failedCount = 0;
   const failedItems: NicknameOutcome[] = [];
   const cleanedDiscordIds = new Set<string>();
+  const updated: { id: string; username: string; avatar: string | null }[] = [];
 
   for (const item of items) {
     const bmId = item.bmId?.trim() ?? "";
@@ -331,6 +338,11 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
 
       await member.setNickname(targetNickname, "RustLens /nickname sync");
       changedCount += 1;
+      updated.push({
+        id:       member.id,
+        username: member.user.globalName ?? member.user.username,
+        avatar:   member.user.avatar ?? null,
+      });
     } catch (error) {
       logDiscordError("/nickname set nickname", error, {
         guildId: interaction.guildId,
@@ -349,7 +361,15 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
     interaction,
     buildCompletionEmbed(changedCount, unchangedCount, cleanedCount, failedCount, items.length, failedItems),
   );
-  return true;
+
+  const usageTargets: CommandUsageTarget[] = updated.map<CommandUsageTarget>((m) => ({
+    kind:        "user",
+    snowflake:   m.id,
+    displayName: m.username,
+    avatarHash:  m.avatar,
+    relation:    "recipient",
+  }));
+  return { handled: true, targets: usageTargets };
 }
 
 export const __testables = {

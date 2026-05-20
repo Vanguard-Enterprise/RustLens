@@ -456,8 +456,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleNicknameChatInput(interaction)) {
-        return;
+      {
+        const result = await handleNicknameChatInput(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       if (await handleSetSteamChatInput(interaction)) {
