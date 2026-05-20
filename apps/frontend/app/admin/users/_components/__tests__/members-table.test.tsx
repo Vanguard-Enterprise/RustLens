@@ -78,6 +78,7 @@ function fixturePage(items: number) {
       guildCount:          0,
       steamConnectionCount: 0,
       adminRoles:          [],
+      hasUserAppInstalled: false,
     })),
     total:    items,
     page:     1,

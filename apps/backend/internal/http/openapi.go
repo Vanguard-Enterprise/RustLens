@@ -2048,7 +2048,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/app/admin/users": map[string]any{
 				"get": map[string]any{
 					"summary":     "List app users",
-					"description": "Returns paginated app_users rows that hold no admin roles. Query params q, status, sort, page, pageSize mirror /api/app/admin/administrators; the role param is ignored because non-admin users have no admin roles.",
+					"description": "Returns paginated app_users rows that hold no admin roles. Query params q, status, sort, page, pageSize mirror /api/app/admin/administrators; the role param is ignored because non-admin users have no admin roles. Supports userApp=any|installed|not_installed to filter by RustLens user-app install state.",
 					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
 					"responses": map[string]any{
 						"200": map[string]any{
@@ -2067,7 +2067,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/app/admin/administrators": map[string]any{
 				"get": map[string]any{
 					"summary":     "List administrators",
-					"description": "Returns paginated app_users rows that hold at least one admin role with permissions. Supports q, role (repeatable), status (active|suspended|deleted|any), discord, steam, sort, page, pageSize query params.",
+					"description": "Returns paginated app_users rows that hold at least one admin role with permissions. Supports q, role (repeatable), status (active|suspended|deleted|any), discord, steam, userApp (any|installed|not_installed), sort, page, pageSize query params.",
 					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
 					"responses": map[string]any{
 						"200": map[string]any{
@@ -3378,8 +3378,9 @@ func buildOpenAPIDocument() map[string]any {
 						"discordUsername":      map[string]any{"type": "string"},
 						"guildCount":           map[string]any{"type": "integer"},
 						"steamConnectionCount": map[string]any{"type": "integer"},
+						"hasUserAppInstalled":  map[string]any{"type": "boolean"},
 					},
-					"required": []string{"user", "discordId", "discordUsername", "guildCount", "steamConnectionCount"},
+					"required": []string{"user", "discordId", "discordUsername", "guildCount", "steamConnectionCount", "hasUserAppInstalled"},
 				},
 				"AdminUserListResponse": map[string]any{
 					"type": "object",

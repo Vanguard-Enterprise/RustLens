@@ -91,6 +91,7 @@ export type AdminUserItem = {
 	guildCount: number;
 	steamConnectionCount: number;
 	adminRoles: string[];
+	hasUserAppInstalled: boolean;
 	suspendedAt?: string;
 	deletedAt?: string;
 };
@@ -101,6 +102,7 @@ export type AdminUsersQuery = {
 	status?: "active" | "suspended" | "deleted" | "any";
 	discord?: "any" | "linked" | "unlinked";
 	steam?: "any" | "linked" | "unlinked";
+	userApp?: "any" | "installed" | "not_installed";
 	sort?: string;
 	page?: number;
 	pageSize?: number;
@@ -403,6 +405,7 @@ export async function getAdministrators(params: AdminUsersQuery = {}): Promise<A
 	if (params.status) sp.set("status", params.status);
 	if (params.discord) sp.set("discord", params.discord);
 	if (params.steam) sp.set("steam", params.steam);
+	if (params.userApp && params.userApp !== "any") sp.set("userApp", params.userApp);
 	if (params.sort) sp.set("sort", params.sort);
 	if (params.page) sp.set("page", String(params.page));
 	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
@@ -420,6 +423,7 @@ export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<Admin
 	if (params.status) sp.set("status", params.status);
 	if (params.discord) sp.set("discord", params.discord);
 	if (params.steam) sp.set("steam", params.steam);
+	if (params.userApp && params.userApp !== "any") sp.set("userApp", params.userApp);
 	if (params.sort) sp.set("sort", params.sort);
 	if (params.page) sp.set("page", String(params.page));
 	if (params.pageSize) sp.set("pageSize", String(params.pageSize));

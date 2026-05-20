@@ -21,16 +21,17 @@ import (
 // apps/frontend/lib/rustlens-api.ts.
 
 type adminUserItem struct {
-	User                 adminAppUser `json:"user"`
-	DiscordID            string       `json:"discordId"`
-	DiscordUsername      string       `json:"discordUsername"`
-	DiscordGlobalName    string       `json:"discordGlobalName,omitempty"`
-	DiscordAvatar        string       `json:"discordAvatar,omitempty"`
-	GuildCount           int          `json:"guildCount"`
-	SteamConnectionCount int          `json:"steamConnectionCount"`
-	AdminRoles           []string     `json:"adminRoles"`
-	SuspendedAt          *string      `json:"suspendedAt,omitempty"`
-	DeletedAt            *string      `json:"deletedAt,omitempty"`
+	User                  adminAppUser `json:"user"`
+	DiscordID             string       `json:"discordId"`
+	DiscordUsername       string       `json:"discordUsername"`
+	DiscordGlobalName     string       `json:"discordGlobalName,omitempty"`
+	DiscordAvatar         string       `json:"discordAvatar,omitempty"`
+	GuildCount            int          `json:"guildCount"`
+	SteamConnectionCount  int          `json:"steamConnectionCount"`
+	AdminRoles            []string     `json:"adminRoles"`
+	HasUserAppInstalled   bool         `json:"hasUserAppInstalled"`
+	SuspendedAt           *string      `json:"suspendedAt,omitempty"`
+	DeletedAt             *string      `json:"deletedAt,omitempty"`
 }
 
 type adminAppUser struct {
@@ -183,7 +184,12 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(u.discord_avatar, ''),
 		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = u.discord_id AND g.left_at IS NULL), 0),
 		       0 AS steam_count,
-		       COALESCE(array_agg(DISTINCT r.key) FILTER (WHERE r.key IS NOT NULL), ARRAY[]::text[])
+		       COALESCE(array_agg(DISTINCT r.key) FILTER (WHERE r.key IS NOT NULL), ARRAY[]::text[]),
+		       EXISTS (
+		           SELECT 1 FROM bot_user_installs bui
+		           WHERE bui.discord_id = u.discord_id
+		             AND bui.is_installed = TRUE
+		       ) AS has_user_app_installed
 		FROM app_users u
 		LEFT JOIN admin_user_roles aur ON aur.user_id = u.id
 		LEFT JOIN admin_roles r ON r.id = aur.role_id
@@ -212,7 +218,7 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 			&it.User.CreatedAt, &it.User.UpdatedAt, &it.User.LastLoginAt,
 			&suspendedAt, &deletedAt,
 			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
-			&guildCount, &steamCount, &adminRoleKeys,
+			&guildCount, &steamCount, &adminRoleKeys, &it.HasUserAppInstalled,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -321,7 +327,12 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(u.discord_avatar, ''),
 		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = u.discord_id AND g.left_at IS NULL), 0),
 		       0 AS steam_count,
-		       ARRAY[]::text[] AS admin_role_keys
+		       ARRAY[]::text[] AS admin_role_keys,
+		       EXISTS (
+		           SELECT 1 FROM bot_user_installs bui
+		           WHERE bui.discord_id = u.discord_id
+		             AND bui.is_installed = TRUE
+		       ) AS has_user_app_installed
 		FROM app_users u
 		%s
 		ORDER BY %s
@@ -347,7 +358,7 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 			&it.User.CreatedAt, &it.User.UpdatedAt, &it.User.LastLoginAt,
 			&suspendedAt, &deletedAt,
 			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
-			&guildCount, &steamCount, &adminRoleKeys,
+			&guildCount, &steamCount, &adminRoleKeys, &it.HasUserAppInstalled,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return

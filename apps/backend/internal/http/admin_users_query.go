@@ -103,6 +103,27 @@ func buildUsersQuery(q url.Values) (string, []any, string, error) {
 		return "", nil, "", errors.New("invalid steam")
 	}
 
+	// User-app install state. "installed" / "not_installed" check
+	// bot_user_installs for a live (is_installed = TRUE) row keyed on the
+	// user's discord_id; users without a discord_id can never match.
+	switch q.Get("userApp") {
+	case "", "any":
+	case "installed":
+		where = append(where, `EXISTS (
+			SELECT 1 FROM bot_user_installs bui
+			WHERE bui.discord_id = u.discord_id
+			  AND bui.is_installed = TRUE
+		)`)
+	case "not_installed":
+		where = append(where, `NOT EXISTS (
+			SELECT 1 FROM bot_user_installs bui
+			WHERE bui.discord_id = u.discord_id
+			  AND bui.is_installed = TRUE
+		)`)
+	default:
+		return "", nil, "", errors.New("invalid userApp")
+	}
+
 	orderBy := orderByClause(q)
 	if orderBy == "" {
 		return "", nil, "", errors.New("invalid sort")

@@ -17,6 +17,11 @@ const STATUSES: ReadonlyArray<NonNullable<AdminUsersQuery["status"]>> = [
   "any",
 ];
 
+const USER_APP_FILTERS: ReadonlyArray<NonNullable<AdminUsersQuery["userApp"]>> = [
+  "installed",
+  "not_installed",
+];
+
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50];
 
@@ -76,6 +81,12 @@ export default async function AdminUsersRoute({
   const joinedBefore = parseDateParam(sp.joinedBefore);
   const sort = parseSortParam(sp.sort);
 
+  const userAppRaw = Array.isArray(sp.userApp) ? sp.userApp[0] : sp.userApp;
+  const userApp: "installed" | "not_installed" | null =
+    userAppRaw && (USER_APP_FILTERS as readonly string[]).includes(userAppRaw)
+      ? (userAppRaw as "installed" | "not_installed")
+      : null;
+
   const [csrfToken, currentUser, members] = await Promise.all([
     getCsrfToken(),
     getCurrentUserSafe(),
@@ -87,6 +98,7 @@ export default async function AdminUsersRoute({
       joinedSince: joinedSince ?? undefined,
       joinedBefore: joinedBefore ?? undefined,
       sort: sort ?? undefined,
+      userApp: userApp ?? undefined,
     }),
   ]);
 
@@ -131,6 +143,7 @@ export default async function AdminUsersRoute({
                 initialJoinedSince={joinedSince}
                 initialJoinedBefore={joinedBefore}
                 initialSort={sort}
+                initialUserApp={userApp}
                 pageSizeOptions={PAGE_SIZE_OPTIONS}
                 data={members}
                 canSuspend={(session.permissions ?? []).includes("users.suspend")}

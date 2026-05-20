@@ -15,6 +15,7 @@ import {
   ChevronsRightIcon,
   FileIcon,
   FilterIcon,
+  PackageCheckIcon,
   SearchIcon,
   ShieldIcon,
   Trash2Icon,
@@ -77,6 +78,7 @@ import { DeleteDialog } from "./delete-dialog";
 import { SuspendDialog } from "./suspend-dialog";
 
 type MemberStatus = NonNullable<AdminUsersQuery["status"]>;
+type UserAppFilter = "installed" | "not_installed";
 
 const STATUSES: ReadonlyArray<MemberStatus> = [
   "active",
@@ -91,6 +93,7 @@ type MembersTableProps = {
   initialJoinedSince?: string | null;
   initialJoinedBefore?: string | null;
   initialSort?: string | null;
+  initialUserApp?: UserAppFilter | null;
   pageSizeOptions: number[];
   data: AdminUsersPage;
   canSuspend: boolean;
@@ -195,6 +198,14 @@ function buildFlags(item: AdminUserItem): FlagDef[] {
       className: "text-amber-500",
     });
   }
+  if (item.hasUserAppInstalled) {
+    flags.push({
+      key: "user-app",
+      Icon: PackageCheckIcon,
+      label: "User app installed",
+      className: "text-emerald-600",
+    });
+  }
   return flags;
 }
 
@@ -260,6 +271,7 @@ export function MembersTable({
   initialJoinedSince = null,
   initialJoinedBefore = null,
   initialSort = null,
+  initialUserApp = null,
   pageSizeOptions,
   data,
   canSuspend,
@@ -384,6 +396,8 @@ export function MembersTable({
     pushParams({ pageSize: String(size), page: null });
   const setStatus = (s: MemberStatus) =>
     pushParams({ status: s === "any" ? null : s, page: null });
+  const setUserApp = (value: UserAppFilter | "any") =>
+    pushParams({ userApp: value === "any" ? null : value, page: null });
   const sortState = parseSort(initialSort);
   const cycleSort = (field: SortField) => {
     let next: string | null;
@@ -421,7 +435,9 @@ export function MembersTable({
 
   const hasJoinedRange = !!(initialJoinedSince || initialJoinedBefore);
   const activeFilterCount =
-    (initialStatus !== "any" ? 1 : 0) + (hasJoinedRange ? 1 : 0);
+    (initialStatus !== "any" ? 1 : 0) +
+    (hasJoinedRange ? 1 : 0) +
+    (initialUserApp ? 1 : 0);
   const hasActiveFilters = activeFilterCount > 0;
 
   const joinedRangeLabel = hasJoinedRange
@@ -475,6 +491,34 @@ export function MembersTable({
                   </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium uppercase text-muted-foreground">
+                    User app
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    <Button
+                      variant={initialUserApp == null ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUserApp("any")}
+                    >
+                      Any
+                    </Button>
+                    <Button
+                      variant={initialUserApp === "installed" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUserApp("installed")}
+                    >
+                      Installed
+                    </Button>
+                    <Button
+                      variant={initialUserApp === "not_installed" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUserApp("not_installed")}
+                    >
+                      Not installed
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-medium uppercase text-muted-foreground">
                       Joined
@@ -518,6 +562,7 @@ export function MembersTable({
                   status: null,
                   joinedSince: null,
                   joinedBefore: null,
+                  userApp: null,
                   page: null,
                 })
               }

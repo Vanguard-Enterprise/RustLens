@@ -47,6 +47,7 @@ const userBob: AdminUserItem = {
 	guildCount: 0,
 	steamConnectionCount: 0,
 	adminRoles: [],
+	hasUserAppInstalled: false,
 };
 
 function renderDialog(overrides: Partial<React.ComponentProps<typeof AddAdminUserDialog>> = {}) {
