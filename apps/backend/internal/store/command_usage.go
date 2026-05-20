@@ -53,6 +53,10 @@ type CommandUsageTopCommand struct {
 	Count   int64  `json:"count"`
 }
 
+// CommandUsageSummary aggregates command_usage rows for a single user over
+// a time window. errorRate is intentionally not stored on this type —
+// the admin read handler computes it from TotalCount and ErrorCount when
+// rendering the response.
 type CommandUsageSummary struct {
 	TotalCount  int64                    `json:"totalCount"`
 	ErrorCount  int64                    `json:"errorCount"`
@@ -60,7 +64,7 @@ type CommandUsageSummary struct {
 }
 
 func (p *PostgresStore) InsertCommandUsage(ctx context.Context, row CommandUsageInsert) error {
-	if len(row.Options) == 0 {
+	if len(row.Options) == 0 || string(row.Options) == "null" {
 		row.Options = []byte("{}")
 	}
 	_, err := p.pool.Exec(ctx, `
@@ -93,12 +97,16 @@ func (p *PostgresStore) ListUserCommandUsage(ctx context.Context, appUserID stri
 	}
 
 	var page CommandUsagePage
+	// COUNT and SELECT are intentionally non-transactional. For an admin
+	// pagination view over a 90-day window per user, any phantom-read
+	// discrepancy from concurrent inserts is acceptable.
 	if err := p.pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM command_usage WHERE app_user_id = $1
 	`, appUserID).Scan(&page.Total); err != nil {
 		return page, fmt.Errorf("count command_usage: %w", err)
 	}
 	if page.Total == 0 {
+		page.Items = []CommandUsageRow{}
 		return page, nil
 	}
 

@@ -126,10 +126,16 @@ func TestCommandUsage_Summary(t *testing.T) {
 		}
 	}
 	for i := 0; i < 3; i++ {
-		_ = s.InsertCommandUsage(ctx, mk("player", "success"))
+		if err := s.InsertCommandUsage(ctx, mk("player", "success")); err != nil {
+			t.Fatalf("InsertCommandUsage: %v", err)
+		}
 	}
-	_ = s.InsertCommandUsage(ctx, mk("track", "success"))
-	_ = s.InsertCommandUsage(ctx, mk("track", "error"))
+	if err := s.InsertCommandUsage(ctx, mk("track", "success")); err != nil {
+		t.Fatalf("InsertCommandUsage: %v", err)
+	}
+	if err := s.InsertCommandUsage(ctx, mk("track", "error")); err != nil {
+		t.Fatalf("InsertCommandUsage: %v", err)
+	}
 
 	sum, err := s.SummarizeUserCommandUsage(ctx, "usr_test3", 90*24*time.Hour)
 	if err != nil {
@@ -153,11 +159,13 @@ func TestCommandUsage_CascadeOnUserDelete(t *testing.T) {
 	`); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	_ = s.InsertCommandUsage(ctx, CommandUsageInsert{
+	if err := s.InsertCommandUsage(ctx, CommandUsageInsert{
 		AppUserID: "usr_test4", DiscordID: "444",
 		InteractionType: "command", Command: "player",
 		Options: []byte("{}"), Outcome: "success", LatencyMs: 1,
-	})
+	}); err != nil {
+		t.Fatalf("InsertCommandUsage: %v", err)
+	}
 
 	if _, err := s.pool.Exec(ctx, `DELETE FROM app_users WHERE id='usr_test4'`); err != nil {
 		t.Fatalf("delete user: %v", err)
