@@ -25,6 +25,7 @@ import {
 } from "./ban-check.js";
 import { enforceRateLimit } from "./rate-limit.js";
 import { ensureAppUser } from "./ensure-app-user.js";
+import { recordCommandUsage, type Outcome } from "./command-usage.js";
 import {
   ensureBindCommand,
   handleBindButtonInteraction,
@@ -334,7 +335,12 @@ function reportUserInstallSeen(interaction: Interaction): void {
 client.on("interactionCreate", async (interaction) => {
   reportUserInstallSeen(interaction);
   ensureAppUser(interaction);
+  const trackUsage = !interaction.isAutocomplete();
+  const startedAt = Date.now();
+  let outcome: Outcome = "success";
+  let errorCode: string | null = null;
   try {
+    try {
     if (interaction.isAutocomplete()) {
       if (await handleManageAutocomplete(interaction)) {
         return;
@@ -345,7 +351,7 @@ client.on("interactionCreate", async (interaction) => {
         interaction.options.getSubcommand(false),
       );
       if (await enforceBanForAutocomplete(interaction, category)) {
-        return;
+        outcome = "banned"; return;
       }
 
       if (await handleCompareAutocomplete(interaction)) {
@@ -380,7 +386,7 @@ client.on("interactionCreate", async (interaction) => {
           interaction.options.getSubcommand(false),
         );
         if (await enforceBan(interaction, category)) {
-          return;
+          outcome = "banned"; return;
         }
       }
 
@@ -476,7 +482,7 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isStringSelectMenu()) {
       const category = resolveCustomIdCategory(interaction.customId);
       if (category && (await enforceBan(interaction, category))) {
-        return;
+        outcome = "banned"; return;
       }
 
       if (await handleTrackSelectInteraction(interaction)) {
@@ -498,7 +504,7 @@ client.on("interactionCreate", async (interaction) => {
 
       const modalCategory = resolveCustomIdCategory(interaction.customId);
       if (modalCategory && (await enforceBan(interaction, modalCategory))) {
-        return;
+        outcome = "banned"; return;
       }
 
       if (await handleBindModalSubmit(interaction)) {
@@ -533,7 +539,7 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
       if (buttonCategory && (await enforceBan(interaction, buttonCategory))) {
-        return;
+        outcome = "banned"; return;
       }
 
       if (await handleBindButtonInteraction(interaction)) {
@@ -595,6 +601,15 @@ client.on("interactionCreate", async (interaction) => {
       } catch (replyError) {
         console.error("[bot] failed to send interaction error reply", replyError);
       }
+    }
+  }
+  } catch (err) {
+    outcome = "error";
+    errorCode = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    if (trackUsage) {
+      recordCommandUsage(interaction, outcome, errorCode, startedAt);
     }
   }
 });
