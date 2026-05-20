@@ -9,17 +9,24 @@ import {
 	getAdminRoles,
 	getAdminUser,
 	getAdminUserAudit,
+	getAdminUserCommandUsage,
 	getCurrentUserSafe,
 } from "@/lib/rustlens-api";
 import { requirePermission } from "@/lib/session";
 
 export default async function AdminUserDetailRoute({
 	params,
+	searchParams,
 }: {
 	params: Promise<{ userId: string }>;
+	searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
 	const session = await requirePermission("users.read");
 	const { userId } = await params;
+	const sp = await searchParams;
+
+	const usagePage = Number((sp.usagePage as string | undefined) ?? "1") || 1;
+	const usagePageSize = 25;
 
 	let userDetail;
 	try {
@@ -32,11 +39,12 @@ export default async function AdminUserDetailRoute({
 		throw err;
 	}
 
-	const [csrfToken, currentUser, roles, audit] = await Promise.all([
+	const [csrfToken, currentUser, roles, audit, commandUsage] = await Promise.all([
 		getCsrfToken(),
 		getCurrentUserSafe(),
 		getAdminRoles(),
 		getAdminUserAudit(userId, { limit: 30 }),
+		getAdminUserCommandUsage(userId, { page: usagePage, pageSize: usagePageSize }),
 	]);
 
 	const user = {
@@ -72,6 +80,7 @@ export default async function AdminUserDetailRoute({
 								detail={userDetail}
 								roles={roles}
 								audit={audit.items}
+								commandUsage={commandUsage}
 								permissions={session.permissions ?? []}
 							/>
 						</div>
