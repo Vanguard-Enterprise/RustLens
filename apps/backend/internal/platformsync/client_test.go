@@ -104,11 +104,3 @@ func TestUnconfiguredClientReturnsErrNotConfigured(t *testing.T) {
 		t.Errorf("err = %v, want ErrNotConfigured", err)
 	}
 }
-
-func TestRedactToken(t *testing.T) {
-	got := redactToken("https://link.platformsync.io/api.php?id=123&token=secret")
-	want := "https://link.platformsync.io/api.php?id=123&token=REDACTED"
-	if got != want {
-		t.Errorf("redactToken() = %q, want %q", got, want)
-	}
-}

@@ -34,8 +34,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -61,18 +59,6 @@ type Lookup struct {
 	DiscordID          string
 	PreviousSteamIDs   []string
 	PreviousDiscordIDs []string
-}
-
-type countingReadCloser struct {
-	io.Reader
-	io.Closer
-	n int64
-}
-
-func (c *countingReadCloser) Read(p []byte) (int, error) {
-	n, err := c.Reader.Read(p)
-	c.n += int64(n)
-	return n, err
 }
 
 // NewClient returns a client. If token is empty, the returned client is
@@ -109,7 +95,6 @@ func (c *Client) Lookup(ctx context.Context, id string) (Lookup, error) {
 		"id":    {id},
 		"token": {c.token},
 	}.Encode()
-	logURL := redactToken(endpoint)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -117,18 +102,11 @@ func (c *Client) Lookup(ctx context.Context, id string) (Lookup, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 
-	started := time.Now()
 	resp, err := c.http.Do(req)
 	if err != nil {
-		log.Printf("[backend] platformsync outbound \"%s %s %s\" - error in %s: %v", req.Method, logURL, req.Proto, time.Since(started), err)
 		return Lookup{}, err
 	}
-	countingBody := &countingReadCloser{Reader: resp.Body, Closer: resp.Body}
-	resp.Body = countingBody
-	defer func() {
-		log.Printf("[backend] platformsync outbound \"%s %s %s\" - %d %dB in %s", req.Method, logURL, req.Proto, resp.StatusCode, countingBody.n, time.Since(started))
-		_ = resp.Body.Close()
-	}()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return Lookup{}, fmt.Errorf("platformsync: upstream returned status %d", resp.StatusCode)
@@ -152,19 +130,6 @@ func (c *Client) Lookup(ctx context.Context, id string) (Lookup, error) {
 	}
 
 	return out, nil
-}
-
-func redactToken(rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return rawURL
-	}
-	query := u.Query()
-	if query.Has("token") {
-		query.Set("token", "REDACTED")
-		u.RawQuery = query.Encode()
-	}
-	return u.String()
 }
 
 type rawResponse struct {
