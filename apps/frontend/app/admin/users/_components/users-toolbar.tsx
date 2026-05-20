@@ -63,8 +63,8 @@ export function UsersToolbar({ query, roles, onChange }: Props) {
 	const hasActiveFilters = activeFilterCount > 0;
 
 	return (
-		<div className="flex flex-wrap items-center gap-2">
-			<div className="relative w-full max-w-sm">
+		<div className="flex flex-1 items-center gap-2">
+			<div className="relative w-full max-w-xs flex-1">
 				<SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 				<Input
 					type="search"
@@ -77,7 +77,7 @@ export function UsersToolbar({ query, roles, onChange }: Props) {
 			<ButtonGroup>
 				<Popover>
 					<PopoverTrigger asChild>
-						<Button variant="outline" size="sm" className="gap-2">
+						<Button variant="outline" className="gap-2">
 							<FilterIcon className="size-4" />
 							Filters
 							{hasActiveFilters ? (
@@ -145,7 +145,6 @@ export function UsersToolbar({ query, roles, onChange }: Props) {
 				{hasActiveFilters ? (
 					<Button
 						variant="outline"
-						size="sm"
 						className="px-2"
 						aria-label="Clear filters"
 						title="Clear filters"

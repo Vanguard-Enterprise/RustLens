@@ -15,13 +15,23 @@ export default async function Page() {
     getCurrentUserSafe(),
   ])
 
+  // Resolve admin status from live backend state (currentUser) rather than the
+  // cookie session. The cookie is a snapshot captured at login and doesn't
+  // reflect role grants made afterwards — falling back to it would force a
+  // logout/login dance every time an admin role changes.
+  const liveAdminRoles = currentUser?.adminRoles ?? session.adminRoles ?? []
+  const livePermissions = currentUser?.permissions ?? session.permissions ?? []
+  const liveRoles = currentUser?.user.roles ?? session.roles ?? []
+  const isInternalAdmin =
+    liveAdminRoles.length > 0 ||
+    livePermissions.length > 0 ||
+    liveRoles.includes("internal_admin")
+
   const user = {
     displayName: session.displayName,
     avatarUrl: session.avatarUrl || undefined,
     discordUsername: currentUser?.user.discordUsername,
-    isInternalAdmin:
-      (session.adminRoles?.length ?? 0) > 0 ||
-      session.roles.includes("internal_admin"),
+    isInternalAdmin,
   }
 
   const discordClientId = process.env.DISCORD_CLIENT_ID

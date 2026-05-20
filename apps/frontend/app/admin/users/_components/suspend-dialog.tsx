@@ -14,16 +14,29 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-type Props = {
+type CommonProps = {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	mode: "suspend" | "unsuspend";
+};
+
+type SingleProps = CommonProps & {
+	variant?: "single";
 	userId: string;
 	displayName: string;
 	onConfirm: (userId: string, reason: string) => Promise<void>;
 };
 
-export function SuspendDialog({ open, onOpenChange, mode, userId, displayName, onConfirm }: Props) {
+type BulkProps = CommonProps & {
+	variant: "bulk";
+	count: number;
+	onConfirm: (reason: string) => Promise<void>;
+};
+
+type Props = SingleProps | BulkProps;
+
+export function SuspendDialog(props: Props) {
+	const { open, onOpenChange, mode } = props;
 	const [reason, setReason] = React.useState("");
 	const [submitting, setSubmitting] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
@@ -39,11 +52,21 @@ export function SuspendDialog({ open, onOpenChange, mode, userId, displayName, o
 	}
 
 	const reasonRequired = mode === "suspend";
+
+	const titleSubject =
+		props.variant === "bulk"
+			? `${props.count} ${props.count === 1 ? "user" : "users"}`
+			: props.displayName;
+
 	const submit = async () => {
 		if (reasonRequired && !reason.trim()) return;
 		setSubmitting(true);
 		try {
-			await onConfirm(userId, reason.trim());
+			if (props.variant === "bulk") {
+				await props.onConfirm(reason.trim());
+			} else {
+				await props.onConfirm(props.userId, reason.trim());
+			}
 			onOpenChange(false);
 		} catch (err) {
 			setError((err as Error).message);
@@ -57,12 +80,16 @@ export function SuspendDialog({ open, onOpenChange, mode, userId, displayName, o
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>
-						{mode === "suspend" ? `Suspend ${displayName}` : `Unsuspend ${displayName}`}
+						{mode === "suspend" ? `Suspend ${titleSubject}` : `Unsuspend ${titleSubject}`}
 					</DialogTitle>
 					<DialogDescription>
 						{mode === "suspend"
-							? "The user will be locked out of authenticated routes until unsuspended."
-							: "The user regains access immediately."}
+							? props.variant === "bulk"
+								? "The users will be locked out of authenticated routes until unsuspended."
+								: "The user will be locked out of authenticated routes until unsuspended."
+							: props.variant === "bulk"
+								? "The users regain access immediately."
+								: "The user regains access immediately."}
 					</DialogDescription>
 				</DialogHeader>
 				<div className="flex flex-col gap-1">

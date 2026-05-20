@@ -591,6 +591,74 @@ describe("BackendClient", () => {
     expect(JSON.parse(init?.body as string)).toEqual({ shardId: 1, shardCount: 4, guildIds: ["1", "2"] });
   });
 
+  it("ensures an app_users row exists for a discord user", async () => {
+    const mockResponse = {
+      ok: true,
+      json: async () => ({ userId: "usr_abcdef0123456789abcdef01", created: true }),
+    } as Response;
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient(
+      "http://localhost:8080",
+      "secret",
+      "rustlens-bot",
+      "rustlens-backend",
+    );
+    const result = await client.ensureAppUser("worker-a", {
+      discordId:  "111222333444555666",
+      username:   "alice",
+      globalName: "Alice",
+      avatarHash: "deadbeef",
+    });
+
+    expect(result).toEqual({ userId: "usr_abcdef0123456789abcdef01", created: true });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/users/ensure");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(init?.body as string)).toEqual({
+      discordId:  "111222333444555666",
+      username:   "alice",
+      globalName: "Alice",
+      avatarHash: "deadbeef",
+    });
+  });
+
+  it("records command usage via POST and returns void", async () => {
+    const mockResponse = { ok: true, status: 204 } as Response;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient(
+      "http://localhost:8080",
+      "secret",
+      "rustlens-bot",
+      "rustlens-backend",
+    );
+    const result = await client.recordCommandUsage("worker-a", {
+      discordId:       "111222333444555666",
+      guildId:         "999000111222333444",
+      channelId:       "555444333222111000",
+      interactionType: "command",
+      command:         "track",
+      subcommand:      null,
+      target:          null,
+      options:         { group_name: "raid" },
+      outcome:         "success",
+      errorCode:       null,
+      latencyMs:       142,
+    });
+
+    expect(result).toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/command-usage");
+    expect(init?.method).toBe("POST");
+    const body = JSON.parse(init?.body as string);
+    expect(body.command).toBe("track");
+    expect(body.options).toEqual({ group_name: "raid" });
+  });
+
   it("lists guild recent game bans with timeframe and scope", async () => {
     const mockResponse = { ok: true, json: async () => ({ items: [] }) } as Response;
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);

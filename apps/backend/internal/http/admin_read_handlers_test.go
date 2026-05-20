@@ -31,7 +31,7 @@ func (ts *testHandlerServer) get(t *testing.T, path string) listAdminUsersResp {
 	t.Helper()
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", path, nil)
-	ts.h.ListAdminUsers(rr, req)
+	ts.h.ListAdministrators(rr, req)
 	if rr.Code != 200 {
 		t.Fatalf("GET %s: status=%d body=%s", path, rr.Code, rr.Body.String())
 	}
@@ -46,7 +46,7 @@ func (ts *testHandlerServer) getCode(t *testing.T, path string) int {
 	t.Helper()
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", path, nil)
-	ts.h.ListAdminUsers(rr, req)
+	ts.h.ListAdministrators(rr, req)
 	return rr.Code
 }
 
@@ -123,7 +123,7 @@ func seedUser(t *testing.T, pool *pgxpool.Pool, id, displayName string, opts see
 	}
 }
 
-func TestListAdminUsers_FiltersAndPagination(t *testing.T) {
+func TestListAdministrators_FiltersAndPagination(t *testing.T) {
 	ts := newTestHandlerServer(t)
 
 	seedUser(t, ts.pool, "usr_aaaa", "Alice", seedOpts{Discord: "alice", DiscordID: "d_alice"})
@@ -132,35 +132,35 @@ func TestListAdminUsers_FiltersAndPagination(t *testing.T) {
 	seedUser(t, ts.pool, "usr_dddd", "Dan", seedOpts{Deleted: true})
 
 	// default: status=active hides suspended + deleted
-	resp := ts.get(t, "/api/app/admin/users")
+	resp := ts.get(t, "/api/app/admin/administrators")
 	if resp.Total != 2 {
 		t.Errorf("active total: want 2, got %d", resp.Total)
 	}
 
-	if r := ts.get(t, "/api/app/admin/users?q=alice"); r.Total != 1 {
+	if r := ts.get(t, "/api/app/admin/administrators?q=alice"); r.Total != 1 {
 		t.Errorf("q=alice: want 1 got %d", r.Total)
 	}
 
-	if r := ts.get(t, "/api/app/admin/users?status=suspended"); r.Total != 1 {
+	if r := ts.get(t, "/api/app/admin/administrators?status=suspended"); r.Total != 1 {
 		t.Errorf("suspended: want 1 got %d", r.Total)
 	}
 
 	// Every active user has discord_id intrinsically; "linked" returns active count.
-	if r := ts.get(t, "/api/app/admin/users?discord=linked"); r.Total != 2 {
+	if r := ts.get(t, "/api/app/admin/administrators?discord=linked"); r.Total != 2 {
 		t.Errorf("discord=linked: want 2 got %d", r.Total)
 	}
 
-	r := ts.get(t, "/api/app/admin/users?status=any&pageSize=2&page=1")
+	r := ts.get(t, "/api/app/admin/administrators?status=any&pageSize=2&page=1")
 	if len(r.Items) != 2 || r.Total != 4 {
 		t.Errorf("page1: want len=2 total=4, got len=%d total=%d", len(r.Items), r.Total)
 	}
 
-	r = ts.get(t, "/api/app/admin/users?status=any&sort=displayName")
+	r = ts.get(t, "/api/app/admin/administrators?status=any&sort=displayName")
 	if len(r.Items) == 0 || r.Items[0].User.DisplayName != "Alice" {
 		t.Errorf("sort asc: want Alice first, got %+v", r.Items)
 	}
 
-	if code := ts.getCode(t, "/api/app/admin/users?sort=bogus"); code != 400 {
+	if code := ts.getCode(t, "/api/app/admin/administrators?sort=bogus"); code != 400 {
 		t.Errorf("bogus sort: want 400 got %d", code)
 	}
 }

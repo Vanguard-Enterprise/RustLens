@@ -255,6 +255,27 @@ func (r *Repo) FindOrCreateByDiscordID(ctx context.Context, p DiscordProfile) (s
 	return id, created, nil
 }
 
+// ErrAppUserNotFound is returned by FindByDiscordID when no app_users row
+// matches the given Discord ID. Callers should treat this as a soft miss —
+// e.g. command_usage drops the write rather than blocking the bot.
+var ErrAppUserNotFound = errors.New("app_users row not found for discord id")
+
+// FindByDiscordID returns the app_users.id for a Discord snowflake without
+// creating a row. Returns ErrAppUserNotFound if no row exists.
+func (r *Repo) FindByDiscordID(ctx context.Context, discordID string) (string, error) {
+	var id string
+	err := r.pool.QueryRow(ctx, `
+		SELECT id FROM app_users WHERE discord_id = $1
+	`, discordID).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrAppUserNotFound
+		}
+		return "", fmt.Errorf("find app_users by discord id: %w", err)
+	}
+	return id, nil
+}
+
 // newUserID returns a "usr_<24 hex>" identifier.
 func newUserID() (string, error) {
 	var b [12]byte

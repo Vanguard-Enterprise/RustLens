@@ -1,5 +1,5 @@
 // Package cleanup runs periodic background sweeps that drop stale rows from
-// volatile tables (cache, long-passed wipe reacts).
+// volatile tables (cache, long-passed wipe reacts, command usage history).
 //
 // Retention windows are intentionally conservative: we err on the side of
 // keeping recent history available to commands like /compare and
@@ -19,15 +19,17 @@ import (
 type Store interface {
 	PurgeWipeReactsBefore(ctx context.Context, cutoff time.Time) (int64, error)
 	PurgeTrackAnalyticsSessionsCacheBefore(ctx context.Context, cutoff time.Time) (int64, error)
+	PurgeCommandUsageBefore(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 // Config holds tuneable cleanup parameters. The defaults applied by
 // NewService are conservative: hourly cadence, 7-day wipe-react retention,
-// 48-hour analytics cache retention.
+// 48-hour analytics cache retention, 90-day command usage retention.
 type Config struct {
 	Interval                time.Duration
 	WipeReactRetention      time.Duration
 	AnalyticsCacheRetention time.Duration
+	CommandUsageRetention   time.Duration
 }
 
 func (c Config) withDefaults() Config {
@@ -39,6 +41,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.AnalyticsCacheRetention <= 0 {
 		c.AnalyticsCacheRetention = 48 * time.Hour
+	}
+	if c.CommandUsageRetention <= 0 {
+		c.CommandUsageRetention = 90 * 24 * time.Hour
 	}
 	return c
 }
@@ -91,5 +96,11 @@ func (s *Service) runOnce(ctx context.Context) {
 		log.Printf("[backend] cleanup: purge analytics cache failed: %v", err)
 	} else if rows > 0 {
 		log.Printf("[backend] cleanup: purged %d analytics cache rows older than %s", rows, s.cfg.AnalyticsCacheRetention)
+	}
+
+	if rows, err := s.store.PurgeCommandUsageBefore(ctx, now.Add(-s.cfg.CommandUsageRetention)); err != nil {
+		log.Printf("[backend] cleanup: purge command usage failed: %v", err)
+	} else if rows > 0 {
+		log.Printf("[backend] cleanup: purged %d command usage rows older than %s", rows, s.cfg.CommandUsageRetention)
 	}
 }

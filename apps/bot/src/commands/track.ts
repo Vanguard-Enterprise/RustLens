@@ -24,6 +24,7 @@ import {
 } from "discord.js";
 import {
   BackendClient,
+  type CommandUsageTarget,
   type TrackGroup,
   type TrackGroupAnalyticsDay,
   type TrackGroupAnalyticsResponse,
@@ -41,6 +42,11 @@ import { renderTrackAnalyticsChart } from "../track-analytics-chart.js";
 import { hasProFeatureAccess } from "../website-admin.js";
 
 export const TRACK_COMMAND_NAME = "track";
+
+export type TrackMemberResult = {
+  handled: true;
+  targets: CommandUsageTarget[];
+};
 
 const TRACK_CREATE_SUBCOMMAND = "create";
 const TRACK_DELETE_SUBCOMMAND = "delete";
@@ -529,7 +535,7 @@ export async function handleTrackAutocomplete(interaction: AutocompleteInteracti
   return true;
 }
 
-export async function handleTrackChatInput(interaction: ChatInputCommandInteraction) {
+export async function handleTrackChatInput(interaction: ChatInputCommandInteraction): Promise<false | true | TrackMemberResult> {
   if (interaction.commandName !== TRACK_COMMAND_NAME) {
     return false;
   }
@@ -724,7 +730,7 @@ async function handleTrackDeleteChatInput(interaction: ChatInputCommandInteracti
 async function handleTrackMemberChatInput(
   interaction: ChatInputCommandInteraction,
   subcommand: typeof TRACK_ADD_SUBCOMMAND | typeof TRACK_REMOVE_SUBCOMMAND,
-) {
+): Promise<true | TrackMemberResult> {
   if (!interaction.inGuild() || !interaction.guild || !interaction.guildId || !interaction.channelId) {
     return true;
   }
@@ -780,7 +786,12 @@ async function handleTrackMemberChatInput(
       refreshTrackGroupInBackground(interaction.guild, interaction.guildId, group.id, "command add");
     }
     await interaction.editReply({ embeds: [buildStatusEmbed(resolved.length, failed.length, failed)] });
-    return true;
+    const addTargets: CommandUsageTarget[] = resolved.map((m) => ({
+      kind:      "steam",
+      snowflake: m.steamId,
+      relation:  "subject",
+    }));
+    return { handled: true, targets: addTargets };
   }
 
   let identifiers = selectedMember ? [selectedMember.steamId] : isTrackIdentifierInput(input) ? [input] : [];
@@ -807,6 +818,12 @@ async function handleTrackMemberChatInput(
     if (removed.count > 0) {
       refreshTrackGroupInBackground(interaction.guild, interaction.guildId, group.id, "command remove");
     }
+    const removeTargets: CommandUsageTarget[] = identifiers.map((steamId) => ({
+      kind:      "steam",
+      snowflake: steamId,
+      relation:  "subject",
+    }));
+    return { handled: true, targets: removeTargets };
   } catch (error) {
     console.error(`[bot] failed to remove track group members for group ${group.id}`, error);
     await interaction.editReply({ embeds: [buildErrorEmbed("RustLens could not remove that player. Try again shortly.")] });

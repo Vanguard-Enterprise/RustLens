@@ -1,108 +1,158 @@
 import { AppSidebar } from "../_components/app-sidebar";
-import { UsersPage } from "./_components/users-page";
+import { MembersTable } from "./_components/members-table";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getCsrfToken } from "@/lib/csrf";
 import {
-	getAdminRoles,
-	getAdminUsers,
-	getCurrentUserSafe,
-	type AdminUsersQuery,
+  getAdminUsers,
+  getCurrentUserSafe,
+  type AdminUsersQuery,
 } from "@/lib/rustlens-api";
 import { requirePermission } from "@/lib/session";
 
-const DEFAULT_PAGE_SIZE = 50;
+const STATUSES: ReadonlyArray<NonNullable<AdminUsersQuery["status"]>> = [
+  "active",
+  "suspended",
+  "deleted",
+  "any",
+];
+
+const USER_APP_FILTERS: ReadonlyArray<NonNullable<AdminUsersQuery["userApp"]>> = [
+  "installed",
+  "not_installed",
+];
+
+const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50];
 
-function pickStr(v: string | string[] | undefined): string | undefined {
-	if (Array.isArray(v)) return v[0];
-	return v;
+function parsePositiveInt(value: string | string[] | undefined, fallback: number): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function pickArr(v: string | string[] | undefined): string[] {
-	if (Array.isArray(v)) return v;
-	if (typeof v === "string" && v !== "") return [v];
-	return [];
+function clampPageSize(value: number): number {
+  return PAGE_SIZE_OPTIONS.includes(value) ? value : DEFAULT_PAGE_SIZE;
 }
 
-function parsePositiveInt(v: string | undefined, fallback: number): number {
-	if (!v) return fallback;
-	const n = Number.parseInt(v, 10);
-	return Number.isFinite(n) && n > 0 ? n : fallback;
+const DATE_PARAM_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseDateParam(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return null;
+  return DATE_PARAM_PATTERN.test(raw) ? raw : null;
+}
+
+const SORTS = new Set([
+  "createdAt",
+  "-createdAt",
+  "displayName",
+  "-displayName",
+  "lastLoginAt",
+  "-lastLoginAt",
+]);
+
+function parseSortParam(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return null;
+  return SORTS.has(raw) ? raw : null;
 }
 
 export default async function AdminUsersRoute({
-	searchParams,
+  searchParams,
 }: {
-	searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-	const session = await requirePermission("users.read");
-	const sp = await searchParams;
+  const session = await requirePermission("users.read");
+  const sp = await searchParams;
 
-	const query: AdminUsersQuery = {
-		q: pickStr(sp.q),
-		role: pickArr(sp.role),
-		status: (pickStr(sp.status) as AdminUsersQuery["status"]) ?? "active",
-		sort: pickStr(sp.sort),
-		page: parsePositiveInt(pickStr(sp.page), 1),
-		pageSize: PAGE_SIZE_OPTIONS.includes(parsePositiveInt(pickStr(sp.pageSize), DEFAULT_PAGE_SIZE))
-			? parsePositiveInt(pickStr(sp.pageSize), DEFAULT_PAGE_SIZE)
-			: DEFAULT_PAGE_SIZE,
-	};
+  const qRaw = Array.isArray(sp.q) ? sp.q[0] : sp.q;
+  const q = qRaw ?? "";
+  const statusRaw = Array.isArray(sp.status) ? sp.status[0] : sp.status;
+  const status: NonNullable<AdminUsersQuery["status"]> =
+    statusRaw && (STATUSES as readonly string[]).includes(statusRaw)
+      ? (statusRaw as NonNullable<AdminUsersQuery["status"]>)
+      : "any";
+  const page = parsePositiveInt(sp.page, 1);
+  const pageSize = clampPageSize(parsePositiveInt(sp.pageSize, DEFAULT_PAGE_SIZE));
 
-	const [csrfToken, currentUser, users, roles] = await Promise.all([
-		getCsrfToken(),
-		getCurrentUserSafe(),
-		getAdminUsers(query),
-		getAdminRoles(),
-	]);
+  const joinedSince = parseDateParam(sp.joinedSince);
+  const joinedBefore = parseDateParam(sp.joinedBefore);
+  const sort = parseSortParam(sp.sort);
 
-	const user = {
-		displayName: session.displayName,
-		avatarUrl: session.avatarUrl || undefined,
-		discordUsername: currentUser?.user.discordUsername,
-		isInternalAdmin:
-			(session.adminRoles?.length ?? 0) > 0 ||
-			session.roles.includes("internal_admin"),
-	};
+  const userAppRaw = Array.isArray(sp.userApp) ? sp.userApp[0] : sp.userApp;
+  const userApp: "installed" | "not_installed" | null =
+    userAppRaw && (USER_APP_FILTERS as readonly string[]).includes(userAppRaw)
+      ? (userAppRaw as "installed" | "not_installed")
+      : null;
 
-	return (
-		<SidebarProvider
-			style={
-				{
-					"--sidebar-width": "calc(var(--spacing) * 72)",
-					"--header-height": "calc(var(--spacing) * 12)",
-				} as React.CSSProperties
-			}
-		>
-			<AppSidebar
-				csrfToken={csrfToken}
-				user={user}
-				permissions={session.permissions ?? []}
-				variant="inset"
-			/>
-			<SidebarInset>
-				<SiteHeader />
-				<div className="flex flex-1 flex-col">
-					<div className="@container/main flex flex-1 flex-col gap-2">
-						<div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
-							<div>
-								<h1 className="text-2xl font-semibold">Users</h1>
-								<p className="text-sm text-muted-foreground">
-									Find users, assign admin roles, and manage account state.
-								</p>
-							</div>
-							<UsersPage
-								initialPage={users}
-								roles={roles}
-								initialQuery={query}
-								pageSizeOptions={PAGE_SIZE_OPTIONS}
-								permissions={session.permissions ?? []}
-							/>
-						</div>
-					</div>
-				</div>
-			</SidebarInset>
-		</SidebarProvider>
-	);
+  const [csrfToken, currentUser, members] = await Promise.all([
+    getCsrfToken(),
+    getCurrentUserSafe(),
+    getAdminUsers({
+      q: q || undefined,
+      status,
+      page,
+      pageSize,
+      joinedSince: joinedSince ?? undefined,
+      joinedBefore: joinedBefore ?? undefined,
+      sort: sort ?? undefined,
+      userApp: userApp ?? undefined,
+    }),
+  ]);
+
+  const user = {
+    displayName: session.displayName,
+    avatarUrl: session.avatarUrl || undefined,
+    discordUsername: currentUser?.user.discordUsername,
+    isInternalAdmin:
+      (session.adminRoles?.length ?? 0) > 0 ||
+      session.roles.includes("internal_admin"),
+  };
+
+  return (
+    <SidebarProvider
+      style={
+        {
+          "--sidebar-width": "calc(var(--spacing) * 72)",
+          "--header-height": "calc(var(--spacing) * 12)",
+        } as React.CSSProperties
+      }
+    >
+      <AppSidebar
+        csrfToken={csrfToken}
+        user={user}
+        permissions={session.permissions ?? []}
+        variant="inset"
+      />
+      <SidebarInset>
+        <SiteHeader />
+        <div className="flex flex-1 flex-col">
+          <div className="@container/main flex flex-1 flex-col gap-2">
+            <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6 px-4 lg:px-6">
+              <div>
+                <h1 className="text-2xl font-semibold">Users</h1>
+                <p className="text-sm text-muted-foreground">
+                  Discord users who have used RustLens.
+                </p>
+              </div>
+              <MembersTable
+                initialQuery={q}
+                initialStatus={status}
+                initialJoinedSince={joinedSince}
+                initialJoinedBefore={joinedBefore}
+                initialSort={sort}
+                initialUserApp={userApp}
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                data={members}
+                canSuspend={(session.permissions ?? []).includes("users.suspend")}
+                canDelete={(session.permissions ?? []).includes("users.delete")}
+              />
+            </div>
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
+  );
 }

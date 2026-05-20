@@ -541,6 +541,10 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ;
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS icon_hash TEXT;
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS approximate_member_count INTEGER;
+		ALTER TABLE user_guilds ADD COLUMN IF NOT EXISTS is_owner BOOLEAN NOT NULL DEFAULT FALSE;
 
 		DO $$
 		BEGIN
@@ -982,6 +986,75 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ON app_audit_events (created_at DESC);
 	`); err != nil {
 		return fmt.Errorf("create app audit events table: %w", err)
+	}
+
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS command_usage (
+			id               BIGSERIAL PRIMARY KEY,
+			app_user_id      TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			discord_id       TEXT NOT NULL,
+			guild_id         TEXT,
+			channel_id       TEXT,
+			interaction_type TEXT NOT NULL,
+			command          TEXT NOT NULL,
+			subcommand       TEXT,
+			target           TEXT,
+			options          JSONB NOT NULL DEFAULT '{}'::jsonb,
+			outcome          TEXT NOT NULL,
+			error_code       TEXT,
+			latency_ms       INTEGER NOT NULL,
+			correlation_id   TEXT,
+			parent_usage_id  BIGINT REFERENCES command_usage(id) ON DELETE SET NULL,
+			channel_kind     TEXT,
+			channel_name     TEXT,
+			created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		ALTER TABLE command_usage ADD COLUMN IF NOT EXISTS correlation_id TEXT;
+		ALTER TABLE command_usage ADD COLUMN IF NOT EXISTS parent_usage_id BIGINT REFERENCES command_usage(id) ON DELETE SET NULL;
+		ALTER TABLE command_usage ADD COLUMN IF NOT EXISTS channel_kind TEXT;
+		ALTER TABLE command_usage ADD COLUMN IF NOT EXISTS channel_name TEXT;
+
+		CREATE INDEX IF NOT EXISTS command_usage_user_created_idx
+		ON command_usage (app_user_id, created_at DESC);
+
+		CREATE INDEX IF NOT EXISTS command_usage_created_idx
+		ON command_usage (created_at DESC);
+
+		CREATE INDEX IF NOT EXISTS command_usage_correlation_idx
+		ON command_usage (app_user_id, correlation_id)
+		WHERE correlation_id IS NOT NULL;
+
+		CREATE INDEX IF NOT EXISTS command_usage_parent_idx
+		ON command_usage (parent_usage_id)
+		WHERE parent_usage_id IS NOT NULL;
+	`); err != nil {
+		return fmt.Errorf("create command_usage table: %w", err)
+	}
+
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS command_usage_targets (
+			id               BIGSERIAL PRIMARY KEY,
+			command_usage_id BIGINT NOT NULL REFERENCES command_usage(id) ON DELETE CASCADE,
+			kind             TEXT NOT NULL,
+			snowflake        TEXT NOT NULL,
+			display_name     TEXT,
+			avatar_hash      TEXT,
+			relation         TEXT NOT NULL,
+			created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT command_usage_targets_kind_chk
+				CHECK (kind IN ('user','role','channel','guild','steam')),
+			CONSTRAINT command_usage_targets_relation_chk
+				CHECK (relation IN ('recipient','scope','subject'))
+		);
+
+		CREATE INDEX IF NOT EXISTS command_usage_targets_usage_idx
+		ON command_usage_targets(command_usage_id);
+
+		CREATE INDEX IF NOT EXISTS command_usage_targets_snowflake_idx
+		ON command_usage_targets(snowflake);
+	`); err != nil {
+		return fmt.Errorf("create command_usage_targets table: %w", err)
 	}
 
 	return nil

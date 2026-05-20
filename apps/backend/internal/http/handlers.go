@@ -67,6 +67,7 @@ type Handler struct {
 	proxyCrypto         *proxycrypto.Crypto
 	publisher           events.Publisher
 	players             *players.Service
+	appauth             *appauth.Repo
 }
 
 func NewHandler(
@@ -82,6 +83,7 @@ func NewHandler(
 	outboundProvider *outboundhttp.Provider,
 	proxyCrypto *proxycrypto.Crypto,
 	publisher events.Publisher,
+	appauthRepo *appauth.Repo,
 ) *Handler {
 	if publisher == nil {
 		publisher = events.NopPublisher{}
@@ -138,6 +140,7 @@ func NewHandler(
 		proxyCrypto:         proxyCrypto,
 		publisher:           publisher,
 		players:             players.NewService(postgres, steamClient, bmMatch),
+		appauth:             appauthRepo,
 	}
 }
 

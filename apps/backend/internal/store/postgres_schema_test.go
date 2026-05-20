@@ -51,3 +51,38 @@ func TestEnsureSchema_UserNotificationPreferences(t *testing.T) {
 		t.Fatalf("expected 4 columns on user_notification_preferences, got %d", count)
 	}
 }
+
+func TestEnsureSchema_CreatesCommandUsageTable(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	if err := s.EnsureSchema(ctx); err != nil {
+		t.Fatalf("EnsureSchema: %v", err)
+	}
+
+	var exists bool
+	if err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.tables
+			WHERE table_name = 'command_usage'
+		)`).Scan(&exists); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if !exists {
+		t.Fatal("command_usage table not created")
+	}
+
+	// indexes
+	for _, idx := range []string{"command_usage_user_created_idx", "command_usage_created_idx"} {
+		var ok bool
+		if err := s.pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM pg_indexes
+				WHERE schemaname = 'public' AND indexname = $1
+			)`, idx).Scan(&ok); err != nil {
+			t.Fatalf("index %s query: %v", idx, err)
+		}
+		if !ok {
+			t.Fatalf("expected index %s", idx)
+		}
+	}
+}

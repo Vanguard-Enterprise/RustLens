@@ -8,6 +8,7 @@ import {
 	ChevronsLeftIcon,
 	ChevronsRightIcon,
 	FileIcon,
+	UserPlusIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,8 @@ import type {
 	AdminUsersQuery,
 } from "@/lib/rustlens-api";
 
+import { grantRoleAction, searchUsersForGrantAction } from "../actions";
+import { AddAdminUserDialog } from "./add-admin-user-dialog";
 import { UsersBulkToolbar } from "./users-bulk-toolbar";
 import { UsersTable } from "./users-table";
 import { UsersToolbar } from "./users-toolbar";
@@ -35,13 +38,37 @@ type Props = {
 	initialQuery: AdminUsersQuery;
 	pageSizeOptions: number[];
 	permissions: string[];
+	canGrantSuperadmin: boolean;
 };
 
-export function UsersPage({ initialPage, roles, initialQuery, pageSizeOptions, permissions }: Props) {
+export function UsersPage({
+	initialPage,
+	roles,
+	initialQuery,
+	pageSizeOptions,
+	permissions,
+	canGrantSuperadmin,
+}: Props) {
 	const router = useRouter();
 	const pathname = usePathname();
 	const searchParams = useSearchParams();
 	const [selected, setSelected] = React.useState<Set<string>>(new Set());
+	const [addOpen, setAddOpen] = React.useState(false);
+	const canAssignRoles = permissions.includes("users.roles.assign");
+
+	const handleAddSearch = React.useCallback(
+		(q: string) => searchUsersForGrantAction(q),
+		[],
+	);
+
+	const handleAddConfirm = React.useCallback(
+		async (userId: string, roleKey: string, reason: string) => {
+			const res = await grantRoleAction(userId, roleKey, reason);
+			if (!res.ok) throw new Error(res.error);
+			router.refresh();
+		},
+		[router],
+	);
 
 	const initialQueryKey = `${initialQuery.q ?? ""}|${(initialQuery.role ?? []).join(",")}|${initialQuery.status ?? ""}|${initialQuery.sort ?? ""}|${initialQuery.page ?? ""}|${initialQuery.pageSize ?? ""}`;
 	const [prevQueryKey, setPrevQueryKey] = React.useState(initialQueryKey);
@@ -99,11 +126,29 @@ export function UsersPage({ initialPage, roles, initialQuery, pageSizeOptions, p
 
 	return (
 		<div className="flex flex-col gap-4">
-			<UsersToolbar
-				query={initialQuery}
-				roles={roles}
-				onChange={updateQuery}
-			/>
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<UsersToolbar
+					query={initialQuery}
+					roles={roles}
+					onChange={updateQuery}
+				/>
+				{canAssignRoles ? (
+					<Button onClick={() => setAddOpen(true)}>
+						<UserPlusIcon className="size-4" />
+						Add user
+					</Button>
+				) : null}
+			</div>
+			{canAssignRoles ? (
+				<AddAdminUserDialog
+					open={addOpen}
+					onOpenChange={setAddOpen}
+					assignableRoles={roles}
+					canGrantSuperadmin={canGrantSuperadmin}
+					onSearch={handleAddSearch}
+					onConfirm={handleAddConfirm}
+				/>
+			) : null}
 			<UsersBulkToolbar
 				selectedIds={Array.from(selected)}
 				roles={roles}

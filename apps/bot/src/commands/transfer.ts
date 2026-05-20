@@ -4,6 +4,7 @@ import type {
   Client,
   ModalSubmitInteraction,
 } from "discord.js";
+import type { CommandUsageTarget } from "../backend-client.js";
 import {
   ActionRowBuilder,
   ApplicationIntegrationType,
@@ -22,6 +23,11 @@ import { loadConfig } from "../config.js";
 import { createEmbed, logDiscordCatch } from "../shared.js";
 
 export const TRANSFER_COMMAND_NAME = "transfer";
+
+export type TransferModalSubmitResult = {
+  handled: true;
+  targets: CommandUsageTarget[];
+};
 
 export const TRANSFER_CONTINUE_BUTTON_CUSTOM_ID = "transfer:continue";
 export const TRANSFER_MODAL_CUSTOM_ID = "transfer:modal";
@@ -196,7 +202,7 @@ function extractPairsFromEmbedFields(
   return pairs;
 }
 
-export async function handleTransferModalSubmit(interaction: ModalSubmitInteraction) {
+export async function handleTransferModalSubmit(interaction: ModalSubmitInteraction): Promise<false | true | TransferModalSubmitResult> {
   if (interaction.customId !== TRANSFER_MODAL_CUSTOM_ID) {
     return false;
   }
@@ -276,6 +282,7 @@ export async function handleTransferModalSubmit(interaction: ModalSubmitInteract
   const workerId = getWorkerID();
   let success = 0;
   let failed = 0;
+  const linkedTargets: CommandUsageTarget[] = [];
 
   const linkOne = async (pair: LinkPair) => {
     try {
@@ -307,6 +314,13 @@ export async function handleTransferModalSubmit(interaction: ModalSubmitInteract
       }
 
       success++;
+      linkedTargets.push({
+        kind:        "user",
+        snowflake:   member.id,
+        displayName: member.displayName ?? null,
+        avatarHash:  member.user.avatar ?? null,
+        relation:    "recipient",
+      });
     } catch {
       failed++;
     }
@@ -336,7 +350,7 @@ export async function handleTransferModalSubmit(interaction: ModalSubmitInteract
     embeds: [buildTransferEmbed("Transfer successful", description)],
     components: [],
   });
-  return true;
+  return { handled: true, targets: linkedTargets };
 }
 
 export const __testables = {

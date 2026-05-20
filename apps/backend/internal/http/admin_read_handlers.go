@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -21,16 +22,17 @@ import (
 // apps/frontend/lib/rustlens-api.ts.
 
 type adminUserItem struct {
-	User                 adminAppUser `json:"user"`
-	DiscordID            string       `json:"discordId"`
-	DiscordUsername      string       `json:"discordUsername"`
-	DiscordGlobalName    string       `json:"discordGlobalName,omitempty"`
-	DiscordAvatar        string       `json:"discordAvatar,omitempty"`
-	GuildCount           int          `json:"guildCount"`
-	SteamConnectionCount int          `json:"steamConnectionCount"`
-	AdminRoles           []string     `json:"adminRoles"`
-	SuspendedAt          *string      `json:"suspendedAt,omitempty"`
-	DeletedAt            *string      `json:"deletedAt,omitempty"`
+	User                  adminAppUser `json:"user"`
+	DiscordID             string       `json:"discordId"`
+	DiscordUsername       string       `json:"discordUsername"`
+	DiscordGlobalName     string       `json:"discordGlobalName,omitempty"`
+	DiscordAvatar         string       `json:"discordAvatar,omitempty"`
+	GuildCount            int          `json:"guildCount"`
+	SteamConnectionCount  int          `json:"steamConnectionCount"`
+	AdminRoles            []string     `json:"adminRoles"`
+	HasUserAppInstalled   bool         `json:"hasUserAppInstalled"`
+	SuspendedAt           *string      `json:"suspendedAt,omitempty"`
+	DeletedAt             *string      `json:"deletedAt,omitempty"`
 }
 
 type adminAppUser struct {
@@ -94,8 +96,16 @@ type auditEventItem struct {
 }
 
 type adminUserGuild struct {
-	GuildID string `json:"guildId"`
-	Nick    string `json:"nick,omitempty"`
+	GuildID                string  `json:"guildId"`
+	Name                   string  `json:"name"`
+	IconHash               *string `json:"iconHash"`
+	OwnerDiscordID         *string `json:"ownerDiscordId"`
+	OwnerUsername          *string `json:"ownerUsername"`
+	OwnerGlobalName        *string `json:"ownerGlobalName"`
+	OwnerAvatarHash        *string `json:"ownerAvatarHash"`
+	ApproximateMemberCount *int32  `json:"approximateMemberCount"`
+	IsInstalled            bool    `json:"isInstalled"`
+	LeftAt                 *string `json:"leftAt"`
 }
 
 type adminUserDetail struct {
@@ -112,7 +122,7 @@ type adminUserDetail struct {
 	RecentAudit       []auditEventItem `json:"recentAudit"`
 }
 
-// ListAdminUsers: GET /api/app/admin/users
+// ListAdministrators: GET /api/app/admin/administrators
 // Query:
 //   q=<substring>           matches display_name / app_users.id / discord_username / discord_id
 //   role=<roleKey>          (repeatable) any matched role
@@ -121,7 +131,7 @@ type adminUserDetail struct {
 //   steam=any|linked|unlinked
 //   sort=<field> or -<field>  field in {createdAt, lastLoginAt, displayName}
 //   page=1 pageSize=50 (max 200)
-func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pool := h.postgres.Pool()
 	q := r.URL.Query()
@@ -183,7 +193,12 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(u.discord_avatar, ''),
 		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = u.discord_id AND g.left_at IS NULL), 0),
 		       0 AS steam_count,
-		       COALESCE(array_agg(DISTINCT r.key) FILTER (WHERE r.key IS NOT NULL), ARRAY[]::text[])
+		       COALESCE(array_agg(DISTINCT r.key) FILTER (WHERE r.key IS NOT NULL), ARRAY[]::text[]),
+		       EXISTS (
+		           SELECT 1 FROM bot_user_installs bui
+		           WHERE bui.discord_id = u.discord_id
+		             AND bui.is_installed = TRUE
+		       ) AS has_user_app_installed
 		FROM app_users u
 		LEFT JOIN admin_user_roles aur ON aur.user_id = u.id
 		LEFT JOIN admin_roles r ON r.id = aur.role_id
@@ -212,7 +227,147 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 			&it.User.CreatedAt, &it.User.UpdatedAt, &it.User.LastLoginAt,
 			&suspendedAt, &deletedAt,
 			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
-			&guildCount, &steamCount, &adminRoleKeys,
+			&guildCount, &steamCount, &adminRoleKeys, &it.HasUserAppInstalled,
+		); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if rolesLegacyJSON != "" {
+			_ = json.Unmarshal([]byte(rolesLegacyJSON), &it.User.Roles)
+		}
+		if it.User.Roles == nil {
+			it.User.Roles = []string{}
+		}
+		it.GuildCount = int(guildCount)
+		it.SteamConnectionCount = int(steamCount)
+		it.AdminRoles = adminRoleKeys
+		if it.AdminRoles == nil {
+			it.AdminRoles = []string{}
+		}
+		if suspendedAt != nil {
+			t := suspendedAt.Format(time.RFC3339)
+			it.SuspendedAt = &t
+		}
+		if deletedAt != nil {
+			t := deletedAt.Format(time.RFC3339)
+			it.DeletedAt = &t
+		}
+		items = append(items, it)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items, "total": total, "page": page, "pageSize": pageSize,
+	})
+}
+
+// ListAdminUsers: GET /api/app/admin/users
+//
+// Inverse of ListAdministrators — returns app_users rows that hold zero admin
+// roles (i.e. no role with any permission grant). Query params mirror
+// ListAdministrators exactly except that the `role` param is ignored: non-admin
+// users have no admin roles by definition, so role-key filtering is meaningless.
+func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	pool := h.postgres.Pool()
+	q := r.URL.Query()
+	// `role` is meaningless here — these users hold no admin roles. Drop it so
+	// buildUsersQuery does not attach a contradicting EXISTS clause.
+	q.Del("role")
+
+	page := 1
+	pageSize := 50
+	if v := q.Get("page"); v != "" {
+		parseLimit(v, &page)
+		if page < 1 {
+			page = 1
+		}
+	}
+	if v := q.Get("pageSize"); v != "" {
+		parseLimit(v, &pageSize)
+	}
+	if pageSize < 1 || pageSize > 200 {
+		pageSize = 50
+	}
+	offset := (page - 1) * pageSize
+
+	whereSQL, args, orderBy, err := buildUsersQuery(q)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Append the members-only restriction.
+	if whereSQL == "" {
+		whereSQL = "WHERE " + membersOnlyClause
+	} else {
+		whereSQL = whereSQL + " AND " + membersOnlyClause
+	}
+
+	var total int
+	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM app_users u %s`, whereSQL)
+	if err := pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	args = append(args, pageSize, offset)
+	listSQL := fmt.Sprintf(`
+		SELECT u.id,
+		       COALESCE(
+		           NULLIF(u.display_name, ''),
+		           NULLIF(u.discord_global_name, ''),
+		           NULLIF(u.discord_username, ''),
+		           ''
+		       ) AS display_name,
+		       COALESCE(
+		           NULLIF(u.avatar_url, ''),
+		           CASE
+		               WHEN NULLIF(u.discord_avatar, '') IS NOT NULL
+		                    AND NULLIF(u.discord_id, '') IS NOT NULL
+		               THEN 'https://cdn.discordapp.com/avatars/'
+		                    || u.discord_id || '/' || u.discord_avatar || '.png'
+		               ELSE ''
+		           END
+		       ) AS avatar_url,
+		       u.roles::text,
+		       u.created_at, u.updated_at, u.last_login_at,
+		       u.suspended_at, u.deleted_at,
+		       COALESCE(u.discord_id, ''),
+		       COALESCE(u.discord_username, ''),
+		       COALESCE(u.discord_global_name, ''),
+		       COALESCE(u.discord_avatar, ''),
+		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = u.discord_id AND g.left_at IS NULL), 0),
+		       0 AS steam_count,
+		       ARRAY[]::text[] AS admin_role_keys,
+		       EXISTS (
+		           SELECT 1 FROM bot_user_installs bui
+		           WHERE bui.discord_id = u.discord_id
+		             AND bui.is_installed = TRUE
+		       ) AS has_user_app_installed
+		FROM app_users u
+		%s
+		ORDER BY %s
+		LIMIT $%d OFFSET $%d
+	`, whereSQL, orderBy, len(args)-1, len(args))
+
+	rows, err := pool.Query(ctx, listSQL, args...)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rows.Close()
+
+	items := []adminUserItem{}
+	for rows.Next() {
+		var it adminUserItem
+		var rolesLegacyJSON string
+		var suspendedAt, deletedAt *time.Time
+		var guildCount, steamCount int64
+		var adminRoleKeys []string
+		if err := rows.Scan(
+			&it.User.ID, &it.User.DisplayName, &it.User.AvatarURL, &rolesLegacyJSON,
+			&it.User.CreatedAt, &it.User.UpdatedAt, &it.User.LastLoginAt,
+			&suspendedAt, &deletedAt,
+			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
+			&guildCount, &steamCount, &adminRoleKeys, &it.HasUserAppInstalled,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -736,17 +891,65 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 	rrows.Close()
 
 	// Guilds via the user's discord_id (stored directly on app_users now).
+	// Prefer bot_guilds metadata (authoritative when the bot is in the guild);
+	// otherwise fall back to user_guilds (captured from /users/@me/guilds during
+	// OAuth login) so unknown guilds still show name/icon/member count. When
+	// user_guilds.is_owner is TRUE and bot_guilds has no owner, the requesting
+	// user IS the owner — surface their identity via owner_app.
 	d.Guilds = []adminUserGuild{}
 	if d.DiscordID != "" {
-		grows, err := pool.Query(ctx, `SELECT guild_id, COALESCE(nickname,'') FROM user_guilds WHERE discord_id = $1 AND left_at IS NULL ORDER BY guild_id`, d.DiscordID)
-		if err == nil {
-			for grows.Next() {
-				var g adminUserGuild
-				if err := grows.Scan(&g.GuildID, &g.Nick); err == nil {
-					d.Guilds = append(d.Guilds, g)
-				}
+		grows, err := pool.Query(ctx, `
+			SELECT
+				ug.guild_id,
+				COALESCE(NULLIF(bg.name, ''), ug.name, ''),
+				COALESCE(bg.icon_hash, ug.icon_hash),
+				COALESCE(bg.owner_discord_id, CASE WHEN ug.is_owner THEN owner_app.discord_id END),
+				COALESCE(bg.owner_username, CASE WHEN ug.is_owner THEN owner_app.discord_username END),
+				COALESCE(bg.owner_global_name, CASE WHEN ug.is_owner THEN owner_app.discord_global_name END),
+				COALESCE(bg.owner_avatar_hash, CASE WHEN ug.is_owner THEN owner_app.discord_avatar END),
+				COALESCE(bg.approximate_member_count, ug.approximate_member_count),
+				COALESCE(bg.is_installed, FALSE),
+				bg.left_at
+			FROM user_guilds ug
+			LEFT JOIN bot_guilds bg ON bg.guild_id = ug.guild_id
+			LEFT JOIN app_users owner_app ON owner_app.discord_id = ug.discord_id
+			WHERE ug.discord_id = $1 AND ug.left_at IS NULL
+			ORDER BY COALESCE(NULLIF(bg.name, ''), NULLIF(ug.name, ''), ug.guild_id)
+		`, d.DiscordID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		for grows.Next() {
+			var (
+				g      adminUserGuild
+				leftAt *time.Time
+			)
+			if err := grows.Scan(
+				&g.GuildID,
+				&g.Name,
+				&g.IconHash,
+				&g.OwnerDiscordID,
+				&g.OwnerUsername,
+				&g.OwnerGlobalName,
+				&g.OwnerAvatarHash,
+				&g.ApproximateMemberCount,
+				&g.IsInstalled,
+				&leftAt,
+			); err != nil {
+				log.Printf("GetAdminUser: scan user_guilds row for %s: %v", d.DiscordID, err)
+				continue
 			}
-			grows.Close()
+			if leftAt != nil {
+				s := leftAt.Format(time.RFC3339)
+				g.LeftAt = &s
+			}
+			d.Guilds = append(d.Guilds, g)
+		}
+		grows.Close()
+		if err := grows.Err(); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
 	}
 

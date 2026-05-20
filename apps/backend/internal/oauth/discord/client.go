@@ -111,9 +111,11 @@ func (c *Client) ExchangeCode(ctx context.Context, code, codeVerifier string) (s
 
 // UserGuild is the subset of fields returned by GET /users/@me/guilds we use.
 type UserGuild struct {
-	ID       string
-	Name     string
-	IconHash string
+	ID                     string
+	Name                   string
+	IconHash               string
+	ApproximateMemberCount *int32
+	Owner                  bool
 }
 
 // FetchUserGuilds retrieves the authenticated user's guild list from
@@ -137,16 +139,23 @@ func (c *Client) FetchUserGuilds(ctx context.Context, accessToken string) ([]Use
 		return nil, fmt.Errorf("discord guilds fetch: %d %s", resp.StatusCode, string(body))
 	}
 	var raw []struct {
-		ID   string  `json:"id"`
-		Name string  `json:"name"`
-		Icon *string `json:"icon"`
+		ID                     string  `json:"id"`
+		Name                   string  `json:"name"`
+		Icon                   *string `json:"icon"`
+		Owner                  bool    `json:"owner"`
+		ApproximateMemberCount *int32  `json:"approximate_member_count"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]UserGuild, 0, len(raw))
 	for _, g := range raw {
-		ug := UserGuild{ID: g.ID, Name: g.Name}
+		ug := UserGuild{
+			ID:                     g.ID,
+			Name:                   g.Name,
+			Owner:                  g.Owner,
+			ApproximateMemberCount: g.ApproximateMemberCount,
+		}
 		if g.Icon != nil {
 			ug.IconHash = *g.Icon
 		}

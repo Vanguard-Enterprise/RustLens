@@ -1,8 +1,14 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
+import type { CommandUsageTarget } from "../backend-client.js";
 import { getGuildMembers } from "../guild-member-cache.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { logDiscordCatch, logDiscordError } from "../shared.js";
+
+export type SummonHandlerResult = {
+  handled: true;
+  targets: CommandUsageTarget[];
+};
 
 export const SUMMON_COMMAND_NAME = "summon";
 
@@ -37,7 +43,9 @@ export async function ensureSummonCommand(client: Client, shardID: number) {
   console.log("[bot] ensured /summon command (global)");
 }
 
-export async function handleSummonChatInput(interaction: ChatInputCommandInteraction) {
+export async function handleSummonChatInput(
+  interaction: ChatInputCommandInteraction,
+): Promise<false | true | SummonHandlerResult> {
   if (interaction.commandName !== SUMMON_COMMAND_NAME) {
     return false;
   }
@@ -98,11 +106,18 @@ export async function handleSummonChatInput(interaction: ChatInputCommandInterac
   let moved = 0;
   let failed = 0;
 
+  const movedMembers: { id: string; username: string; avatar: string | null }[] = [];
+
   await Promise.all(
     targets.map(async (target) => {
       try {
         await target.voice.setChannel(voiceChannel);
         moved++;
+        movedMembers.push({
+          id:       target.id,
+          username: target.user.globalName ?? target.user.username,
+          avatar:   target.user.avatar ?? null,
+        });
       } catch (error) {
         logDiscordError("/summon move member voice channel", error, {
           guildId: interaction.guildId,
@@ -120,5 +135,16 @@ export async function handleSummonChatInput(interaction: ChatInputCommandInterac
   }
 
   await interaction.editReply({ content: parts.join(" ") });
-  return true;
+
+  const usageTargets: CommandUsageTarget[] = [
+    { kind: "role", snowflake: role.id, displayName: role.name, relation: "scope" },
+    ...movedMembers.map<CommandUsageTarget>((m) => ({
+      kind:        "user",
+      snowflake:   m.id,
+      displayName: m.username,
+      avatarHash:  m.avatar,
+      relation:    "recipient",
+    })),
+  ];
+  return { handled: true, targets: usageTargets };
 }

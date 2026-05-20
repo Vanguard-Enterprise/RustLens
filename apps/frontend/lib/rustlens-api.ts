@@ -1,7 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-import { clearSession, getSessionToken } from "@/lib/session";
+import { getSessionToken } from "@/lib/session";
 import { noticeFromBackendError } from "@/lib/session-errors";
 
 const SESSION_INVALID_ERRORS = new Set([
@@ -91,6 +91,7 @@ export type AdminUserItem = {
 	guildCount: number;
 	steamConnectionCount: number;
 	adminRoles: string[];
+	hasUserAppInstalled: boolean;
 	suspendedAt?: string;
 	deletedAt?: string;
 };
@@ -101,9 +102,12 @@ export type AdminUsersQuery = {
 	status?: "active" | "suspended" | "deleted" | "any";
 	discord?: "any" | "linked" | "unlinked";
 	steam?: "any" | "linked" | "unlinked";
+	userApp?: "any" | "installed" | "not_installed";
 	sort?: string;
 	page?: number;
 	pageSize?: number;
+	joinedSince?: string;
+	joinedBefore?: string;
 };
 
 export type AdminUsersPage = {
@@ -208,7 +212,15 @@ export type AuditEventItem = {
 
 export type AdminUserGuild = {
 	guildId: string;
-	nick?: string;
+	name: string;
+	iconHash: string | null;
+	ownerDiscordId: string | null;
+	ownerUsername: string | null;
+	ownerGlobalName: string | null;
+	ownerAvatarHash: string | null;
+	approximateMemberCount: number | null;
+	isInstalled: boolean;
+	leftAt: string | null;
 };
 
 export type AdminUserAuditItem = AuditEventItem;
@@ -294,9 +306,11 @@ async function backendFetch<T>(
 			errorCode &&
 			SESSION_INVALID_ERRORS.has(errorCode)
 		) {
-			await clearSession();
+			// Cookie mutation isn't allowed during RSC render, so route through
+			// the /session-expired GET handler which clears the cookie on the
+			// outgoing response before redirecting to /login.
 			const notice = noticeFromBackendError(errorCode);
-			redirect(`/login?notice=${notice}`);
+			redirect(`/session-expired?notice=${notice}`);
 		}
 		const error = new Error(message) as Error & { status?: number; errorCode?: string };
 		error.status = response.status;
@@ -322,8 +336,13 @@ export async function postAdminAction<T = unknown>(
 	type: string,
 	params: Record<string, unknown>,
 	reason: string,
+	typedConfirmation?: string,
 ): Promise<T> {
-	const envelope: AdminActionEnvelope = { params, reason };
+	const envelope: AdminActionEnvelope & { typedConfirmation?: string } = {
+		params,
+		reason,
+		...(typedConfirmation !== undefined ? { typedConfirmation } : {}),
+	};
 	const payload = await backendFetch<AdminActionResponse<T>>(
 		`/api/app/admin/actions/${encodeURIComponent(type)}`,
 		{ method: "POST", body: JSON.stringify(envelope) },
@@ -387,16 +406,39 @@ export async function getMyGuildLinks(guildId: string): Promise<GuildLink[]> {
 	return payload.items;
 }
 
-export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
+export async function getAdministrators(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
 	const sp = new URLSearchParams();
 	if (params.q) sp.set("q", params.q);
 	for (const r of params.role ?? []) sp.append("role", r);
 	if (params.status) sp.set("status", params.status);
 	if (params.discord) sp.set("discord", params.discord);
 	if (params.steam) sp.set("steam", params.steam);
+	if (params.userApp && params.userApp !== "any") sp.set("userApp", params.userApp);
 	if (params.sort) sp.set("sort", params.sort);
 	if (params.page) sp.set("page", String(params.page));
 	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	const qs = sp.toString();
+	return backendFetch<AdminUsersPage>(
+		`/api/app/admin/administrators${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
+	const sp = new URLSearchParams();
+	if (params.q) sp.set("q", params.q);
+	if (params.status) sp.set("status", params.status);
+	if (params.discord) sp.set("discord", params.discord);
+	if (params.steam) sp.set("steam", params.steam);
+	if (params.userApp && params.userApp !== "any") sp.set("userApp", params.userApp);
+	if (params.sort) sp.set("sort", params.sort);
+	if (params.page) sp.set("page", String(params.page));
+	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	if (params.joinedSince) sp.set("joinedSince", params.joinedSince);
+	if (params.joinedBefore) sp.set("joinedBefore", params.joinedBefore);
+	// Backend ignores `role` for /admin/users — non-admin users have no admin
+	// roles by definition. Drop it from the querystring entirely.
 	const qs = sp.toString();
 	return backendFetch<AdminUsersPage>(
 		`/api/app/admin/users${qs ? `?${qs}` : ""}`,
@@ -483,6 +525,132 @@ export async function getAdminUserAudit(
 	);
 }
 
+export type AdminCommandUsageTarget = {
+	kind:        "user" | "role" | "channel" | "guild" | "steam";
+	snowflake:   string;
+	displayName: string | null;
+	avatarHash:  string | null;
+	relation:    "recipient" | "scope" | "subject";
+	appUserId?:  string | null;
+};
+
+export type AdminCommandUsageItem = {
+	id:              number;
+	appUserId:       string;
+	discordId:       string;
+	guildId:         string | null;
+	channelId:       string | null;
+	interactionType: "command" | "button" | "modal" | "string_select";
+	command:         string;
+	subcommand:      string | null;
+	target:          string | null;
+	options:         Record<string, unknown>;
+	outcome:         "success" | "error" | "banned" | "denied";
+	errorCode:       string | null;
+	latencyMs:       number;
+	createdAt:       string;
+	targets:         AdminCommandUsageTarget[];
+	targetTotal?:    number;
+	correlationId?:  string | null;
+	parentUsageId?:  number | null;
+	// Number of follow-up rows (modal submits / button presses / select
+	// interactions) the backend linked to this row via parent_usage_id. Always
+	// 0 for children, since the list endpoint filters parent_usage_id IS NULL.
+	childCount?:     number;
+	// Where the interaction was dispatched. Drives the "Where" column render.
+	channelKind?:    "guild" | "dm" | "group_dm" | "unknown" | null;
+	channelName?:    string | null;
+	// Backend-joined snapshot of the row's guild (when guildId is set) — name +
+	// icon from bot_guilds. May be null if the bot is not in that guild anymore.
+	guildName?:      string | null;
+	guildIcon?:      string | null;
+};
+
+export type AdminCommandUsageSummary = {
+	totalCount:  number;
+	errorCount:  number;
+	errorRate:   number;
+	topCommands: Array<{ command: string; count: number }>;
+};
+
+export type AdminCommandUsagePage = {
+	items:    AdminCommandUsageItem[];
+	total:    number;
+	page:     number;
+	pageSize: number;
+	summary:  AdminCommandUsageSummary;
+};
+
+export type AdminCommandUsageFilters = {
+	page?:             number;
+	pageSize?:         number;
+	q?:                string;
+	outcome?:          string[];
+	interactionType?:  string[];
+	command?:          string;
+	guildId?:          string;
+	windowDays?:       1 | 7 | 30 | 90;
+};
+
+export async function getAdminUserCommandUsage(
+	userId: string,
+	opts: AdminCommandUsageFilters = {},
+): Promise<AdminCommandUsagePage> {
+	const sp = new URLSearchParams();
+	if (opts.page)            sp.set("page",            String(opts.page));
+	if (opts.pageSize)        sp.set("pageSize",        String(opts.pageSize));
+	if (opts.q)               sp.set("q",               opts.q);
+	if (opts.outcome?.length) sp.set("outcome",         opts.outcome.join(","));
+	if (opts.interactionType?.length) sp.set("interactionType", opts.interactionType.join(","));
+	if (opts.command)         sp.set("command",         opts.command);
+	if (opts.guildId)         sp.set("guildId",         opts.guildId);
+	if (opts.windowDays)      sp.set("windowDays",      String(opts.windowDays));
+	const qs = sp.toString();
+	return backendFetch<AdminCommandUsagePage>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}/command-usage${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export type AdminCommandUsageFilterOptions = {
+	commands: string[];
+	guilds:   Array<{ guildId: string; name: string; iconHash: string | null }>;
+};
+
+export async function getAdminUserCommandUsageFilterOptions(
+	userId: string,
+	windowDays: 1 | 7 | 30 | 90 = 90,
+): Promise<AdminCommandUsageFilterOptions> {
+	return backendFetch<AdminCommandUsageFilterOptions>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}/command-usage/filter-options?windowDays=${windowDays}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getAdminUserCommandUsageTargets(
+	userId: string,
+	usageId: number,
+): Promise<{ targets: AdminCommandUsageTarget[] }> {
+	return backendFetch<{ targets: AdminCommandUsageTarget[] }>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}/command-usage/${usageId}/targets`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getAdminUserCommandUsageChildren(
+	userId: string,
+	usageId: number,
+): Promise<{ items: AdminCommandUsageItem[] }> {
+	return backendFetch<{ items: AdminCommandUsageItem[] }>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}/command-usage/${usageId}/children`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
 export async function getAuditEvents(limit = 30) {
 	const payload = await backendFetch<{ items: AuditEventItem[] }>(
 		`/api/app/admin/audit?limit=${limit}`,
@@ -544,11 +712,13 @@ export async function getAdminAuditEvent(id: string): Promise<AuditEventItem> {
 /**
  * Thin wrapper used by the Audit page's actor/target combobox.
  * Pinned to status="any" so suspended/deleted users still surface.
+ * Uses /admin/administrators with no role filter: the underlying handler
+ * returns the full app_users table when no role filter is supplied.
  */
 export async function searchAdminUsers(q: string): Promise<AdminUserItem[]> {
 	const trimmed = q.trim();
 	if (trimmed.length < 2) return [];
-	const page = await getAdminUsers({ q: trimmed, pageSize: 10, status: "any" });
+	const page = await getAdministrators({ q: trimmed, pageSize: 10, status: "any" });
 	return page.items;
 }
 
@@ -875,8 +1045,9 @@ export async function deleteAdminUser(
 ) {
 	return postAdminAction<{ userId: string }>(
 		"users.delete",
-		{ userId, typedConfirmation },
+		{ userId },
 		reason,
+		typedConfirmation,
 	);
 }
 

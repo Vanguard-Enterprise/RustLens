@@ -120,11 +120,22 @@ func (p *PostgresStore) ListActiveUserGuildDiscordIDs(ctx context.Context, guild
 	return discordIDs, rows.Err()
 }
 
+// SyncUserGuildInput carries the per-guild metadata captured from Discord's
+// /users/@me/guilds response, used to backfill user_guilds with guild
+// name/icon/member-count/owner-flag for guilds the bot isn't necessarily in.
+type SyncUserGuildInput struct {
+	GuildID                string
+	Name                   string
+	IconHash               string
+	ApproximateMemberCount *int32
+	IsOwner                bool
+}
+
 // SyncUserGuildsForUser reconciles the user_guilds rows for a single user
 // against the authoritative list of guilds returned by Discord's
-// /users/@me/guilds endpoint. Listed guilds are upserted active; rows for
-// this user in any guild NOT in the list are marked left.
-func (p *PostgresStore) SyncUserGuildsForUser(ctx context.Context, discordID string, guildIDs []string) error {
+// /users/@me/guilds endpoint. Listed guilds are upserted active with their
+// metadata; rows for this user in any guild NOT in the list are marked left.
+func (p *PostgresStore) SyncUserGuildsForUser(ctx context.Context, discordID string, guilds []SyncUserGuildInput) error {
 	if discordID == "" {
 		return errors.New("discordID is required")
 	}
@@ -134,14 +145,39 @@ func (p *PostgresStore) SyncUserGuildsForUser(ctx context.Context, discordID str
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	guildIDs := make([]string, len(guilds))
+	names := make([]string, len(guilds))
+	iconHashes := make([]*string, len(guilds))
+	memberCounts := make([]*int32, len(guilds))
+	isOwners := make([]bool, len(guilds))
+	for i, g := range guilds {
+		guildIDs[i] = g.GuildID
+		names[i] = g.Name
+		if g.IconHash != "" {
+			s := g.IconHash
+			iconHashes[i] = &s
+		}
+		memberCounts[i] = g.ApproximateMemberCount
+		isOwners[i] = g.IsOwner
+	}
+
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO user_guilds (discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at)
-		SELECT $1, gid, TRUE, NOW(), NOW(), NULL FROM unnest($2::text[]) AS gid
+		INSERT INTO user_guilds (
+			discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at,
+			name, icon_hash, approximate_member_count, is_owner
+		)
+		SELECT $1, t.gid, TRUE, NOW(), NOW(), NULL, t.name, t.icon, t.members, t.is_owner
+		FROM unnest($2::text[], $3::text[], $4::text[], $5::int[], $6::bool[])
+			AS t(gid, name, icon, members, is_owner)
 		ON CONFLICT (discord_id, guild_id) DO UPDATE
 		SET is_active = TRUE,
 		    last_seen_at = NOW(),
-		    left_at = NULL
-	`, discordID, guildIDs); err != nil {
+		    left_at = NULL,
+		    name = EXCLUDED.name,
+		    icon_hash = EXCLUDED.icon_hash,
+		    approximate_member_count = EXCLUDED.approximate_member_count,
+		    is_owner = EXCLUDED.is_owner
+	`, discordID, guildIDs, names, iconHashes, memberCounts, isOwners); err != nil {
 		return err
 	}
 

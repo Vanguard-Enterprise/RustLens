@@ -66,7 +66,8 @@ func NewRouter(
 	if publisher == nil {
 		publisher = events.NopPublisher{}
 	}
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher)
+	appAuthRepo := appauth.NewRepo(postgres.Pool())
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher, appAuthRepo)
 
 	apiKeyStore := store.NewAPIKeyStore(postgres.Pool())
 	headers := clientip.Headers{
@@ -217,6 +218,8 @@ func NewRouter(
 		r.Post("/bot-guilds/leave", handler.MarkBotGuildLeft)
 		r.Post("/bot-guilds/reconcile", handler.ReconcileBotGuilds)
 		r.Post("/bot-user-installs/seen", handler.TouchBotUserInstallSeen)
+		r.Post("/users/ensure", handler.EnsureAppUser)
+		r.Post("/command-usage", handler.RecordCommandUsage)
 		r.Get("/steam/{steamID}", handler.GetSteamAccount)
 		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
@@ -260,7 +263,6 @@ func NewRouter(
 		r.Get("/guilds/{guildID}/track-groups/{groupID}/analytics", handler.GetTrackGroupAnalytics)
 	})
 
-	appAuthRepo := appauth.NewRepo(postgres.Pool())
 	appAuthHandler := appauth.NewHandler(appAuthRepo)
 	requireAppSecret := appauth.RequireAppSecret(cfg.AppAPIInternalSecret)
 	requireSession := appauth.RequireSession(cfg.AppSessionSecret, postgres.Pool())
@@ -272,7 +274,7 @@ func NewRouter(
 		SessionSecret: cfg.AppSessionSecret,
 		Repo:          appAuthRepo,
 		Pool:          postgres.Pool(),
-		GuildSyncer:   postgres,
+		GuildSyncer:   discordGuildSyncerAdapter{s: postgres},
 	})
 
 	r.Route("/api/auth/discord", func(r chi.Router) {
@@ -346,8 +348,13 @@ func NewRouter(
 			r.With(requireAdminPerm(rbac.PermRolesRead)).Get("/roles", handler.ListAdminRoles)
 			r.With(requireAdminPerm(rbac.PermRolesRead)).Get("/permissions", handler.ListAdminPermissions)
 			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/users", handler.ListAdminUsers)
+			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/administrators", handler.ListAdministrators)
 			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/users/{id}", handler.GetAdminUser)
 			r.With(requireAdminPerm(rbac.PermUsersAuditRead)).Get("/users/{id}/audit", handler.ListAdminUserAudit)
+			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/users/{id}/command-usage", handler.AdminGetUserCommandUsage)
+			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/users/{id}/command-usage/filter-options", handler.AdminGetUserCommandUsageFilterOptions)
+			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/users/{id}/command-usage/{usageId}/targets", handler.AdminGetCommandUsageTargets)
+			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/users/{id}/command-usage/{usageId}/children", handler.AdminGetCommandUsageChildren)
 			r.With(requireAdminPerm(rbac.PermGuildsRead)).Get("/guilds", handler.ListAdminGuilds)
 			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/user-installs", handler.ListAdminUserInstalls)
 			r.With(requireAdminPerm(rbac.PermBmServersRead)).Get("/servers", handler.ListAdminServers)
@@ -435,4 +442,25 @@ func appSessionMiddleware(validator *auth.AppSessionValidator) func(next http.Ha
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// discordGuildSyncerAdapter bridges the discord OAuth handler's GuildSyncer
+// interface (which speaks discord.UserGuild) to the store's SyncUserGuildInput,
+// keeping the store and oauth/discord packages decoupled.
+type discordGuildSyncerAdapter struct {
+	s *store.PostgresStore
+}
+
+func (a discordGuildSyncerAdapter) SyncUserGuildsForUser(ctx context.Context, discordID string, guilds []discord.UserGuild) error {
+	in := make([]store.SyncUserGuildInput, len(guilds))
+	for i, g := range guilds {
+		in[i] = store.SyncUserGuildInput{
+			GuildID:                g.ID,
+			Name:                   g.Name,
+			IconHash:               g.IconHash,
+			ApproximateMemberCount: g.ApproximateMemberCount,
+			IsOwner:                g.Owner,
+		}
+	}
+	return a.s.SyncUserGuildsForUser(ctx, discordID, in)
 }

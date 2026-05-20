@@ -24,6 +24,9 @@ import {
   enforceBanForAutocomplete,
 } from "./ban-check.js";
 import { enforceRateLimit } from "./rate-limit.js";
+import { ensureAppUser } from "./ensure-app-user.js";
+import { recordCommandUsage, type Outcome } from "./command-usage.js";
+import { parseCustomId, rememberParentCorrelation } from "./correlation.js";
 import {
   ensureBindCommand,
   handleBindButtonInteraction,
@@ -331,8 +334,46 @@ function reportUserInstallSeen(interaction: Interaction): void {
 }
 
 client.on("interactionCreate", async (interaction) => {
+  // Strip any trailing `#<correlation>` tag from incoming customIds before
+  // handlers see them. The raw correlation is recovered by command-usage.ts
+  // via the same parseCustomId helper, but every handler in this codebase
+  // compares interaction.customId against a static constant — without this
+  // strip, those comparisons would all break the moment we start minting
+  // correlation-tagged customIds in modal/button/select responses.
+  if (
+    interaction.isButton?.() ||
+    interaction.isModalSubmit?.() ||
+    interaction.isAnySelectMenu?.()
+  ) {
+    const raw = interaction.customId;
+    const { base, correlation } = parseCustomId(raw);
+    if (correlation) {
+      rememberParentCorrelation(interaction, correlation);
+      try {
+        Object.defineProperty(interaction, "customId", {
+          value:        base,
+          configurable: true,
+          writable:     false,
+          enumerable:   true,
+        });
+      } catch {
+        // Falling through with the raw customId still preserves correct routing
+        // for legacy customIds that don't carry correlation. Discord.js v14
+        // exposes customId as a getter; defineProperty installs an own property
+        // that shadows it, but we don't want a future runtime change to crash
+        // the interaction handler.
+      }
+    }
+  }
   reportUserInstallSeen(interaction);
+  ensureAppUser(interaction);
+  const trackUsage = !interaction.isAutocomplete();
+  const startedAt = Date.now();
+  let recordTargets: import("./backend-client.js").CommandUsageTarget[] | undefined;
+  let outcome: Outcome = "success";
+  let errorCode: string | null = null;
   try {
+    try {
     if (interaction.isAutocomplete()) {
       if (await handleManageAutocomplete(interaction)) {
         return;
@@ -343,7 +384,7 @@ client.on("interactionCreate", async (interaction) => {
         interaction.options.getSubcommand(false),
       );
       if (await enforceBanForAutocomplete(interaction, category)) {
-        return;
+        outcome = "banned"; return;
       }
 
       if (await handleCompareAutocomplete(interaction)) {
@@ -378,7 +419,7 @@ client.on("interactionCreate", async (interaction) => {
           interaction.options.getSubcommand(false),
         );
         if (await enforceBan(interaction, category)) {
-          return;
+          outcome = "banned"; return;
         }
       }
 
@@ -395,16 +436,28 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleAdminChatInput(interaction)) {
-        return;
+      {
+        const result = await handleAdminChatInput(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
-      if (await handleSummonChatInput(interaction)) {
-        return;
+      {
+        const result = await handleSummonChatInput(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
-      if (await handleAnnounceChatInput(interaction)) {
-        return;
+      {
+        const result = await handleAnnounceChatInput(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       if (await handleAnalyzeChatInput(interaction)) {
@@ -439,8 +492,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleNicknameChatInput(interaction)) {
-        return;
+      {
+        const result = await handleNicknameChatInput(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       if (await handleSetSteamChatInput(interaction)) {
@@ -463,8 +520,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleTrackChatInput(interaction)) {
-        return;
+      {
+        const result = await handleTrackChatInput(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       await handleSettingsChatInput(interaction);
@@ -474,7 +535,7 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isStringSelectMenu()) {
       const category = resolveCustomIdCategory(interaction.customId);
       if (category && (await enforceBan(interaction, category))) {
-        return;
+        outcome = "banned"; return;
       }
 
       if (await handleTrackSelectInteraction(interaction)) {
@@ -490,29 +551,41 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isModalSubmit()) {
-      if (await handleManageModalSubmit(interaction)) {
-        return;
+      {
+        const result = await handleManageModalSubmit(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       const modalCategory = resolveCustomIdCategory(interaction.customId);
       if (modalCategory && (await enforceBan(interaction, modalCategory))) {
-        return;
+        outcome = "banned"; return;
       }
 
       if (await handleBindModalSubmit(interaction)) {
         return;
       }
 
-      if (await handleSetSteamModalSubmit(interaction)) {
-        return;
+      {
+        const result = await handleSetSteamModalSubmit(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       if (await handleWipeReactModalSubmit(interaction)) {
         return;
       }
 
-      if (await handleTransferModalSubmit(interaction)) {
-        return;
+      {
+        const result = await handleTransferModalSubmit(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       if (await handleTrackModalSubmit(interaction)) {
@@ -531,15 +604,19 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
       if (buttonCategory && (await enforceBan(interaction, buttonCategory))) {
-        return;
+        outcome = "banned"; return;
       }
 
       if (await handleBindButtonInteraction(interaction)) {
         return;
       }
 
-      if (await handleCreateButtonInteraction(interaction)) {
-        return;
+      {
+        const result = await handleCreateButtonInteraction(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       if (await handlePlayerButtonInteraction(interaction)) {
@@ -593,6 +670,15 @@ client.on("interactionCreate", async (interaction) => {
       } catch (replyError) {
         console.error("[bot] failed to send interaction error reply", replyError);
       }
+    }
+  }
+  } catch (err) {
+    outcome = "error";
+    errorCode = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    if (trackUsage) {
+      recordCommandUsage(interaction, outcome, errorCode, startedAt, recordTargets);
     }
   }
 });

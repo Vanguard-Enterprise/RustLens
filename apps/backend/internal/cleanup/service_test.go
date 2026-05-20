@@ -8,14 +8,18 @@ import (
 )
 
 type fakeStore struct {
-	wipeReactCalls   int
-	analyticsCalls   int
-	wipeReactCutoffs []time.Time
-	analyticsCutoffs []time.Time
+	wipeReactCalls    int
+	analyticsCalls    int
+	commandUsageCalls int
+	wipeReactCutoffs  []time.Time
+	analyticsCutoffs  []time.Time
+	commandUsageCutoffs []time.Time
 	wipeReactRows    int64
 	analyticsRows    int64
+	commandUsageRows int64
 	wipeReactErr     error
 	analyticsErr     error
+	commandUsageErr  error
 }
 
 func (f *fakeStore) PurgeWipeReactsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
@@ -30,12 +34,19 @@ func (f *fakeStore) PurgeTrackAnalyticsSessionsCacheBefore(ctx context.Context, 
 	return f.analyticsRows, f.analyticsErr
 }
 
+func (f *fakeStore) PurgeCommandUsageBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	f.commandUsageCalls++
+	f.commandUsageCutoffs = append(f.commandUsageCutoffs, cutoff)
+	return f.commandUsageRows, f.commandUsageErr
+}
+
 func TestRunOnceCallsAllPurgesWithRetentionCutoffs(t *testing.T) {
 	store := &fakeStore{}
 	cfg := Config{
 		Interval:                time.Hour,
 		WipeReactRetention:      7 * 24 * time.Hour,
 		AnalyticsCacheRetention: 48 * time.Hour,
+		CommandUsageRetention:   90 * 24 * time.Hour,
 	}
 	svc := NewService(store, cfg)
 
@@ -43,7 +54,7 @@ func TestRunOnceCallsAllPurgesWithRetentionCutoffs(t *testing.T) {
 	svc.runOnce(context.Background())
 	after := time.Now()
 
-	if store.wipeReactCalls != 1 || store.analyticsCalls != 1 {
+	if store.wipeReactCalls != 1 || store.analyticsCalls != 1 || store.commandUsageCalls != 1 {
 		t.Fatalf("expected 1 call per purge, got %+v", store)
 	}
 
@@ -57,6 +68,7 @@ func TestRunOnceCallsAllPurgesWithRetentionCutoffs(t *testing.T) {
 	}
 	checkCutoff("wipeReact", store.wipeReactCutoffs[0], cfg.WipeReactRetention)
 	checkCutoff("analytics", store.analyticsCutoffs[0], cfg.AnalyticsCacheRetention)
+	checkCutoff("commandUsage", store.commandUsageCutoffs[0], cfg.CommandUsageRetention)
 }
 
 func TestConfigDefaultsAreConservative(t *testing.T) {
@@ -98,5 +110,37 @@ func TestRunReturnsWhenContextCancelled(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Run did not exit after context cancel")
+	}
+}
+
+func TestService_PurgesCommandUsage(t *testing.T) {
+	const retention = 90 * 24 * time.Hour
+	store := &fakeStore{}
+	cfg := Config{
+		Interval:               time.Hour,
+		CommandUsageRetention:  retention,
+	}
+	svc := NewService(store, cfg)
+
+	before := time.Now()
+	svc.runOnce(context.Background())
+	after := time.Now()
+
+	if store.commandUsageCalls != 1 {
+		t.Fatalf("expected 1 PurgeCommandUsageBefore call, got %d", store.commandUsageCalls)
+	}
+
+	cutoff := store.commandUsageCutoffs[0]
+	expectedMin := before.Add(-retention).Add(-time.Second)
+	expectedMax := after.Add(-retention).Add(time.Second)
+	if cutoff.Before(expectedMin) || cutoff.After(expectedMax) {
+		t.Errorf("commandUsage cutoff outside expected window: got=%s expected~[%s, %s]", cutoff, expectedMin, expectedMax)
+	}
+}
+
+func TestConfigDefaultsCommandUsageRetention(t *testing.T) {
+	svc := NewService(&fakeStore{}, Config{})
+	if svc.cfg.CommandUsageRetention != 90*24*time.Hour {
+		t.Errorf("CommandUsageRetention default = %s, want 90d", svc.cfg.CommandUsageRetention)
 	}
 }

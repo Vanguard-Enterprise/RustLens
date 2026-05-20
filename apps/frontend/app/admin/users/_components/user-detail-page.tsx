@@ -1,20 +1,30 @@
 "use client";
 
-import type { AdminRoleItem, AdminUserAuditItem, AdminUserDetail } from "@/lib/rustlens-api";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type {
+	AdminCommandUsageFilterOptions,
+	AdminCommandUsagePage,
+	AdminRoleItem,
+	AdminUserAuditItem,
+	AdminUserDetail,
+} from "@/lib/rustlens-api";
 
 import { AuditSection } from "./audit-section";
-import { DangerZone } from "./danger-zone";
 import { IdentityHeader } from "./identity-header";
-import { RolesSection } from "./roles-section";
+import { ServersSection } from "./servers-section";
+import { UsageSection } from "./usage-section";
+import { UserActionsSection } from "./user-actions-section";
 
 type Props = {
 	detail: AdminUserDetail;
 	roles: AdminRoleItem[];
 	audit: AdminUserAuditItem[];
+	commandUsage: AdminCommandUsagePage;
+	commandUsageFilterOptions: AdminCommandUsageFilterOptions;
 	permissions: string[];
 };
 
-export function UserDetailPage({ detail, roles, audit, permissions }: Props) {
+export function UserDetailPage({ detail, roles, audit, commandUsage, commandUsageFilterOptions, permissions }: Props) {
 	const canAssign = permissions.includes("users.roles.assign");
 	const canGrantSuperadmin = permissions.includes("admins.grant");
 	const canSuspend = permissions.includes("users.suspend");
@@ -22,18 +32,33 @@ export function UserDetailPage({ detail, roles, audit, permissions }: Props) {
 	return (
 		<div className="flex flex-col gap-6">
 			<IdentityHeader detail={detail} />
-			<RolesSection
-				detail={detail}
-				roles={roles}
-				canAssign={canAssign}
-				canGrantSuperadmin={canGrantSuperadmin}
-			/>
-			<AuditSection userId={detail.user.id} items={audit} />
-			<DangerZone
-				detail={detail}
-				canSuspend={canSuspend}
-				canDelete={canDelete}
-			/>
+			<Tabs defaultValue="servers">
+				<TabsList>
+					<TabsTrigger value="servers">Servers</TabsTrigger>
+					<TabsTrigger value="audit">Audit</TabsTrigger>
+					<TabsTrigger value="usage">Usage</TabsTrigger>
+					<TabsTrigger value="actions">User Actions</TabsTrigger>
+				</TabsList>
+				<TabsContent value="servers">
+					<ServersSection guilds={detail.guilds} />
+				</TabsContent>
+				<TabsContent value="audit">
+					<AuditSection userId={detail.user.id} items={audit} />
+				</TabsContent>
+				<TabsContent value="usage">
+					<UsageSection data={commandUsage} userId={detail.user.id} filterOptions={commandUsageFilterOptions} />
+				</TabsContent>
+				<TabsContent value="actions">
+					<UserActionsSection
+						detail={detail}
+						roles={roles}
+						canAssign={canAssign}
+						canGrantSuperadmin={canGrantSuperadmin}
+						canSuspend={canSuspend}
+						canDelete={canDelete}
+					/>
+				</TabsContent>
+			</Tabs>
 		</div>
 	);
 }

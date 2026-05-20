@@ -4,6 +4,7 @@ import type {
   Client,
   GuildMember,
 } from "discord.js";
+import type { CommandUsageTarget } from "../backend-client.js";
 import {
   ActionRowBuilder,
   ApplicationIntegrationType,
@@ -20,6 +21,11 @@ import { hasGuildAdminAccess } from "../guild-settings.js";
 import { createEmbed, logDiscordCatch, logDiscordError, replyEphemeral } from "../shared.js";
 
 export const CREATE_COMMAND_NAME = "create";
+
+export type CreateButtonResult = {
+  handled: true;
+  targets: CommandUsageTarget[];
+};
 
 const CREATE_INVITE_SUBCOMMAND_NAME = "invite";
 const CREATE_INVITE_ROLE_OPTION_NAME = "role";
@@ -322,7 +328,7 @@ async function handleRequestInviteButton(interaction: ButtonInteraction) {
   }
 }
 
-async function handleAcceptInviteButton(interaction: ButtonInteraction) {
+async function handleAcceptInviteButton(interaction: ButtonInteraction): Promise<CommandUsageTarget[] | undefined> {
   if (!interaction.inGuild() || !interaction.guild) {
     await replyEphemeral(interaction, "This action can only be used in a server.");
     return;
@@ -359,8 +365,9 @@ async function handleAcceptInviteButton(interaction: ButtonInteraction) {
   const dmEmbed = buildAcceptedDmEmbed(interaction.user.id, accepterDisplayName);
 
   let dmFailed = false;
+  let requester: import("discord.js").User | null = null;
   try {
-    const requester = await interaction.client.users.fetch(requesterId);
+    requester = await interaction.client.users.fetch(requesterId);
     await requester.send({ embeds: [dmEmbed] });
   } catch (error) {
     logDiscordError("send create invite accepted DM", error, {
@@ -384,16 +391,37 @@ async function handleAcceptInviteButton(interaction: ButtonInteraction) {
       : "Invite accepted. The requester has been notified via DM.",
     flags: MessageFlags.Ephemeral,
   });
+
+  const targets: CommandUsageTarget[] = [
+    {
+      kind:        "user",
+      snowflake:   requesterId,
+      displayName: requester ? (requester.globalName ?? requester.username) : null,
+      avatarHash:  requester?.avatar ?? null,
+      relation:    "subject",
+    },
+    {
+      kind:        "user",
+      snowflake:   interaction.user.id,
+      displayName: interaction.user.globalName ?? interaction.user.username,
+      avatarHash:  interaction.user.avatar ?? null,
+      relation:    "recipient",
+    },
+  ];
+  return targets;
 }
 
-export async function handleCreateButtonInteraction(interaction: ButtonInteraction) {
+export async function handleCreateButtonInteraction(interaction: ButtonInteraction): Promise<false | true | CreateButtonResult> {
   if (interaction.customId.startsWith(CREATE_INVITE_REQUEST_PREFIX)) {
     await handleRequestInviteButton(interaction);
     return true;
   }
 
   if (interaction.customId.startsWith(CREATE_INVITE_ACCEPT_PREFIX)) {
-    await handleAcceptInviteButton(interaction);
+    const targets = await handleAcceptInviteButton(interaction);
+    if (targets !== undefined) {
+      return { handled: true, targets };
+    }
     return true;
   }
 

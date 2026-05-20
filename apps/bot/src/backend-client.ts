@@ -505,6 +505,42 @@ export type TrackGroupAnalyticsResponse = {
   days: TrackGroupAnalyticsDay[];
 };
 
+export type CommandUsageTarget = {
+  kind:         "user" | "role" | "channel" | "guild" | "steam";
+  snowflake:    string;
+  displayName?: string | null;
+  avatarHash?:  string | null;
+  relation:     "recipient" | "scope" | "subject";
+};
+
+export type CommandUsagePayload = {
+  discordId:           string;
+  guildId:             string | null;
+  channelId:           string | null;
+  interactionType:     "command" | "button" | "modal" | "string_select";
+  command:             string;
+  subcommand:          string | null;
+  target:              string | null;
+  options:             Record<string, unknown>;
+  outcome:             "success" | "error" | "banned" | "denied";
+  errorCode:           string | null;
+  latencyMs:           number;
+  // Per-invocation id (a-z, A-Z, 0-9, -, _; <=64 chars). Embedded by the bot
+  // in any modal/button/select customId it builds so follow-up submits can
+  // round-trip it back as parentCorrelationId.
+  correlationId?:      string | null;
+  // When set, the backend resolves this to the most recent command_usage row
+  // for the same user with a matching correlationId and stores its id as
+  // parent_usage_id so the admin UI can fold follow-ups into the parent row.
+  parentCorrelationId?: string | null;
+  // Where the interaction was dispatched. The backend uses this so the
+  // admin UI can render the right kind of label/avatar in the Where column.
+  channelKind?:        "guild" | "dm" | "group_dm" | "unknown" | null;
+  // Display name for non-guild channels (e.g. group DM name). Capped at 100 chars by the backend.
+  channelName?:        string | null;
+  targets?:            CommandUsageTarget[];
+};
+
 type UpsertBotGuildPayload = {
   guildId: string;
   name: string;
@@ -1073,6 +1109,46 @@ export class BackendClient {
       "POST",
       payload,
     );
+  }
+
+  ensureAppUser(
+    workerId: string,
+    payload: {
+      discordId:  string;
+      username:   string;
+      globalName: string | null;
+      avatarHash: string | null;
+    },
+  ): Promise<{ userId: string; created: boolean }> {
+    return this.call<{ userId: string; created: boolean }>(
+      workerId,
+      `/api/internal/bot/setup/users/ensure`,
+      "POST",
+      {
+        discordId:  payload.discordId,
+        username:   payload.username,
+        globalName: payload.globalName,
+        avatarHash: payload.avatarHash,
+      },
+    );
+  }
+
+  async recordCommandUsage(workerId: string, payload: CommandUsagePayload): Promise<void> {
+    const response = await fetch(`${this.backendUrl}/api/internal/bot/setup/command-usage`, {
+      method:  "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization:  `Bearer ${this.token(workerId)}`,
+      },
+      body:   JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      const error = new Error(`backend call failed (${response.status}): ${message}`);
+      (error as any).status = response.status;
+      throw error;
+    }
   }
 
   createGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {

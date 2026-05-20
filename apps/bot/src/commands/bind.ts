@@ -30,6 +30,7 @@ import {
   getFieldValues,
   replyEphemeral,
 } from "../shared.js";
+import { getFollowupCorrelationId, getOrAssignCorrelationId, withCorrelation } from "../correlation.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 
 export const BIND_COMMAND_NAME = "bind";
@@ -235,10 +236,10 @@ const bindCommand = new SlashCommandBuilder()
       ),
   );
 
-function buildBindFullkitStartModal() {
+function buildBindFullkitStartModal(correlation: string) {
   return new ModalV2Builder()
     .setTitle("Bind Fullkit")
-    .setCustomId(BIND_FULLKIT_STEP_ONE_MODAL_CUSTOM_ID)
+    .setCustomId(withCorrelation(BIND_FULLKIT_STEP_ONE_MODAL_CUSTOM_ID, correlation))
     .addComponent(
       "Weapon",
       new RadioGroupBuilder()
@@ -282,10 +283,10 @@ function buildBindFullkitStartModal() {
     );
 }
 
-function buildBindFullkitFinishModal(draftId: string) {
+function buildBindFullkitFinishModal(draftId: string, correlation: string) {
   return new ModalV2Builder()
     .setTitle("Bind Fullkit")
-    .setCustomId(`${BIND_FULLKIT_STEP_TWO_MODAL_PREFIX}${draftId}`)
+    .setCustomId(withCorrelation(`${BIND_FULLKIT_STEP_TWO_MODAL_PREFIX}${draftId}`, correlation))
     .addComponent(
       "Amount of Medkits",
       new TextInputBuilder()
@@ -333,10 +334,10 @@ function buildBindFullkitFinishModal(draftId: string) {
     ;
 }
 
-function buildBindTurretModal() {
+function buildBindTurretModal(correlation: string) {
   return new ModalV2Builder()
     .setTitle("Bind Turret")
-    .setCustomId(BIND_TURRET_MODAL_CUSTOM_ID)
+    .setCustomId(withCorrelation(BIND_TURRET_MODAL_CUSTOM_ID, correlation))
     .addComponent(
       "Weapons",
       new RadioGroupBuilder()
@@ -382,10 +383,10 @@ function buildBindTurretModal() {
     );
 }
 
-function buildBindRocketModal() {
+function buildBindRocketModal(correlation: string) {
   return new ModalV2Builder()
     .setTitle("Bind Rocket")
-    .setCustomId(BIND_ROCKET_MODAL_CUSTOM_ID)
+    .setCustomId(withCorrelation(BIND_ROCKET_MODAL_CUSTOM_ID, correlation))
     .addComponent(
       "Amount of Rockets",
       new TextInputBuilder()
@@ -417,10 +418,10 @@ function buildBindRocketModal() {
     );
 }
 
-function buildBindC4Modal() {
+function buildBindC4Modal(correlation: string) {
   return new ModalV2Builder()
     .setTitle("Bind C4")
-    .setCustomId(BIND_C4_MODAL_CUSTOM_ID)
+    .setCustomId(withCorrelation(BIND_C4_MODAL_CUSTOM_ID, correlation))
     .addComponent(
       "Amount of C4",
       new TextInputBuilder()
@@ -441,10 +442,10 @@ function buildBindC4Modal() {
     );
 }
 
-function createBindFullkitContinueRow(draftId: string) {
+function createBindFullkitContinueRow(draftId: string, correlation: string) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(`${BIND_FULLKIT_CONTINUE_BUTTON_PREFIX}${draftId}`)
+      .setCustomId(withCorrelation(`${BIND_FULLKIT_CONTINUE_BUTTON_PREFIX}${draftId}`, correlation))
       .setLabel("Step 2")
       .setEmoji("⚙️")
       .setStyle(ButtonStyle.Success),
@@ -861,18 +862,19 @@ export async function handleBindChatInput(interaction: ChatInputCommandInteracti
   }
 
   const subcommand = interaction.options.getSubcommand(false);
+  const correlation = getOrAssignCorrelationId(interaction);
   switch (subcommand) {
     case BIND_FULLKIT_SUBCOMMAND_NAME:
-      await interaction.showModal(buildBindFullkitStartModal().toJSON() as any);
+      await interaction.showModal(buildBindFullkitStartModal(correlation).toJSON() as any);
       return true;
     case BIND_TURRET_SUBCOMMAND_NAME:
-      await interaction.showModal(buildBindTurretModal().toJSON() as any);
+      await interaction.showModal(buildBindTurretModal(correlation).toJSON() as any);
       return true;
     case BIND_ROCKET_SUBCOMMAND_NAME:
-      await interaction.showModal(buildBindRocketModal().toJSON() as any);
+      await interaction.showModal(buildBindRocketModal(correlation).toJSON() as any);
       return true;
     case BIND_C4_SUBCOMMAND_NAME:
-      await interaction.showModal(buildBindC4Modal().toJSON() as any);
+      await interaction.showModal(buildBindC4Modal(correlation).toJSON() as any);
       return true;
     case BIND_MASSINVITE_SUBCOMMAND_NAME:
       await handleMassInvite(interaction);
@@ -900,7 +902,12 @@ export async function handleBindButtonInteraction(interaction: ButtonInteraction
     return true;
   }
 
-  await interaction.showModal(buildBindFullkitFinishModal(draftId).toJSON() as any);
+  // Propagate the original /bind fullkit correlation so the step-2 modal
+  // submit folds under the same slash-command row instead of becoming a child
+  // of this button click.
+  await interaction.showModal(
+    buildBindFullkitFinishModal(draftId, getFollowupCorrelationId(interaction)).toJSON() as any,
+  );
   return true;
 }
 
@@ -993,7 +1000,7 @@ export async function handleBindModalSubmit(interaction: ModalSubmitInteraction)
     await replyEphemeral(
       interaction,
       "Step 1 saved. Please continue to step to via the button below.",
-      [createBindFullkitContinueRow(draftId)],
+      [createBindFullkitContinueRow(draftId, getFollowupCorrelationId(interaction))],
     );
     return true;
   }
