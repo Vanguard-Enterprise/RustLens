@@ -1150,10 +1150,11 @@ export class BackendClient {
     );
   }
 
-  listGuildRecentGameBans(workerId: string, guildId: string) {
+  listGuildRecentGameBans(workerId: string, guildId: string, method: "light" | "deep" = "light") {
+    const query = new URLSearchParams({ method });
     return this.call<GuildRecentGameBanListResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/game-bans`,
+      `/api/internal/bot/setup/guilds/${guildId}/game-bans?${query}`,
       "GET",
     );
   }

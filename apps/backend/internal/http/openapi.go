@@ -1678,7 +1678,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/internal/bot/setup/guilds/{guildID}/game-bans": map[string]any{
 				"get": map[string]any{
 					"summary":     "Check guild game bans",
-					"description": "Refreshes stale Steam game-ban cache entries for guild-linked Steam IDs using a 6 hour TTL and returns only game bans from the last 90 days.",
+					"description": "Refreshes stale Steam game-ban cache entries using a 6 hour TTL and returns only game bans from the last 90 days. method=light checks visible guild-linked Steam IDs. method=deep expands to visible global hard links for guild-linked Discord users after optionally refreshing up to 100 eligible Discord IDs through platformsync.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -1687,6 +1687,13 @@ func buildOpenAPIDocument() map[string]any {
 							"required":    true,
 							"description": "Discord guild ID.",
 							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "method",
+							"in":          "query",
+							"required":    false,
+							"description": "Scan method. Defaults to light.",
+							"schema":      map[string]any{"type": "string", "enum": []string{"light", "deep"}},
 						},
 					},
 					"responses": map[string]any{

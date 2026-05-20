@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -61,38 +62,46 @@ func (h *Handler) SyncPlatformIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp, status, err := h.syncPlatformIdentity(r.Context(), platform, id)
+	if err != nil {
+		writeError(w, status, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) syncPlatformIdentity(ctx context.Context, platform string, id string) (platformSyncResponse, int, error) {
 	resp := platformSyncResponse{
 		Platform:   platform,
 		PlatformID: id,
 	}
 
-	state, err := h.postgres.GetPlatformSyncState(r.Context(), platform, id)
+	state, err := h.postgres.GetPlatformSyncState(ctx, platform, id)
 	if err != nil && !errors.Is(err, store.ErrSteamAccountNotFound) {
 		log.Printf("[backend] SyncPlatformIdentity GetPlatformSyncState error: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to load platform sync state")
-		return
+		return resp, http.StatusInternalServerError, errors.New("failed to load platform sync state")
 	}
 
 	if err == nil && time.Since(state.LastPlatformSyncAt) < platformSyncTTL {
 		resp.Synced = false
 		resp.Reason = "fresh"
 		resp.LastSyncedAt = state.LastPlatformSyncAt
-		writeJSON(w, http.StatusOK, resp)
-		return
+		return resp, http.StatusOK, nil
 	}
 
-	lookup, lookupErr := h.platformSync.Lookup(r.Context(), id)
+	lookup, lookupErr := h.platformSync.Lookup(ctx, id)
 	if errors.Is(lookupErr, platformsync.ErrNotConfigured) {
-		writeError(w, http.StatusServiceUnavailable, "platformsync not configured")
-		return
+		return resp, http.StatusServiceUnavailable, errors.New("platformsync not configured")
 	}
 
 	if errors.Is(lookupErr, platformsync.ErrNotLinked) {
 		// Even when the lookup says the identity is not linked, we still record
 		// that we asked so the bot doesn't keep hammering the upstream service.
-		syncedAt, ok := h.recordPlatformSyncState(w, r, platform, id)
-		if !ok {
-			return
+		syncedAt, err := h.recordPlatformSyncState(ctx, platform, id)
+		if err != nil {
+			log.Printf("[backend] SyncPlatformIdentity UpsertPlatformSyncState error: %v", err)
+			return resp, http.StatusInternalServerError, errors.New("failed to record platform sync state")
 		}
 		resp.Synced = true
 		resp.LastSyncedAt = syncedAt
@@ -101,13 +110,11 @@ func (h *Handler) SyncPlatformIdentity(w http.ResponseWriter, r *http.Request) {
 		resp.DiscordID = lookup.DiscordID
 		resp.PreviousSteamIDs = lookup.PreviousSteamIDs
 		resp.PreviousDiscordIDs = lookup.PreviousDiscordIDs
-		writeJSON(w, http.StatusOK, resp)
-		return
+		return resp, http.StatusOK, nil
 	}
 	if lookupErr != nil {
 		log.Printf("[backend] SyncPlatformIdentity platformsync error: %v", lookupErr)
-		writeError(w, http.StatusBadGateway, "platformsync upstream failed")
-		return
+		return resp, http.StatusBadGateway, errors.New("platformsync upstream failed")
 	}
 
 	resp.Linked = lookup.Linked
@@ -118,32 +125,29 @@ func (h *Handler) SyncPlatformIdentity(w http.ResponseWriter, r *http.Request) {
 
 	links := buildPlatformSyncHardLinks(platform, lookup)
 	if len(links) > 0 {
-		if err := h.postgres.BulkUpsertHardLinks(r.Context(), links); err != nil {
+		if err := h.postgres.BulkUpsertHardLinks(ctx, links); err != nil {
 			log.Printf("[backend] SyncPlatformIdentity BulkUpsertHardLinks error: %v", err)
-			writeError(w, http.StatusInternalServerError, "failed to record hard links")
-			return
+			return resp, http.StatusInternalServerError, errors.New("failed to record hard links")
 		}
 		resp.HardLinkCount = len(links)
 	}
 
-	syncedAt, ok := h.recordPlatformSyncState(w, r, platform, id)
-	if !ok {
-		return
+	syncedAt, err := h.recordPlatformSyncState(ctx, platform, id)
+	if err != nil {
+		log.Printf("[backend] SyncPlatformIdentity UpsertPlatformSyncState error: %v", err)
+		return resp, http.StatusInternalServerError, errors.New("failed to record platform sync state")
 	}
 	resp.Synced = true
 	resp.LastSyncedAt = syncedAt
-
-	writeJSON(w, http.StatusOK, resp)
+	return resp, http.StatusOK, nil
 }
 
-func (h *Handler) recordPlatformSyncState(w http.ResponseWriter, r *http.Request, platform string, id string) (time.Time, bool) {
-	state, err := h.postgres.UpsertPlatformSyncState(r.Context(), platform, id)
+func (h *Handler) recordPlatformSyncState(ctx context.Context, platform string, id string) (time.Time, error) {
+	state, err := h.postgres.UpsertPlatformSyncState(ctx, platform, id)
 	if err != nil {
-		log.Printf("[backend] SyncPlatformIdentity UpsertPlatformSyncState error: %v", err)
-		writeError(w, http.StatusInternalServerError, "failed to record platform sync state")
-		return time.Time{}, false
+		return time.Time{}, err
 	}
-	return state.LastPlatformSyncAt, true
+	return state.LastPlatformSyncAt, nil
 }
 
 // buildPlatformSyncHardLinks turns a platformsync result into the set of

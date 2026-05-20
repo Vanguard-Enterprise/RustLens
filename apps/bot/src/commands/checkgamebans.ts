@@ -4,12 +4,27 @@ import { BackendClient, type GuildRecentGameBan } from "../backend-client.js";
 import { loadConfig } from "../config.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { createEmbed } from "../shared.js";
+import { hasProFeatureAccess } from "../website-admin.js";
 
 export const CHECK_GAME_BANS_COMMAND_NAME = "checkgamebans";
+const CHECK_GAME_BANS_METHOD_OPTION = "method";
+const CHECK_GAME_BANS_METHOD_LIGHT = "light";
+const CHECK_GAME_BANS_METHOD_DEEP = "deep";
+type CheckGameBansMethod = typeof CHECK_GAME_BANS_METHOD_LIGHT | typeof CHECK_GAME_BANS_METHOD_DEEP;
 
 const checkGameBansCommand = new SlashCommandBuilder()
   .setName(CHECK_GAME_BANS_COMMAND_NAME)
   .setDescription("Check linked guild Steam accounts for recent game bans")
+  .addStringOption((opt) =>
+    opt
+      .setName(CHECK_GAME_BANS_METHOD_OPTION)
+      .setDescription("How broadly to check linked Steam accounts")
+      .setRequired(true)
+      .addChoices(
+        { name: "Light", value: CHECK_GAME_BANS_METHOD_LIGHT },
+        { name: "Deep", value: CHECK_GAME_BANS_METHOD_DEEP },
+      ),
+  )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
   .setContexts(InteractionContextType.Guild)
@@ -85,10 +100,19 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
     return true;
   }
 
+  const method = interaction.options.getString(CHECK_GAME_BANS_METHOD_OPTION, true) as CheckGameBansMethod;
+  if (method === CHECK_GAME_BANS_METHOD_DEEP && !(await hasProFeatureAccess(interaction.user.id))) {
+    await interaction.reply({
+      content: "Deep game-ban checks require PRO or website admin access.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
-    const response = await getBackend().listGuildRecentGameBans(getWorkerID(), interaction.guildId);
+    const response = await getBackend().listGuildRecentGameBans(getWorkerID(), interaction.guildId, method);
     await interaction.editReply({ embeds: [buildGameBansEmbed(response.items)] });
   } catch (error) {
     console.error("[bot] /checkgamebans backend call failed", error);
