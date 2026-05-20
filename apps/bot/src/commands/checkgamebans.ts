@@ -3,7 +3,7 @@ import { ApplicationIntegrationType, InteractionContextType, MessageFlags, Permi
 import { BackendClient, type GuildRecentGameBan } from "../backend-client.js";
 import { loadConfig } from "../config.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
-import { createEmbed } from "../shared.js";
+import { buildProOnlyFeatureEmbed, createEmbed } from "../shared.js";
 import { hasProFeatureAccess } from "../website-admin.js";
 
 export const CHECK_GAME_BANS_COMMAND_NAME = "checkgamebans";
@@ -103,7 +103,7 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
   const method = interaction.options.getString(CHECK_GAME_BANS_METHOD_OPTION, true) as CheckGameBansMethod;
   if (method === CHECK_GAME_BANS_METHOD_DEEP && !(await hasProFeatureAccess(interaction.user.id))) {
     await interaction.reply({
-      content: "Deep game-ban checks require PRO or website admin access.",
+      embeds: [buildProOnlyFeatureEmbed()],
       flags: MessageFlags.Ephemeral,
     });
     return true;
