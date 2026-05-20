@@ -2,12 +2,14 @@ import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { BackendClient, type GuildRecentGameBan } from "../backend-client.js";
 import { loadConfig } from "../config.js";
+import { getGuildMembers } from "../guild-member-cache.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { buildProOnlyFeatureEmbed, createEmbed } from "../shared.js";
 import { hasProFeatureAccess } from "../website-admin.js";
 
 export const CHECK_GAME_BANS_COMMAND_NAME = "checkgamebans";
 const CHECK_GAME_BANS_METHOD_OPTION = "method";
+const CHECK_GAME_BANS_SCOPE_OPTION = "scope";
 const CHECK_GAME_BANS_METHOD_LIGHT = "light";
 const CHECK_GAME_BANS_METHOD_DEEP = "deep";
 type CheckGameBansMethod = typeof CHECK_GAME_BANS_METHOD_LIGHT | typeof CHECK_GAME_BANS_METHOD_DEEP;
@@ -24,6 +26,12 @@ const checkGameBansCommand = new SlashCommandBuilder()
         { name: "Light", value: CHECK_GAME_BANS_METHOD_LIGHT },
         { name: "Deep", value: CHECK_GAME_BANS_METHOD_DEEP },
       ),
+  )
+  .addRoleOption((opt) =>
+    opt
+      .setName(CHECK_GAME_BANS_SCOPE_OPTION)
+      .setDescription("Only check linked users with this role")
+      .setRequired(false),
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setDMPermission(false)
@@ -61,6 +69,12 @@ function buildGameBansEmbed(items: GuildRecentGameBan[]) {
     );
 }
 
+function buildDeepScopeTooLargeEmbed() {
+  return createEmbed()
+    .setTitle("Deep Check Scope Too Large")
+    .setDescription("More than 100 people in the current scope need a deep lookup. Try setting a smaller scope or use light mode.");
+}
+
 export async function ensureCheckGameBansCommand(client: Client, shardID: number) {
   if (shardID !== 0 || !client.application) {
     return;
@@ -91,6 +105,14 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
     });
     return true;
   }
+  const guild = interaction.guild;
+  if (!guild) {
+    await interaction.reply({
+      content: "This command can only be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
 
   if (!(await hasGuildAdminAccess(interaction))) {
     await interaction.reply({
@@ -101,6 +123,7 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
   }
 
   const method = interaction.options.getString(CHECK_GAME_BANS_METHOD_OPTION, true) as CheckGameBansMethod;
+  const scope = interaction.options.getRole(CHECK_GAME_BANS_SCOPE_OPTION, false);
   if (method === CHECK_GAME_BANS_METHOD_DEEP && !(await hasProFeatureAccess(interaction.user.id))) {
     await interaction.reply({
       embeds: [buildProOnlyFeatureEmbed()],
@@ -112,9 +135,26 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
-    const response = await getBackend().listGuildRecentGameBans(getWorkerID(), interaction.guildId, method);
+    let scopeDiscordIds: string[] = [];
+    if (scope) {
+      const members = await getGuildMembers(guild);
+      scopeDiscordIds = members
+        .filter((member) => !member.user.bot && member.roles.cache.has(scope.id))
+        .map((member) => member.id);
+
+      if (scopeDiscordIds.length === 0) {
+        await interaction.editReply({ embeds: [buildGameBansEmbed([])] });
+        return true;
+      }
+    }
+
+    const response = await getBackend().listGuildRecentGameBans(getWorkerID(), interaction.guildId, method, scopeDiscordIds);
     await interaction.editReply({ embeds: [buildGameBansEmbed(response.items)] });
   } catch (error) {
+    if ((error as { status?: number }).status === 422) {
+      await interaction.editReply({ embeds: [buildDeepScopeTooLargeEmbed()] });
+      return true;
+    }
     console.error("[bot] /checkgamebans backend call failed", error);
     await interaction.editReply({ content: "Failed to check game bans." });
   }
@@ -125,4 +165,5 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
 export const __testables = {
   buildGameBanLine,
   buildGameBansEmbed,
+  buildDeepScopeTooLargeEmbed,
 };

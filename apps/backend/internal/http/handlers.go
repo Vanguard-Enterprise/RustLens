@@ -3443,10 +3443,22 @@ func (h *Handler) CheckGuildGameBans(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to fetch guild links")
 		return
 	}
+	scopeDiscordIDs, err := gameBanScopeDiscordIDs(r.URL.Query()["scopeDiscordId"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(scopeDiscordIDs) > 0 {
+		links = filterGuildLinksByDiscordIDs(links, scopeDiscordIDs)
+	}
 
 	candidates := guildLinksToGameBanCandidates(links)
 	if method == "deep" && len(links) > 0 {
 		deepCandidates, err := h.deepGameBanCandidates(r.Context(), guildID, links)
+		if errors.Is(err, errDeepGameBanScopeTooLarge) {
+			writeError(w, http.StatusUnprocessableEntity, "More than 100 people in the current scope need a deep lookup. Try setting a smaller scope or use light mode.")
+			return
+		}
 		if err != nil {
 			log.Printf("[backend] deep game ban candidate error for guild %s: %v", guildID, err)
 			writeError(w, http.StatusInternalServerError, "failed to prepare deep game ban scan")
@@ -3483,6 +3495,33 @@ type gameBanCandidate struct {
 	SteamID   string
 }
 
+var errDeepGameBanScopeTooLarge = errors.New("deep game ban scope too large")
+
+func gameBanScopeDiscordIDs(values []string) (map[string]bool, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	scope := make(map[string]bool, len(values))
+	for _, discordID := range values {
+		discordID = strings.TrimSpace(discordID)
+		if !validateSnowflakeValue(discordID) {
+			return nil, fmt.Errorf("scopeDiscordId must contain valid Discord snowflakes")
+		}
+		scope[discordID] = true
+	}
+	return scope, nil
+}
+
+func filterGuildLinksByDiscordIDs(links []store.GuildSteamDiscordLink, scope map[string]bool) []store.GuildSteamDiscordLink {
+	filtered := make([]store.GuildSteamDiscordLink, 0, len(links))
+	for _, link := range links {
+		if scope[link.DiscordID] {
+			filtered = append(filtered, link)
+		}
+	}
+	return filtered
+}
+
 func guildLinksToGameBanCandidates(links []store.GuildSteamDiscordLink) []gameBanCandidate {
 	candidates := make([]gameBanCandidate, 0, len(links))
 	for _, link := range links {
@@ -3508,6 +3547,8 @@ func (h *Handler) deepGameBanCandidates(ctx context.Context, guildID string, lin
 				log.Printf("[backend] deep game ban platformsync skipped for guild=%s discord=%s: %v", guildID, discordID, err)
 			}
 		}
+	} else {
+		return nil, errDeepGameBanScopeTooLarge
 	}
 
 	hardLinks, err := h.postgres.ListVisibleHardLinksByDiscordIDs(ctx, discordIDs)

@@ -1678,7 +1678,7 @@ func buildOpenAPIDocument() map[string]any {
 			"/api/internal/bot/setup/guilds/{guildID}/game-bans": map[string]any{
 				"get": map[string]any{
 					"summary":     "Check guild game bans",
-					"description": "Refreshes stale Steam game-ban cache entries using a 6 hour TTL and returns only game bans from the last 90 days. method=light checks visible guild-linked Steam IDs. method=deep expands to visible global hard links for guild-linked Discord users after optionally refreshing up to 100 eligible Discord IDs through platformsync.",
+					"description": "Refreshes stale Steam game-ban cache entries using a 6 hour TTL and returns only game bans from the last 90 days. method=light checks visible guild-linked Steam IDs. method=deep expands to visible global hard links for guild-linked Discord users after refreshing up to 100 stale or missing Discord platformsync states using the shared 14 day platformsync TTL.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -1695,6 +1695,15 @@ func buildOpenAPIDocument() map[string]any {
 							"description": "Scan method. Defaults to light.",
 							"schema":      map[string]any{"type": "string", "enum": []string{"light", "deep"}},
 						},
+						{
+							"name":        "scopeDiscordId",
+							"in":          "query",
+							"required":    false,
+							"description": "Optional repeated Discord user IDs used to restrict the scan scope.",
+							"schema":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+							"style":       "form",
+							"explode":     true,
+						},
 					},
 					"responses": map[string]any{
 						"200": map[string]any{
@@ -1707,6 +1716,7 @@ func buildOpenAPIDocument() map[string]any {
 						},
 						"400": map[string]any{"$ref": "#/components/responses/BadRequest"},
 						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"422": map[string]any{"$ref": "#/components/responses/BadRequest"},
 					},
 				},
 			},

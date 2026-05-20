@@ -1150,12 +1150,22 @@ export class BackendClient {
     );
   }
 
-  listGuildRecentGameBans(workerId: string, guildId: string, method: "light" | "deep" = "light") {
+  listGuildRecentGameBans(
+    workerId: string,
+    guildId: string,
+    method: "light" | "deep" = "light",
+    scopeDiscordIds: readonly string[] = [],
+  ) {
     const query = new URLSearchParams({ method });
+    for (const discordId of scopeDiscordIds) {
+      query.append("scopeDiscordId", discordId);
+    }
     return this.call<GuildRecentGameBanListResponse>(
       workerId,
       `/api/internal/bot/setup/guilds/${guildId}/game-bans?${query}`,
       "GET",
+      undefined,
+      method === "deep" ? 120_000 : 30_000,
     );
   }
 
