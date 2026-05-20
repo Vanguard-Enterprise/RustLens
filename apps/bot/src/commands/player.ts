@@ -865,7 +865,7 @@ function buildLinkedAccountsSelect(
       recent.map((link) => ({
         label: truncateOption(accountBySteamId.get(link.steamId)?.bmName || link.steamId, 100),
         value: link.steamId,
-        description: truncateOption(`Steam ID: ${link.steamId}`, 100),
+        description: truncateOption(`${link.type === "hard" ? "Strong" : "Soft"} link - Steam ID: ${link.steamId}`, 100),
       })),
     );
 
@@ -905,7 +905,7 @@ function buildLinkedDiscordSelect(
     .setPlaceholder("Look up a linked Discord account")
     .addOptions(
       recent.map((link) => ({
-        label: truncateOption(`${link.type === "hard" ? "Strong" : "Soft"}: ${link.discordId}`, 100),
+        label: truncateOption(link.discordId, 100),
         value: link.discordId,
         description: truncateOption(`${link.type === "hard" ? "Strong" : "Soft"} link`, 100),
       })),
