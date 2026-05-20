@@ -184,6 +184,7 @@ func NewRouter(
 		r.Post("/bot-guilds/reconcile", handler.ReconcileBotGuilds)
 		r.Post("/bot-user-installs/seen", handler.TouchBotUserInstallSeen)
 		r.Post("/users/ensure", handler.EnsureAppUser)
+		r.Post("/command-usage", handler.RecordCommandUsage)
 		r.Get("/steam/{steamID}", handler.GetSteamAccount)
 		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
