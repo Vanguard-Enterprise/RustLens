@@ -93,6 +93,64 @@ func TestHiddenDiscordLinkIdentitySuppressesLinkLookups(t *testing.T) {
 	}
 }
 
+func TestVisibleHardLinkHelpersFilterHiddenAndRecent(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+
+	suffix := time.Now().UnixNano() % 1_000_000_000
+	discordID := fmt.Sprintf("100000010%09d", suffix)
+	hiddenDiscordID := fmt.Sprintf("100000011%09d", suffix)
+	oldDiscordID := fmt.Sprintf("100000012%09d", suffix)
+	steamID := fmt.Sprintf("76561198%09d", suffix)
+	hiddenSteamID := fmt.Sprintf("76561197%09d", suffix)
+	softSteamID := fmt.Sprintf("76561196%09d", suffix)
+	oldSteamID := fmt.Sprintf("76561195%09d", suffix)
+
+	insertLink := func(steamID, discordID, linkType string, createdAt time.Time) {
+		t.Helper()
+		if _, err := s.pool.Exec(ctx, `INSERT INTO steam_accounts (steam_id) VALUES ($1) ON CONFLICT DO NOTHING`, steamID); err != nil {
+			t.Fatalf("insert steam account: %v", err)
+		}
+		if _, err := s.pool.Exec(ctx,
+			`INSERT INTO steam_discord_links (steam_id, discord_id, type, source, created_at) VALUES ($1, $2, $3, 'test', $4)`,
+			steamID, discordID, linkType, createdAt,
+		); err != nil {
+			t.Fatalf("insert steam discord link: %v", err)
+		}
+	}
+
+	now := time.Now().UTC()
+	insertLink(steamID, discordID, "hard", now.Add(-time.Hour))
+	insertLink(softSteamID, discordID, "soft", now.Add(-time.Hour))
+	insertLink(hiddenSteamID, hiddenDiscordID, "hard", now.Add(-time.Hour))
+	insertLink(oldSteamID, oldDiscordID, "hard", now.Add(-45*24*time.Hour))
+	if _, err := s.HideDiscordLinkIdentity(ctx, hiddenDiscordID, "test", "test"); err != nil {
+		t.Fatalf("HideDiscordLinkIdentity: %v", err)
+	}
+
+	links, err := s.ListVisibleHardLinksByDiscordIDs(ctx, []string{discordID, hiddenDiscordID, oldDiscordID})
+	if err != nil {
+		t.Fatalf("ListVisibleHardLinksByDiscordIDs: %v", err)
+	}
+	if len(links) != 2 {
+		t.Fatalf("expected 2 visible hard links, got %d", len(links))
+	}
+
+	recent, err := s.RecentVisibleHardLinkDiscordIDs(ctx, []string{discordID, hiddenDiscordID, oldDiscordID}, now.Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatalf("RecentVisibleHardLinkDiscordIDs: %v", err)
+	}
+	if !recent[discordID] {
+		t.Fatalf("expected recent hard link for %s", discordID)
+	}
+	if recent[hiddenDiscordID] {
+		t.Fatalf("did not expect hidden discord id to be recent")
+	}
+	if recent[oldDiscordID] {
+		t.Fatalf("did not expect old discord id to be recent")
+	}
+}
+
 func TestListSetSteamCandidates(t *testing.T) {
 	ctx := context.Background()
 	s := newTestPostgres(t)

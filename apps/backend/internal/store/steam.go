@@ -113,6 +113,7 @@ type GuildRecentGameBan struct {
 	DiscordID    string
 	SteamID      string
 	GameBannedAt time.Time
+	Source       string
 }
 
 func scanSteamAccount(scanner rowScanner) (SteamAccount, error) {
@@ -572,6 +573,72 @@ func (p *PostgresStore) ListLinksByDiscordID(ctx context.Context, discordID stri
 		records = append(records, record)
 	}
 	return records, rows.Err()
+}
+
+func (p *PostgresStore) ListVisibleHardLinksByDiscordIDs(ctx context.Context, discordIDs []string) ([]SteamDiscordLink, error) {
+	if len(discordIDs) == 0 {
+		return []SteamDiscordLink{}, nil
+	}
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT l.steam_id, l.discord_id, l.type, l.source, l.created_at
+		FROM steam_discord_links l
+		WHERE l.discord_id = ANY($1)
+			AND l.type = 'hard'
+			AND NOT EXISTS (
+				SELECT 1
+				FROM hidden_discord_link_identities hidden
+				WHERE hidden.discord_id = l.discord_id
+			)
+		ORDER BY l.discord_id ASC, l.created_at ASC
+	`, discordIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]SteamDiscordLink, 0)
+	for rows.Next() {
+		record, err := scanSteamDiscordLink(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (p *PostgresStore) RecentVisibleHardLinkDiscordIDs(ctx context.Context, discordIDs []string, since time.Time) (map[string]bool, error) {
+	result := make(map[string]bool)
+	if len(discordIDs) == 0 {
+		return result, nil
+	}
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT DISTINCT l.discord_id
+		FROM steam_discord_links l
+		WHERE l.discord_id = ANY($1)
+			AND l.type = 'hard'
+			AND l.created_at >= $2
+			AND NOT EXISTS (
+				SELECT 1
+				FROM hidden_discord_link_identities hidden
+				WHERE hidden.discord_id = l.discord_id
+			)
+	`, discordIDs, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var discordID string
+		if err := rows.Scan(&discordID); err != nil {
+			return nil, err
+		}
+		result[discordID] = true
+	}
+	return result, rows.Err()
 }
 
 // ListSetSteamCandidates returns the Steam accounts to surface in the /setsteam

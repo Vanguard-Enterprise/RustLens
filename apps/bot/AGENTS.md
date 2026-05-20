@@ -27,7 +27,7 @@ src/
     settings.ts         # /settings embed + select-menu/modal flow for guild settings, including admin and alert roles
     bind.ts             # /bind fullkit/turret/rocket/c4 registration + modal flow
     wipereact.ts        # /wipereact create/delete/notreacted/react + /wipereact schedule create/delete/edit flow, persistence sync, button handling, edit modal, logs embeds, and backend-queued schedule post claiming
-    checkgamebans.ts    # /checkgamebans guild admin scan of linked Steam IDs for recent game bans, replied ephemerally
+    checkgamebans.ts    # /checkgamebans guild admin scan of linked Steam IDs for recent game bans with optional timeframe; deep mode requires PRO/website admin, expands through strong global links, and groups the embed by direct guild links vs other linked accounts, replied ephemerally
     summon.ts           # /summon {scope} — move voice-connected members of a role (or @everyone) into invoker's VC (admin-only)
     announce.ts         # /announce {scope} {message} — DM an embed announcement to all members of a role except the invoker (admin-only)
     analyze.ts          # /analyze offline {identifier} and /analyze server {server} {timeframe} analytics commands

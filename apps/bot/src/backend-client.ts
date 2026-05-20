@@ -300,6 +300,7 @@ export type GuildRecentGameBan = {
   steamId: string;
   gameBannedAt: string;
   gameBannedUnix: number;
+  source: "direct_guild_link" | "linked_account";
 };
 
 export type GuildRecentGameBanListResponse = {
@@ -1226,11 +1227,23 @@ export class BackendClient {
     );
   }
 
-  listGuildRecentGameBans(workerId: string, guildId: string) {
+  listGuildRecentGameBans(
+    workerId: string,
+    guildId: string,
+    method: "light" | "deep" = "light",
+    timeframe: "30d" | "90d" | "180d" | "all" = "90d",
+    scopeDiscordIds: readonly string[] = [],
+  ) {
+    const query = new URLSearchParams({ method, timeframe });
+    for (const discordId of scopeDiscordIds) {
+      query.append("scopeDiscordId", discordId);
+    }
     return this.call<GuildRecentGameBanListResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/game-bans`,
+      `/api/internal/bot/setup/guilds/${guildId}/game-bans?${query}`,
       "GET",
+      undefined,
+      method === "deep" ? 120_000 : 30_000,
     );
   }
 

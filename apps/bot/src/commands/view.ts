@@ -17,7 +17,13 @@ import { loadConfig } from "../config.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "../embed-paginator.js";
 import { getGuildMembers } from "../guild-member-cache.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
-import { createEmbed, buildFooter, FOOTER_TEXT, RUSTLENS_EMBED_COLOR } from "../shared.js";
+import {
+  chunkRawMentionsCodeBlocks,
+  createEmbed,
+  buildFooter,
+  FOOTER_TEXT,
+  RUSTLENS_EMBED_COLOR,
+} from "../shared.js";
 import {
   resolveSteamInputErrorMessage,
   resolveSteamProfileInput,
@@ -30,6 +36,7 @@ const VIEW_ALL_SUBCOMMAND = "all";
 const VIEW_NOSTEAM_SUBCOMMAND = "nosteam";
 const VIEW_ALL_PAGE_SIZE = 20;
 const VIEW_ALL_PAGE_CUSTOM_ID_PREFIX = "view:all:page:";
+const VIEW_NOSTEAM_RAW_CUSTOM_ID_PREFIX = "view:nosteam:raw:";
 
 const discordMentionPattern = /^<@!?(\d{16,20})>$/;
 const VIEW_EMOJIS = {
@@ -45,6 +52,7 @@ const VIEW_EMOJIS = {
   official: "<:official:1487583814271242461>",
   build: "<:build:1487584253775450225>",
   rust: "<:rust:1444010153803382957>",
+  clipboard: "<:clipboard:1506366160235397262>",
 } as const;
 
 const RISK_EMOJIS = {
@@ -127,10 +135,6 @@ async function fetchSteamProfile(steamId: string): Promise<SteamProfile | null> 
   } catch {
     return null;
   }
-}
-
-export async function fetchSteamProfileForView(steamId: string) {
-  return fetchSteamProfile(steamId);
 }
 
 function normalizeDiscordIdentifier(identifier: string) {
@@ -327,13 +331,20 @@ function buildStatusField(profile: SteamProfile | null) {
   return null;
 }
 
-function addUserInformationField(embed: EmbedBuilder, steamId: string, profile: SteamProfile | null, discordId?: string) {
+function addUserInformationField(
+  embed: EmbedBuilder,
+  steamId: string,
+  profile: SteamProfile | null,
+  discordId?: string,
+  fallbackBmId?: string | null,
+) {
   const infoLines: string[] = [];
+  const bmId = profile?.bmId || fallbackBmId?.trim() || "";
   if (steamId && /^\d{17}$/.test(steamId)) {
     infoLines.push(`${VIEW_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`);
   }
-  if (profile?.bmId) {
-    infoLines.push(`${VIEW_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/rcon/players/${profile.bmId})`);
+  if (bmId) {
+    infoLines.push(`${VIEW_EMOJIS.battlemetrics} [${bmId}](https://www.battlemetrics.com/rcon/players/${bmId})`);
   }
   if (discordId) {
     infoLines.push(`${VIEW_EMOJIS.discord} <@${discordId}>`);
@@ -444,6 +455,7 @@ export function buildUserEmbed(
   profile: SteamProfile | null,
   discordId?: string,
   includeRiskFactor = true,
+  fallbackBmId?: string | null,
 ): EmbedBuilder {
   const embed = createEmbed()
     .setTitle(profile?.bmName || profile?.personaName || "Player Profile");
@@ -452,7 +464,7 @@ export function buildUserEmbed(
     embed.setThumbnail(profile.avatarImage);
   }
 
-  addUserInformationField(embed, steamId, profile, discordId);
+  addUserInformationField(embed, steamId, profile, discordId, fallbackBmId);
 
   const statusField = buildStatusField(profile);
   if (statusField) {
@@ -592,6 +604,18 @@ function buildNoSteamEmbed(userIds: readonly string[]) {
   return createEmbed()
     .setTitle("Unlinked Users")
     .setDescription(description);
+}
+
+function buildNoSteamRawButtons(ownerId: string) {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${VIEW_NOSTEAM_RAW_CUSTOM_ID_PREFIX}${ownerId}`)
+        .setLabel("View Raw")
+        .setEmoji(VIEW_EMOJIS.clipboard)
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
 }
 
 function sortMembers(left: GuildMember, right: GuildMember) {
@@ -741,6 +765,12 @@ async function handleViewAll(interaction: ChatInputCommandInteraction) {
 }
 
 export async function handleViewButtonInteraction(interaction: ButtonInteraction) {
+  const rawParsed = parseNoSteamRawCustomId(interaction.customId);
+  if (rawParsed) {
+    await handleViewNoSteamRawButton(interaction, rawParsed.ownerId);
+    return true;
+  }
+
   const parsed = parseViewAllPageCustomId(interaction.customId);
   if (!parsed) {
     return false;
@@ -829,7 +859,73 @@ async function handleViewNoSteam(interaction: ChatInputCommandInteraction) {
 
   await interaction.editReply({
     embeds: [buildNoSteamEmbed(missingUserIds)],
+    components: missingUserIds.length > 0 ? buildNoSteamRawButtons(interaction.user.id) : [],
   });
+}
+
+function parseNoSteamRawCustomId(customId: string) {
+  if (!customId.startsWith(VIEW_NOSTEAM_RAW_CUSTOM_ID_PREFIX)) {
+    return null;
+  }
+  const ownerId = customId.slice(VIEW_NOSTEAM_RAW_CUSTOM_ID_PREFIX.length);
+  if (ownerId.length === 0) {
+    return null;
+  }
+  return { ownerId };
+}
+
+async function handleViewNoSteamRawButton(interaction: ButtonInteraction, ownerId: string) {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) {
+    await interaction.reply({
+      content: "This button can only be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (interaction.user.id !== ownerId) {
+    await interaction.reply({
+      content: "Only the user who ran /view nosteam can use this button.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await interaction.reply({
+      content: "Only the configured admin role or administrators can use /view.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const backend = getBackend();
+  const workerId = getWorkerID();
+
+  const [members, links] = await Promise.all([
+    getGuildMembers(interaction.guild),
+    backend.listGuildLinks(workerId, interaction.guildId),
+  ]);
+
+  const linkedDiscordIds = new Set(links.items.map((link) => link.discordId));
+  const missingUserIds = [...members.values()]
+    .filter((member) => !member.user.bot)
+    .sort(sortMembers)
+    .filter((member) => !linkedDiscordIds.has(member.id))
+    .map((member) => member.id);
+
+  if (missingUserIds.length === 0) {
+    await interaction.editReply({ content: "No unlinked users." });
+    return;
+  }
+
+  const chunks = chunkRawMentionsCodeBlocks(missingUserIds);
+  await interaction.editReply({ content: chunks[0] });
+  for (let index = 1; index < chunks.length; index += 1) {
+    await interaction.followUp({ content: chunks[index], flags: MessageFlags.Ephemeral });
+  }
 }
 
 export const __testables = {

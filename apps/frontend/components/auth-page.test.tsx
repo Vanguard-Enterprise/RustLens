@@ -29,8 +29,13 @@ describe("AuthPage", () => {
 		expect(screen.getByText(/account disabled/i)).toBeInTheDocument();
 	});
 
-	it("shows a notice banner when notice prop is provided", () => {
-		render(<AuthPage csrfToken="t" notice="Signed out successfully" />);
-		expect(screen.getByText(/signed out successfully/i)).toBeInTheDocument();
+	it("shows a notice banner with the canonical message for a known slug", () => {
+		render(<AuthPage csrfToken="t" notice="force_logout" />);
+		expect(screen.getByText(/signed out by an administrator/i)).toBeInTheDocument();
+	});
+
+	it("does not render a banner for an unknown notice slug", () => {
+		render(<AuthPage csrfToken="t" notice="anything-the-attacker-wants" />);
+		expect(screen.queryByRole("status")).not.toBeInTheDocument();
 	});
 });

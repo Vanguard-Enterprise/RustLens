@@ -56,31 +56,33 @@ bash scripts/setup/linux-dev.sh
 2. Validate toolchain:
 
 ```bash
-make doctor
+pnpm run doctor
 ```
 
 3. Install dependencies and backend tooling:
 
 ```bash
-make setup
+pnpm run setup
 ```
+
+> `pnpm run` is required for `setup` and `doctor` because the unprefixed forms collide with pnpm built-in commands.
 
 4. Start local infra + hot reload for all apps:
 
 ```bash
-make dev
+pnpm dev
 ```
 
 ### Useful Commands
 
-- `make infra-up`: Start Postgres, Redis, Traefik.
-- `make infra-down`: Stop infra containers.
-- `make dev-backend`: Start backend only.
-- `make dev-frontend`: Start frontend only.
-- `make dev-bot`: Start bot only.
-- `make lint`: Run workspace lint + Go vet.
-- `make test`: Run workspace tests + Go tests.
-- `make build`: Run workspace builds + Go binary build.
+- `pnpm infra:up`: Start Postgres, Redis, Traefik.
+- `pnpm infra:down`: Stop infra containers.
+- `pnpm dev:backend`: Start backend only.
+- `pnpm dev:frontend`: Start frontend only.
+- `pnpm dev:bot`: Start bot only.
+- `pnpm lint`: Workspace lint (frontend + bot). Use `pnpm lint:all` to also run `go vet`.
+- `pnpm test`: Workspace tests (frontend + bot). Use `pnpm test:all` to also run `go test`.
+- `pnpm build`: Workspace builds (frontend + bot). Use `pnpm build:all` to also build the Go binary.
 
 ## Environment Files
 

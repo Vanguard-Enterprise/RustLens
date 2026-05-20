@@ -22,4 +22,60 @@ describe("player", () => {
     expect(__testables.isBmPrivateProfileError(new Error("backend call failed (500): boom"))).toBe(false);
   });
 
+  it("hides soft links from non-admin PRO users", () => {
+    const links = [
+      {
+        steamId: "76561198000000000",
+        discordId: "100000000000000001",
+        type: "hard",
+        source: "battlemetrics",
+        createdAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        steamId: "76561198000000001",
+        discordId: "100000000000000001",
+        type: "soft",
+        source: "bot_command",
+        createdAt: "2026-01-02T00:00:00Z",
+      },
+    ] as const;
+
+    expect(__testables.filterVisibleLinks(links, false).map((link) => link.type)).toEqual(["hard"]);
+    expect(__testables.filterVisibleLinks(links, true).map((link) => link.type)).toEqual(["hard", "soft"]);
+  });
+
+  it("only includes visible Discord links in the linked Discord dropdown", () => {
+    const links = [
+      {
+        steamId: "76561198000000000",
+        discordId: "100000000000000001",
+        type: "hard",
+        source: "battlemetrics",
+        createdAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        steamId: "76561198000000000",
+        discordId: "100000000000000002",
+        type: "soft",
+        source: "bot_command",
+        createdAt: "2026-01-02T00:00:00Z",
+      },
+    ] as const;
+
+    const names = new Map([["100000000000000001", "turn it up"]]);
+    const proRows = __testables.buildLinkedDiscordSelect(links, false, names);
+    const adminRows = __testables.buildLinkedDiscordSelect(links, true);
+    const proOptions = proRows[0].components[0].toJSON().options;
+    const adminOptions = adminRows[0].components[0].toJSON().options;
+
+    expect(proOptions.map((option) => option.value)).toEqual(["100000000000000001"]);
+    expect(proOptions[0].label).toBe("turn it up");
+    expect(proOptions[0].description).toBe("Strong link");
+    expect(adminOptions.map((option) => option.value)).toEqual([
+      "100000000000000002",
+      "100000000000000001",
+    ]);
+    expect(adminOptions[0].description).toBe("Soft link");
+  });
+
 });

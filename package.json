@@ -3,19 +3,29 @@
   "private": true,
   "packageManager": "pnpm@10.6.0",
   "scripts": {
-    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/start-dev.ps1",
+    "setup": "pnpm install && cd apps/backend && go mod tidy && go install github.com/air-verse/air@latest",
+    "doctor": "node scripts/setup/doctor.mjs",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "dev": "pnpm infra:up && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/start-dev.ps1",
     "dev:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/start-dev.ps1",
     "dev:app": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/start-app.ps1",
+    "dev:backend": "cd apps/backend && go run github.com/air-verse/air@latest -c .air.toml",
+    "dev:frontend": "pnpm --filter @rustlens/frontend dev",
+    "dev:bot": "pnpm --filter @rustlens/bot dev",
     "lint": "turbo run lint --filter=@rustlens/frontend --filter=@rustlens/bot",
+    "lint:all": "pnpm lint && cd apps/backend && go vet ./...",
     "test": "turbo run test --filter=@rustlens/frontend --filter=@rustlens/bot",
+    "test:all": "pnpm test && cd apps/backend && go test ./...",
     "build": "turbo run build --filter=@rustlens/frontend --filter=@rustlens/bot",
+    "build:all": "pnpm build && cd apps/backend && go build ./cmd/server",
     "admin:promote": "node scripts/admin-role.mjs promote",
     "admin:demote": "node scripts/admin-role.mjs demote"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
-    "pg": "^8.20.0",
-    "turbo": "^2.5.0"
+    "pg": "^8.21.0",
+    "turbo": "^2.9.14"
   },
   "pnpm": {
     "overrides": {

@@ -22,7 +22,6 @@ import {
 import {
   buildProfileButtons,
   buildUserEmbed,
-  fetchSteamProfileForView,
 } from "./view.js";
 import { mapProxiedRequests } from "../proxy-aware-parallelism.js";
 import { hasProFeatureAccess } from "../website-admin.js";
@@ -153,7 +152,7 @@ async function fetchPlayerProfile(steamId: string): Promise<SteamProfile | null>
   try {
     return await getBackend().getSteamProfile(getWorkerID(), steamId);
   } catch {
-    return fetchSteamProfileForView(steamId);
+    return null;
   }
 }
 

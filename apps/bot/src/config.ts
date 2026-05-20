@@ -32,9 +32,26 @@ function getProxiedRequestConcurrency() {
   return Math.max(1, endpoints.length);
 }
 
+function cleanWorkerIDPart(value: string) {
+  return value.trim().replace(/[^a-zA-Z0-9_-]/g, "-");
+}
+
+function resolveWorkerID() {
+  const resolved = process.env.BOT_WORKER_ID_RESOLVED?.trim();
+  if (resolved) {
+    return cleanWorkerIDPart(resolved);
+  }
+
+  const host = cleanWorkerIDPart(hostname());
+  const configured = process.env.BOT_WORKER_ID?.trim();
+  if (configured) {
+    return `${cleanWorkerIDPart(configured)}-${host}-${process.pid}`;
+  }
+
+  return `bot-${host}-${process.pid}`;
+}
+
 export function loadConfig(): BotConfig {
-  const host = hostname().replace(/[^a-zA-Z0-9_-]/g, "-");
-  const workerFallback = `bot-${host}-${process.pid}`;
   const jwtSecret = process.env.BOT_SERVICE_JWT_SECRET?.trim();
   if (!jwtSecret) {
     throw new Error("BOT_SERVICE_JWT_SECRET is required");
@@ -45,7 +62,7 @@ export function loadConfig(): BotConfig {
     jwtSecret,
     jwtIssuer: process.env.BOT_JWT_ISSUER ?? "rustlens-bot",
     jwtAudience: process.env.BOT_JWT_AUDIENCE ?? "rustlens-backend",
-    workerId: process.env.BOT_WORKER_ID ?? workerFallback,
+    workerId: resolveWorkerID(),
     discordToken: process.env.DISCORD_TOKEN ?? "",
     ownerGuildId: process.env.BOT_OWNER_GUILD_ID ?? "",
     ownerDiscordIds: (process.env.BOT_OWNER_DISCORD_IDS ?? "")

@@ -95,6 +95,31 @@ func (p *PostgresStore) BulkUpsertUserGuilds(ctx context.Context, guildID string
 	return err
 }
 
+func (p *PostgresStore) ListActiveUserGuildDiscordIDs(ctx context.Context, guildID string) ([]string, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT discord_id
+		FROM user_guilds
+		WHERE guild_id = $1
+		  AND is_active = TRUE
+		  AND left_at IS NULL
+		ORDER BY discord_id ASC
+	`, guildID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	discordIDs := make([]string, 0)
+	for rows.Next() {
+		var discordID string
+		if err := rows.Scan(&discordID); err != nil {
+			return nil, err
+		}
+		discordIDs = append(discordIDs, discordID)
+	}
+	return discordIDs, rows.Err()
+}
+
 // SyncUserGuildInput carries the per-guild metadata captured from Discord's
 // /users/@me/guilds response, used to backfill user_guilds with guild
 // name/icon/member-count/owner-flag for guilds the bot isn't necessarily in.

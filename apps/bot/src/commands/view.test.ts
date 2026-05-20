@@ -78,6 +78,20 @@ describe("view", () => {
     expect(embed.fields?.[0]?.value).toContain("<@123456789012345678>");
   });
 
+  it("shows a fallback BM id when the profile is not populated yet", () => {
+    const embed = buildUserEmbed(
+      "76561198000000000",
+      null,
+      "123456789012345678",
+      true,
+      "918543318",
+    ).setTitle("76561198000000000 - successfully linked").toJSON();
+
+    expect(embed.fields?.[0]?.value).toContain("https://steamcommunity.com/profiles/76561198000000000");
+    expect(embed.fields?.[0]?.value).toContain("https://www.battlemetrics.com/rcon/players/918543318");
+    expect(embed.fields?.[0]?.value).toContain("<@123456789012345678>");
+  });
+
   it("adds online status below information when profile has current player state", () => {
     const embed = buildUserEmbed("76561198000000000", {
       steamId: "76561198000000000",

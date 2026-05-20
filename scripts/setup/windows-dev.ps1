@@ -22,15 +22,6 @@ Install-WingetPackage "OpenJS.NodeJS.LTS"
 Install-WingetPackage "GoLang.Go"
 Install-WingetPackage "Git.Git"
 
-if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
-  try {
-    Install-WingetPackage "GnuWin32.Make"
-  }
-  catch {
-    Write-Warning "GnuWin32.Make install failed via winget. Install make manually if still missing."
-  }
-}
-
 Write-Host "Enabling corepack and pnpm"
 if (Get-Command corepack -ErrorAction SilentlyContinue) {
   corepack enable
@@ -49,6 +40,5 @@ node --version
 pnpm --version
 go version
 git --version
-make --version
 
-Write-Host "Done. Restart your terminal, then run: make setup && make dev"
+Write-Host "Done. Restart your terminal, then run: pnpm run setup && pnpm dev"

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { validateCsrfRequest } from "@/lib/csrf";
+import { consumeRateLimit } from "@/lib/rate-limit";
 import {
 	adminApiKeyCreate,
 	type CreateApiKeyInput,
@@ -19,10 +20,24 @@ export async function POST(request: Request) {
 	if (!csrfValid) {
 		return NextResponse.json({ error: "invalid_csrf" }, { status: 400 });
 	}
+	let session;
 	try {
-		await requirePermission("api_keys.manage");
+		session = await requirePermission("api_keys.manage");
 	} catch {
 		return NextResponse.json({ error: "forbidden" }, { status: 403 });
+	}
+
+	// Returning a fresh API-key secret is high-value; cap to 10/min/user so a
+	// compromised cookie can't brute-mint keys at line rate.
+	const limit = await consumeRateLimit(`api-keys:create:${session.userId}`, {
+		max: 10,
+		windowMs: 60_000,
+	});
+	if (!limit.allowed) {
+		return NextResponse.json(
+			{ error: "rate_limited" },
+			{ status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+		);
 	}
 
 	const input = body.input;

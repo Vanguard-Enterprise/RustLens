@@ -64,6 +64,22 @@ func (p *Poller) loop(ctx context.Context) {
 }
 
 func (p *Poller) runCycle(ctx context.Context) {
+	cadenceTTL := p.interval
+	if cadenceTTL <= 0 {
+		return
+	}
+
+	cadenceCtx, cadenceCancel := context.WithTimeout(ctx, 2*time.Second)
+	reserved, err := p.redis.TryReserveBattleMetricsPollerCycle(cadenceCtx, p.lockID, cadenceTTL)
+	cadenceCancel()
+	if err != nil {
+		log.Printf("[battlemetrics] failed to reserve poller cycle: %v", err)
+		return
+	}
+	if !reserved {
+		return
+	}
+
 	lockTTL := 45 * time.Second
 	if p.interval > lockTTL {
 		lockTTL = p.interval + 30*time.Second

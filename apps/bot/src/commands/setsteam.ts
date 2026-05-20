@@ -4,7 +4,7 @@ import { BackendClient, type CommandUsageTarget, type SetSteamCandidate } from "
 import { ModalV2Builder, StringSelectBuilder, TextInputBuilder, TextInputStyle } from "../builders/index.js";
 import { loadConfig } from "../config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "../guild-settings.js";
-import { createEmbed, buildFooter, getFieldValues, logDiscordCatch, RUSTLENS_EMBED_COLOR } from "../shared.js";
+import { createEmbed, buildFooter, formatDiscordUserName, getFieldValues, logDiscordCatch, RUSTLENS_EMBED_COLOR } from "../shared.js";
 import { resolveSteamInputErrorMessage } from "../steam-input.js";
 import { buildProfileButtons, buildUserEmbed } from "./view.js";
 
@@ -95,7 +95,7 @@ function buildLinkingLogEmbed(
     .setColor(RUSTLENS_EMBED_COLOR)
     .setTimestamp()
     .setAuthor({
-      name: interaction.user.tag,
+      name: formatDiscordUserName(interaction.user),
       iconURL: interaction.user.displayAvatarURL({ size: 128 }),
     })
     .setFooter(buildFooter())
@@ -295,9 +295,10 @@ export async function handleSetSteamModalSubmit(interaction: ModalSubmitInteract
     return true;
   }
 
-  const [settings, steamAccount, profile] = await Promise.all([
-    fetchGuildSettings(interaction.guildId),
-    backend.getSteamAccount(workerId, steamId).catch(() => null),
+  const settingsPromise = fetchGuildSettings(interaction.guildId);
+  const steamAccount = await backend.getSteamAccount(workerId, steamId).catch(() => null);
+  const [settings, profile] = await Promise.all([
+    settingsPromise,
     backend.getSteamProfile(workerId, steamId).catch(() => null),
   ]);
 
@@ -315,7 +316,7 @@ export async function handleSetSteamModalSubmit(interaction: ModalSubmitInteract
   }
 
   const profileName = profile?.bmName || steamAccount?.bmName || profile?.personaName || steamId;
-  const embed = buildUserEmbed(steamId, profile, interaction.user.id)
+  const embed = buildUserEmbed(steamId, profile, interaction.user.id, true, steamAccount?.bmId ?? null)
     .setTitle(`${profileName} - successfully linked`);
   await replyPublicEmbed(
     interaction,

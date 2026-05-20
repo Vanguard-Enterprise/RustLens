@@ -86,11 +86,13 @@ func (s *Service) Heartbeat(ctx context.Context, workerID string, shardIDs []int
 		return err
 	}
 
+	// Heartbeat is health-only. The canonical lease map is owned by Assignments
+	// (which recomputes via AssignShards). Writing worker-self-reported shard
+	// IDs here would clobber an allocator change between the change and the
+	// worker's next /assignments poll, and races with concurrent /assignments
+	// writers.
 	sorted := append([]int(nil), shardIDs...)
 	sort.Ints(sorted)
-	if err := s.leases.SetLeases(ctx, workerID, sorted); err != nil {
-		return err
-	}
 
 	if snapshot != nil {
 		payload, err := json.Marshal(snapshot)

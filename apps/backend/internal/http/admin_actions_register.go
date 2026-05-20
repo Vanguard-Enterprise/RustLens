@@ -45,7 +45,7 @@ func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *r
 	if err := reg.Register(actions.NewUsersRolesGrantAction(pool, resolver, pub)); err != nil {
 		return err
 	}
-	if err := reg.Register(actions.NewUsersRolesRevokeAction(pool, pub)); err != nil {
+	if err := reg.Register(actions.NewUsersRolesRevokeAction(pool, resolver, pub)); err != nil {
 		return err
 	}
 	if err := reg.Register(actions.NewUsersSuspendAction(pool, pub)); err != nil {

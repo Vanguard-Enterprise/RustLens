@@ -7,6 +7,20 @@ type AuthPageProps = {
 	csrfToken: string;
 };
 
+const NOTICE_BANNER: Record<string, string> = {
+	force_logout: "You were signed out by an administrator.",
+	suspended: "Your account has been suspended.",
+	deleted: "Your account has been deleted.",
+	expired: "Your session expired, please sign in again.",
+	connection_lost: "Lost connection to RustLens. Please sign in again.",
+	unknown: "Your session ended. Please sign in again.",
+};
+
+function getNoticeMessage(notice?: string): string | null {
+	if (!notice) return null;
+	return NOTICE_BANNER[notice] ?? null;
+}
+
 function getErrorMessage(error?: string): string | null {
 	switch (error) {
 		case "cancelled":
@@ -32,6 +46,7 @@ function getErrorMessage(error?: string): string | null {
 
 export function AuthPage({ error, notice, csrfToken }: AuthPageProps) {
 	const errorMessage = getErrorMessage(error);
+	const noticeMessage = getNoticeMessage(notice);
 	return (
 		<main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
 			<h1 className="text-2xl font-semibold">Sign in</h1>
@@ -40,9 +55,9 @@ export function AuthPage({ error, notice, csrfToken }: AuthPageProps) {
 					{errorMessage}
 				</div>
 			) : null}
-			{notice ? (
+			{noticeMessage ? (
 				<div role="status" className="rounded-md bg-muted px-4 py-2 text-sm">
-					{notice}
+					{noticeMessage}
 				</div>
 			) : null}
 			<Button asChild size="lg">

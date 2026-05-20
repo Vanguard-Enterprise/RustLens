@@ -10,9 +10,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"rustlens/backend/internal/admin/actions"
 	"rustlens/backend/internal/admin/audit"
 	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/appauth"
+	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/store"
 )
 
@@ -67,8 +69,16 @@ func adminProxyToMap(proxy store.OutboundProxy) map[string]any {
 // requireProxyPermission checks the actor has the given permission via the
 // live rbac resolver. Writes a 401/403 and returns false on failure.
 func (h *Handler) requireProxyPermission(w http.ResponseWriter, r *http.Request, perm string) (string, bool) {
-	session := appauth.SessionFromContext(r.Context())
-	if session == nil || session.UserID == "" {
+	// Resolve actor from either an API key or a session. The previous version
+	// only consulted appauth.SessionFromContext, so API keys with the right
+	// scope could not reach proxy management — defeating the API-key model.
+	var userID string
+	if k := actions.APIKeyAuthFromContext(r.Context()); k != nil {
+		userID = k.UserID
+	} else if s := appauth.SessionFromContext(r.Context()); s != nil {
+		userID = s.UserID
+	}
+	if userID == "" {
 		writeError(w, http.StatusUnauthorized, "session_required")
 		return "", false
 	}
@@ -76,7 +86,7 @@ func (h *Handler) requireProxyPermission(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusInternalServerError, "rbac unavailable")
 		return "", false
 	}
-	allowed, err := h.rbacResolver.HasPermission(r.Context(), session.UserID, perm)
+	allowed, err := h.rbacResolver.HasPermission(r.Context(), userID, perm)
 	if err != nil {
 		log.Printf("[backend] admin proxies permission check error: %v", err)
 		writeError(w, http.StatusInternalServerError, "permission check failed")
@@ -86,7 +96,7 @@ func (h *Handler) requireProxyPermission(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusForbidden, "permission_denied")
 		return "", false
 	}
-	return session.UserID, true
+	return userID, true
 }
 
 func (h *Handler) recordProxyAudit(ctx context.Context, r *http.Request, actorID, actionType, resourceID, reason, result, errMsg string) {
@@ -106,7 +116,7 @@ func (h *Handler) recordProxyAudit(ctx context.Context, r *http.Request, actorID
 	if errMsg != "" {
 		entry.ErrorMessage = &errMsg
 	}
-	if ip := clientIP(r); ip != "" {
+	if ip := h.clientIP(r); ip != "" {
 		entry.IPAddress = &ip
 	}
 	if ua := r.UserAgent(); ua != "" {
@@ -117,14 +127,14 @@ func (h *Handler) recordProxyAudit(ctx context.Context, r *http.Request, actorID
 	}
 }
 
-func clientIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		return ip
-	}
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-	return r.RemoteAddr
+// clientIP returns the actor IP for audit entries, honoring the
+// TRUST_PROXY_HEADERS / TRUST_PROXY_IP_HEADER configuration.
+func (h *Handler) clientIP(r *http.Request) string {
+	return clientip.Extract(r, clientip.Headers{
+		Trust:         h.cfg.TrustProxyHeaders,
+		IPHeader:      h.cfg.TrustProxyIPHeader,
+		CountryHeader: h.cfg.TrustProxyGeoHeader,
+	})
 }
 
 // ListAdminProxies returns a paginated, optionally-filtered slice of outbound

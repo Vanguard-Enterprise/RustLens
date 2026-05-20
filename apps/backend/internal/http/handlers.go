@@ -23,6 +23,7 @@ import (
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/bmmatch"
+	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/events"
 	"rustlens/backend/internal/outboundhttp"
@@ -41,8 +42,8 @@ var bmIDPattern = regexp.MustCompile(`^\d{1,16}$`)
 const maxRequestBodyBytes = 1 << 20 // 1 MB
 const steamAccountCacheTTL = 24 * time.Hour
 const steamGameBanCacheTTL = 6 * time.Hour
-const recentGameBanWindow = 90 * 24 * time.Hour
 const steamPlayerBanBatchSize = 100
+const deepGameBanPlatformSyncLimit = 100
 
 type Handler struct {
 	cfg                 config.Config
@@ -98,7 +99,6 @@ func NewHandler(
 	if err := registerAdminActions(registry, postgres.Pool(), resolver, publisher, cfg.AppBaseURL); err != nil {
 		panic(fmt.Errorf("register admin actions: %w", err))
 	}
-
 	actorResolver := func(r *http.Request) (string, []string, error) {
 		if k := actions.APIKeyAuthFromContext(r.Context()); k != nil {
 			return k.UserID, nil, nil
@@ -107,6 +107,11 @@ func NewHandler(
 	}
 
 	dispatcher := actions.NewDispatcher(registry, resolver, sink, actorResolver)
+	dispatcher.SetClientIPHeaders(clientip.Headers{
+		Trust:         cfg.TrustProxyHeaders,
+		IPHeader:      cfg.TrustProxyIPHeader,
+		CountryHeader: cfg.TrustProxyGeoHeader,
+	})
 	// The bulk wrapper needs a reference to the dispatcher so it can invoke
 	// registered sub-actions through the shared Dispatch() helper.
 	if err := registry.Register(actions.NewUsersBulkAction(dispatcher)); err != nil {
@@ -2310,11 +2315,19 @@ func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID stri
 	fullProfile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, bmID)
 	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
 		// bmmatch resolved the linkage but BM doesn't see the player yet.
-		// Record the bare steam↔bm linkage so the bot doesn't 404; caches
-		// will warm on a later refresh once BM indexes the player.
+		// Record the bare steam↔bm linkage and warm the Steam-only cache so
+		// the immediately-following GetSteamProfile call doesn't have to do a
+		// cold Steam fetch under interaction latency. The BM cache stays empty
+		// until BM indexes the player; a later refresh will warm it.
 		bmIDCopy := bmID
-		if _, err := h.postgres.UpsertSteamAccount(ctx, steamID, &bmIDCopy); err != nil {
-			return store.SteamAccount{}, err
+		account, upsertErr := h.postgres.UpsertSteamAccount(ctx, steamID, &bmIDCopy)
+		if upsertErr != nil {
+			return store.SteamAccount{}, upsertErr
+		}
+		if steamCache, warmErr := h.refreshSteamOnlyCache(ctx, account); warmErr != nil {
+			log.Printf("[backend] resolveSteamAccountBySteamID steam-only warm error for %s: %v", steamID, warmErr)
+		} else if _, cacheErr := h.postgres.UpsertSteamAccountCache(ctx, steamCache); cacheErr != nil {
+			log.Printf("[backend] resolveSteamAccountBySteamID steam cache upsert error for %s: %v", steamID, cacheErr)
 		}
 		return h.postgres.GetSteamAccountBySteamID(ctx, steamID)
 	}
@@ -3253,6 +3266,7 @@ func guildRecentGameBanToMap(item store.GuildRecentGameBan) map[string]any {
 		"steamId":        item.SteamID,
 		"gameBannedAt":   item.GameBannedAt,
 		"gameBannedUnix": item.GameBannedAt.Unix(),
+		"source":         item.Source,
 	}
 }
 
@@ -3417,6 +3431,19 @@ func (h *Handler) CheckGuildGameBans(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	method := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("method")))
+	if method == "" {
+		method = "light"
+	}
+	if method != "light" && method != "deep" {
+		writeError(w, http.StatusBadRequest, "method must be light or deep")
+		return
+	}
+	timeframe, err := parseGameBanTimeframe(r.URL.Query().Get("timeframe"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	links, err := h.postgres.ListGuildLinks(r.Context(), guildID)
 	if err != nil {
@@ -3424,21 +3451,203 @@ func (h *Handler) CheckGuildGameBans(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to fetch guild links")
 		return
 	}
+	scopeDiscordIDs, err := gameBanScopeDiscordIDs(r.URL.Query()["scopeDiscordId"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(scopeDiscordIDs) > 0 {
+		links = filterGuildLinksByDiscordIDs(links, scopeDiscordIDs)
+	}
 
-	steamIDs := uniqueGuildSteamIDs(links)
+	candidates := guildLinksToGameBanCandidates(links)
+	if method == "deep" {
+		deepDiscordIDs, err := h.deepGameBanDiscordIDs(r.Context(), guildID, links, scopeDiscordIDs)
+		if err != nil {
+			log.Printf("[backend] deep game ban guild member error for guild %s: %v", guildID, err)
+			writeError(w, http.StatusInternalServerError, "failed to prepare deep game ban scan")
+			return
+		}
+		deepCandidates, err := h.deepGameBanCandidates(r.Context(), guildID, deepDiscordIDs)
+		if errors.Is(err, errDeepGameBanScopeTooLarge) {
+			writeError(w, http.StatusUnprocessableEntity, "More than 100 people in the current scope need a deep lookup. Try setting a smaller scope or use light mode.")
+			return
+		}
+		if err != nil {
+			log.Printf("[backend] deep game ban candidate error for guild %s: %v", guildID, err)
+			writeError(w, http.StatusInternalServerError, "failed to prepare deep game ban scan")
+			return
+		}
+		candidates = append(candidates, deepCandidates...)
+	}
+	candidates = dedupeGameBanCandidates(candidates)
+
+	steamIDs := uniqueGameBanCandidateSteamIDs(candidates)
 	if len(steamIDs) == 0 {
 		writeGuildRecentGameBanList(w, []store.GuildRecentGameBan{})
 		return
 	}
 
-	cacheRows, err := h.postgres.ListSteamGameBanCache(r.Context(), steamIDs)
+	now := time.Now().UTC()
+	cacheBySteamID, err := h.gameBanCacheForSteamIDs(r.Context(), guildID, steamIDs, now)
 	if err != nil {
-		log.Printf("[backend] ListSteamGameBanCache error for guild %s: %v", guildID, err)
-		writeError(w, http.StatusInternalServerError, "failed to load game ban cache")
+		writeError(w, http.StatusInternalServerError, "failed to refresh game ban cache")
 		return
 	}
 
-	now := time.Now().UTC()
+	recent := recentGameBansFromCandidates(candidates, cacheBySteamID, now, timeframe)
+	sort.SliceStable(recent, func(i, j int) bool {
+		return recent[i].GameBannedAt.After(recent[j].GameBannedAt)
+	})
+
+	writeGuildRecentGameBanList(w, recent)
+}
+
+type gameBanCandidate struct {
+	GuildID   string
+	DiscordID string
+	SteamID   string
+	Source    string
+}
+
+var errDeepGameBanScopeTooLarge = errors.New("deep game ban scope too large")
+
+const (
+	gameBanSourceDirectGuildLink = "direct_guild_link"
+	gameBanSourceLinkedAccount   = "linked_account"
+)
+
+type gameBanTimeframe struct {
+	Value  string
+	Window time.Duration
+}
+
+func parseGameBanTimeframe(value string) (gameBanTimeframe, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "90d":
+		return gameBanTimeframe{Value: "90d", Window: 90 * 24 * time.Hour}, nil
+	case "30d":
+		return gameBanTimeframe{Value: "30d", Window: 30 * 24 * time.Hour}, nil
+	case "180d":
+		return gameBanTimeframe{Value: "180d", Window: 180 * 24 * time.Hour}, nil
+	case "all":
+		return gameBanTimeframe{Value: "all"}, nil
+	default:
+		return gameBanTimeframe{}, errors.New("timeframe must be 30d, 90d, 180d, or all")
+	}
+}
+
+func gameBanScopeDiscordIDs(values []string) (map[string]bool, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	scope := make(map[string]bool, len(values))
+	for _, discordID := range values {
+		discordID = strings.TrimSpace(discordID)
+		if !validateSnowflakeValue(discordID) {
+			return nil, fmt.Errorf("scopeDiscordId must contain valid Discord snowflakes")
+		}
+		scope[discordID] = true
+	}
+	return scope, nil
+}
+
+func filterGuildLinksByDiscordIDs(links []store.GuildSteamDiscordLink, scope map[string]bool) []store.GuildSteamDiscordLink {
+	filtered := make([]store.GuildSteamDiscordLink, 0, len(links))
+	for _, link := range links {
+		if scope[link.DiscordID] {
+			filtered = append(filtered, link)
+		}
+	}
+	return filtered
+}
+
+func (h *Handler) deepGameBanDiscordIDs(ctx context.Context, guildID string, links []store.GuildSteamDiscordLink, scope map[string]bool) ([]string, error) {
+	if len(scope) > 0 {
+		return mapKeys(scope), nil
+	}
+
+	activeDiscordIDs, err := h.postgres.ListActiveUserGuildDiscordIDs(ctx, guildID)
+	if err != nil {
+		return nil, err
+	}
+
+	return uniqueStrings(append(activeDiscordIDs, uniqueGuildDiscordIDs(links)...)), nil
+}
+
+func guildLinksToGameBanCandidates(links []store.GuildSteamDiscordLink) []gameBanCandidate {
+	candidates := make([]gameBanCandidate, 0, len(links))
+	for _, link := range links {
+		candidates = append(candidates, gameBanCandidate{
+			GuildID:   link.GuildID,
+			DiscordID: link.DiscordID,
+			SteamID:   link.SteamID,
+			Source:    gameBanSourceDirectGuildLink,
+		})
+	}
+	return candidates
+}
+
+func (h *Handler) deepGameBanCandidates(ctx context.Context, guildID string, discordIDs []string) ([]gameBanCandidate, error) {
+	if len(discordIDs) == 0 {
+		return nil, nil
+	}
+	eligibleForSync, err := h.stalePlatformSyncDiscordIDs(ctx, discordIDs, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+
+	if len(eligibleForSync) <= deepGameBanPlatformSyncLimit {
+		for _, discordID := range eligibleForSync {
+			if _, _, err := h.syncPlatformIdentity(ctx, "discord", discordID); err != nil {
+				log.Printf("[backend] deep game ban platformsync skipped for guild=%s discord=%s: %v", guildID, discordID, err)
+			}
+		}
+	} else {
+		return nil, errDeepGameBanScopeTooLarge
+	}
+
+	hardLinks, err := h.postgres.ListVisibleHardLinksByDiscordIDs(ctx, discordIDs)
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]gameBanCandidate, 0, len(hardLinks))
+	for _, link := range hardLinks {
+		candidates = append(candidates, gameBanCandidate{
+			GuildID:   guildID,
+			DiscordID: link.DiscordID,
+			SteamID:   link.SteamID,
+			Source:    gameBanSourceLinkedAccount,
+		})
+	}
+	return candidates, nil
+}
+
+func (h *Handler) stalePlatformSyncDiscordIDs(ctx context.Context, discordIDs []string, now time.Time) ([]string, error) {
+	stale := make([]string, 0, len(discordIDs))
+	for _, discordID := range discordIDs {
+		state, err := h.postgres.GetPlatformSyncState(ctx, "discord", discordID)
+		if errors.Is(err, store.ErrSteamAccountNotFound) {
+			stale = append(stale, discordID)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if now.Sub(state.LastPlatformSyncAt) >= platformSyncTTL {
+			stale = append(stale, discordID)
+		}
+	}
+	return stale, nil
+}
+
+func (h *Handler) gameBanCacheForSteamIDs(ctx context.Context, guildID string, steamIDs []string, now time.Time) (map[string]store.SteamGameBanCache, error) {
+	cacheRows, err := h.postgres.ListSteamGameBanCache(ctx, steamIDs)
+	if err != nil {
+		log.Printf("[backend] ListSteamGameBanCache error for guild %s: %v", guildID, err)
+		return nil, err
+	}
+
 	cacheBySteamID := make(map[string]store.SteamGameBanCache, len(cacheRows))
 	for _, row := range cacheRows {
 		cacheBySteamID[row.SteamID] = row
@@ -3453,50 +3662,100 @@ func (h *Handler) CheckGuildGameBans(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(staleSteamIDs) > 0 {
-		refreshed, refreshErr := h.refreshSteamGameBanCache(r.Context(), staleSteamIDs, now)
+		refreshed, refreshErr := h.refreshSteamGameBanCache(ctx, staleSteamIDs, now)
 		if refreshErr != nil {
 			log.Printf("[backend] refreshSteamGameBanCache error for guild %s: %v", guildID, refreshErr)
-			writeError(w, http.StatusInternalServerError, "failed to refresh game ban cache")
-			return
+			return nil, refreshErr
 		}
 		for steamID, cache := range refreshed {
 			cacheBySteamID[steamID] = cache
 		}
 	}
 
+	return cacheBySteamID, nil
+}
+
+func recentGameBansFromCandidates(candidates []gameBanCandidate, cacheBySteamID map[string]store.SteamGameBanCache, now time.Time, timeframe gameBanTimeframe) []store.GuildRecentGameBan {
 	recent := make([]store.GuildRecentGameBan, 0)
-	for _, link := range links {
-		cache, ok := cacheBySteamID[link.SteamID]
+	for _, candidate := range candidates {
+		cache, ok := cacheBySteamID[candidate.SteamID]
 		if !ok || !cache.GameBanned || cache.GameBannedAt == nil {
 			continue
 		}
-		if now.Sub(*cache.GameBannedAt) > recentGameBanWindow {
+		if timeframe.Window > 0 && now.Sub(*cache.GameBannedAt) > timeframe.Window {
 			continue
 		}
 		recent = append(recent, store.GuildRecentGameBan{
-			GuildID:      link.GuildID,
-			DiscordID:    link.DiscordID,
-			SteamID:      link.SteamID,
+			GuildID:      candidate.GuildID,
+			DiscordID:    candidate.DiscordID,
+			SteamID:      candidate.SteamID,
 			GameBannedAt: *cache.GameBannedAt,
+			Source:       candidate.Source,
 		})
 	}
-
-	sort.SliceStable(recent, func(i, j int) bool {
-		return recent[i].GameBannedAt.After(recent[j].GameBannedAt)
-	})
-
-	writeGuildRecentGameBanList(w, recent)
+	return recent
 }
 
-func uniqueGuildSteamIDs(links []store.GuildSteamDiscordLink) []string {
+func uniqueGuildDiscordIDs(links []store.GuildSteamDiscordLink) []string {
 	seen := make(map[string]struct{}, len(links))
-	steamIDs := make([]string, 0, len(links))
+	discordIDs := make([]string, 0, len(links))
 	for _, link := range links {
-		if _, ok := seen[link.SteamID]; ok {
+		if _, ok := seen[link.DiscordID]; ok {
 			continue
 		}
-		seen[link.SteamID] = struct{}{}
-		steamIDs = append(steamIDs, link.SteamID)
+		seen[link.DiscordID] = struct{}{}
+		discordIDs = append(discordIDs, link.DiscordID)
+	}
+	sort.Strings(discordIDs)
+	return discordIDs
+}
+
+func mapKeys(values map[string]bool) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	sort.Strings(unique)
+	return unique
+}
+
+func dedupeGameBanCandidates(candidates []gameBanCandidate) []gameBanCandidate {
+	seen := make(map[string]struct{}, len(candidates))
+	deduped := make([]gameBanCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		key := candidate.GuildID + ":" + candidate.DiscordID + ":" + candidate.SteamID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		deduped = append(deduped, candidate)
+	}
+	return deduped
+}
+
+func uniqueGameBanCandidateSteamIDs(candidates []gameBanCandidate) []string {
+	seen := make(map[string]struct{}, len(candidates))
+	steamIDs := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, ok := seen[candidate.SteamID]; ok {
+			continue
+		}
+		seen[candidate.SteamID] = struct{}{}
+		steamIDs = append(steamIDs, candidate.SteamID)
 	}
 	sort.Strings(steamIDs)
 	return steamIDs

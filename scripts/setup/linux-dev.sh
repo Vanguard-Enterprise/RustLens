@@ -8,7 +8,7 @@ fi
 
 echo "[1/7] Installing base dependencies"
 ${SUDO} apt-get update
-${SUDO} apt-get install -y ca-certificates curl gnupg lsb-release make git golang-go docker.io docker-compose-plugin
+${SUDO} apt-get install -y ca-certificates curl gnupg lsb-release git golang-go docker.io docker-compose-plugin
 
 echo "[2/7] Installing Node.js LTS"
 curl -fsSL https://deb.nodesource.com/setup_20.x | ${SUDO} -E bash -
@@ -36,7 +36,6 @@ node --version
 pnpm --version
 go version
 git --version
-make --version
 
 echo "[7/7] Done"
-echo "Open a new shell (or run: newgrp docker) to apply docker group changes, then run: make setup && make dev"
+echo "Open a new shell (or run: newgrp docker) to apply docker group changes, then run: pnpm run setup && pnpm dev"

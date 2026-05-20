@@ -13,7 +13,10 @@ export async function POST(request: Request) {
 	}
 
 	// Match every attribute setSession() used; otherwise the browser may not
-	// match and delete the existing cookie.
+	// match and delete the existing cookie. secure must match setSession()
+	// (now always true) — gating on NODE_ENV here AND in setSession let a
+	// staging deployment with NODE_ENV != production drop the cookie without
+	// Secure.
 	const response = NextResponse.json({ ok: true });
 	response.cookies.set({
 		name: SESSION_COOKIE,
@@ -22,7 +25,7 @@ export async function POST(request: Request) {
 		maxAge: 0,
 		httpOnly: true,
 		sameSite: "lax",
-		secure: process.env.NODE_ENV === "production",
+		secure: true,
 	});
 	response.headers.set("Cache-Control", "no-store");
 	return response;

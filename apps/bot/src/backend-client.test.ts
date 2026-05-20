@@ -658,4 +658,18 @@ describe("BackendClient", () => {
     expect(body.command).toBe("track");
     expect(body.options).toEqual({ group_name: "raid" });
   });
+
+  it("lists guild recent game bans with timeframe and scope", async () => {
+    const mockResponse = { ok: true, json: async () => ({ items: [] }) } as Response;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockResponse);
+
+    const client = new BackendClient("http://localhost:8080", "secret", "rustlens-bot", "rustlens-backend");
+    await client.listGuildRecentGameBans("worker-a", "1478118029018792076", "deep", "180d", ["10", "11"]);
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe(
+      "http://localhost:8080/api/internal/bot/setup/guilds/1478118029018792076/game-bans?method=deep&timeframe=180d&scopeDiscordId=10&scopeDiscordId=11",
+    );
+    expect(init?.method).toBe("GET");
+  });
 });

@@ -74,7 +74,7 @@ export function RolesSection({
 							const name = role?.name ?? roleKey;
 							const description = role?.description ?? null;
 							const isSuperadmin = roleKey === "superadmin";
-							const isPro = roleKey === "PRO";
+							const isPro = roleKey === "pro";
 							return (
 								<Badge
 									key={roleKey}

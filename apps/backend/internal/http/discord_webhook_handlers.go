@@ -8,6 +8,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
+	"time"
 
 	"rustlens/backend/internal/store"
 )
@@ -83,6 +85,18 @@ func (h *Handler) DiscordWebhookEvents(w http.ResponseWriter, r *http.Request) {
 	sig, err := hex.DecodeString(sigHeader)
 	if err != nil || len(sig) != ed25519.SignatureSize {
 		writeError(w, http.StatusUnauthorized, "invalid signature encoding")
+		return
+	}
+
+	// Reject stale timestamps so a captured signed payload cannot be
+	// replayed indefinitely. Discord recommends a ±5 minute window.
+	tsSeconds, err := strconv.ParseInt(tsHeader, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid signature timestamp")
+		return
+	}
+	if drift := time.Since(time.Unix(tsSeconds, 0)); drift > 5*time.Minute || drift < -5*time.Minute {
+		writeError(w, http.StatusUnauthorized, "signature timestamp out of range")
 		return
 	}
 

@@ -1,30 +1,8 @@
 import type { NextConfig } from "next";
 
-const isDev = process.env.NODE_ENV !== "production";
-
-// 'unsafe-inline' is required: Next.js emits inline hydration <script> blocks.
-// The strict alternative is per-request nonces, which would force every page
-// (incl. the static landing) into dynamic rendering.
-const scriptSrc = isDev
-	? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
-	: "script-src 'self' 'unsafe-inline'";
-
-const connectSrc = isDev
-	? "connect-src 'self' ws: wss:"
-	: "connect-src 'self'";
-
-const contentSecurityPolicy = [
-	"default-src 'self'",
-	"base-uri 'self'",
-	"font-src 'self' https://fonts.gstatic.com data:",
-	"form-action 'self'",
-	"frame-ancestors 'none'",
-	"img-src 'self' data: https:",
-	"object-src 'none'",
-	scriptSrc,
-	"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-	connectSrc,
-].join("; ");
+// Note: Content-Security-Policy is now set per-request in middleware.ts with
+// a fresh nonce + 'strict-dynamic', not as a static header here. The static
+// headers below are response-scope and don't need per-request data.
 
 const nextConfig: NextConfig = {
 	poweredByHeader: false,
@@ -48,10 +26,6 @@ const nextConfig: NextConfig = {
 				source: "/:path*",
 				headers: [
 					{
-						key: "Content-Security-Policy",
-						value: contentSecurityPolicy,
-					},
-					{
 						key: "Referrer-Policy",
 						value: "strict-origin-when-cross-origin",
 					},
@@ -66,6 +40,10 @@ const nextConfig: NextConfig = {
 					{
 						key: "Permissions-Policy",
 						value: "camera=(), microphone=(), geolocation=()",
+					},
+					{
+						key: "Strict-Transport-Security",
+						value: "max-age=63072000; includeSubDomains; preload",
 					},
 				],
 			},
