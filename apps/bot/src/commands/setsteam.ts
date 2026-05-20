@@ -1,6 +1,6 @@
 import type { ActionRowBuilder, ButtonBuilder, ChatInputCommandInteraction, Client, ModalSubmitInteraction } from "discord.js";
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
-import { BackendClient, type SetSteamCandidate } from "../backend-client.js";
+import { BackendClient, type CommandUsageTarget, type SetSteamCandidate } from "../backend-client.js";
 import { ModalV2Builder, StringSelectBuilder, TextInputBuilder, TextInputStyle } from "../builders/index.js";
 import { loadConfig } from "../config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "../guild-settings.js";
@@ -12,6 +12,11 @@ export const SETSTEAM_COMMAND_NAME = "setsteam";
 export const SETSTEAM_MODAL_CUSTOM_ID = "setsteam:modal";
 const SETSTEAM_SELECT_CUSTOM_ID = "setsteam:select";
 const SETSTEAM_INPUT_CUSTOM_ID = "setsteam:input";
+
+export type SetSteamModalSubmitResult = {
+  handled: true;
+  targets: CommandUsageTarget[];
+};
 
 const setSteamCommand = new SlashCommandBuilder()
   .setName(SETSTEAM_COMMAND_NAME)
@@ -211,7 +216,7 @@ export async function handleSetSteamChatInput(interaction: ChatInputCommandInter
   return true;
 }
 
-export async function handleSetSteamModalSubmit(interaction: ModalSubmitInteraction) {
+export async function handleSetSteamModalSubmit(interaction: ModalSubmitInteraction): Promise<false | true | SetSteamModalSubmitResult> {
   if (interaction.customId !== SETSTEAM_MODAL_CUSTOM_ID) {
     return false;
   }
@@ -317,5 +322,10 @@ export async function handleSetSteamModalSubmit(interaction: ModalSubmitInteract
     embed,
     buildProfileButtons(steamId, profile?.bmId ?? steamAccount?.bmId),
   );
-  return true;
+  return {
+    handled: true,
+    targets: [
+      { kind: "steam", snowflake: steamId, relation: "subject" },
+    ],
+  };
 }

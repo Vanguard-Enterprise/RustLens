@@ -515,8 +515,12 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isModalSubmit()) {
-      if (await handleManageModalSubmit(interaction)) {
-        return;
+      {
+        const result = await handleManageModalSubmit(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       const modalCategory = resolveCustomIdCategory(interaction.customId);
@@ -528,8 +532,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleSetSteamModalSubmit(interaction)) {
-        return;
+      {
+        const result = await handleSetSteamModalSubmit(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       if (await handleWipeReactModalSubmit(interaction)) {

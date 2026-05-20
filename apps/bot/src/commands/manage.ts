@@ -16,7 +16,7 @@ import {
   parseTargetFromModalCustomId,
 } from "./ban.js";
 import { invalidateBanCache } from "../ban-check.js";
-import { BackendClient, type OwnerProxy, type TrackedServer } from "../backend-client.js";
+import { BackendClient, type CommandUsageTarget, type OwnerProxy, type TrackedServer } from "../backend-client.js";
 import { CheckboxGroupBuilder, ModalV2Builder, RadioGroupBuilder, TextInputBuilder } from "../builders/index.js";
 import { loadConfig } from "../config.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "../embed-paginator.js";
@@ -37,6 +37,11 @@ import {
 import { createEmbed, buildFooter, FOOTER_TEXT, getFieldValues } from "../shared.js";
 
 export const MANAGE_COMMAND_NAME = "manage";
+
+export type ManageModalSubmitResult = {
+  handled: true;
+  targets: CommandUsageTarget[];
+};
 
 const SERVER_GROUP = "server";
 const PROXY_GROUP = "proxy";
@@ -848,11 +853,11 @@ async function handleProxyEditModalSubmit(interaction: ModalSubmitInteraction) {
   }
 }
 
-async function handleBanModalSubmitInternal(interaction: ModalSubmitInteraction) {
+async function handleBanModalSubmitInternal(interaction: ModalSubmitInteraction): Promise<ManageModalSubmitResult | undefined> {
   const targetID = parseTargetFromModalCustomId(interaction.customId);
   if (!targetID) {
     await replyText(interaction, "Invalid ban modal target.");
-    return;
+    return undefined;
   }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -875,7 +880,7 @@ async function handleBanModalSubmitInternal(interaction: ModalSubmitInteraction)
       interaction,
       buildBanEmbed("Restriction Save Failed", "RustLens could not save the restrictions for that user."),
     );
-    return;
+    return undefined;
   }
 
   invalidateBanCache(targetID);
@@ -887,9 +892,19 @@ async function handleBanModalSubmitInternal(interaction: ModalSubmitInteraction)
       : `Applied restrictions to <@${targetID}>:\n${formatCategoriesDescription(selected)}`;
 
   await replyEphemeralEmbed(interaction, buildBanEmbed(title, description));
+  return {
+    handled: true,
+    targets: [
+      {
+        kind:      "user",
+        snowflake: targetID,
+        relation:  "subject",
+      },
+    ],
+  };
 }
 
-export async function handleManageModalSubmit(interaction: ModalSubmitInteraction) {
+export async function handleManageModalSubmit(interaction: ModalSubmitInteraction): Promise<false | true | ManageModalSubmitResult> {
   const customId = interaction.customId;
   const isManageServerModal =
     customId === SERVER_MODAL_ADD_CUSTOM_ID || customId.startsWith(SERVER_MODAL_EDIT_PREFIX);
@@ -927,8 +942,8 @@ export async function handleManageModalSubmit(interaction: ModalSubmitInteractio
   }
 
   if (isBanModal) {
-    await handleBanModalSubmitInternal(interaction);
-    return true;
+    const result = await handleBanModalSubmitInternal(interaction);
+    return result ?? true;
   }
 
   return false;
