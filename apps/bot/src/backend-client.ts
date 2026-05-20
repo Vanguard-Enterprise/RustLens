@@ -504,6 +504,14 @@ export type TrackGroupAnalyticsResponse = {
   days: TrackGroupAnalyticsDay[];
 };
 
+export type CommandUsageTarget = {
+  kind:         "user" | "role" | "channel" | "guild" | "steam";
+  snowflake:    string;
+  displayName?: string | null;
+  avatarHash?:  string | null;
+  relation:     "recipient" | "scope" | "subject";
+};
+
 export type CommandUsagePayload = {
   discordId:       string;
   guildId:         string | null;
@@ -516,6 +524,7 @@ export type CommandUsagePayload = {
   outcome:         "success" | "error" | "banned" | "denied";
   errorCode:       string | null;
   latencyMs:       number;
+  targets?:        CommandUsageTarget[];
 };
 
 type UpsertBotGuildPayload = {

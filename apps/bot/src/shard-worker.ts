@@ -337,6 +337,7 @@ client.on("interactionCreate", async (interaction) => {
   ensureAppUser(interaction);
   const trackUsage = !interaction.isAutocomplete();
   const startedAt = Date.now();
+  let recordTargets: import("./backend-client.js").CommandUsageTarget[] | undefined;
   let outcome: Outcome = "success";
   let errorCode: string | null = null;
   try {
@@ -609,7 +610,7 @@ client.on("interactionCreate", async (interaction) => {
     throw err;
   } finally {
     if (trackUsage) {
-      recordCommandUsage(interaction, outcome, errorCode, startedAt);
+      recordCommandUsage(interaction, outcome, errorCode, startedAt, recordTargets);
     }
   }
 });

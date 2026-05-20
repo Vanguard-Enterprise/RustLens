@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import type { CommandUsagePayload, CommandUsageTarget } from "./backend-client.js";
 import {
   buildCommandUsagePayload,
   recordCommandUsage,
@@ -222,5 +223,49 @@ describe("recordCommandUsage", () => {
     recordCommandUsage(interaction as never, "success", null, Date.now());
 
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  test("targets propagate to payload when provided", async () => {
+    __resetForTests();
+    const captured: CommandUsagePayload[] = [];
+    __setBackendForTests({
+      recordCommandUsage: async (_w: string, p: CommandUsagePayload) => { captured.push(p); },
+    } as never);
+
+    const interaction = fakeChatInput({
+      command: "announce",
+      subcommand: "send",
+      guildId: "g1",
+      channelId: "c1",
+      userId: "222",
+    });
+
+    const targets: CommandUsageTarget[] = [
+      {
+        kind: "role",
+        snowflake: "role-111",
+        displayName: "@Raiders",
+        avatarHash: null,
+        relation: "scope",
+      },
+      {
+        kind: "channel",
+        snowflake: "chan-999",
+        displayName: "#announcements",
+        avatarHash: null,
+        relation: "recipient",
+      },
+    ];
+
+    recordCommandUsage(interaction as never, "success", null, Date.now(), targets);
+
+    // Allow the fire-and-forget promise to settle
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].targets).toHaveLength(2);
+    expect(captured[0].targets![0]).toMatchObject({ kind: "role", relation: "scope" });
+
+    __resetForTests();
   });
 });

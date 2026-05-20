@@ -1,6 +1,6 @@
 import type { Interaction } from "discord.js";
 
-import { BackendClient, type CommandUsagePayload } from "./backend-client.js";
+import { BackendClient, type CommandUsagePayload, type CommandUsageTarget } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 
 export type Outcome = "success" | "error" | "banned" | "denied";
@@ -152,6 +152,7 @@ export function recordCommandUsage(
   outcome: Outcome,
   errorCode: string | null,
   startedAt: number,
+  targets: CommandUsageTarget[] | undefined = undefined,
 ): void {
   const payload = buildCommandUsagePayload(
     interaction,
@@ -161,6 +162,7 @@ export function recordCommandUsage(
   );
   if (!payload) return;
   if (!payload.discordId) return;
+  if (targets && targets.length > 0) payload.targets = targets;
 
   getBackend()
     .recordCommandUsage(getWorkerID(), payload)
