@@ -54,6 +54,7 @@ describe("UsageSection", () => {
 				errorCode: null,
 				latencyMs: 142,
 				createdAt: new Date().toISOString(),
+				targets: [],
 			}],
 		});
 		render(<UsageSection userId={userId} data={data} />);
@@ -82,6 +83,7 @@ describe("UsageSection", () => {
 				errorCode: null,
 				latencyMs: 100,
 				createdAt: new Date().toISOString(),
+				targets: [],
 			}],
 		});
 		render(<UsageSection userId={userId} data={data} />);
@@ -111,6 +113,7 @@ describe("UsageSection", () => {
 				errorCode: "boom",
 				latencyMs: 5,
 				createdAt: new Date().toISOString(),
+				targets: [],
 			}],
 		});
 		render(<UsageSection userId={userId} data={data} />);

@@ -525,6 +525,15 @@ export async function getAdminUserAudit(
 	);
 }
 
+export type AdminCommandUsageTarget = {
+	kind:        "user" | "role" | "channel" | "guild" | "steam";
+	snowflake:   string;
+	displayName: string | null;
+	avatarHash:  string | null;
+	relation:    "recipient" | "scope" | "subject";
+	appUserId?:  string | null;
+};
+
 export type AdminCommandUsageItem = {
 	id:              number;
 	appUserId:       string;
@@ -540,6 +549,8 @@ export type AdminCommandUsageItem = {
 	errorCode:       string | null;
 	latencyMs:       number;
 	createdAt:       string;
+	targets:         AdminCommandUsageTarget[];
+	targetTotal?:    number;
 };
 
 export type AdminCommandUsageSummary = {
@@ -557,16 +568,60 @@ export type AdminCommandUsagePage = {
 	summary:  AdminCommandUsageSummary;
 };
 
+export type AdminCommandUsageFilters = {
+	page?:             number;
+	pageSize?:         number;
+	q?:                string;
+	outcome?:          string[];
+	interactionType?:  string[];
+	command?:          string;
+	guildId?:          string;
+	windowDays?:       1 | 7 | 30 | 90;
+};
+
 export async function getAdminUserCommandUsage(
 	userId: string,
-	opts: { page?: number; pageSize?: number } = {},
+	opts: AdminCommandUsageFilters = {},
 ): Promise<AdminCommandUsagePage> {
 	const sp = new URLSearchParams();
-	if (opts.page)     sp.set("page",     String(opts.page));
-	if (opts.pageSize) sp.set("pageSize", String(opts.pageSize));
+	if (opts.page)            sp.set("page",            String(opts.page));
+	if (opts.pageSize)        sp.set("pageSize",        String(opts.pageSize));
+	if (opts.q)               sp.set("q",               opts.q);
+	if (opts.outcome?.length) sp.set("outcome",         opts.outcome.join(","));
+	if (opts.interactionType?.length) sp.set("interactionType", opts.interactionType.join(","));
+	if (opts.command)         sp.set("command",         opts.command);
+	if (opts.guildId)         sp.set("guildId",         opts.guildId);
+	if (opts.windowDays)      sp.set("windowDays",      String(opts.windowDays));
 	const qs = sp.toString();
 	return backendFetch<AdminCommandUsagePage>(
 		`/api/app/admin/users/${encodeURIComponent(userId)}/command-usage${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export type AdminCommandUsageFilterOptions = {
+	commands: string[];
+	guilds:   Array<{ guildId: string; name: string; iconHash: string | null }>;
+};
+
+export async function getAdminUserCommandUsageFilterOptions(
+	userId: string,
+	windowDays: 1 | 7 | 30 | 90 = 90,
+): Promise<AdminCommandUsageFilterOptions> {
+	return backendFetch<AdminCommandUsageFilterOptions>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}/command-usage/filter-options?windowDays=${windowDays}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getAdminUserCommandUsageTargets(
+	userId: string,
+	usageId: number,
+): Promise<{ targets: AdminCommandUsageTarget[] }> {
+	return backendFetch<{ targets: AdminCommandUsageTarget[] }>(
+		`/api/app/admin/users/${encodeURIComponent(userId)}/command-usage/${usageId}/targets`,
 		undefined,
 		{ requireSession: true },
 	);
