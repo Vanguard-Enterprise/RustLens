@@ -331,13 +331,20 @@ function buildStatusField(profile: SteamProfile | null) {
   return null;
 }
 
-function addUserInformationField(embed: EmbedBuilder, steamId: string, profile: SteamProfile | null, discordId?: string) {
+function addUserInformationField(
+  embed: EmbedBuilder,
+  steamId: string,
+  profile: SteamProfile | null,
+  discordId?: string,
+  fallbackBmId?: string | null,
+) {
   const infoLines: string[] = [];
+  const bmId = profile?.bmId || fallbackBmId?.trim() || "";
   if (steamId && /^\d{17}$/.test(steamId)) {
     infoLines.push(`${VIEW_EMOJIS.steam} [${steamId}](https://steamcommunity.com/profiles/${steamId})`);
   }
-  if (profile?.bmId) {
-    infoLines.push(`${VIEW_EMOJIS.battlemetrics} [${profile.bmId}](https://www.battlemetrics.com/rcon/players/${profile.bmId})`);
+  if (bmId) {
+    infoLines.push(`${VIEW_EMOJIS.battlemetrics} [${bmId}](https://www.battlemetrics.com/rcon/players/${bmId})`);
   }
   if (discordId) {
     infoLines.push(`${VIEW_EMOJIS.discord} <@${discordId}>`);
@@ -448,6 +455,7 @@ export function buildUserEmbed(
   profile: SteamProfile | null,
   discordId?: string,
   includeRiskFactor = true,
+  fallbackBmId?: string | null,
 ): EmbedBuilder {
   const embed = createEmbed()
     .setTitle(profile?.bmName || profile?.personaName || "Player Profile");
@@ -456,7 +464,7 @@ export function buildUserEmbed(
     embed.setThumbnail(profile.avatarImage);
   }
 
-  addUserInformationField(embed, steamId, profile, discordId);
+  addUserInformationField(embed, steamId, profile, discordId, fallbackBmId);
 
   const statusField = buildStatusField(profile);
   if (statusField) {

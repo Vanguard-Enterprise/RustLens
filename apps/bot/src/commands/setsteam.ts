@@ -290,9 +290,10 @@ export async function handleSetSteamModalSubmit(interaction: ModalSubmitInteract
     return true;
   }
 
-  const [settings, steamAccount, profile] = await Promise.all([
-    fetchGuildSettings(interaction.guildId),
-    backend.getSteamAccount(workerId, steamId).catch(() => null),
+  const settingsPromise = fetchGuildSettings(interaction.guildId);
+  const steamAccount = await backend.getSteamAccount(workerId, steamId).catch(() => null);
+  const [settings, profile] = await Promise.all([
+    settingsPromise,
     backend.getSteamProfile(workerId, steamId).catch(() => null),
   ]);
 
@@ -310,7 +311,7 @@ export async function handleSetSteamModalSubmit(interaction: ModalSubmitInteract
   }
 
   const profileName = profile?.bmName || steamAccount?.bmName || profile?.personaName || steamId;
-  const embed = buildUserEmbed(steamId, profile, interaction.user.id)
+  const embed = buildUserEmbed(steamId, profile, interaction.user.id, true, steamAccount?.bmId ?? null)
     .setTitle(`${profileName} - successfully linked`);
   await replyPublicEmbed(
     interaction,
