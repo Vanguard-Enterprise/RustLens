@@ -1,9 +1,15 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
+import type { CommandUsageTarget } from "../backend-client.js";
 import { isGuildTooLargeForDms, replyDmLimitError } from "../dm-limit.js";
 import { getGuildMembers } from "../guild-member-cache.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { createEmbed, logDiscordError } from "../shared.js";
+
+export type AnnounceHandlerResult = {
+  handled: true;
+  targets: CommandUsageTarget[];
+};
 
 export const ANNOUNCE_COMMAND_NAME = "announce";
 
@@ -61,7 +67,9 @@ export async function ensureAnnounceCommand(client: Client, shardID: number) {
   console.log("[bot] ensured /announce command (global)");
 }
 
-export async function handleAnnounceChatInput(interaction: ChatInputCommandInteraction) {
+export async function handleAnnounceChatInput(
+  interaction: ChatInputCommandInteraction,
+): Promise<false | true | AnnounceHandlerResult> {
   if (interaction.commandName !== ANNOUNCE_COMMAND_NAME) {
     return false;
   }
@@ -126,11 +134,18 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
   let sent = 0;
   let failed = 0;
 
+  const successful: { id: string; username: string; avatar: string | null }[] = [];
+
   await Promise.all(
     targets.map(async (target) => {
       try {
         await target.send({ embeds: [embed] });
         sent++;
+        successful.push({
+          id:       target.id,
+          username: target.user.globalName ?? target.user.username,
+          avatar:   target.user.avatar ?? null,
+        });
       } catch (error) {
         logDiscordError("/announce send DM", error, {
           guildId: interaction.guildId,
@@ -142,5 +157,16 @@ export async function handleAnnounceChatInput(interaction: ChatInputCommandInter
   );
 
   await interaction.editReply({ embeds: [buildAnnouncementStatusEmbed(sent, failed)] });
-  return true;
+
+  const usageTargets: CommandUsageTarget[] = [
+    { kind: "role", snowflake: role.id, displayName: role.name, relation: "scope" },
+    ...successful.map<CommandUsageTarget>((s) => ({
+      kind:        "user",
+      snowflake:   s.id,
+      displayName: s.username,
+      avatarHash:  s.avatar,
+      relation:    "recipient",
+    })),
+  ];
+  return { handled: true, targets: usageTargets };
 }

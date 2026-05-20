@@ -412,8 +412,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleAnnounceChatInput(interaction)) {
-        return;
+      {
+        const result = await handleAnnounceChatInput(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       if (await handleAnalyzeChatInput(interaction)) {
