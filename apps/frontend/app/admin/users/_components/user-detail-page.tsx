@@ -1,7 +1,13 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { AdminCommandUsagePage, AdminRoleItem, AdminUserAuditItem, AdminUserDetail } from "@/lib/rustlens-api";
+import type {
+	AdminCommandUsageFilterOptions,
+	AdminCommandUsagePage,
+	AdminRoleItem,
+	AdminUserAuditItem,
+	AdminUserDetail,
+} from "@/lib/rustlens-api";
 
 import { AuditSection } from "./audit-section";
 import { IdentityHeader } from "./identity-header";
@@ -14,10 +20,11 @@ type Props = {
 	roles: AdminRoleItem[];
 	audit: AdminUserAuditItem[];
 	commandUsage: AdminCommandUsagePage;
+	commandUsageFilterOptions: AdminCommandUsageFilterOptions;
 	permissions: string[];
 };
 
-export function UserDetailPage({ detail, roles, audit, commandUsage, permissions }: Props) {
+export function UserDetailPage({ detail, roles, audit, commandUsage, commandUsageFilterOptions, permissions }: Props) {
 	const canAssign = permissions.includes("users.roles.assign");
 	const canGrantSuperadmin = permissions.includes("admins.grant");
 	const canSuspend = permissions.includes("users.suspend");
@@ -39,7 +46,7 @@ export function UserDetailPage({ detail, roles, audit, commandUsage, permissions
 					<AuditSection userId={detail.user.id} items={audit} />
 				</TabsContent>
 				<TabsContent value="usage">
-					<UsageSection data={commandUsage} userId={detail.user.id} />
+					<UsageSection data={commandUsage} userId={detail.user.id} filterOptions={commandUsageFilterOptions} />
 				</TabsContent>
 				<TabsContent value="actions">
 					<UserActionsSection

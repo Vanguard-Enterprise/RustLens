@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { RelativeTime } from "@/components/admin/relative-time";
 import type {
+	AdminCommandUsageFilterOptions,
 	AdminCommandUsageItem,
 	AdminCommandUsagePage,
 } from "@/lib/rustlens-api";
@@ -12,6 +13,7 @@ import type {
 type Props = {
 	userId: string;
 	data:   AdminCommandUsagePage;
+	filterOptions?: AdminCommandUsageFilterOptions; // consumed in D5/D6
 };
 
 function outcomeBadgeVariant(o: AdminCommandUsageItem["outcome"]): "secondary" | "destructive" | "outline" {
@@ -39,7 +41,7 @@ function commandLabel(item: AdminCommandUsageItem): string {
 	return item.command;
 }
 
-export function UsageSection({ userId, data }: Props) {
+export function UsageSection({ userId, data, filterOptions: _filterOptions }: Props) {
 	const [expandedId, setExpandedId] = useState<number | null>(null);
 	const { items, total, page, pageSize, summary } = data;
 	const topCommands = summary.topCommands ?? [];
