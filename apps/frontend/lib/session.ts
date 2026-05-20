@@ -22,7 +22,7 @@ export type SessionUser = {
 };
 
 export const SESSION_COOKIE = "rustlens_session";
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
 
 function getSessionSecret() {
 	const secret = process.env.APP_SESSION_SECRET;
