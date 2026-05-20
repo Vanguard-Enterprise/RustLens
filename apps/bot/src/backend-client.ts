@@ -300,6 +300,7 @@ export type GuildRecentGameBan = {
   steamId: string;
   gameBannedAt: string;
   gameBannedUnix: number;
+  source: "direct_guild_link" | "linked_account";
 };
 
 export type GuildRecentGameBanListResponse = {

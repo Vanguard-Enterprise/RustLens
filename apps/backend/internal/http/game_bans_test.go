@@ -49,7 +49,7 @@ func TestRecentGameBansFromCandidatesHonorsTimeframe(t *testing.T) {
 	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
 	thirtyFiveDaysAgo := now.Add(-35 * 24 * time.Hour)
 	candidates := []gameBanCandidate{
-		{GuildID: "guild", DiscordID: "discord", SteamID: "steam"},
+		{GuildID: "guild", DiscordID: "discord", SteamID: "steam", Source: gameBanSourceDirectGuildLink},
 	}
 	cacheBySteamID := map[string]store.SteamGameBanCache{
 		"steam": {
@@ -67,5 +67,27 @@ func TestRecentGameBansFromCandidatesHonorsTimeframe(t *testing.T) {
 	}
 	if got := recentGameBansFromCandidates(candidates, cacheBySteamID, now, gameBanTimeframe{Value: "all"}); len(got) != 1 {
 		t.Fatalf("all len = %d, want 1", len(got))
+	}
+}
+
+func TestRecentGameBansFromCandidatesIncludesSource(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	candidates := []gameBanCandidate{
+		{GuildID: "guild", DiscordID: "discord", SteamID: "steam", Source: gameBanSourceLinkedAccount},
+	}
+	cacheBySteamID := map[string]store.SteamGameBanCache{
+		"steam": {
+			SteamID:      "steam",
+			GameBanned:   true,
+			GameBannedAt: &now,
+		},
+	}
+
+	got := recentGameBansFromCandidates(candidates, cacheBySteamID, now, gameBanTimeframe{Value: "90d", Window: 90 * 24 * time.Hour})
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].Source != gameBanSourceLinkedAccount {
+		t.Fatalf("Source = %q, want %q", got[0].Source, gameBanSourceLinkedAccount)
 	}
 }

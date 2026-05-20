@@ -113,6 +113,7 @@ type GuildRecentGameBan struct {
 	DiscordID    string
 	SteamID      string
 	GameBannedAt time.Time
+	Source       string
 }
 
 func scanSteamAccount(scanner rowScanner) (SteamAccount, error) {

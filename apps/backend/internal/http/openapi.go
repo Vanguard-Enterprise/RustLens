@@ -2839,8 +2839,9 @@ func buildOpenAPIDocument() map[string]any {
 						"steamId":        map[string]any{"type": "string"},
 						"gameBannedAt":   map[string]any{"type": "string", "format": "date-time"},
 						"gameBannedUnix": map[string]any{"type": "integer"},
+						"source":         map[string]any{"type": "string", "enum": []string{"direct_guild_link", "linked_account"}},
 					},
-					"required": []string{"guildId", "discordId", "steamId", "gameBannedAt", "gameBannedUnix"},
+					"required": []string{"guildId", "discordId", "steamId", "gameBannedAt", "gameBannedUnix", "source"},
 				},
 				"GuildRecentGameBanListResponse": map[string]any{
 					"type": "object",

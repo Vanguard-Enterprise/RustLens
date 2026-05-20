@@ -88,16 +88,35 @@ function buildGameBanLine(item: GuildRecentGameBan) {
   return `> * <@${item.discordId}> - **[${item.steamId}](https://steamcommunity.com/profiles/${item.steamId})** - <t:${item.gameBannedUnix}:R>`;
 }
 
-function buildGameBansEmbed(items: GuildRecentGameBan[], timeframe: CheckGameBansTimeframe = CHECK_GAME_BANS_TIMEFRAME_90D) {
+function buildGameBanSection(title: string, items: GuildRecentGameBan[]) {
+  if (items.length === 0) {
+    return `**${title}**\n> None`;
+  }
+  return `**${title}**\n${items.map(buildGameBanLine).join("\n")}`;
+}
+
+function buildGameBansEmbed(
+  items: GuildRecentGameBan[],
+  timeframe: CheckGameBansTimeframe = CHECK_GAME_BANS_TIMEFRAME_90D,
+  groupBySource = false,
+) {
   const timeframeLabel = CHECK_GAME_BANS_TIMEFRAME_LABELS[timeframe];
   const emptyTimeframeText = timeframe === CHECK_GAME_BANS_TIMEFRAME_ALL ? "all time" : `the last ${timeframeLabel}`;
+  const directLinks = items.filter((item) => item.source === "direct_guild_link");
+  const linkedAccounts = items.filter((item) => item.source === "linked_account");
+  const description =
+    items.length === 0
+      ? `No linked users have a game ban in ${emptyTimeframeText}.`
+      : groupBySource
+        ? [
+            buildGameBanSection("Direct guild links", directLinks),
+            buildGameBanSection("Other linked accounts", linkedAccounts),
+          ].join("\n\n")
+        : items.map(buildGameBanLine).join("\n");
+
   return createEmbed()
     .setTitle(`Gamebans - ${timeframeLabel}`)
-    .setDescription(
-      items.length > 0
-        ? items.map(buildGameBanLine).join("\n")
-        : `No linked users have a game ban in ${emptyTimeframeText}.`,
-    );
+    .setDescription(description);
 }
 
 function buildDeepScopeTooLargeEmbed() {
@@ -177,13 +196,13 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
         .map((member) => member.id);
 
       if (scopeDiscordIds.length === 0) {
-        await interaction.editReply({ embeds: [buildGameBansEmbed([], timeframe)] });
+        await interaction.editReply({ embeds: [buildGameBansEmbed([], timeframe, method === CHECK_GAME_BANS_METHOD_DEEP)] });
         return true;
       }
     }
 
     const response = await getBackend().listGuildRecentGameBans(getWorkerID(), interaction.guildId, method, timeframe, scopeDiscordIds);
-    await interaction.editReply({ embeds: [buildGameBansEmbed(response.items, timeframe)] });
+    await interaction.editReply({ embeds: [buildGameBansEmbed(response.items, timeframe, method === CHECK_GAME_BANS_METHOD_DEEP)] });
   } catch (error) {
     if ((error as { status?: number }).status === 422) {
       await interaction.editReply({ embeds: [buildDeepScopeTooLargeEmbed()] });

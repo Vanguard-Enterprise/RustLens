@@ -3263,6 +3263,7 @@ func guildRecentGameBanToMap(item store.GuildRecentGameBan) map[string]any {
 		"steamId":        item.SteamID,
 		"gameBannedAt":   item.GameBannedAt,
 		"gameBannedUnix": item.GameBannedAt.Unix(),
+		"source":         item.Source,
 	}
 }
 
@@ -3503,9 +3504,15 @@ type gameBanCandidate struct {
 	GuildID   string
 	DiscordID string
 	SteamID   string
+	Source    string
 }
 
 var errDeepGameBanScopeTooLarge = errors.New("deep game ban scope too large")
+
+const (
+	gameBanSourceDirectGuildLink = "direct_guild_link"
+	gameBanSourceLinkedAccount   = "linked_account"
+)
 
 type gameBanTimeframe struct {
 	Value  string
@@ -3572,6 +3579,7 @@ func guildLinksToGameBanCandidates(links []store.GuildSteamDiscordLink) []gameBa
 			GuildID:   link.GuildID,
 			DiscordID: link.DiscordID,
 			SteamID:   link.SteamID,
+			Source:    gameBanSourceDirectGuildLink,
 		})
 	}
 	return candidates
@@ -3606,6 +3614,7 @@ func (h *Handler) deepGameBanCandidates(ctx context.Context, guildID string, dis
 			GuildID:   guildID,
 			DiscordID: link.DiscordID,
 			SteamID:   link.SteamID,
+			Source:    gameBanSourceLinkedAccount,
 		})
 	}
 	return candidates, nil
@@ -3678,6 +3687,7 @@ func recentGameBansFromCandidates(candidates []gameBanCandidate, cacheBySteamID 
 			DiscordID:    candidate.DiscordID,
 			SteamID:      candidate.SteamID,
 			GameBannedAt: *cache.GameBannedAt,
+			Source:       candidate.Source,
 		})
 	}
 	return recent
