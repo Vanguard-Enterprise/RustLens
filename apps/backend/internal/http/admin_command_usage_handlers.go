@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -10,10 +11,10 @@ import (
 	"rustlens/backend/internal/store"
 )
 
-// AdminGetUserCommandUsage: GET /api/app/admin/users/{id}/command-usage?page=&pageSize=
+// AdminGetUserCommandUsage: GET /api/app/admin/users/{id}/command-usage?page=&pageSize=&q=&command=&guildId=&outcome=&interactionType=&windowDays=
 //
-// Returns a paginated list of bot interactions for the user plus a 90-day
-// summary (total, error count, error rate, top 5 commands).
+// Returns a paginated list of bot interactions for the user (with embedded
+// targets) plus a 90-day summary (total, error count, error rate, top 5 commands).
 func (h *Handler) AdminGetUserCommandUsage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
@@ -22,21 +23,47 @@ func (h *Handler) AdminGetUserCommandUsage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	q := r.URL.Query()
+
 	page := 1
-	if v := r.URL.Query().Get("page"); v != "" {
+	if v := q.Get("page"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			page = n
 		}
 	}
 	pageSize := 25
-	if v := r.URL.Query().Get("pageSize"); v != "" {
+	if v := q.Get("pageSize"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
 			pageSize = n
 		}
 	}
 	offset := (page - 1) * pageSize
 
-	listed, err := h.postgres.ListUserCommandUsage(ctx, id, pageSize, offset)
+	filters := store.CommandUsageListFilters{
+		Q:       q.Get("q"),
+		Command: q.Get("command"),
+		GuildID: q.Get("guildId"),
+	}
+	if v := q.Get("outcome"); v != "" {
+		filters.Outcomes = splitAndValidate(v, map[string]struct{}{
+			"success": {}, "error": {}, "banned": {}, "denied": {},
+		})
+	}
+	if v := q.Get("interactionType"); v != "" {
+		filters.InteractionTypes = splitAndValidate(v, map[string]struct{}{
+			"command": {}, "button": {}, "modal": {}, "string_select": {},
+		})
+	}
+	if v := q.Get("windowDays"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			switch n {
+			case 1, 7, 30, 90:
+				filters.WindowDays = n
+			}
+		}
+	}
+
+	listed, err := h.postgres.ListUserCommandUsageFiltered(ctx, id, filters, pageSize, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list command usage")
 		return
@@ -56,7 +83,7 @@ func (h *Handler) AdminGetUserCommandUsage(w http.ResponseWriter, r *http.Reques
 	// Ensure items is never null in the JSON response.
 	items := listed.Items
 	if items == nil {
-		items = []store.CommandUsageRow{}
+		items = []store.CommandUsageRowWithTargets{}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -71,4 +98,62 @@ func (h *Handler) AdminGetUserCommandUsage(w http.ResponseWriter, r *http.Reques
 			"topCommands": summary.TopCommands,
 		},
 	})
+}
+
+// splitAndValidate splits a comma-separated string and keeps only values that
+// appear in the allowed set. Unknown values are silently dropped.
+func splitAndValidate(csv string, allowed map[string]struct{}) []string {
+	out := make([]string, 0, 4)
+	for _, p := range strings.Split(csv, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, ok := allowed[p]; ok {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// AdminGetUserCommandUsageFilterOptions: GET /api/app/admin/users/{id}/command-usage/filter-options
+func (h *Handler) AdminGetUserCommandUsageFilterOptions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing id")
+		return
+	}
+	windowDays := 90
+	if v := r.URL.Query().Get("windowDays"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			switch n {
+			case 1, 7, 30, 90:
+				windowDays = n
+			}
+		}
+	}
+	opts, err := h.postgres.CommandUsageFilterOptions(ctx, id, windowDays)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load filter options")
+		return
+	}
+	writeJSON(w, http.StatusOK, opts)
+}
+
+// AdminGetCommandUsageTargets: GET /api/app/admin/users/{id}/command-usage/{usageId}/targets
+func (h *Handler) AdminGetCommandUsageTargets(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "usageId")
+	usageID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || usageID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid usageId")
+		return
+	}
+	targets, err := h.postgres.ListCommandUsageTargets(ctx, usageID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load targets")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"targets": targets})
 }

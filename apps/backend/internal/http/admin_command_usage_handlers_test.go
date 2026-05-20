@@ -124,6 +124,170 @@ func TestAdminGetUserCommandUsage_ReturnsItemsAndSummary(t *testing.T) {
 	}
 }
 
+func TestAdminGetUserCommandUsage_OutcomeFilter(t *testing.T) {
+	ctx := context.Background()
+	fx := newAdminCommandUsageFixture(t)
+
+	if _, err := fx.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_outfil', '999000111222333444', 'outfil', 'outfil')
+	`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Insert one success and one error row.
+	if _, err := fx.pool.Exec(ctx, `
+		INSERT INTO command_usage (
+			app_user_id, discord_id, interaction_type, command,
+			options, outcome, latency_ms
+		) VALUES ('usr_outfil', '999000111222333444', 'command', 'player', '{}'::jsonb, 'success', 1)
+	`); err != nil {
+		t.Fatalf("seed success row: %v", err)
+	}
+	if _, err := fx.pool.Exec(ctx, `
+		INSERT INTO command_usage (
+			app_user_id, discord_id, interaction_type, command,
+			options, outcome, error_code, latency_ms
+		) VALUES ('usr_outfil', '999000111222333444', 'command', 'track', '{}'::jsonb, 'error', 'boom', 1)
+	`); err != nil {
+		t.Fatalf("seed error row: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users/usr_outfil/command-usage?outcome=error", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "usr_outfil")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	fx.h.AdminGetUserCommandUsage(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Items []map[string]any `json:"items"`
+		Total int64            `json:"total"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Total != 1 {
+		t.Fatalf("expected total=1 (only error row) got %d", resp.Total)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected 1 item got %d", len(resp.Items))
+	}
+	if resp.Items[0]["outcome"] != "error" {
+		t.Fatalf("expected outcome=error got %v", resp.Items[0]["outcome"])
+	}
+}
+
+func TestAdminGetUserCommandUsageFilterOptions_ReturnsCmdsAndGuilds(t *testing.T) {
+	ctx := context.Background()
+	fx := newAdminCommandUsageFixture(t)
+
+	if _, err := fx.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_filtopt', '111000222333444555', 'filtopt', 'filtopt')
+	`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	for _, cmd := range []string{"player", "track", "player"} {
+		if _, err := fx.pool.Exec(ctx, `
+			INSERT INTO command_usage (
+				app_user_id, discord_id, interaction_type, command,
+				options, outcome, latency_ms, guild_id
+			) VALUES ('usr_filtopt', '111000222333444555', 'command', $1, '{}'::jsonb, 'success', 1, '555444333222111000')
+		`, cmd); err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users/usr_filtopt/command-usage/filter-options", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "usr_filtopt")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	fx.h.AdminGetUserCommandUsageFilterOptions(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var opts struct {
+		Commands []string `json:"commands"`
+		Guilds   []struct {
+			GuildID string `json:"guildId"`
+		} `json:"guilds"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &opts); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Distinct commands: player, track (alphabetical).
+	if len(opts.Commands) != 2 {
+		t.Fatalf("expected 2 distinct commands got %v", opts.Commands)
+	}
+	if opts.Commands[0] != "player" || opts.Commands[1] != "track" {
+		t.Fatalf("wrong commands: %v", opts.Commands)
+	}
+	if len(opts.Guilds) != 1 || opts.Guilds[0].GuildID != "555444333222111000" {
+		t.Fatalf("wrong guilds: %v", opts.Guilds)
+	}
+}
+
+func TestAdminGetCommandUsageTargets_ReturnsTargets(t *testing.T) {
+	ctx := context.Background()
+	fx := newAdminCommandUsageFixture(t)
+
+	if _, err := fx.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_tgts', '222111333444555666', 'tgts', 'tgts')
+	`); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	var usageID int64
+	if err := fx.pool.QueryRow(ctx, `
+		INSERT INTO command_usage (
+			app_user_id, discord_id, interaction_type, command,
+			options, outcome, latency_ms
+		) VALUES ('usr_tgts', '222111333444555666', 'command', 'announce', '{}'::jsonb, 'success', 5)
+		RETURNING id
+	`).Scan(&usageID); err != nil {
+		t.Fatalf("seed usage: %v", err)
+	}
+	if _, err := fx.pool.Exec(ctx, `
+		INSERT INTO command_usage_targets (command_usage_id, kind, snowflake, display_name, relation)
+		VALUES ($1, 'role', '777888999000111222', 'Mods', 'scope')
+	`, usageID); err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/users/usr_tgts/command-usage/%d/targets", usageID), nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "usr_tgts")
+	rctx.URLParams.Add("usageId", fmt.Sprintf("%d", usageID))
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	fx.h.AdminGetCommandUsageTargets(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Targets []map[string]any `json:"targets"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Targets) != 1 {
+		t.Fatalf("expected 1 target got %d", len(resp.Targets))
+	}
+	if resp.Targets[0]["kind"] != "role" || resp.Targets[0]["relation"] != "scope" {
+		t.Fatalf("wrong target: %v", resp.Targets[0])
+	}
+}
+
 func TestAdminGetUserCommandUsage_PaginationParams(t *testing.T) {
 	ctx := context.Background()
 	fx := newAdminCommandUsageFixture(t)
