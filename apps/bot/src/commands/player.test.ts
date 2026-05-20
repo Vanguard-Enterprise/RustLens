@@ -62,13 +62,14 @@ describe("player", () => {
       },
     ] as const;
 
-    const proRows = __testables.buildLinkedDiscordSelect(links, false);
+    const names = new Map([["100000000000000001", "turn it up"]]);
+    const proRows = __testables.buildLinkedDiscordSelect(links, false, names);
     const adminRows = __testables.buildLinkedDiscordSelect(links, true);
     const proOptions = proRows[0].components[0].toJSON().options;
     const adminOptions = adminRows[0].components[0].toJSON().options;
 
     expect(proOptions.map((option) => option.value)).toEqual(["100000000000000001"]);
-    expect(proOptions[0].label).toBe("100000000000000001");
+    expect(proOptions[0].label).toBe("turn it up");
     expect(proOptions[0].description).toBe("Strong link");
     expect(adminOptions.map((option) => option.value)).toEqual([
       "100000000000000002",

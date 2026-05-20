@@ -526,7 +526,7 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       if (account?.steamId) {
         await runPlatformSyncSafely("steam", account.steamId);
       }
-      const { embed, components } = await buildBmOnlyLinksEmbed(bmId, await isWebsiteAdmin(interaction.user.id));
+      const { embed, components } = await buildBmOnlyLinksEmbed(bmId, await isWebsiteAdmin(interaction.user.id), interaction.client);
       await interaction.editReply({ embeds: [embed], components });
     } catch (error) {
       console.error("[bot] failed to load bm links", error);
@@ -554,7 +554,7 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
 
     try {
       await runPlatformSyncSafely("steam", steamId);
-      const { embed, components } = await buildSteamLinksEmbed(steamId, await isWebsiteAdmin(interaction.user.id));
+      const { embed, components } = await buildSteamLinksEmbed(steamId, await isWebsiteAdmin(interaction.user.id), interaction.client);
       await interaction.editReply({ embeds: [embed], components });
     } catch (error) {
       console.error("[bot] failed to load steam links", error);
@@ -629,7 +629,11 @@ async function ensureSteamAccountByBmIDSafely(bmId: string): Promise<SteamAccoun
   }
 }
 
-async function buildBmOnlyLinksEmbed(bmId: string, isAdmin: boolean): Promise<{
+async function buildBmOnlyLinksEmbed(
+  bmId: string,
+  isAdmin: boolean,
+  client?: Client,
+): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<StringSelectMenuBuilder>[];
 }> {
@@ -643,7 +647,7 @@ async function buildBmOnlyLinksEmbed(bmId: string, isAdmin: boolean): Promise<{
     account = null;
   }
   if (account?.steamId) {
-    return buildSteamLinksEmbed(account.steamId, isAdmin);
+    return buildSteamLinksEmbed(account.steamId, isAdmin, client);
   }
 
   const embed = createEmbed()
@@ -661,7 +665,7 @@ async function buildBmOnlyLinksEmbed(bmId: string, isAdmin: boolean): Promise<{
   return { embed, components: [] };
 }
 
-async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<{
+async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean, client?: Client): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<StringSelectMenuBuilder>[];
 }> {
@@ -674,6 +678,7 @@ async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<
 
   const links = linksResponse.items;
   const { strong, soft } = partitionLinksByDiscord(links);
+  const discordNameById = await fetchDiscordNames(client, links.map((link) => link.discordId));
 
   const title = account?.bmName ? `Links - ${account.bmName}` : "Links";
   const embed = createEmbed()
@@ -716,7 +721,7 @@ async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<
     });
   }
 
-  return { embed, components: buildLinkedDiscordSelect(links, isAdmin) };
+  return { embed, components: buildLinkedDiscordSelect(links, isAdmin, discordNameById) };
 }
 
 function partitionLinksByDiscord(links: readonly SteamDiscordLink[]) {
@@ -875,6 +880,7 @@ function buildLinkedAccountsSelect(
 function buildLinkedDiscordSelect(
   links: readonly SteamDiscordLink[],
   isAdmin: boolean,
+  discordNameById: ReadonlyMap<string, string> = new Map(),
 ): ActionRowBuilder<StringSelectMenuBuilder>[] {
   const visibleLinks = filterVisibleLinks(links, isAdmin);
   const winnerByDiscord = new Map<string, SteamDiscordLink>();
@@ -905,13 +911,38 @@ function buildLinkedDiscordSelect(
     .setPlaceholder("Look up a linked Discord account")
     .addOptions(
       recent.map((link) => ({
-        label: truncateOption(link.discordId, 100),
+        label: truncateOption(discordNameById.get(link.discordId) || link.discordId, 100),
         value: link.discordId,
         description: truncateOption(`${link.type === "hard" ? "Strong" : "Soft"} link`, 100),
       })),
     );
 
   return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)];
+}
+
+async function fetchDiscordNames(client: Client | undefined, discordIds: readonly string[]): Promise<Map<string, string>> {
+  if (!client) {
+    return new Map();
+  }
+  const unique = [...new Set(discordIds)];
+  const entries = await Promise.all(
+    unique.map(async (discordId) => {
+      try {
+        const user = await client.users.fetch(discordId);
+        return [discordId, user.globalName || user.username] as const;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  const names = new Map<string, string>();
+  for (const entry of entries) {
+    if (entry) {
+      names.set(entry[0], entry[1]);
+    }
+  }
+  return names;
 }
 
 function truncateOption(value: string, max: number) {
