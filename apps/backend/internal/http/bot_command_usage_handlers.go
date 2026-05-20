@@ -13,6 +13,8 @@ import (
 
 const maxErrorCodeLen = 256
 const maxOptionsBytes = 16 * 1024
+const maxDisplayNameLen = 256
+const maxTargetsInRequest = 500
 
 var validInteractionTypes = map[string]struct{}{
 	"command":       {},
@@ -28,18 +30,41 @@ var validOutcomes = map[string]struct{}{
 	"denied":  {},
 }
 
+var validTargetKinds = map[string]struct{}{
+	"user":    {},
+	"role":    {},
+	"channel": {},
+	"guild":   {},
+	"steam":   {},
+}
+
+var validTargetRelations = map[string]struct{}{
+	"recipient": {},
+	"scope":     {},
+	"subject":   {},
+}
+
+type recordCommandUsageTarget struct {
+	Kind        string  `json:"kind"`
+	Snowflake   string  `json:"snowflake"`
+	DisplayName *string `json:"displayName,omitempty"`
+	AvatarHash  *string `json:"avatarHash,omitempty"`
+	Relation    string  `json:"relation"`
+}
+
 type recordCommandUsageRequest struct {
-	DiscordID       string          `json:"discordId"`
-	GuildID         *string         `json:"guildId,omitempty"`
-	ChannelID       *string         `json:"channelId,omitempty"`
-	InteractionType string          `json:"interactionType"`
-	Command         string          `json:"command"`
-	Subcommand      *string         `json:"subcommand,omitempty"`
-	Target          *string         `json:"target,omitempty"`
-	Options         json.RawMessage `json:"options"`
-	Outcome         string          `json:"outcome"`
-	ErrorCode       *string         `json:"errorCode,omitempty"`
-	LatencyMs       int             `json:"latencyMs"`
+	DiscordID       string                     `json:"discordId"`
+	GuildID         *string                    `json:"guildId,omitempty"`
+	ChannelID       *string                    `json:"channelId,omitempty"`
+	InteractionType string                     `json:"interactionType"`
+	Command         string                     `json:"command"`
+	Subcommand      *string                    `json:"subcommand,omitempty"`
+	Target          *string                    `json:"target,omitempty"`
+	Options         json.RawMessage            `json:"options"`
+	Outcome         string                     `json:"outcome"`
+	ErrorCode       *string                    `json:"errorCode,omitempty"`
+	LatencyMs       int                        `json:"latencyMs"`
+	Targets         []recordCommandUsageTarget `json:"targets,omitempty"`
 }
 
 // RecordCommandUsage: POST /api/internal/bot/setup/command-usage
@@ -109,6 +134,42 @@ func (h *Handler) RecordCommandUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate and convert targets. Drop any invalid entries silently —
+	// fire-and-forget posture: never block the bot reply.
+	storeTargets := make([]store.CommandUsageTargetInsert, 0, len(req.Targets))
+	if len(req.Targets) > maxTargetsInRequest {
+		req.Targets = req.Targets[:maxTargetsInRequest]
+	}
+	for _, t := range req.Targets {
+		if _, ok := validTargetKinds[t.Kind]; !ok {
+			continue
+		}
+		if _, ok := validTargetRelations[t.Relation]; !ok {
+			continue
+		}
+		// Snowflake validation: Discord snowflake for user|role|channel|guild,
+		// 17-digit numeric for steam.
+		if t.Kind == "steam" {
+			if !isSteam64(t.Snowflake) {
+				continue
+			}
+		} else if !validateSnowflakeValue(t.Snowflake) {
+			continue
+		}
+		if t.DisplayName != nil && utf8.RuneCountInString(*t.DisplayName) > maxDisplayNameLen {
+			runes := []rune(*t.DisplayName)
+			trimmed := string(runes[:maxDisplayNameLen])
+			t.DisplayName = &trimmed
+		}
+		storeTargets = append(storeTargets, store.CommandUsageTargetInsert{
+			Kind:        t.Kind,
+			Snowflake:   t.Snowflake,
+			DisplayName: t.DisplayName,
+			AvatarHash:  t.AvatarHash,
+			Relation:    t.Relation,
+		})
+	}
+
 	if err := h.postgres.InsertCommandUsage(r.Context(), store.CommandUsageInsert{
 		AppUserID:       appUserID,
 		DiscordID:       req.DiscordID,
@@ -122,10 +183,24 @@ func (h *Handler) RecordCommandUsage(w http.ResponseWriter, r *http.Request) {
 		Outcome:         req.Outcome,
 		ErrorCode:       req.ErrorCode,
 		LatencyMs:       req.LatencyMs,
+		Targets:         storeTargets,
 	}); err != nil {
 		log.Printf("[backend] RecordCommandUsage insert error: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to record usage")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// isSteam64 returns true if s is a 17-digit numeric Steam64 ID.
+func isSteam64(s string) bool {
+	if len(s) != 17 {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

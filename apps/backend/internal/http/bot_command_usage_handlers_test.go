@@ -159,3 +159,93 @@ func TestRecordCommandUsage_RejectsBadEnum(t *testing.T) {
 		t.Fatalf("expected 400 got %d body=%s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestRecordCommandUsage_PersistsTargets(t *testing.T) {
+	ctx := context.Background()
+	fx := newCommandUsageTestFixture(t)
+
+	if _, err := fx.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_pt1', '222222222222222222', 'pt1', 'pt1')
+	`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	body := `{
+		"discordId":"222222222222222222",
+		"guildId":"111111111111111111",
+		"interactionType":"command",
+		"command":"announce",
+		"outcome":"success",
+		"latencyMs":42,
+		"options":{},
+		"targets":[
+			{"kind":"role","snowflake":"333333333333333333","relation":"scope"},
+			{"kind":"user","snowflake":"444444444444444444","displayName":"bob","relation":"recipient"}
+		]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/internal/bot/setup/command-usage", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	fx.h.RecordCommandUsage(rr, req)
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var count int
+	if err := fx.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM command_usage_targets cut
+		JOIN command_usage cu ON cu.id = cut.command_usage_id
+		WHERE cu.app_user_id = 'usr_pt1'
+	`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("want 2 target rows, got %d", count)
+	}
+}
+
+func TestRecordCommandUsage_DropsInvalidTargetsSilently(t *testing.T) {
+	ctx := context.Background()
+	fx := newCommandUsageTestFixture(t)
+
+	if _, err := fx.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_dt1', '222222222222222222', 'dt1', 'dt1')
+	`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	body := `{
+		"discordId":"222222222222222222",
+		"interactionType":"command",
+		"command":"announce",
+		"outcome":"success",
+		"latencyMs":1,
+		"options":{},
+		"targets":[
+			{"kind":"banana","snowflake":"333333333333333333","relation":"scope"},
+			{"kind":"role","snowflake":"not-a-snowflake","relation":"scope"},
+			{"kind":"user","snowflake":"444444444444444444","relation":"recipient"}
+		]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/internal/bot/setup/command-usage", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	fx.h.RecordCommandUsage(rr, req)
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d", rr.Code)
+	}
+
+	var count int
+	if err := fx.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM command_usage_targets cut
+		JOIN command_usage cu ON cu.id = cut.command_usage_id
+		WHERE cu.app_user_id = 'usr_dt1'
+	`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("want 1 valid target row, got %d", count)
+	}
+}
