@@ -926,6 +926,31 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create command_usage table: %w", err)
 	}
 
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS command_usage_targets (
+			id               BIGSERIAL PRIMARY KEY,
+			command_usage_id BIGINT NOT NULL REFERENCES command_usage(id) ON DELETE CASCADE,
+			kind             TEXT NOT NULL,
+			snowflake        TEXT NOT NULL,
+			display_name     TEXT,
+			avatar_hash      TEXT,
+			relation         TEXT NOT NULL,
+			created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT command_usage_targets_kind_chk
+				CHECK (kind IN ('user','role','channel','guild','steam')),
+			CONSTRAINT command_usage_targets_relation_chk
+				CHECK (relation IN ('recipient','scope','subject'))
+		);
+
+		CREATE INDEX IF NOT EXISTS command_usage_targets_usage_idx
+		ON command_usage_targets(command_usage_id);
+
+		CREATE INDEX IF NOT EXISTS command_usage_targets_snowflake_idx
+		ON command_usage_targets(snowflake);
+	`); err != nil {
+		return fmt.Errorf("create command_usage_targets table: %w", err)
+	}
+
 	return nil
 }
 
