@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -234,4 +235,161 @@ func (p *PostgresStore) PurgeCommandUsageBefore(ctx context.Context, cutoff time
 		return 0, fmt.Errorf("purge command_usage: %w", err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+// CommandUsageListFilters narrows ListUserCommandUsageFiltered. All fields optional.
+type CommandUsageListFilters struct {
+	Q                string   // ILIKE %q% across command/subcommand/target + targets.display_name/snowflake
+	Outcomes         []string // success|error|banned|denied
+	InteractionTypes []string // command|button|modal|string_select
+	Command          string   // exact match
+	GuildID          string   // exact match
+	WindowDays       int      // 0 = no extra window filter; 1/7/30/90 supported
+}
+
+// CommandUsageRowWithTargets is a row plus its inline target snapshot list.
+type CommandUsageRowWithTargets struct {
+	CommandUsageRow
+	Targets     []CommandUsageTargetRow `json:"targets"`
+	TargetTotal *int                    `json:"targetTotal,omitempty"`
+}
+
+type CommandUsagePageWithTargets struct {
+	Items []CommandUsageRowWithTargets
+	Total int64
+}
+
+// InlineTargetCap is the maximum number of targets embedded per row in
+// ListUserCommandUsageFiltered. Rows with more targets set TargetTotal.
+const InlineTargetCap = 100
+
+func (p *PostgresStore) ListUserCommandUsageFiltered(
+	ctx context.Context,
+	appUserID string,
+	filters CommandUsageListFilters,
+	limit, offset int,
+) (CommandUsagePageWithTargets, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	args := []any{appUserID}
+	where := []string{"cu.app_user_id = $1"}
+
+	if filters.WindowDays > 0 {
+		args = append(args, time.Now().Add(-time.Duration(filters.WindowDays)*24*time.Hour))
+		where = append(where, fmt.Sprintf("cu.created_at >= $%d", len(args)))
+	}
+	if filters.Command != "" {
+		args = append(args, filters.Command)
+		where = append(where, fmt.Sprintf("cu.command = $%d", len(args)))
+	}
+	if filters.GuildID != "" {
+		args = append(args, filters.GuildID)
+		where = append(where, fmt.Sprintf("cu.guild_id = $%d", len(args)))
+	}
+	if len(filters.Outcomes) > 0 {
+		args = append(args, filters.Outcomes)
+		where = append(where, fmt.Sprintf("cu.outcome = ANY($%d)", len(args)))
+	}
+	if len(filters.InteractionTypes) > 0 {
+		args = append(args, filters.InteractionTypes)
+		where = append(where, fmt.Sprintf("cu.interaction_type = ANY($%d)", len(args)))
+	}
+	if filters.Q != "" {
+		args = append(args, "%"+filters.Q+"%")
+		qIdx := len(args)
+		where = append(where, fmt.Sprintf(`(
+			cu.command ILIKE $%d
+			OR cu.subcommand ILIKE $%d
+			OR cu.target ILIKE $%d
+			OR EXISTS (
+				SELECT 1 FROM command_usage_targets t
+				WHERE t.command_usage_id = cu.id
+				AND (t.display_name ILIKE $%d OR t.snowflake ILIKE $%d)
+			)
+		)`, qIdx, qIdx, qIdx, qIdx, qIdx))
+	}
+
+	whereSQL := strings.Join(where, " AND ")
+
+	var page CommandUsagePageWithTargets
+	countSQL := "SELECT COUNT(*) FROM command_usage cu WHERE " + whereSQL
+	if err := p.pool.QueryRow(ctx, countSQL, args...).Scan(&page.Total); err != nil {
+		return page, fmt.Errorf("count filtered command_usage: %w", err)
+	}
+	if page.Total == 0 {
+		page.Items = []CommandUsageRowWithTargets{}
+		return page, nil
+	}
+
+	args = append(args, limit, offset)
+	limitIdx := len(args) - 1
+	offsetIdx := len(args)
+	listSQL := fmt.Sprintf(`
+		SELECT
+			cu.id, cu.app_user_id, cu.discord_id, cu.guild_id, cu.channel_id,
+			cu.interaction_type, cu.command, cu.subcommand, cu.target,
+			cu.options, cu.outcome, cu.error_code, cu.latency_ms, cu.created_at,
+			COALESCE(
+				(SELECT jsonb_agg(jsonb_build_object(
+					'kind', t.kind,
+					'snowflake', t.snowflake,
+					'displayName', t.display_name,
+					'avatarHash', t.avatar_hash,
+					'relation', t.relation
+				) ORDER BY t.id)
+				 FROM (
+					SELECT id, kind, snowflake, display_name, avatar_hash, relation
+					FROM command_usage_targets
+					WHERE command_usage_id = cu.id
+					ORDER BY id ASC
+					LIMIT %d
+				 ) t),
+				'[]'::jsonb
+			) AS targets_json,
+			(SELECT COUNT(*) FROM command_usage_targets WHERE command_usage_id = cu.id) AS target_total
+		FROM command_usage cu
+		WHERE %s
+		ORDER BY cu.created_at DESC, cu.id DESC
+		LIMIT $%d OFFSET $%d
+	`, InlineTargetCap, whereSQL, limitIdx, offsetIdx)
+
+	rows, err := p.pool.Query(ctx, listSQL, args...)
+	if err != nil {
+		return page, fmt.Errorf("list filtered command_usage: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r CommandUsageRowWithTargets
+		var targetsJSON []byte
+		var targetTotal int64
+		if err := rows.Scan(
+			&r.ID, &r.AppUserID, &r.DiscordID, &r.GuildID, &r.ChannelID,
+			&r.InteractionType, &r.Command, &r.Subcommand, &r.Target,
+			&r.Options, &r.Outcome, &r.ErrorCode, &r.LatencyMs, &r.CreatedAt,
+			&targetsJSON, &targetTotal,
+		); err != nil {
+			return page, fmt.Errorf("scan filtered command_usage: %w", err)
+		}
+		if err := json.Unmarshal(targetsJSON, &r.Targets); err != nil {
+			return page, fmt.Errorf("unmarshal targets: %w", err)
+		}
+		if r.Targets == nil {
+			r.Targets = []CommandUsageTargetRow{}
+		}
+		if targetTotal > int64(InlineTargetCap) {
+			total := int(targetTotal)
+			r.TargetTotal = &total
+		}
+		page.Items = append(page.Items, r)
+	}
+	return page, rows.Err()
 }

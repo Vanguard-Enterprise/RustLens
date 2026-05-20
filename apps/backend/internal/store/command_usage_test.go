@@ -228,6 +228,45 @@ func TestCommandUsage_CascadeOnUserDelete(t *testing.T) {
 	}
 }
 
+func TestListUserCommandUsageFiltered_OutcomeFilter(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	appUserID := "usr_filter_outcome"
+
+	// Clean up any leftover rows from prior runs (non-transactional test DB).
+	_, _ = s.pool.Exec(ctx, `DELETE FROM app_users WHERE id = 'usr_filter_outcome'`)
+
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_filter_outcome', '555555555555555555', 'filter_tester', 'filter_tester')
+	`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// insert one success + one error
+	for _, outcome := range []string{"success", "error"} {
+		if err := s.InsertCommandUsage(ctx, CommandUsageInsert{
+			AppUserID:       appUserID,
+			DiscordID:       "222222222222222222",
+			InteractionType: "command",
+			Command:         "ping",
+			Outcome:         outcome,
+			Options:         []byte(`{}`),
+		}); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	page, err := s.ListUserCommandUsageFiltered(ctx, appUserID,
+		CommandUsageListFilters{Outcomes: []string{"error"}}, 25, 0)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Outcome != "error" {
+		t.Fatalf("want one error row, got total=%d items=%d", page.Total, len(page.Items))
+	}
+}
+
 func TestInsertCommandUsage_TargetsCappedAt500(t *testing.T) {
 	ctx := context.Background()
 	s := newTestPostgres(t)
