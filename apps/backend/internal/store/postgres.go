@@ -895,6 +895,33 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create app audit events table: %w", err)
 	}
 
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS command_usage (
+			id               BIGSERIAL PRIMARY KEY,
+			app_user_id      TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			discord_id       TEXT NOT NULL,
+			guild_id         TEXT,
+			channel_id       TEXT,
+			interaction_type TEXT NOT NULL,
+			command          TEXT NOT NULL,
+			subcommand       TEXT,
+			target           TEXT,
+			options          JSONB NOT NULL DEFAULT '{}'::jsonb,
+			outcome          TEXT NOT NULL,
+			error_code       TEXT,
+			latency_ms       INTEGER NOT NULL,
+			created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS command_usage_user_created_idx
+		ON command_usage (app_user_id, created_at DESC);
+
+		CREATE INDEX IF NOT EXISTS command_usage_created_idx
+		ON command_usage (created_at DESC);
+	`); err != nil {
+		return fmt.Errorf("create command_usage table: %w", err)
+	}
+
 	return nil
 }
 
