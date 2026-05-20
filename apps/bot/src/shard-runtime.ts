@@ -38,7 +38,7 @@ export class ShardRuntime {
         SHARD_ID: String(shardID),
         SHARD_COUNT: String(totalShards),
         DISCORD_TOKEN: this.token,
-        BOT_WORKER_ID: this.workerId,
+        BOT_WORKER_ID_RESOLVED: this.workerId,
       },
     });
 
