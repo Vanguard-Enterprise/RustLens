@@ -308,7 +308,7 @@ func NewRouter(
 			r.Get("/roles", handler.ListAdminRoles)
 			r.Get("/permissions", handler.ListAdminPermissions)
 			r.Get("/users", handler.ListAdminUsers)
-			r.Get("/members", handler.ListAdminMembers)
+			r.Get("/administrators", handler.ListAdministrators)
 			r.Get("/users/{id}", handler.GetAdminUser)
 			r.Get("/users/{id}/audit", handler.ListAdminUserAudit)
 			r.Get("/guilds", handler.ListAdminGuilds)

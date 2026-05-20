@@ -19,6 +19,7 @@ import {
 import { requirePermission } from "@/lib/session";
 
 const USERS_PATH = "/admin/users";
+const ADMINISTRATORS_PATH = "/admin/administrators";
 
 export type ActionResult<T = unknown> =
 	| { ok: true; result: T }
@@ -26,6 +27,11 @@ export type ActionResult<T = unknown> =
 
 function userPath(userId: string) {
 	return `${USERS_PATH}/${userId}`;
+}
+
+function revalidateLists() {
+	revalidatePath(USERS_PATH);
+	revalidatePath(ADMINISTRATORS_PATH);
 }
 
 async function withReason<T>(
@@ -51,7 +57,7 @@ export async function grantRoleAction(
 		grantAdminUserRole(userId, roleKey, reason.trim()),
 	);
 	if (res.ok) {
-		revalidatePath(USERS_PATH);
+		revalidateLists();
 		revalidatePath(userPath(userId));
 	}
 	return res;
@@ -67,7 +73,7 @@ export async function revokeRoleAction(
 		revokeAdminUserRole(userId, roleKey, reason.trim()),
 	);
 	if (res.ok) {
-		revalidatePath(USERS_PATH);
+		revalidateLists();
 		revalidatePath(userPath(userId));
 	}
 	return res;
@@ -82,7 +88,7 @@ export async function editUserAction(
 	// users.edit doesn't require a reason; pass empty string through.
 	try {
 		await editAdminUser(userId, patch, reason.trim());
-		revalidatePath(USERS_PATH);
+		revalidateLists();
 		revalidatePath(userPath(userId));
 		return { ok: true, result: { userId } };
 	} catch (err) {
@@ -99,7 +105,7 @@ export async function suspendUserAction(
 		suspendAdminUser(userId, reason.trim()),
 	);
 	if (res.ok) {
-		revalidatePath(USERS_PATH);
+		revalidateLists();
 		revalidatePath(userPath(userId));
 	}
 	return res;
@@ -113,7 +119,7 @@ export async function unsuspendUserAction(
 	// users.unsuspend doesn't require a reason on the backend.
 	try {
 		await unsuspendAdminUser(userId, reason.trim());
-		revalidatePath(USERS_PATH);
+		revalidateLists();
 		revalidatePath(userPath(userId));
 		return { ok: true, result: { userId } };
 	} catch (err) {
@@ -131,7 +137,7 @@ export async function deleteUserAction(
 		deleteAdminUser(userId, reason.trim(), typedConfirmation),
 	);
 	if (res.ok) {
-		revalidatePath(USERS_PATH);
+		revalidateLists();
 		revalidatePath(userPath(userId));
 	}
 	return res;
@@ -157,7 +163,7 @@ export async function bulkUserAction(
 	}
 	try {
 		const result = await bulkAdminUserAction(action, userIds, params, reason.trim());
-		revalidatePath(USERS_PATH);
+		revalidateLists();
 		return { ok: true, result };
 	} catch (err) {
 		return { ok: false, error: (err as Error).message };

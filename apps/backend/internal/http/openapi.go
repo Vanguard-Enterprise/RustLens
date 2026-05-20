@@ -2047,12 +2047,31 @@ func buildOpenAPIDocument() map[string]any {
 			},
 			"/api/app/admin/users": map[string]any{
 				"get": map[string]any{
-					"summary":     "List admin users",
-					"description": "Returns internal admin overview data for browser app users.",
+					"summary":     "List app users",
+					"description": "Returns paginated app_users rows that hold no admin roles. Query params q, status, sort, page, pageSize mirror /api/app/admin/administrators; the role param is ignored because non-admin users have no admin roles.",
 					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
 					"responses": map[string]any{
 						"200": map[string]any{
-							"description": "Admin users returned",
+							"description": "App users returned",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{"$ref": "#/components/schemas/AdminUserListResponse"},
+								},
+							},
+						},
+						"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
+						"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
+					},
+				},
+			},
+			"/api/app/admin/administrators": map[string]any{
+				"get": map[string]any{
+					"summary":     "List administrators",
+					"description": "Returns paginated app_users rows that hold at least one admin role with permissions. Supports q, role (repeatable), status (active|suspended|deleted|any), discord, steam, sort, page, pageSize query params.",
+					"security":    []map[string][]string{{"appSecretAuth": {}, "appSessionAuth": {}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Administrators returned",
 							"content": map[string]any{
 								"application/json": map[string]any{
 									"schema": map[string]any{"$ref": "#/components/schemas/AdminUserListResponse"},

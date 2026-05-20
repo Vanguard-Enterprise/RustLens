@@ -32,7 +32,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 }
 
 export function IdentityHeader({ detail }: Props) {
-	const { user, discordId, discordUsername, discordGlobalName, discordAvatar, suspendedAt, deletedAt, suspendReason } = detail;
+	const { user, discordId, discordUsername, discordAvatar, suspendedAt, deletedAt, suspendReason } = detail;
 	const avatarSrc = user.avatarUrl || (discordId ? userAvatarUrl(discordId, discordAvatar ?? null) : null) || null;
 	return (
 		<div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
@@ -62,7 +62,6 @@ export function IdentityHeader({ detail }: Props) {
 					</div>
 					<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
 						<span>@{discordUsername || "—"}</span>
-						{discordGlobalName ? <span>· {discordGlobalName}</span> : null}
 					</div>
 					<div className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
 						<div className="flex items-center gap-1">

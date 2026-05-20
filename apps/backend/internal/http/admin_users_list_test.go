@@ -38,11 +38,11 @@ func grantAdminRole(t *testing.T, pool *pgxpool.Pool, userID, roleKey string) {
 	}
 }
 
-func (ts *testHandlerServer) getMembers(t *testing.T, path string) listAdminUsersResp {
+func (ts *testHandlerServer) getUsersList(t *testing.T, path string) listAdminUsersResp {
 	t.Helper()
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", path, nil)
-	ts.h.ListAdminMembers(rr, req)
+	ts.h.ListAdminUsers(rr, req)
 	if rr.Code != 200 {
 		t.Fatalf("GET %s: status=%d body=%s", path, rr.Code, rr.Body.String())
 	}
@@ -53,7 +53,7 @@ func (ts *testHandlerServer) getMembers(t *testing.T, path string) listAdminUser
 	return resp
 }
 
-func TestListAdminMembers_ExcludesAdmins(t *testing.T) {
+func TestListAdminUsers_ExcludesAdmins(t *testing.T) {
 	ts := newTestHandlerServer(t)
 
 	seedUser(t, ts.pool, "usr_admin1", "Andy Admin", seedOpts{Discord: "andy"})
@@ -65,7 +65,7 @@ func TestListAdminMembers_ExcludesAdmins(t *testing.T) {
 	// across re-runs.
 	grantAdminRole(t, ts.pool, "usr_admin1", "members_test_admin")
 
-	resp := ts.getMembers(t, "/api/app/admin/members")
+	resp := ts.getUsersList(t, "/api/app/admin/users")
 	if resp.Total != 2 {
 		t.Errorf("members total: want 2, got %d", resp.Total)
 	}
@@ -76,18 +76,18 @@ func TestListAdminMembers_ExcludesAdmins(t *testing.T) {
 	}
 }
 
-func TestListAdminMembers_SearchAndPagination(t *testing.T) {
+func TestListAdminUsers_SearchAndPagination(t *testing.T) {
 	ts := newTestHandlerServer(t)
 
 	seedUser(t, ts.pool, "usr_a", "Alice", seedOpts{Discord: "alice"})
 	seedUser(t, ts.pool, "usr_b", "Bob", seedOpts{Discord: "bob"})
 	seedUser(t, ts.pool, "usr_c", "Carol", seedOpts{Discord: "carol"})
 
-	if r := ts.getMembers(t, "/api/app/admin/members?q=alice"); r.Total != 1 {
+	if r := ts.getUsersList(t, "/api/app/admin/users?q=alice"); r.Total != 1 {
 		t.Errorf("q=alice: want 1 got %d", r.Total)
 	}
 
-	r := ts.getMembers(t, "/api/app/admin/members?pageSize=2&page=1")
+	r := ts.getUsersList(t, "/api/app/admin/users?pageSize=2&page=1")
 	if len(r.Items) != 2 || r.Total != 3 {
 		t.Errorf("page1: want len=2 total=3, got len=%d total=%d", len(r.Items), r.Total)
 	}

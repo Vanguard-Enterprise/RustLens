@@ -28,6 +28,7 @@ export type AdminNavItem = {
 export const ADMIN_NAV: AdminNavItem[] = [
 	{ href: "/admin", label: "Overview", icon: ShieldIcon, permissions: [] },
 	{ href: "/admin/users", label: "Users", icon: UsersIcon, permissions: ["users.read"] },
+	{ href: "/admin/administrators", label: "Administrators", icon: UsersIcon, permissions: ["users.read"] },
 	{ href: "/admin/links", label: "Link Review", icon: ScanEyeIcon, permissions: ["links.review"] },
 	{ href: "/admin/guilds", label: "Guilds", icon: UserRoundIcon, permissions: ["guilds.untrack_server"] },
 	{ href: "/admin/user-installs", label: "User Apps", icon: UsersIcon, permissions: ["users.read"] },
@@ -78,7 +79,7 @@ export function getNavGroups(
 	if (variant === "admin") {
 		const filtered = filterNavByPermissions(ADMIN_NAV, permissions);
 		const filteredInfra = filterNavByPermissions(ADMIN_INFRA_NAV, permissions);
-		const accessHrefs = new Set(["/admin/users", "/admin/roles", "/admin/audit"]);
+		const accessHrefs = new Set(["/admin/administrators", "/admin/roles", "/admin/audit"]);
 		const toItem = (item: AdminNavItem) => ({
 			title: item.label,
 			path: item.href,
@@ -93,7 +94,7 @@ export function getNavGroups(
 				),
 			},
 			{
-				label: "Access",
+				label: "Identity Management",
 				items: withActive(
 					pathname,
 					filtered.filter((item) => accessHrefs.has(item.href)).map(toItem),

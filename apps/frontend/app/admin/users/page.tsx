@@ -31,6 +31,29 @@ function clampPageSize(value: number): number {
   return PAGE_SIZE_OPTIONS.includes(value) ? value : DEFAULT_PAGE_SIZE;
 }
 
+const DATE_PARAM_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseDateParam(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return null;
+  return DATE_PARAM_PATTERN.test(raw) ? raw : null;
+}
+
+const SORTS = new Set([
+  "createdAt",
+  "-createdAt",
+  "displayName",
+  "-displayName",
+  "lastLoginAt",
+  "-lastLoginAt",
+]);
+
+function parseSortParam(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return null;
+  return SORTS.has(raw) ? raw : null;
+}
+
 export default async function AdminUsersRoute({
   searchParams,
 }: {
@@ -45,14 +68,26 @@ export default async function AdminUsersRoute({
   const status: NonNullable<AdminUsersQuery["status"]> =
     statusRaw && (STATUSES as readonly string[]).includes(statusRaw)
       ? (statusRaw as NonNullable<AdminUsersQuery["status"]>)
-      : "active";
+      : "any";
   const page = parsePositiveInt(sp.page, 1);
   const pageSize = clampPageSize(parsePositiveInt(sp.pageSize, DEFAULT_PAGE_SIZE));
+
+  const joinedSince = parseDateParam(sp.joinedSince);
+  const joinedBefore = parseDateParam(sp.joinedBefore);
+  const sort = parseSortParam(sp.sort);
 
   const [csrfToken, currentUser, members] = await Promise.all([
     getCsrfToken(),
     getCurrentUserSafe(),
-    getAdminUsers({ q: q || undefined, status, page, pageSize }),
+    getAdminUsers({
+      q: q || undefined,
+      status,
+      page,
+      pageSize,
+      joinedSince: joinedSince ?? undefined,
+      joinedBefore: joinedBefore ?? undefined,
+      sort: sort ?? undefined,
+    }),
   ]);
 
   const user = {
@@ -93,9 +128,13 @@ export default async function AdminUsersRoute({
               <MembersTable
                 initialQuery={q}
                 initialStatus={status}
+                initialJoinedSince={joinedSince}
+                initialJoinedBefore={joinedBefore}
+                initialSort={sort}
                 pageSizeOptions={PAGE_SIZE_OPTIONS}
                 data={members}
                 canSuspend={(session.permissions ?? []).includes("users.suspend")}
+                canDelete={(session.permissions ?? []).includes("users.delete")}
               />
             </div>
           </div>

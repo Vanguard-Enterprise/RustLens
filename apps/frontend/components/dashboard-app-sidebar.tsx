@@ -177,6 +177,16 @@ export function DashboardAppSidebar({
 						<NavGroup
 							label="Discord"
 							items={[
+								...(permissions.includes("users.read")
+									? [{
+											title: "Users",
+											path: "/admin/users",
+											icon: UserIcon,
+											isActive:
+												pathname === "/admin/users" ||
+												pathname.startsWith("/admin/users/"),
+										}]
+									: []),
 								{
 									title: "Guilds",
 									path: "/admin/guilds",
@@ -193,26 +203,18 @@ export function DashboardAppSidebar({
 												pathname.startsWith("/admin/user-installs/"),
 										}]
 									: []),
-								...(permissions.includes("users.read")
-									? [{
-											title: "Members",
-											path: "/admin/members",
-											icon: UserIcon,
-											isActive:
-												pathname === "/admin/members" ||
-												pathname.startsWith("/admin/members/"),
-										}]
-									: []),
 							]}
 						/>
 						{(() => {
 							const accessItems: SidebarNavItem[] = [];
 							if (permissions.includes("users.read")) {
 								accessItems.push({
-									title: "Users",
-									path: "/admin/users",
+									title: "Administrators",
+									path: "/admin/administrators",
 									icon: UsersIcon,
-									isActive: pathname === "/admin/users" || pathname.startsWith("/admin/users/"),
+									isActive:
+										pathname === "/admin/administrators" ||
+										pathname.startsWith("/admin/administrators/"),
 								});
 							}
 							if (permissions.includes("admins.grant")) {
@@ -232,7 +234,7 @@ export function DashboardAppSidebar({
 								});
 							}
 							return accessItems.length > 0 ? (
-								<NavGroup label="Access" items={accessItems} />
+								<NavGroup label="Identity Management" items={accessItems} />
 							) : null;
 						})()}
 						{(() => {

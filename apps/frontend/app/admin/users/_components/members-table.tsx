@@ -4,23 +4,39 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ArrowUpDownIcon,
   BanIcon,
+  CalendarIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
   FileIcon,
   FilterIcon,
+  SearchIcon,
+  ShieldIcon,
+  Trash2Icon,
   UserCheckIcon,
   XIcon,
 } from "lucide-react";
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
@@ -51,7 +67,13 @@ import type {
   AdminUsersQuery,
 } from "@/lib/rustlens-api";
 
-import { bulkUserAction, suspendUserAction, unsuspendUserAction } from "../actions";
+import {
+  bulkUserAction,
+  deleteUserAction,
+  suspendUserAction,
+  unsuspendUserAction,
+} from "../actions";
+import { DeleteDialog } from "./delete-dialog";
 import { SuspendDialog } from "./suspend-dialog";
 
 type MemberStatus = NonNullable<AdminUsersQuery["status"]>;
@@ -66,13 +88,42 @@ const STATUSES: ReadonlyArray<MemberStatus> = [
 type MembersTableProps = {
   initialQuery: string;
   initialStatus: MemberStatus;
+  initialJoinedSince?: string | null;
+  initialJoinedBefore?: string | null;
+  initialSort?: string | null;
   pageSizeOptions: number[];
   data: AdminUsersPage;
   canSuspend: boolean;
+  canDelete?: boolean;
 };
+
+type SortField = "createdAt" | "displayName";
+type SortDir = "asc" | "desc";
+
+function parseSort(sort: string | null | undefined): {
+  field: SortField | null;
+  dir: SortDir;
+} {
+  if (!sort) return { field: null, dir: "desc" };
+  const dir: SortDir = sort.startsWith("-") ? "desc" : "asc";
+  const field = sort.replace(/^-/, "");
+  if (field === "createdAt" || field === "displayName") {
+    return { field, dir };
+  }
+  return { field: null, dir: "desc" };
+}
+
+function buildSortParam(field: SortField, dir: SortDir): string {
+  return dir === "desc" ? `-${field}` : field;
+}
 
 type SuspendTarget = {
   mode: "suspend" | "unsuspend";
+  userId: string;
+  displayName: string;
+};
+
+type DeleteTarget = {
   userId: string;
   displayName: string;
 };
@@ -88,7 +139,7 @@ function formatRelative(iso: string | null | undefined): string {
   const diff = Date.now() - ts;
   const minutes = Math.floor(diff / 60_000);
   if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
@@ -111,19 +162,125 @@ function memberInitial(u: AdminUserItem): string {
   return label === "—" ? "?" : label.charAt(0).toUpperCase();
 }
 
+type FlagDef = {
+  key: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  className: string;
+};
+
+function buildFlags(item: AdminUserItem): FlagDef[] {
+  const flags: FlagDef[] = [];
+  if (item.deletedAt) {
+    flags.push({
+      key: "deleted",
+      Icon: Trash2Icon,
+      label: "Deleted",
+      className: "text-muted-foreground",
+    });
+  }
+  if (item.suspendedAt) {
+    flags.push({
+      key: "suspended",
+      Icon: BanIcon,
+      label: "Suspended",
+      className: "text-destructive",
+    });
+  }
+  if (item.adminRoles.length > 0) {
+    flags.push({
+      key: "admin",
+      Icon: ShieldIcon,
+      label: `Admin: ${item.adminRoles.join(", ")}`,
+      className: "text-amber-500",
+    });
+  }
+  return flags;
+}
+
+function MemberFlags({ item }: { item: AdminUserItem }) {
+  const flags = buildFlags(item);
+  if (flags.length === 0) return null;
+  return (
+    <TooltipProvider>
+      <span className="inline-flex items-center gap-1 leading-none">
+        {flags.map((f) => (
+          <Tooltip key={f.key}>
+            <TooltipTrigger
+              asChild
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
+              <span
+                className={`inline-flex items-center ${f.className}`}
+                aria-label={f.label}
+              >
+                <f.Icon className="size-3.5" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{f.label}</TooltipContent>
+          </Tooltip>
+        ))}
+      </span>
+    </TooltipProvider>
+  );
+}
+
+function parseDateString(value: string | null): Date | undefined {
+  if (!value) return undefined;
+  // Use UTC midnight so the displayed date matches the API param exactly.
+  const [y, m, d] = value.split("-").map((n) => Number.parseInt(n, 10));
+  if (!y || !m || !d) return undefined;
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
+function formatDateString(date: Date | undefined): string | null {
+  if (!date) return null;
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatDateLabel(date: Date | undefined): string {
+  if (!date) return "";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export function MembersTable({
   initialQuery,
   initialStatus,
+  initialJoinedSince = null,
+  initialJoinedBefore = null,
+  initialSort = null,
   pageSizeOptions,
   data,
   canSuspend,
+  canDelete = false,
 }: MembersTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchValue, setSearchValue] = React.useState(initialQuery);
   const [suspendTarget, setSuspendTarget] = React.useState<SuspendTarget | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<DeleteTarget | null>(null);
   const [bulkAction, setBulkAction] = React.useState<BulkAction | null>(null);
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
+
+  const joinedSinceDate = React.useMemo(
+    () => parseDateString(initialJoinedSince),
+    [initialJoinedSince],
+  );
+  const joinedBeforeDate = React.useMemo(
+    () => parseDateString(initialJoinedBefore),
+    [initialJoinedBefore],
+  );
 
   // Reset selection whenever the server-rendered data prop changes
   // (pagination, search, page-size). The cascade is intentional.
@@ -226,21 +383,65 @@ export function MembersTable({
   const setPageSize = (size: number) =>
     pushParams({ pageSize: String(size), page: null });
   const setStatus = (s: MemberStatus) =>
-    pushParams({ status: s === "active" ? null : s, page: null });
+    pushParams({ status: s === "any" ? null : s, page: null });
+  const sortState = parseSort(initialSort);
+  const cycleSort = (field: SortField) => {
+    let next: string | null;
+    if (sortState.field !== field) {
+      // First click defaults to the most intuitive direction per column.
+      next = buildSortParam(field, field === "displayName" ? "asc" : "desc");
+    } else if (sortState.dir === "desc") {
+      next = buildSortParam(field, "asc");
+    } else {
+      // Third click clears the sort.
+      next = null;
+    }
+    pushParams({ sort: next, page: null });
+  };
 
-  const activeFilterCount = initialStatus !== "active" ? 1 : 0;
+  const sortIconFor = (field: SortField) => {
+    if (sortState.field !== field) {
+      return <ArrowUpDownIcon className="size-3.5 opacity-50" />;
+    }
+    return sortState.dir === "asc" ? (
+      <ArrowUpIcon className="size-3.5" />
+    ) : (
+      <ArrowDownIcon className="size-3.5" />
+    );
+  };
+
+  const setJoinedRange = (from: Date | undefined, to: Date | undefined) =>
+    pushParams({
+      joinedSince: formatDateString(from),
+      joinedBefore: formatDateString(to),
+      page: null,
+    });
+  const clearJoinedRange = () =>
+    pushParams({ joinedSince: null, joinedBefore: null, page: null });
+
+  const hasJoinedRange = !!(initialJoinedSince || initialJoinedBefore);
+  const activeFilterCount =
+    (initialStatus !== "any" ? 1 : 0) + (hasJoinedRange ? 1 : 0);
   const hasActiveFilters = activeFilterCount > 0;
+
+  const joinedRangeLabel = hasJoinedRange
+    ? `${formatDateLabel(joinedSinceDate) || "…"} – ${formatDateLabel(joinedBeforeDate) || "…"}`
+    : "All time";
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Search by username, global name, or Discord ID…"
-          value={searchValue}
-          onChange={(e) => setSearchValue(e.target.value)}
-          className="max-w-md"
-          aria-label="Search members"
-        />
+      <div className="flex flex-1 items-center gap-2">
+        <div className="relative w-full max-w-sm flex-1">
+          <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search by username, global name, or Discord ID…"
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            className="pl-8"
+            aria-label="Search members"
+          />
+        </div>
         <ButtonGroup>
           <Popover>
             <PopoverTrigger asChild>
@@ -255,7 +456,7 @@ export function MembersTable({
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-80">
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium uppercase text-muted-foreground">
                     Status
@@ -273,6 +474,36 @@ export function MembersTable({
                     ))}
                   </div>
                 </div>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium uppercase text-muted-foreground">
+                      Joined
+                    </Label>
+                    {hasJoinedRange ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={clearJoinedRange}
+                      >
+                        All time
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CalendarIcon className="size-4" />
+                    <span>{joinedRangeLabel}</span>
+                  </div>
+                  <Calendar
+                    mode="range"
+                    numberOfMonths={1}
+                    selected={{ from: joinedSinceDate, to: joinedBeforeDate }}
+                    onSelect={(range) =>
+                      setJoinedRange(range?.from, range?.to)
+                    }
+                    className="w-full rounded-md border"
+                  />
+                </div>
               </div>
             </PopoverContent>
           </Popover>
@@ -282,7 +513,14 @@ export function MembersTable({
               className="px-2"
               aria-label="Clear filters"
               title="Clear filters"
-              onClick={() => setStatus("active")}
+              onClick={() =>
+                pushParams({
+                  status: null,
+                  joinedSince: null,
+                  joinedBefore: null,
+                  page: null,
+                })
+              }
             >
               <XIcon className="size-4" />
             </Button>
@@ -341,16 +579,42 @@ export function MembersTable({
                 />
               </TableHead>
               <TableHead className="w-12"></TableHead>
-              <TableHead>User</TableHead>
-              <TableHead>Discord ID</TableHead>
-              <TableHead>Joined</TableHead>
-              {canSuspend ? <TableHead className="w-12 text-right">Actions</TableHead> : null}
+              <TableHead className="w-full">
+                <button
+                  type="button"
+                  onClick={() => cycleSort("displayName")}
+                  className="-ml-2 inline-flex items-center gap-1 rounded px-2 py-1 font-medium hover:bg-muted"
+                  aria-label="Sort by user"
+                >
+                  User
+                  {sortIconFor("displayName")}
+                </button>
+              </TableHead>
+              <TableHead className="whitespace-nowrap text-center">
+                <button
+                  type="button"
+                  onClick={() => cycleSort("createdAt")}
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 font-medium hover:bg-muted"
+                  aria-label="Sort by joined date"
+                >
+                  Joined
+                  {sortIconFor("createdAt")}
+                </button>
+              </TableHead>
+              {canSuspend || canDelete ? (
+                <TableHead className="w-1 whitespace-nowrap text-right">
+                  Actions
+                </TableHead>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={canSuspend ? 6 : 5} className="h-24 text-center">
+                <TableCell
+                  colSpan={canSuspend || canDelete ? 5 : 4}
+                  className="h-24 text-center"
+                >
                   No members found.
                 </TableCell>
               </TableRow>
@@ -384,7 +648,10 @@ export function MembersTable({
                     <TableCell className="font-medium">
                       <Link href={`/admin/users/${u.user.id}`} className="block">
                         <div className="flex flex-col">
-                          <span>{memberLabel(u)}</span>
+                          <span className="flex items-center gap-1.5">
+                            <span>{memberLabel(u)}</span>
+                            <MemberFlags item={u} />
+                          </span>
                           {u.discordUsername ? (
                             <span className="text-xs text-muted-foreground">
                               @{u.discordUsername}
@@ -393,50 +660,62 @@ export function MembersTable({
                         </div>
                       </Link>
                     </TableCell>
-                    <TableCell>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigator.clipboard?.writeText(u.discordId);
-                        }}
-                        className="font-mono text-xs text-muted-foreground hover:text-foreground"
-                        title="Click to copy"
-                      >
-                        {u.discordId}
-                      </button>
-                    </TableCell>
                     <TableCell
-                      className="text-sm text-muted-foreground"
+                      className="whitespace-nowrap text-center text-sm text-muted-foreground"
                       title={u.user.createdAt}
                     >
                       <Link href={`/admin/users/${u.user.id}`} className="block">
                         {formatRelative(u.user.createdAt)}
                       </Link>
                     </TableCell>
-                    {canSuspend ? (
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSuspendTarget({
-                              mode: isSuspended ? "unsuspend" : "suspend",
-                              userId: u.user.id,
-                              displayName: memberLabel(u),
-                            });
-                          }}
-                          aria-label={isSuspended ? "Unsuspend user" : "Suspend user"}
-                          title={isSuspended ? "Unsuspend user" : "Suspend user"}
-                        >
-                          {isSuspended ? (
-                            <UserCheckIcon className="size-4" />
-                          ) : (
-                            <BanIcon className="size-4 text-destructive" />
-                          )}
-                        </Button>
+                    {canSuspend || canDelete ? (
+                      <TableCell
+                        className="whitespace-nowrap text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          {canSuspend ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() =>
+                                setSuspendTarget({
+                                  mode: isSuspended ? "unsuspend" : "suspend",
+                                  userId: u.user.id,
+                                  displayName: memberLabel(u),
+                                })
+                              }
+                              aria-label={
+                                isSuspended ? "Unsuspend user" : "Suspend user"
+                              }
+                              title={isSuspended ? "Unsuspend user" : "Suspend user"}
+                            >
+                              {isSuspended ? (
+                                <UserCheckIcon className="size-4" />
+                              ) : (
+                                <BanIcon className="size-4 text-destructive" />
+                              )}
+                            </Button>
+                          ) : null}
+                          {canDelete ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() =>
+                                setDeleteTarget({
+                                  userId: u.user.id,
+                                  displayName: memberLabel(u),
+                                })
+                              }
+                              aria-label="Delete user"
+                              title="Delete user"
+                            >
+                              <Trash2Icon className="size-4 text-destructive" />
+                            </Button>
+                          ) : null}
+                        </div>
                       </TableCell>
                     ) : null}
                   </TableRow>
@@ -479,6 +758,23 @@ export function MembersTable({
             }}
           />
         </>
+      ) : null}
+
+      {canDelete ? (
+        <DeleteDialog
+          open={deleteTarget !== null}
+          onOpenChange={(o) => {
+            if (!o) setDeleteTarget(null);
+          }}
+          userId={deleteTarget?.userId ?? ""}
+          displayName={deleteTarget?.displayName ?? ""}
+          onConfirm={async (userId, reason, typed) => {
+            const res = await deleteUserAction(userId, reason, typed);
+            if (!res.ok) throw new Error(res.error);
+            toast.success("User deleted");
+            router.refresh();
+          }}
+        />
       ) : null}
 
       <div className="flex items-center gap-4">

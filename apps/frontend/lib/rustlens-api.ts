@@ -104,6 +104,8 @@ export type AdminUsersQuery = {
 	sort?: string;
 	page?: number;
 	pageSize?: number;
+	joinedSince?: string;
+	joinedBefore?: string;
 };
 
 export type AdminUsersPage = {
@@ -322,8 +324,13 @@ export async function postAdminAction<T = unknown>(
 	type: string,
 	params: Record<string, unknown>,
 	reason: string,
+	typedConfirmation?: string,
 ): Promise<T> {
-	const envelope: AdminActionEnvelope = { params, reason };
+	const envelope: AdminActionEnvelope & { typedConfirmation?: string } = {
+		params,
+		reason,
+		...(typedConfirmation !== undefined ? { typedConfirmation } : {}),
+	};
 	const payload = await backendFetch<AdminActionResponse<T>>(
 		`/api/app/admin/actions/${encodeURIComponent(type)}`,
 		{ method: "POST", body: JSON.stringify(envelope) },
@@ -387,7 +394,7 @@ export async function getMyGuildLinks(guildId: string): Promise<GuildLink[]> {
 	return payload.items;
 }
 
-export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
+export async function getAdministrators(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
 	const sp = new URLSearchParams();
 	if (params.q) sp.set("q", params.q);
 	for (const r of params.role ?? []) sp.append("role", r);
@@ -399,13 +406,13 @@ export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<Admin
 	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
 	const qs = sp.toString();
 	return backendFetch<AdminUsersPage>(
-		`/api/app/admin/users${qs ? `?${qs}` : ""}`,
+		`/api/app/admin/administrators${qs ? `?${qs}` : ""}`,
 		undefined,
 		{ requireSession: true },
 	);
 }
 
-export async function getAdminMembers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
+export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
 	const sp = new URLSearchParams();
 	if (params.q) sp.set("q", params.q);
 	if (params.status) sp.set("status", params.status);
@@ -414,11 +421,13 @@ export async function getAdminMembers(params: AdminUsersQuery = {}): Promise<Adm
 	if (params.sort) sp.set("sort", params.sort);
 	if (params.page) sp.set("page", String(params.page));
 	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
-	// Backend ignores `role` for /admin/members — members have no admin roles
-	// by definition. Drop it from the querystring entirely.
+	if (params.joinedSince) sp.set("joinedSince", params.joinedSince);
+	if (params.joinedBefore) sp.set("joinedBefore", params.joinedBefore);
+	// Backend ignores `role` for /admin/users — non-admin users have no admin
+	// roles by definition. Drop it from the querystring entirely.
 	const qs = sp.toString();
 	return backendFetch<AdminUsersPage>(
-		`/api/app/admin/members${qs ? `?${qs}` : ""}`,
+		`/api/app/admin/users${qs ? `?${qs}` : ""}`,
 		undefined,
 		{ requireSession: true },
 	);
@@ -563,11 +572,13 @@ export async function getAdminAuditEvent(id: string): Promise<AuditEventItem> {
 /**
  * Thin wrapper used by the Audit page's actor/target combobox.
  * Pinned to status="any" so suspended/deleted users still surface.
+ * Uses /admin/administrators with no role filter: the underlying handler
+ * returns the full app_users table when no role filter is supplied.
  */
 export async function searchAdminUsers(q: string): Promise<AdminUserItem[]> {
 	const trimmed = q.trim();
 	if (trimmed.length < 2) return [];
-	const page = await getAdminUsers({ q: trimmed, pageSize: 10, status: "any" });
+	const page = await getAdministrators({ q: trimmed, pageSize: 10, status: "any" });
 	return page.items;
 }
 
@@ -894,8 +905,9 @@ export async function deleteAdminUser(
 ) {
 	return postAdminAction<{ userId: string }>(
 		"users.delete",
-		{ userId, typedConfirmation },
+		{ userId },
 		reason,
+		typedConfirmation,
 	);
 }
 

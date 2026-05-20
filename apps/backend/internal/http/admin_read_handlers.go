@@ -112,7 +112,7 @@ type adminUserDetail struct {
 	RecentAudit       []auditEventItem `json:"recentAudit"`
 }
 
-// ListAdminUsers: GET /api/app/admin/users
+// ListAdministrators: GET /api/app/admin/administrators
 // Query:
 //   q=<substring>           matches display_name / app_users.id / discord_username / discord_id
 //   role=<roleKey>          (repeatable) any matched role
@@ -121,7 +121,7 @@ type adminUserDetail struct {
 //   steam=any|linked|unlinked
 //   sort=<field> or -<field>  field in {createdAt, lastLoginAt, displayName}
 //   page=1 pageSize=50 (max 200)
-func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pool := h.postgres.Pool()
 	q := r.URL.Query()
@@ -244,17 +244,17 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ListAdminMembers: GET /api/app/admin/members
+// ListAdminUsers: GET /api/app/admin/users
 //
-// Inverse of ListAdminUsers — returns app_users rows that hold zero admin
+// Inverse of ListAdministrators — returns app_users rows that hold zero admin
 // roles (i.e. no role with any permission grant). Query params mirror
-// ListAdminUsers exactly except that the `role` param is ignored: members
-// have no admin roles by definition, so role-key filtering is meaningless.
-func (h *Handler) ListAdminMembers(w http.ResponseWriter, r *http.Request) {
+// ListAdministrators exactly except that the `role` param is ignored: non-admin
+// users have no admin roles by definition, so role-key filtering is meaningless.
+func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pool := h.postgres.Pool()
 	q := r.URL.Query()
-	// `role` is meaningless here — members hold no admin roles. Drop it so
+	// `role` is meaningless here — these users hold no admin roles. Drop it so
 	// buildUsersQuery does not attach a contradicting EXISTS clause.
 	q.Del("role")
 

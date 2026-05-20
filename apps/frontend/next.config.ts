@@ -36,6 +36,12 @@ const nextConfig: NextConfig = {
 			},
 		];
 	},
+	async redirects() {
+		return [
+			{ source: "/admin/members", destination: "/admin/users", permanent: true },
+			{ source: "/admin/members/:path*", destination: "/admin/users/:path*", permanent: true },
+		];
+	},
 	async headers() {
 		return [
 			{

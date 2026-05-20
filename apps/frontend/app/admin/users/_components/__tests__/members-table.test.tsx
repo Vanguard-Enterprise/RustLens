@@ -26,12 +26,15 @@ vi.mock("sonner", () => ({
 const bulkUser = vi.fn();
 const suspendUser = vi.fn();
 const unsuspendUser = vi.fn();
+const deleteUser = vi.fn();
 
 vi.mock("../../actions", () => ({
   suspendUserAction: (userId: string, reason: string) =>
     suspendUser(userId, reason),
   unsuspendUserAction: (userId: string, reason: string) =>
     unsuspendUser(userId, reason),
+  deleteUserAction: (userId: string, reason: string, typed: string) =>
+    deleteUser(userId, reason, typed),
   bulkUserAction: (
     action: string,
     userIds: string[],
@@ -47,6 +50,7 @@ beforeEach(() => {
   bulkUser.mockReset();
   suspendUser.mockReset();
   unsuspendUser.mockReset();
+  deleteUser.mockReset();
   routerPush.mockReset();
   routerRefresh.mockReset();
 });
@@ -82,7 +86,7 @@ function fixturePage(items: number) {
 }
 
 describe("MembersTable", () => {
-  it("renders one row per member with name and discord id", () => {
+  it("renders one row per member with name and discord handle", () => {
     render(
       <MembersTable
         initialQuery=""
@@ -95,8 +99,8 @@ describe("MembersTable", () => {
 
     expect(screen.getByText("User 0")).toBeInTheDocument();
     expect(screen.getByText("@user0")).toBeInTheDocument();
-    expect(screen.getByText("1000000000000000")).toBeInTheDocument();
     expect(screen.getByText("User 1")).toBeInTheDocument();
+    expect(screen.queryByText("1000000000000000")).not.toBeInTheDocument();
   });
 
   it("renders an empty-state row when there are no members", () => {
