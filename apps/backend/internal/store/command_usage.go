@@ -598,3 +598,35 @@ func (p *PostgresStore) ListCommandUsageTargets(
 	}
 	return out, rows.Err()
 }
+
+// ListCommandUsageTargetsForUser returns targets for a usage row scoped to
+// the owning app user. Used by the admin HTTP handler to prevent a caller
+// from reading targets for a usage row they don't reference by user in the
+// URL path. Returns an empty slice when no matching usage row exists for
+// that user — never an error.
+func (p *PostgresStore) ListCommandUsageTargetsForUser(
+	ctx context.Context,
+	appUserID string,
+	usageID int64,
+) ([]CommandUsageTargetRow, error) {
+	out := []CommandUsageTargetRow{}
+	rows, err := p.pool.Query(ctx, `
+		SELECT t.kind, t.snowflake, t.display_name, t.avatar_hash, t.relation
+		FROM command_usage_targets t
+		JOIN command_usage cu ON cu.id = t.command_usage_id
+		WHERE cu.id = $1 AND cu.app_user_id = $2
+		ORDER BY t.id ASC
+	`, usageID, appUserID)
+	if err != nil {
+		return out, fmt.Errorf("list targets for user: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t CommandUsageTargetRow
+		if err := rows.Scan(&t.Kind, &t.Snowflake, &t.DisplayName, &t.AvatarHash, &t.Relation); err != nil {
+			return out, fmt.Errorf("scan target for user: %w", err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}

@@ -288,6 +288,62 @@ func TestAdminGetCommandUsageTargets_ReturnsTargets(t *testing.T) {
 	}
 }
 
+func TestAdminGetCommandUsageTargets_ScopesByUser(t *testing.T) {
+	ctx := context.Background()
+	fx := newAdminCommandUsageFixture(t)
+
+	// Seed two distinct app users.
+	if _, err := fx.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_scope_a', '111000111000111001', 'scope_a', 'scope_a'),
+		       ('usr_scope_b', '222000222000222002', 'scope_b', 'scope_b')
+	`); err != nil {
+		t.Fatalf("seed users: %v", err)
+	}
+
+	// Insert a command_usage row owned by user B, with one target.
+	var userBUsageID int64
+	if err := fx.pool.QueryRow(ctx, `
+		INSERT INTO command_usage (
+			app_user_id, discord_id, interaction_type, command,
+			options, outcome, latency_ms
+		) VALUES ('usr_scope_b', '222000222000222002', 'command', 'announce', '{}'::jsonb, 'success', 3)
+		RETURNING id
+	`).Scan(&userBUsageID); err != nil {
+		t.Fatalf("seed usage for user B: %v", err)
+	}
+	if _, err := fx.pool.Exec(ctx, `
+		INSERT INTO command_usage_targets (command_usage_id, kind, snowflake, display_name, relation)
+		VALUES ($1, 'user', '333000333000333003', 'SomeUser', 'recipient')
+	`, userBUsageID); err != nil {
+		t.Fatalf("seed target for user B: %v", err)
+	}
+
+	// Hit the endpoint using user A's ID but user B's usageId — the IDOR path.
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/users/usr_scope_a/command-usage/%d/targets", userBUsageID), nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "usr_scope_a")
+	rctx.URLParams.Add("usageId", fmt.Sprintf("%d", userBUsageID))
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	fx.h.AdminGetCommandUsageTargets(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Targets []map[string]any `json:"targets"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Must be empty — user A does not own user B's usage row.
+	if len(resp.Targets) != 0 {
+		t.Fatalf("expected 0 targets (scope isolation), got %d: %v", len(resp.Targets), resp.Targets)
+	}
+}
+
 func TestAdminGetUserCommandUsage_PaginationParams(t *testing.T) {
 	ctx := context.Background()
 	fx := newAdminCommandUsageFixture(t)

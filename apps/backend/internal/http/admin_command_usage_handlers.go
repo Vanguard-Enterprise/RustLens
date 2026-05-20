@@ -142,15 +142,25 @@ func (h *Handler) AdminGetUserCommandUsageFilterOptions(w http.ResponseWriter, r
 }
 
 // AdminGetCommandUsageTargets: GET /api/app/admin/users/{id}/command-usage/{usageId}/targets
+//
+// Returns the full target list for a single usage row, scoped to the user
+// in the URL path. A usageId that exists but belongs to a different user
+// returns an empty list (not 404) so admins can't enumerate other users'
+// usage row IDs.
 func (h *Handler) AdminGetCommandUsageTargets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing id")
+		return
+	}
 	idStr := chi.URLParam(r, "usageId")
 	usageID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil || usageID <= 0 {
 		writeError(w, http.StatusBadRequest, "invalid usageId")
 		return
 	}
-	targets, err := h.postgres.ListCommandUsageTargets(ctx, usageID)
+	targets, err := h.postgres.ListCommandUsageTargetsForUser(ctx, id, usageID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load targets")
 		return
