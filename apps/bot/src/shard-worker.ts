@@ -404,8 +404,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleAdminChatInput(interaction)) {
-        return;
+      {
+        const result = await handleAdminChatInput(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       {

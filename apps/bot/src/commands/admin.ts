@@ -1,12 +1,18 @@
 import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient } from "../backend-client.js";
+import type { CommandUsageTarget } from "../backend-client.js";
 import { loadConfig } from "../config.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { createEmbed } from "../shared.js";
 import { resolveSteamInputErrorMessage } from "../steam-input.js";
 
 export const ADMIN_COMMAND_NAME = "admin";
+
+export type AdminHandlerResult = {
+  handled: true;
+  targets: CommandUsageTarget[];
+};
 
 const ADMIN_SET_STEAM_SUBCOMMAND_NAME = "setsteam";
 const ADMIN_REMOVE_STEAM_SUBCOMMAND_NAME = "removesteam";
@@ -134,7 +140,7 @@ export async function ensureAdminCommand(client: Client, shardID: number) {
   console.log("[bot] ensured /admin command (global)");
 }
 
-export async function handleAdminChatInput(interaction: ChatInputCommandInteraction) {
+export async function handleAdminChatInput(interaction: ChatInputCommandInteraction): Promise<false | true | AdminHandlerResult> {
   if (interaction.commandName !== ADMIN_COMMAND_NAME) {
     return false;
   }
@@ -212,7 +218,19 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
       interaction,
       buildAdminSteamEmbed("Steam ID updated", `Linked <@${targetUser.id}> to Steam ID \`${steamID}\` in this guild.`),
     );
-    return true;
+    return {
+      handled: true,
+      targets: [
+        {
+          kind:        "user",
+          snowflake:   targetUser.id,
+          displayName: targetUser.globalName ?? targetUser.username,
+          avatarHash:  targetUser.avatar ?? null,
+          relation:    "subject",
+        },
+        { kind: "steam", snowflake: steamID, relation: "subject" },
+      ],
+    };
   }
 
   if (subcommand === ADMIN_REMOVE_STEAM_SUBCOMMAND_NAME) {
@@ -241,7 +259,18 @@ export async function handleAdminChatInput(interaction: ChatInputCommandInteract
       interaction,
       buildAdminSteamEmbed("Steam ID removed", `Removed ${removed.length} guild Steam link${removed.length === 1 ? "" : "s"} for <@${targetUser.id}>.`),
     );
-    return true;
+    return {
+      handled: true,
+      targets: [
+        {
+          kind:        "user",
+          snowflake:   targetUser.id,
+          displayName: targetUser.globalName ?? targetUser.username,
+          avatarHash:  targetUser.avatar ?? null,
+          relation:    "subject",
+        },
+      ],
+    };
   }
 
   await replyEphemeralEmbed(
