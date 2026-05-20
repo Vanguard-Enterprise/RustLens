@@ -24,7 +24,7 @@ function makeData(overrides: Partial<Parameters<typeof UsageSection>[0]["data"]>
 describe("UsageSection", () => {
 	test("renders empty state when no items", () => {
 		render(<UsageSection userId={userId} data={makeData()} />);
-		expect(screen.getByText(/No bot usage in the last 90 days/i)).toBeInTheDocument();
+		expect(screen.getByText(/No bot usage matches the filters/i)).toBeInTheDocument();
 	});
 
 	test("renders summary strip", () => {
@@ -88,8 +88,9 @@ describe("UsageSection", () => {
 		});
 		render(<UsageSection userId={userId} data={data} />);
 
-		const row = screen.getByRole("button", { name: /player/i });
-		fireEvent.click(row);
+		// New layout: row is a TableRow (no button role), find the command code cell and click the row
+		const commandCell = screen.getByText("/player");
+		fireEvent.click(commandCell.closest("tr")!);
 		expect(screen.getByText(/"group_name"/)).toBeInTheDocument();
 		expect(screen.getByText(/"raid"/)).toBeInTheDocument();
 	});
@@ -118,8 +119,9 @@ describe("UsageSection", () => {
 		});
 		render(<UsageSection userId={userId} data={data} />);
 		expect(screen.getAllByText(/error/i)[0]).toBeInTheDocument();
-		// errorCode visible after expansion
-		fireEvent.click(screen.getByRole("button", { name: /track/i }));
+		// errorCode visible after expansion — click the row via the command code cell
+		const commandCell = screen.getByText("/track create");
+		fireEvent.click(commandCell.closest("tr")!);
 		expect(screen.getByText(/boom/)).toBeInTheDocument();
 	});
 });
