@@ -61,8 +61,8 @@ func TestRecordCommandUsage_HappyPath(t *testing.T) {
 
 	body := map[string]any{
 		"discordId":       "111222333444555666",
-		"guildId":         "g1",
-		"channelId":       "c1",
+		"guildId":         "222333444555666777",
+		"channelId":       "333444555666777888",
 		"interactionType": "command",
 		"command":         "track",
 		"subcommand":      "create",
