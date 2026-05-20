@@ -1,7 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-import { clearSession, getSessionToken } from "@/lib/session";
+import { getSessionToken } from "@/lib/session";
 import { noticeFromBackendError } from "@/lib/session-errors";
 
 const SESSION_INVALID_ERRORS = new Set([
@@ -296,9 +296,11 @@ async function backendFetch<T>(
 			errorCode &&
 			SESSION_INVALID_ERRORS.has(errorCode)
 		) {
-			await clearSession();
+			// Cookie mutation isn't allowed during RSC render, so route through
+			// the /session-expired GET handler which clears the cookie on the
+			// outgoing response before redirecting to /login.
 			const notice = noticeFromBackendError(errorCode);
-			redirect(`/login?notice=${notice}`);
+			redirect(`/session-expired?notice=${notice}`);
 		}
 		const error = new Error(message) as Error & { status?: number; errorCode?: string };
 		error.status = response.status;
