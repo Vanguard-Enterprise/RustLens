@@ -149,6 +149,56 @@ func TestCommandUsage_Summary(t *testing.T) {
 	}
 }
 
+func TestInsertCommandUsage_WithTargets(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	appUserID := "usr_targets1"
+	guildID := "111111111111111111"
+
+	// Clean up any leftover rows from prior runs (non-transactional test DB).
+	_, _ = s.pool.Exec(ctx, `DELETE FROM app_users WHERE id = 'usr_targets1'`)
+
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_targets1', '999999999999999999', 'targets_tester', 'targets_tester')
+	`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	displayBob := "bob"
+	avatarBob := "abcde"
+
+	err := s.InsertCommandUsage(ctx, CommandUsageInsert{
+		AppUserID:       appUserID,
+		DiscordID:       "222222222222222222",
+		GuildID:         &guildID,
+		InteractionType: "command",
+		Command:         "announce",
+		Outcome:         "success",
+		LatencyMs:       42,
+		Options:         []byte(`{}`),
+		Targets: []CommandUsageTargetInsert{
+			{Kind: "role", Snowflake: "333333333333333333", Relation: "scope"},
+			{Kind: "user", Snowflake: "444444444444444444", DisplayName: &displayBob, AvatarHash: &avatarBob, Relation: "recipient"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	var count int
+	if err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM command_usage_targets ct
+		JOIN command_usage cu ON cu.id = ct.command_usage_id
+		WHERE cu.app_user_id = $1
+	`, appUserID).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("want 2 target rows, got %d", count)
+	}
+}
+
 func TestCommandUsage_CascadeOnUserDelete(t *testing.T) {
 	ctx := context.Background()
 	s := newTestPostgres(t)

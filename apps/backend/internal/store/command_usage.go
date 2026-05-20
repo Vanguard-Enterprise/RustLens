@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+// MaxTargetsPerUsage caps how many command_usage_targets rows we persist for
+// a single command_usage row. Excess is dropped at write time.
+const MaxTargetsPerUsage = 500
+
 // CommandUsageInsert is the write-side input for a single command/interaction
 // invocation. AppUserID is a hard FK; the caller must resolve it before
 // calling InsertCommandUsage.
@@ -23,6 +27,25 @@ type CommandUsageInsert struct {
 	Outcome         string          // 'success' | 'error' | 'banned' | 'denied'
 	ErrorCode       *string
 	LatencyMs       int
+	Targets         []CommandUsageTargetInsert // capped at 500; excess silently dropped
+}
+
+// CommandUsageTargetInsert is one target row to associate with a usage row.
+type CommandUsageTargetInsert struct {
+	Kind        string  // 'user'|'role'|'channel'|'guild'|'steam'
+	Snowflake   string
+	DisplayName *string
+	AvatarHash  *string
+	Relation    string  // 'recipient'|'scope'|'subject'
+}
+
+// CommandUsageTargetRow is the read-side shape returned to handlers.
+type CommandUsageTargetRow struct {
+	Kind        string  `json:"kind"`
+	Snowflake   string  `json:"snowflake"`
+	DisplayName *string `json:"displayName"`
+	AvatarHash  *string `json:"avatarHash"`
+	Relation    string  `json:"relation"`
 }
 
 // CommandUsageRow is the read-side shape returned to handlers.
@@ -67,20 +90,46 @@ func (p *PostgresStore) InsertCommandUsage(ctx context.Context, row CommandUsage
 	if len(row.Options) == 0 || string(row.Options) == "null" {
 		row.Options = []byte("{}")
 	}
-	_, err := p.pool.Exec(ctx, `
+
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin command_usage tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var usageID int64
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO command_usage (
 			app_user_id, discord_id, guild_id, channel_id,
 			interaction_type, command, subcommand, target,
 			options, outcome, error_code, latency_ms
 		)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12)
+		RETURNING id
 	`,
 		row.AppUserID, row.DiscordID, row.GuildID, row.ChannelID,
 		row.InteractionType, row.Command, row.Subcommand, row.Target,
 		string(row.Options), row.Outcome, row.ErrorCode, row.LatencyMs,
-	)
-	if err != nil {
+	).Scan(&usageID); err != nil {
 		return fmt.Errorf("insert command_usage: %w", err)
+	}
+
+	targets := row.Targets
+	if len(targets) > MaxTargetsPerUsage {
+		targets = targets[:MaxTargetsPerUsage]
+	}
+	for _, t := range targets {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO command_usage_targets (
+				command_usage_id, kind, snowflake, display_name, avatar_hash, relation
+			) VALUES ($1,$2,$3,$4,$5,$6)
+		`, usageID, t.Kind, t.Snowflake, t.DisplayName, t.AvatarHash, t.Relation); err != nil {
+			return fmt.Errorf("insert command_usage_target: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit command_usage: %w", err)
 	}
 	return nil
 }
