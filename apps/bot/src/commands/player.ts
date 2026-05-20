@@ -23,6 +23,7 @@ import { hasProFeatureAccess, isWebsiteAdmin } from "../website-admin.js";
 export const PLAYER_COMMAND_NAME = "player";
 
 const PLAYER_SELECT_LINKED_CUSTOM_ID = "player:select:linked";
+const PLAYER_SELECT_DISCORD_CUSTOM_ID = "player:select:discord";
 
 const DISCORD_UNKNOWN_INTERACTION = 10062;
 
@@ -189,6 +190,10 @@ export async function handlePlayerChatInput(interaction: ChatInputCommandInterac
 }
 
 export async function handlePlayerSelectInteraction(interaction: StringSelectMenuInteraction) {
+  if (interaction.customId === PLAYER_SELECT_DISCORD_CUSTOM_ID) {
+    return handlePlayerDiscordSelectInteraction(interaction);
+  }
+
   if (interaction.customId !== PLAYER_SELECT_LINKED_CUSTOM_ID) {
     return false;
   }
@@ -203,7 +208,7 @@ export async function handlePlayerSelectInteraction(interaction: StringSelectMen
   }
 
   try {
-    await interaction.deferReply();
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   } catch (error) {
     if (isUnknownInteractionError(error)) {
       logExpiredInteraction("/player select", interaction.id, interaction.createdTimestamp);
@@ -240,6 +245,45 @@ export async function handlePlayerSelectInteraction(interaction: StringSelectMen
     embeds: [buildUserEmbed(account.steamId, profileResult.profile)],
     components: buildProfileButtons(account.steamId),
   });
+  return true;
+}
+
+async function handlePlayerDiscordSelectInteraction(interaction: StringSelectMenuInteraction) {
+  const discordId = interaction.values[0]?.trim();
+  if (!discordId || !/^\d{16,20}$/.test(discordId)) {
+    await interaction.reply({
+      content: "Invalid selection.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  try {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  } catch (error) {
+    if (isUnknownInteractionError(error)) {
+      logExpiredInteraction("/player discord select", interaction.id, interaction.createdTimestamp);
+      return true;
+    }
+    throw error;
+  }
+
+  if (!(await hasProFeatureAccess(interaction.user.id))) {
+    await interaction.editReply({ embeds: [buildProOnlyFeatureEmbed()] });
+    return true;
+  }
+
+  try {
+    const callerIsAdmin = await isWebsiteAdmin(interaction.user.id);
+    await runPlatformSyncSafely("discord", discordId);
+    const discordUser = await interaction.client.users.fetch(discordId);
+    const { embed, components } = await buildDiscordLinksEmbed(discordUser, callerIsAdmin);
+    await interaction.editReply({ embeds: [embed], components });
+  } catch (error) {
+    console.error("[bot] failed to load discord links from select", { discordId, error });
+    await interaction.editReply({ content: "Failed to look up that Discord user." });
+  }
+
   return true;
 }
 
@@ -482,8 +526,8 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       if (account?.steamId) {
         await runPlatformSyncSafely("steam", account.steamId);
       }
-      const embed = await buildBmOnlyLinksEmbed(bmId, await isWebsiteAdmin(interaction.user.id));
-      await interaction.editReply({ embeds: [embed] });
+      const { embed, components } = await buildBmOnlyLinksEmbed(bmId, await isWebsiteAdmin(interaction.user.id));
+      await interaction.editReply({ embeds: [embed], components });
     } catch (error) {
       console.error("[bot] failed to load bm links", error);
       await interaction.editReply({ content: "Failed to load links for this player." });
@@ -510,8 +554,8 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
 
     try {
       await runPlatformSyncSafely("steam", steamId);
-      const embed = await buildSteamLinksEmbed(steamId, await isWebsiteAdmin(interaction.user.id));
-      await interaction.editReply({ embeds: [embed] });
+      const { embed, components } = await buildSteamLinksEmbed(steamId, await isWebsiteAdmin(interaction.user.id));
+      await interaction.editReply({ embeds: [embed], components });
     } catch (error) {
       console.error("[bot] failed to load steam links", error);
       await interaction.editReply({ content: "Failed to load links for this player." });
@@ -585,7 +629,10 @@ async function ensureSteamAccountByBmIDSafely(bmId: string): Promise<SteamAccoun
   }
 }
 
-async function buildBmOnlyLinksEmbed(bmId: string, isAdmin: boolean): Promise<EmbedBuilder> {
+async function buildBmOnlyLinksEmbed(bmId: string, isAdmin: boolean): Promise<{
+  embed: EmbedBuilder;
+  components: ActionRowBuilder<StringSelectMenuBuilder>[];
+}> {
   const { backend, workerId } = getBackend();
   // Try to resolve a Steam linkage from the BM ID. If found, render the
   // standard links embed; otherwise return a graceful "no links" embed.
@@ -611,10 +658,13 @@ async function buildBmOnlyLinksEmbed(bmId: string, isAdmin: boolean): Promise<Em
     name: "What do these mean?",
     value: "> * No Steam linkage on file for this BattleMetrics player, so no Discord links could be found.",
   });
-  return embed;
+  return { embed, components: [] };
 }
 
-async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<EmbedBuilder> {
+async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<{
+  embed: EmbedBuilder;
+  components: ActionRowBuilder<StringSelectMenuBuilder>[];
+}> {
   const { backend, workerId } = getBackend();
 
   const [account, linksResponse] = await Promise.all([
@@ -666,7 +716,7 @@ async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean): Promise<
     });
   }
 
-  return embed;
+  return { embed, components: buildLinkedDiscordSelect(links, isAdmin) };
 }
 
 function partitionLinksByDiscord(links: readonly SteamDiscordLink[]) {
@@ -822,6 +872,48 @@ function buildLinkedAccountsSelect(
   return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)];
 }
 
+function buildLinkedDiscordSelect(
+  links: readonly SteamDiscordLink[],
+  isAdmin: boolean,
+): ActionRowBuilder<StringSelectMenuBuilder>[] {
+  const visibleLinks = filterVisibleLinks(links, isAdmin);
+  const winnerByDiscord = new Map<string, SteamDiscordLink>();
+  for (const link of visibleLinks) {
+    const existing = winnerByDiscord.get(link.discordId);
+    if (!existing) {
+      winnerByDiscord.set(link.discordId, link);
+      continue;
+    }
+    const upgrade =
+      (existing.type === "soft" && link.type === "hard") ||
+      (existing.type === link.type && link.createdAt > existing.createdAt);
+    if (upgrade) {
+      winnerByDiscord.set(link.discordId, link);
+    }
+  }
+
+  const recent = [...winnerByDiscord.values()]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 25);
+
+  if (recent.length === 0) {
+    return [];
+  }
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(PLAYER_SELECT_DISCORD_CUSTOM_ID)
+    .setPlaceholder("Look up a linked Discord account")
+    .addOptions(
+      recent.map((link) => ({
+        label: truncateOption(`${link.type === "hard" ? "Strong" : "Soft"}: ${link.discordId}`, 100),
+        value: link.discordId,
+        description: truncateOption(`${link.type === "hard" ? "Strong" : "Soft"} link`, 100),
+      })),
+    );
+
+  return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)];
+}
+
 function truncateOption(value: string, max: number) {
   if (value.length <= max) {
     return value;
@@ -928,6 +1020,7 @@ export function buildAnalyticsEmbed(analytics: SteamAnalytics) {
 export const __testables = {
   buildPrivateProfileEmbed,
   buildAnalyticsEmbed,
+  buildLinkedDiscordSelect,
   filterVisibleLinks,
   isBmPrivateProfileError,
 };
