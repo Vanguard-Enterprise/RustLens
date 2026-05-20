@@ -488,8 +488,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleTrackChatInput(interaction)) {
-        return;
+      {
+        const result = await handleTrackChatInput(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       await handleSettingsChatInput(interaction);
@@ -544,8 +548,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleTransferModalSubmit(interaction)) {
-        return;
+      {
+        const result = await handleTransferModalSubmit(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       if (await handleTrackModalSubmit(interaction)) {
@@ -571,8 +579,12 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      if (await handleCreateButtonInteraction(interaction)) {
-        return;
+      {
+        const result = await handleCreateButtonInteraction(interaction);
+        if (result) {
+          if (result !== true) recordTargets = result.targets;
+          return;
+        }
       }
 
       if (await handlePlayerButtonInteraction(interaction)) {
