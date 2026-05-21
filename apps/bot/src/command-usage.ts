@@ -3,6 +3,7 @@ import { ChannelType, type Interaction } from "discord.js";
 import { BackendClient, type CommandUsagePayload, type CommandUsageTarget } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { getOrAssignCorrelationId, getParentCorrelation } from "./correlation.js";
+import { logger } from "./logger.js";
 
 export type Outcome = "success" | "error" | "banned" | "denied";
 
@@ -200,13 +201,7 @@ export function recordCommandUsage(
   getBackend()
     .recordCommandUsage(getWorkerID(), payload)
     .catch((err: unknown) => {
-      console.warn(JSON.stringify({
-        level:   "warn",
-        message: "[bot] recordCommandUsage failed",
-        userId:  payload.discordId,
-        command: payload.command,
-        error:   String(err),
-      }));
+      logger.warn({ userId: payload.discordId, command: payload.command, error: err }, "recordCommandUsage failed");
     });
 }
 

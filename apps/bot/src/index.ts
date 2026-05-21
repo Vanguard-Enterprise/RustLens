@@ -4,6 +4,7 @@ import { loadConfig } from "./config.js";
 import { ShardRuntime } from "./shard-runtime.js";
 import { computeShardDelta } from "./shards.js";
 import type { WorkerStatsMessage } from "./shard-stats.js";
+import { logger } from "./logger.js";
 
 function isWorkerStatsMessage(value: unknown): value is WorkerStatsMessage {
   return (
@@ -44,7 +45,7 @@ async function main() {
   const register = await backend.register(config.workerId);
   let currentTargetShards = register.targetShards;
 
-  console.log(`[bot] registered worker=${config.workerId} targetShards=${register.targetShards}`);
+  logger.info({ workerId: config.workerId, targetShards: register.targetShards }, "registered worker");
 
   const reconcile = async () => {
     const assignment = await backend.assignments(config.workerId);
@@ -83,11 +84,11 @@ async function main() {
   await heartbeat();
 
   const reconcileTimer = setInterval(() => {
-    reconcile().catch((error) => console.error("[bot] reconcile failed", error));
+    reconcile().catch((error) => logger.error({ error }, "reconcile failed"));
   }, config.reconcileIntervalMs);
 
   const heartbeatTimer = setInterval(() => {
-    heartbeat().catch((error) => console.error("[bot] heartbeat failed", error));
+    heartbeat().catch((error) => logger.error({ error }, "heartbeat failed"));
   }, config.heartbeatIntervalMs);
 
   const shutdown = async () => {
@@ -97,7 +98,7 @@ async function main() {
     try {
       await backend.release(config.workerId);
     } catch (error) {
-      console.error("[bot] release failed", error);
+      logger.error({ error }, "release failed");
     }
     process.exit(0);
   };
@@ -107,6 +108,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("[bot] fatal error", error);
+  logger.error({ error }, "fatal error");
   process.exit(1);
 });
