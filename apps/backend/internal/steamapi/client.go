@@ -22,6 +22,7 @@ var (
 	ErrUnsupportedProfileInput = errors.New("input must be a 17-digit Steam ID or a supported steamcommunity.com profile URL")
 	ErrSteamAPIKeyRequired     = errors.New("steam api key is required to resolve vanity URLs")
 	ErrVanityNotFound          = errors.New("steam vanity URL could not be resolved")
+	ErrFriendListPrivate       = errors.New("steam friend list is private")
 )
 
 type Client struct {
@@ -294,6 +295,65 @@ func (c *Client) GetOwnedGames(ctx context.Context, steamID string) ([]OwnedGame
 	}
 
 	return games, nil
+}
+
+func (c *Client) GetFriendList(ctx context.Context, steamID string) ([]string, error) {
+	if !steamIDPattern.MatchString(strings.TrimSpace(steamID)) {
+		return nil, ErrUnsupportedProfileInput
+	}
+	if c.apiKey == "" {
+		return nil, ErrSteamAPIKeyRequired
+	}
+
+	endpoint, err := url.Parse(c.baseURL + "/ISteamUser/GetFriendList/v1/")
+	if err != nil {
+		return nil, err
+	}
+
+	query := endpoint.Query()
+	query.Set("key", c.apiKey)
+	query.Set("steamid", steamID)
+	query.Set("relationship", "friend")
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
+	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusUnauthorized {
+		return nil, ErrFriendListPrivate
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("steam returned status %d", response.StatusCode)
+	}
+
+	var payload struct {
+		FriendsList struct {
+			Friends []struct {
+				SteamID string `json:"steamid"`
+			} `json:"friends"`
+		} `json:"friendslist"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	friends := make([]string, 0, len(payload.FriendsList.Friends))
+	for _, friend := range payload.FriendsList.Friends {
+		friends = append(friends, friend.SteamID)
+	}
+	return friends, nil
 }
 
 func (c *Client) GetPlayerBans(ctx context.Context, steamIDs []string) ([]PlayerBan, error) {

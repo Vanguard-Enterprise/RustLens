@@ -34,9 +34,11 @@ export const VIEW_COMMAND_NAME = "view";
 const VIEW_USER_SUBCOMMAND = "user";
 const VIEW_ALL_SUBCOMMAND = "all";
 const VIEW_NOSTEAM_SUBCOMMAND = "nosteam";
+const VIEW_NOTADDED_SUBCOMMAND = "notadded";
 const VIEW_ALL_PAGE_SIZE = 20;
 const VIEW_ALL_PAGE_CUSTOM_ID_PREFIX = "view:all:page:";
 const VIEW_NOSTEAM_RAW_CUSTOM_ID_PREFIX = "view:nosteam:raw:";
+const VIEW_NOTADDED_RAW_CUSTOM_ID_PREFIX = "view:notadded:raw:";
 
 const discordMentionPattern = /^<@!?(\d{16,20})>$/;
 const VIEW_EMOJIS = {
@@ -94,6 +96,14 @@ const viewCommand = new SlashCommandBuilder()
   )
   .addSubcommand((sub) =>
     sub.setName(VIEW_NOSTEAM_SUBCOMMAND).setDescription("List guild users without a linked Steam account"),
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName(VIEW_NOTADDED_SUBCOMMAND)
+      .setDescription("List guild users not in the provided user's Steam friend list")
+      .addUserOption((opt) =>
+        opt.setName("discord_user").setDescription("Anchor user whose Steam friend list to check against").setRequired(true),
+      ),
   );
 
 let _backend: BackendClient | undefined;
@@ -685,6 +695,11 @@ export async function handleViewChatInput(interaction: ChatInputCommandInteracti
     return true;
   }
 
+  if (subcommand === VIEW_NOTADDED_SUBCOMMAND) {
+    await handleViewNotAdded(interaction);
+    return true;
+  }
+
   return true;
 }
 
@@ -768,6 +783,12 @@ export async function handleViewButtonInteraction(interaction: ButtonInteraction
   const rawParsed = parseNoSteamRawCustomId(interaction.customId);
   if (rawParsed) {
     await handleViewNoSteamRawButton(interaction, rawParsed.ownerId);
+    return true;
+  }
+
+  const notAddedRawParsed = parseNotAddedRawCustomId(interaction.customId);
+  if (notAddedRawParsed) {
+    await handleViewNotAddedRawButton(interaction, notAddedRawParsed.ownerId, notAddedRawParsed.anchorDiscordId);
     return true;
   }
 
@@ -928,6 +949,165 @@ async function handleViewNoSteamRawButton(interaction: ButtonInteraction, ownerI
   }
 }
 
+function buildNotAddedEmbed(anchorDiscordId: string, userIds: readonly string[]) {
+  let description = userIds.length > 0
+    ? userIds.map((userId) => `> * <@${userId}>`).join("\n")
+    : "> * None";
+  if (description.length > 4096) {
+    description = `${description.slice(0, 4093)}...`;
+  }
+  return createEmbed()
+    .setTitle("Users not in friend list")
+    .setDescription(`Checked against <@${anchorDiscordId}>'s Steam friend list.\n\n${description}`);
+}
+
+function buildNotAddedRawButtons(ownerId: string, anchorDiscordId: string) {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${VIEW_NOTADDED_RAW_CUSTOM_ID_PREFIX}${anchorDiscordId}:${ownerId}`)
+        .setLabel("View Raw")
+        .setEmoji(VIEW_EMOJIS.clipboard)
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+function parseNotAddedRawCustomId(customId: string) {
+  if (!customId.startsWith(VIEW_NOTADDED_RAW_CUSTOM_ID_PREFIX)) {
+    return null;
+  }
+  const remainder = customId.slice(VIEW_NOTADDED_RAW_CUSTOM_ID_PREFIX.length);
+  const separatorIndex = remainder.indexOf(":");
+  if (separatorIndex === -1) {
+    return null;
+  }
+  const anchorDiscordId = remainder.slice(0, separatorIndex);
+  const ownerId = remainder.slice(separatorIndex + 1);
+  if (anchorDiscordId.length === 0 || ownerId.length === 0) {
+    return null;
+  }
+  return { anchorDiscordId, ownerId };
+}
+
+async function computeNotAddedUserIds(
+  guildId: string,
+  guild: import("discord.js").Guild,
+  anchorDiscordId: string,
+): Promise<{ ok: true; missingUserIds: string[]; anchorSteamId: string } | { ok: false; error: string }> {
+  const backend = getBackend();
+  const workerId = getWorkerID();
+
+  const anchorLinks = await backend.listGuildLinksByDiscord(workerId, guildId, anchorDiscordId);
+  if (anchorLinks.items.length === 0) {
+    return { ok: false, error: `<@${anchorDiscordId}> has no linked Steam account in this guild.` };
+  }
+  const anchorSteamId = anchorLinks.items[0].steamId;
+
+  const [members, links, friends] = await Promise.all([
+    getGuildMembers(guild),
+    backend.listGuildLinks(workerId, guildId),
+    backend.getSteamFriends(workerId, anchorSteamId),
+  ]);
+
+  if (friends.private) {
+    return {
+      ok: false,
+      error: `<@${anchorDiscordId}>'s Steam friend list is private — they need to make it public for this check to work.`,
+    };
+  }
+
+  const friendSet = new Set(friends.items);
+  const linkByDiscordId = new Map<string, string>();
+  for (const link of links.items) {
+    linkByDiscordId.set(link.discordId, link.steamId);
+  }
+
+  const missingUserIds = [...members.values()]
+    .filter((member) => !member.user.bot)
+    .filter((member) => member.id !== anchorDiscordId)
+    .sort(sortMembers)
+    .filter((member) => {
+      const steamId = linkByDiscordId.get(member.id);
+      if (!steamId) {
+        return false;
+      }
+      return !friendSet.has(steamId);
+    })
+    .map((member) => member.id);
+
+  return { ok: true, missingUserIds, anchorSteamId };
+}
+
+async function handleViewNotAdded(interaction: ChatInputCommandInteraction) {
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
+
+  const anchorUser = interaction.options.getUser("discord_user", true);
+  const guildId = interaction.guildId!;
+
+  const result = await computeNotAddedUserIds(guildId, interaction.guild!, anchorUser.id);
+  if (!result.ok) {
+    await interaction.editReply({ content: result.error });
+    return;
+  }
+
+  await interaction.editReply({
+    embeds: [buildNotAddedEmbed(anchorUser.id, result.missingUserIds)],
+    components: result.missingUserIds.length > 0 ? buildNotAddedRawButtons(interaction.user.id, anchorUser.id) : [],
+  });
+}
+
+async function handleViewNotAddedRawButton(
+  interaction: ButtonInteraction,
+  ownerId: string,
+  anchorDiscordId: string,
+) {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) {
+    await interaction.reply({
+      content: "This button can only be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (interaction.user.id !== ownerId) {
+    await interaction.reply({
+      content: "Only the user who ran /view notadded can use this button.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!(await hasGuildAdminAccess(interaction))) {
+    await interaction.reply({
+      content: "Only the configured admin role or administrators can use /view.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const result = await computeNotAddedUserIds(interaction.guildId, interaction.guild, anchorDiscordId);
+  if (!result.ok) {
+    await interaction.editReply({ content: result.error });
+    return;
+  }
+
+  if (result.missingUserIds.length === 0) {
+    await interaction.editReply({ content: "No users missing from friend list." });
+    return;
+  }
+
+  const chunks = chunkRawMentionsCodeBlocks(result.missingUserIds);
+  await interaction.editReply({ content: chunks[0] });
+  for (let index = 1; index < chunks.length; index += 1) {
+    await interaction.followUp({ content: chunks[index], flags: MessageFlags.Ephemeral });
+  }
+}
+
 export const __testables = {
   buildUserEmbed,
   buildProfileButtons,
@@ -942,4 +1122,6 @@ export const __testables = {
   calculateRecentBreaksRisk,
   normalizeDiscordIdentifier,
   parseViewAllPageCustomId,
+  parseNotAddedRawCustomId,
+  buildNotAddedEmbed,
 };

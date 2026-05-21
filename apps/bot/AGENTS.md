@@ -31,7 +31,7 @@ src/
     summon.ts           # /summon {scope} — move voice-connected members of a role (or @everyone) into invoker's VC (admin-only)
     announce.ts         # /announce {scope} {message} — DM an embed announcement to all members of a role except the invoker (admin-only)
     analyze.ts          # /analyze offline {identifier} and /analyze server {server} {timeframe} analytics commands
-    view.ts             # /view user {discord_user|identifier} and /view all — view guild-linked steam/discord accounts; identifier accepts Steam IDs, supported steamcommunity.com profile URLs, BattleMetrics IDs, and Discord IDs
+    view.ts             # /view user {discord_user|identifier}, /view all, /view nosteam, and /view notadded {discord_user} — view guild-linked steam/discord accounts; identifier accepts Steam IDs, supported steamcommunity.com profile URLs, BattleMetrics IDs, and Discord IDs; notadded checks against the anchor user's Steam friend list (requires public friend list)
   builders/             # Custom v2 modal component builders
 ```
 

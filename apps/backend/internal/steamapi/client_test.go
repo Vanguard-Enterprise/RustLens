@@ -164,6 +164,54 @@ func TestGetPlayerSummaryParsesCommunityVisibilityState(t *testing.T) {
 	}
 }
 
+func TestGetFriendList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ISteamUser/GetFriendList/v1/" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("key"); got != "steam-key" {
+			t.Fatalf("unexpected key: %s", got)
+		}
+		if got := r.URL.Query().Get("steamid"); got != "76561198000000001" {
+			t.Fatalf("unexpected steamid: %s", got)
+		}
+		if got := r.URL.Query().Get("relationship"); got != "friend" {
+			t.Fatalf("unexpected relationship: %s", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"friendslist":{"friends":[{"steamid":"76561198000000002","relationship":"friend","friend_since":1234567890},{"steamid":"76561198000000003","relationship":"friend","friend_since":1234567891}]}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("steam-key", nil)
+	client.baseURL = server.URL
+
+	friends, err := client.GetFriendList(context.Background(), "76561198000000001")
+	if err != nil {
+		t.Fatalf("GetFriendList returned error: %v", err)
+	}
+	if len(friends) != 2 {
+		t.Fatalf("GetFriendList returned %d friends, want 2", len(friends))
+	}
+	if friends[0] != "76561198000000002" || friends[1] != "76561198000000003" {
+		t.Fatalf("unexpected friends: %v", friends)
+	}
+}
+
+func TestGetFriendListPrivateProfile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client := NewClient("steam-key", nil)
+	client.baseURL = server.URL
+
+	if _, err := client.GetFriendList(context.Background(), "76561198000000001"); err != ErrFriendListPrivate {
+		t.Fatalf("GetFriendList error = %v, want ErrFriendListPrivate", err)
+	}
+}
+
 type staticProvider struct {
 	client   *http.Client
 	endpoint string

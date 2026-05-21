@@ -2878,6 +2878,34 @@ func (h *Handler) GetBmPlayerProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, steamCache, updatedBm))
 }
 
+func (h *Handler) GetSteamFriends(w http.ResponseWriter, r *http.Request) {
+	steamID := chi.URLParam(r, "steamID")
+	if steamID == "" || !steamIDPattern.MatchString(steamID) {
+		writeError(w, http.StatusBadRequest, "steamID must be a 17-digit number")
+		return
+	}
+
+	friends, err := h.steamClient.GetFriendList(r.Context(), steamID)
+	if errors.Is(err, steamapi.ErrFriendListPrivate) {
+		writeJSON(w, http.StatusOK, map[string]any{"items": []string{}, "private": true})
+		return
+	}
+	if errors.Is(err, steamapi.ErrSteamAPIKeyRequired) {
+		writeError(w, http.StatusServiceUnavailable, "steam api key is not configured")
+		return
+	}
+	if err != nil {
+		log.Printf("[backend] GetSteamFriends error for %s: %v", steamID, err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch friend list")
+		return
+	}
+
+	if friends == nil {
+		friends = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": friends, "private": false})
+}
+
 func (h *Handler) ListLinksBySteamID(w http.ResponseWriter, r *http.Request) {
 	steamID := chi.URLParam(r, "steamID")
 	if steamID == "" || !steamIDPattern.MatchString(steamID) {

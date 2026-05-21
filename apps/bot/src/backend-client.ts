@@ -232,6 +232,11 @@ export type ResolveSteamIDResponse = {
   steamId: string;
 };
 
+export type SteamFriendListResponse = {
+  items: string[];
+  private: boolean;
+};
+
 export type GuildSteamDiscordLink = {
   guildId: string;
   discordId: string;
@@ -989,6 +994,16 @@ export class BackendClient {
       workerId,
       `/api/internal/bot/setup/steam/${steamId}/analytics`,
       "GET",
+    );
+  }
+
+  getSteamFriends(workerId: string, steamId: string) {
+    return this.call<SteamFriendListResponse>(
+      workerId,
+      `/api/internal/bot/setup/steam/${steamId}/friends`,
+      "GET",
+      undefined,
+      30_000,
     );
   }
 

@@ -221,6 +221,7 @@ func NewRouter(
 		r.Post("/users/ensure", handler.EnsureAppUser)
 		r.Post("/command-usage", handler.RecordCommandUsage)
 		r.Get("/steam/{steamID}", handler.GetSteamAccount)
+		r.Get("/steam/{steamID}/friends", handler.GetSteamFriends)
 		r.Get("/steam/{steamID}/links", handler.ListLinksBySteamID)
 		r.Delete("/steam/{steamID}/links/{discordID}/soft", handler.DeleteSoftLink)
 		r.Get("/discord/{discordID}/links", handler.ListLinksByDiscordID)
