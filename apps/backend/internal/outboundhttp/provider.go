@@ -1,6 +1,7 @@
 package outboundhttp
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 var ErrProxyEndpointsRequired = errors.New("proxy endpoints are required when proxying is enabled")
@@ -189,8 +192,11 @@ func (p *Provider) recordProxyResult(redactedEndpoint string, success bool) {
 	}
 	p.mu.Unlock()
 
-	if shouldDisable && callback != nil {
-		go callback(redactedEndpoint)
+	if shouldDisable {
+		autoDisabledCounter.Add(context.Background(), 1, metric.WithAttributes(attribute.String("target", classifyEndpoint(redactedEndpoint))))
+		if callback != nil {
+			go callback(redactedEndpoint)
+		}
 	}
 }
 

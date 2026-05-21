@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // MaxConnectionsPerUser is the cap a single userID may have open at once.
@@ -63,6 +66,8 @@ func (h *Hub) Subscribe(ctx context.Context, userID string) (<-chan Event, func(
 // Publish delivers e to all subscribers of userID. Never blocks; if a
 // subscriber's buffer is full the oldest event is dropped.
 func (h *Hub) Publish(userID string, e Event) {
+	publishedCounter.Add(context.Background(), 1, metric.WithAttributes(attribute.String("channel", e.Type)))
+
 	h.mu.Lock()
 	chans := make([]chan Event, len(h.subs[userID]))
 	copy(chans, h.subs[userID])

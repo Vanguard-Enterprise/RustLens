@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -53,6 +56,7 @@ func (l *Limiter) Consume(ctx context.Context, key string, cfg Config) (Result, 
 		return Result{}, fmt.Errorf("ratelimit: pttl: %w", err)
 	}
 	if ttl > 0 {
+		rejectionCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("bucket", key)))
 		return Result{Allowed: false, RetryAfterSeconds: secondsCeil(ttl)}, nil
 	}
 
@@ -81,6 +85,7 @@ func (l *Limiter) Consume(ctx context.Context, key string, cfg Config) (Result, 
 	if err := l.rdb.Set(ctx, cooldownKey, "1", cooldown).Err(); err != nil {
 		return Result{}, fmt.Errorf("ratelimit: set cooldown: %w", err)
 	}
+	rejectionCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("bucket", key)))
 	return Result{
 		Allowed:           false,
 		RetryAfterSeconds: secondsCeil(cooldown),
