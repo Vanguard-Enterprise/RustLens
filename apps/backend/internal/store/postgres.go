@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -113,14 +112,6 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 
 	if _, err := p.pool.Exec(ctx, `
 		CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
-		CREATE TABLE IF NOT EXISTS bot_worker_events (
-			id BIGSERIAL PRIMARY KEY,
-			worker_id TEXT NOT NULL,
-			event_type TEXT NOT NULL,
-			payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		);
 
 		CREATE TABLE IF NOT EXISTS guild_settings (
 			guild_id TEXT PRIMARY KEY,
@@ -1057,21 +1048,13 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create command_usage_targets table: %w", err)
 	}
 
-	return nil
-}
-
-func (p *PostgresStore) InsertWorkerEvent(ctx context.Context, workerID string, eventType string, payload any) error {
-	encoded, err := json.Marshal(payload)
-	if err != nil {
+	if err := applyMigration(ctx, p.pool, 1, "drop_bot_worker_events",
+		`DROP TABLE IF EXISTS bot_worker_events;`,
+	); err != nil {
 		return err
 	}
 
-	_, err = p.pool.Exec(ctx, `
-		INSERT INTO bot_worker_events (worker_id, event_type, payload)
-		VALUES ($1, $2, $3::jsonb)
-	`, workerID, eventType, string(encoded))
-
-	return err
+	return nil
 }
 
 func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (GuildSettings, error) {

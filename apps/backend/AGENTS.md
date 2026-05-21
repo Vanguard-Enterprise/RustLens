@@ -14,18 +14,6 @@ This file provides backend-specific guidance. It supplements the root `AGENTS.md
 
 Auto-migrated at startup via `store.EnsureSchema()` (no migration tool). All IDs stored as `TEXT` (Discord snowflakes).
 
-### `bot_worker_events`
-
-Append-only log of shard worker lifecycle events.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | `BIGSERIAL` | PK |
-| `worker_id` | `TEXT NOT NULL` | |
-| `event_type` | `TEXT NOT NULL` | |
-| `payload` | `JSONB NOT NULL DEFAULT '{}'` | |
-| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
-
 ### `guild_settings`
 
 Per-guild bot settings for logs, the tracked-users category, command authorization, and alert pings.

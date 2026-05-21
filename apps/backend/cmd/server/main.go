@@ -90,7 +90,7 @@ func main() {
 		log.Fatalf("direct outbound init failed: %v", err)
 	}
 
-	shardService := shards.NewService(redisStore, postgresStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
+	shardService := shards.NewService(redisStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
 	bmMatchClient := bmmatch.NewClient(cfg.BMMatchURL, cfg.BMMatchToken, 10*time.Second)
 	platformSyncClient := platformsync.NewClient(cfg.PlatformSyncToken, 10*time.Second)
 	eventsHub := events.NewHub()
