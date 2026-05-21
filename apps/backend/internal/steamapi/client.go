@@ -140,6 +140,7 @@ func (c *Client) resolveVanityURL(ctx context.Context, vanity string) (string, e
 
 	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
 	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+	outboundhttp.WithTarget(ctx, "steam")
 
 	response, err := httpClient.Do(req)
 	if err != nil {
@@ -195,6 +196,7 @@ func (c *Client) GetPlayerSummary(ctx context.Context, steamID string) (PlayerSu
 
 	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
 	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+	outboundhttp.WithTarget(ctx, "steam")
 
 	response, err := httpClient.Do(req)
 	if err != nil {
@@ -261,6 +263,7 @@ func (c *Client) GetOwnedGames(ctx context.Context, steamID string) ([]OwnedGame
 
 	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
 	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+	outboundhttp.WithTarget(ctx, "steam")
 
 	response, err := httpClient.Do(req)
 	if err != nil {
@@ -324,6 +327,7 @@ func (c *Client) GetFriendList(ctx context.Context, steamID string) ([]string, e
 
 	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
 	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+	outboundhttp.WithTarget(ctx, "steam")
 
 	response, err := httpClient.Do(req)
 	if err != nil {
@@ -391,6 +395,7 @@ func (c *Client) GetPlayerBans(ctx context.Context, steamIDs []string) ([]Player
 
 	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
 	log.Printf("[steamapi] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+	outboundhttp.WithTarget(ctx, "steam")
 
 	response, err := httpClient.Do(req)
 	if err != nil {

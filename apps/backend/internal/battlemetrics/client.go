@@ -166,6 +166,7 @@ func (c *Client) FetchServerPlayers(ctx context.Context, serverID string) ([]Pla
 
 	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
 	log.Printf("[battlemetrics] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+	outboundhttp.WithTarget(ctx, "battlemetrics")
 
 	response, err := httpClient.Do(req)
 	if err != nil {
@@ -232,6 +233,7 @@ func (c *Client) FetchPlayerProfile(ctx context.Context, playerID string) (Playe
 
 	httpClient, proxyEndpoint, proxied := c.provider.Prepare()
 	log.Printf("[battlemetrics] sending request host=%s proxied=%t proxy=%q", endpoint.Host, proxied, outboundhttp.RedactProxyEndpoint(proxyEndpoint))
+	outboundhttp.WithTarget(ctx, "battlemetrics")
 
 	response, err := httpClient.Do(req)
 	if err != nil {

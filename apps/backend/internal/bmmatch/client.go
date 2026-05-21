@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"rustlens/backend/internal/outboundhttp"
 )
 
 var (
@@ -77,6 +79,7 @@ func (c *Client) lookup(ctx context.Context, path string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/json")
 
+	outboundhttp.WithTarget(ctx, "bmmatch")
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return "", err

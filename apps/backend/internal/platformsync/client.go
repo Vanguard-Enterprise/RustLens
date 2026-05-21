@@ -38,6 +38,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"rustlens/backend/internal/outboundhttp"
 )
 
 var (
@@ -102,6 +104,7 @@ func (c *Client) Lookup(ctx context.Context, id string) (Lookup, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 
+	outboundhttp.WithTarget(ctx, "platformsync")
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return Lookup{}, err

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 var ErrProxyEndpointsRequired = errors.New("proxy endpoints are required when proxying is enabled")
@@ -54,7 +56,14 @@ func (t proxyStatsTransport) RoundTrip(req *http.Request) (*http.Response, error
 }
 
 func NewProvider(enabled bool, endpoints []string, timeout time.Duration) (*Provider, error) {
-	direct := &http.Client{Timeout: timeout}
+	direct := &http.Client{
+		Timeout: timeout,
+		Transport: otelhttp.NewTransport(http.DefaultTransport,
+			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+				return r.Method + " " + r.URL.Host
+			}),
+		),
+	}
 	provider := &Provider{
 		enabled:      enabled,
 		direct:       direct,
@@ -96,16 +105,21 @@ func (p *Provider) buildProxyClients(enabled bool, endpoints []string) ([]proxyC
 		transport.Proxy = http.ProxyURL(proxyURL)
 		redactedEndpoint := RedactProxyEndpoint(proxyURL.String())
 
+		statsTransport := proxyStatsTransport{
+			base:             transport,
+			redactedEndpoint: redactedEndpoint,
+			record:           p.recordProxyResult,
+		}
 		proxies = append(proxies, proxyClient{
 			endpoint:         proxyURL.String(),
 			redactedEndpoint: redactedEndpoint,
 			client: &http.Client{
 				Timeout: p.timeout,
-				Transport: proxyStatsTransport{
-					base:             transport,
-					redactedEndpoint: redactedEndpoint,
-					record:           p.recordProxyResult,
-				},
+				Transport: otelhttp.NewTransport(statsTransport,
+					otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+						return r.Method + " " + r.URL.Host
+					}),
+				),
 			},
 		})
 	}
