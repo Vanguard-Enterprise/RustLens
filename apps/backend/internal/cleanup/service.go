@@ -9,8 +9,10 @@ package cleanup
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
+
+	"rustlens/backend/internal/observability"
 )
 
 // Store is the subset of *store.PostgresStore the cleanup service needs.
@@ -87,20 +89,29 @@ func (s *Service) runOnce(ctx context.Context) {
 	now := time.Now()
 
 	if rows, err := s.store.PurgeWipeReactsBefore(ctx, now.Add(-s.cfg.WipeReactRetention)); err != nil {
-		log.Printf("[backend] cleanup: purge wipe reacts failed: %v", err)
+		observability.Logger(ctx).ErrorContext(ctx, "cleanup: purge wipe reacts failed",
+			slog.Any("error", err))
 	} else if rows > 0 {
-		log.Printf("[backend] cleanup: purged %d wipe react rows older than %s", rows, s.cfg.WipeReactRetention)
+		observability.Logger(ctx).InfoContext(ctx, "cleanup: purged wipe react rows",
+			slog.Int64("rows", rows),
+			slog.Duration("retention", s.cfg.WipeReactRetention))
 	}
 
 	if rows, err := s.store.PurgeTrackAnalyticsSessionsCacheBefore(ctx, now.Add(-s.cfg.AnalyticsCacheRetention)); err != nil {
-		log.Printf("[backend] cleanup: purge analytics cache failed: %v", err)
+		observability.Logger(ctx).ErrorContext(ctx, "cleanup: purge analytics cache failed",
+			slog.Any("error", err))
 	} else if rows > 0 {
-		log.Printf("[backend] cleanup: purged %d analytics cache rows older than %s", rows, s.cfg.AnalyticsCacheRetention)
+		observability.Logger(ctx).InfoContext(ctx, "cleanup: purged analytics cache rows",
+			slog.Int64("rows", rows),
+			slog.Duration("retention", s.cfg.AnalyticsCacheRetention))
 	}
 
 	if rows, err := s.store.PurgeCommandUsageBefore(ctx, now.Add(-s.cfg.CommandUsageRetention)); err != nil {
-		log.Printf("[backend] cleanup: purge command usage failed: %v", err)
+		observability.Logger(ctx).ErrorContext(ctx, "cleanup: purge command usage failed",
+			slog.Any("error", err))
 	} else if rows > 0 {
-		log.Printf("[backend] cleanup: purged %d command usage rows older than %s", rows, s.cfg.CommandUsageRetention)
+		observability.Logger(ctx).InfoContext(ctx, "cleanup: purged command usage rows",
+			slog.Int64("rows", rows),
+			slog.Duration("retention", s.cfg.CommandUsageRetention))
 	}
 }
