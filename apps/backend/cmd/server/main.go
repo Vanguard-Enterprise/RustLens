@@ -110,6 +110,7 @@ func main() {
 	}
 
 	shardService := shards.NewService(redisStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
+	shards.RegisterObservableGauges(shardService)
 	bmMatchClient := bmmatch.NewClient(cfg.BMMatchURL, cfg.BMMatchToken, 10*time.Second)
 	platformSyncClient := platformsync.NewClient(cfg.PlatformSyncToken, 10*time.Second)
 	eventsHub := events.NewHub()

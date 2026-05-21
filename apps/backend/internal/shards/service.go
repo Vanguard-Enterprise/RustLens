@@ -89,6 +89,8 @@ func (s *Service) Heartbeat(ctx context.Context, workerID string, shardIDs []int
 		}
 	}
 
+	// Record age as 0: the heartbeat just arrived so it is maximally fresh.
+	heartbeatAgeHist.Record(ctx, 0)
 	return nil
 }
 
@@ -120,6 +122,8 @@ func (s *Service) Assignments(ctx context.Context, workerID string) ([]int, int,
 			return nil, 0, err
 		}
 	}
+	// All lease writes succeeded — count this as a completed rebalance.
+	rebalanceCounter.Add(ctx, 1)
 
 	current, err := s.leases.CurrentAssignments(ctx)
 	if err != nil {
@@ -129,6 +133,21 @@ func (s *Service) Assignments(ctx context.Context, workerID string) ([]int, int,
 	owned := current[workerID]
 	sort.Ints(owned)
 	return owned, s.totalShards, nil
+}
+
+// AssignedCounts returns the number of shards currently assigned to each
+// active worker, keyed by worker ID.
+func (s *Service) AssignedCounts(ctx context.Context) (map[string]int64, error) {
+	current, err := s.leases.CurrentAssignments(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int64, len(current))
+	for workerID, shards := range current {
+		counts[workerID] = int64(len(shards))
+	}
+	return counts, nil
 }
 
 // ActiveWorkerStats returns the latest stat snapshot per active worker. Workers
