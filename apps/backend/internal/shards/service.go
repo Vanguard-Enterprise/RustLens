@@ -19,21 +19,15 @@ type leaseStore interface {
 	GetWorkerStats(ctx context.Context, workerIDs []string) (map[string][]byte, error)
 }
 
-type eventStore interface {
-	InsertWorkerEvent(ctx context.Context, workerID string, eventType string, payload any) error
-}
-
 type Service struct {
 	leases       leaseStore
-	events       eventStore
 	totalShards  int
 	heartbeatTTL time.Duration
 }
 
-func NewService(leases leaseStore, events eventStore, totalShards int, heartbeatTTL time.Duration) *Service {
+func NewService(leases leaseStore, totalShards int, heartbeatTTL time.Duration) *Service {
 	return &Service{
 		leases:       leases,
-		events:       events,
 		totalShards:  totalShards,
 		heartbeatTTL: heartbeatTTL,
 	}
@@ -68,8 +62,6 @@ func (s *Service) Register(ctx context.Context, workerID string) (*RegisterRespo
 		return nil, err
 	}
 
-	_ = s.events.InsertWorkerEvent(ctx, workerID, "register", map[string]any{"targetShards": s.totalShards})
-
 	return &RegisterResponse{
 		WorkerID:        workerID,
 		TargetShards:    s.totalShards,
@@ -81,18 +73,11 @@ func (s *Service) Heartbeat(ctx context.Context, workerID string, shardIDs []int
 	if workerID == "" {
 		return fmt.Errorf("worker id required")
 	}
+	_ = shardIDs // health-only: canonical lease map is owned by Assignments.
 
 	if err := s.leases.RefreshWorker(ctx, workerID, s.heartbeatTTL); err != nil {
 		return err
 	}
-
-	// Heartbeat is health-only. The canonical lease map is owned by Assignments
-	// (which recomputes via AssignShards). Writing worker-self-reported shard
-	// IDs here would clobber an allocator change between the change and the
-	// worker's next /assignments poll, and races with concurrent /assignments
-	// writers.
-	sorted := append([]int(nil), shardIDs...)
-	sort.Ints(sorted)
 
 	if snapshot != nil {
 		payload, err := json.Marshal(snapshot)
@@ -104,7 +89,6 @@ func (s *Service) Heartbeat(ctx context.Context, workerID string, shardIDs []int
 		}
 	}
 
-	_ = s.events.InsertWorkerEvent(ctx, workerID, "heartbeat", map[string]any{"shardIds": sorted})
 	return nil
 }
 
@@ -121,7 +105,6 @@ func (s *Service) Release(ctx context.Context, workerID string) error {
 		return err
 	}
 
-	_ = s.events.InsertWorkerEvent(ctx, workerID, "release", map[string]any{})
 	return nil
 }
 
