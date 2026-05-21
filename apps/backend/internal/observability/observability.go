@@ -17,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -153,9 +152,10 @@ func initLogger(ctx context.Context, res *resource.Resource, endpoint string, in
 		sdklog.WithResource(res),
 		sdklog.WithProcessor(sdklog.NewBatchProcessor(exp)),
 	)
-	// Set the global logger provider so the slog bridge and any other
-	// instrumentation that calls global.GetLoggerProvider() picks it up.
-	global.SetLoggerProvider(lp)
+	// Set the global logger provider via the wrapper so that the
+	// providerInitialised flag is also set and Logger(ctx) returns the
+	// OTel bridge instead of slog.Default().
+	SetGlobalLoggerProvider(lp)
 	return lp.Shutdown, nil
 }
 

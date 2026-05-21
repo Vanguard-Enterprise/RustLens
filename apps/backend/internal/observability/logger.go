@@ -22,14 +22,15 @@ func SetGlobalLoggerProvider(lp *sdklog.LoggerProvider) {
 	providerInitialised.Store(1)
 }
 
-// Logger returns a slog.Logger that writes to both stdout (handled by the
-// caller's default slog setup) and Loki via OTLP. If observability is disabled
-// or Init has not run, callers receive slog.Default() so log records are not
-// silently dropped by the SDK no-op provider.
+// Logger returns a slog.Logger that writes to Loki via OTLP when observability
+// is enabled, or slog.Default() otherwise, so log records are never silently
+// dropped by the SDK no-op provider.
 //
-// The returned logger automatically attaches trace_id / span_id when a span is
-// active in ctx.
-func Logger(_ context.Context) *slog.Logger {
+// ctx is accepted for API stability but is not used at construction time.
+// trace_id / span_id correlation is performed by the OTel slog bridge at log
+// time, not here: callers must pass the active context to the logger methods
+// (e.g. logger.InfoContext(ctx, ...)) for span fields to appear on log records.
+func Logger(ctx context.Context) *slog.Logger {
 	if providerInitialised.Load() == 0 {
 		return slog.Default()
 	}
