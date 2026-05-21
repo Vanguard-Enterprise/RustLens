@@ -6,12 +6,12 @@ import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-grpc";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-grpc";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_NAMESPACE } from "@opentelemetry/semantic-conventions";
-import Pyroscope from "@pyroscope/nodejs";
 
 const enabled = process.env.OBSERVABILITY_ENABLED === "true";
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
 let sdk: NodeSDK | undefined;
+let pyroscopeStarted = false;
 
 export async function startObservability(): Promise<() => Promise<void>> {
     if (!enabled) {
@@ -45,23 +45,37 @@ export async function startObservability(): Promise<() => Promise<void>> {
 
     sdk.start();
 
+    // Pyroscope is best-effort. Its native dep (@datadog/pprof) only ships
+    // glibc binaries, so on Alpine/musl the module-load throws synchronously.
+    // Lazy import + try/catch lets the rest of observability come up even when
+    // profiling can't.
     if (process.env.PYROSCOPE_SERVER_ADDRESS) {
-        Pyroscope.init({
-            appName: process.env.OTEL_SERVICE_NAME ?? "rustlens-bot",
-            serverAddress: process.env.PYROSCOPE_SERVER_ADDRESS,
-            tags: {
-                environment: process.env.DEPLOYMENT_ENV ?? "local",
-                namespace: process.env.OTEL_SERVICE_NAMESPACE ?? "rustlens",
-            },
-        });
-        Pyroscope.start();
+        try {
+            const { default: Pyroscope } = await import("@pyroscope/nodejs");
+            Pyroscope.init({
+                appName: process.env.OTEL_SERVICE_NAME ?? "rustlens-bot",
+                serverAddress: process.env.PYROSCOPE_SERVER_ADDRESS,
+                tags: {
+                    environment: process.env.DEPLOYMENT_ENV ?? "local",
+                    namespace: process.env.OTEL_SERVICE_NAMESPACE ?? "rustlens",
+                },
+            });
+            Pyroscope.start();
+            pyroscopeStarted = true;
+        } catch (err) {
+            console.warn(
+                "[observability] pyroscope unavailable, continuing without profiling:",
+                err instanceof Error ? err.message : String(err),
+            );
+        }
     }
 
     return async () => {
         if (sdk) {
             await sdk.shutdown();
         }
-        if (process.env.PYROSCOPE_SERVER_ADDRESS) {
+        if (pyroscopeStarted) {
+            const { default: Pyroscope } = await import("@pyroscope/nodejs");
             await Pyroscope.stop();
         }
     };
