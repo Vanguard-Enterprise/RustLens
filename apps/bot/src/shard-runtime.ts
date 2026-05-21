@@ -1,6 +1,7 @@
 import { ChildProcess, fork } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { logger } from "./logger.js";
 
 type MessageListener = (shardID: number, message: unknown) => void;
 
@@ -28,7 +29,7 @@ export class ShardRuntime {
     const isDev = process.env.NODE_ENV !== "production";
     const useDist = !isDev && existsSync(distEntry);
 
-    console.log(`[bot] starting shard ${shardID}/${totalShards} from ${useDist ? distEntry : sourceEntry}`);
+    logger.info({ shardId: shardID, totalShards, entry: useDist ? distEntry : sourceEntry }, "starting shard");
 
     const child = fork(useDist ? distEntry : sourceEntry, [], {
       stdio: "inherit",

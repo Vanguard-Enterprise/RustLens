@@ -17,6 +17,7 @@ type leaseStore interface {
 	CurrentAssignments(ctx context.Context) (map[string][]int, error)
 	SetWorkerStats(ctx context.Context, workerID string, payload []byte, ttl time.Duration) error
 	GetWorkerStats(ctx context.Context, workerIDs []string) (map[string][]byte, error)
+	LastHeartbeats(ctx context.Context) (map[string]time.Time, error)
 }
 
 type Service struct {
@@ -114,11 +115,23 @@ func (s *Service) Assignments(ctx context.Context, workerID string) ([]int, int,
 		return nil, 0, err
 	}
 
+	// Capture the distribution before writing new leases so we can detect
+	// whether the assignment actually changed.
+	prior, err := s.leases.CurrentAssignments(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	assignments := AssignShards(s.totalShards, workers)
 	for owner, shardIDs := range assignments {
 		if err := s.leases.SetLeases(ctx, owner, shardIDs); err != nil {
 			return nil, 0, err
 		}
+	}
+
+	// Only count a rebalance when the distribution actually changed.
+	if !assignmentsEqual(prior, assignments) {
+		rebalanceCounter.Add(ctx, 1)
 	}
 
 	current, err := s.leases.CurrentAssignments(ctx)
@@ -129,6 +142,45 @@ func (s *Service) Assignments(ctx context.Context, workerID string) ([]int, int,
 	owned := current[workerID]
 	sort.Ints(owned)
 	return owned, s.totalShards, nil
+}
+
+// assignmentsEqual reports whether two assignment maps are identical: same
+// worker keys and the same sorted shard slice for every key.
+func assignmentsEqual(a, b map[string][]int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for workerID, shardsA := range a {
+		shardsB, ok := b[workerID]
+		if !ok || len(shardsA) != len(shardsB) {
+			return false
+		}
+		sortedA := append([]int(nil), shardsA...)
+		sortedB := append([]int(nil), shardsB...)
+		sort.Ints(sortedA)
+		sort.Ints(sortedB)
+		for i := range sortedA {
+			if sortedA[i] != sortedB[i] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// AssignedCounts returns the number of shards currently assigned to each
+// active worker, keyed by worker ID.
+func (s *Service) AssignedCounts(ctx context.Context) (map[string]int64, error) {
+	current, err := s.leases.CurrentAssignments(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int64, len(current))
+	for workerID, shards := range current {
+		counts[workerID] = int64(len(shards))
+	}
+	return counts, nil
 }
 
 // ActiveWorkerStats returns the latest stat snapshot per active worker. Workers
@@ -161,4 +213,11 @@ func (s *Service) ActiveWorkerStats(ctx context.Context) (map[string]WorkerStatS
 	}
 
 	return result, nil
+}
+
+// LastHeartbeats returns the last heartbeat time for every worker that
+// currently has a heartbeat key in Redis.  It delegates to the underlying
+// lease store and is the data source for the heartbeat-age observable gauge.
+func (s *Service) LastHeartbeats(ctx context.Context) (map[string]time.Time, error) {
+	return s.leases.LastHeartbeats(ctx)
 }

@@ -130,6 +130,21 @@ import { startTrackedServerLogPoller } from "./tracked-server-logs.js";
 import { registerUserGuildSync } from "./user-guilds.js";
 import { registerBotGuildSync } from "./bot-guilds.js";
 import { startShardStatsPusher } from "./shard-stats.js";
+import { logger } from "./logger.js";
+import {
+  commandDurationHist,
+  commandFailureCounter,
+  gatewayEventCounter,
+  interactionFailureCounter,
+  shardStateGauge,
+} from "./metrics.js";
+
+function classifyError(err: unknown): string {
+  const msg = String(err).toLowerCase();
+  if (msg.includes("timeout") || msg.includes("timed out")) return "timeout";
+  if (msg.includes("validation") || msg.includes("invalid")) return "validation";
+  return "unknown";
+}
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
 const shardCount = Number(process.env.SHARD_COUNT ?? "1");
@@ -153,12 +168,15 @@ registerUserGuildSync(client);
 registerBotGuildSync(client, shardID, shardCount);
 
 client.on("error", (error) => {
-  console.error("[bot] Discord client error", error);
+  logger.error({ error }, "Discord client error");
 });
 
 client.on("shardError", (error, failedShardID) => {
-  console.error("[bot] Discord shard error", { shardId: failedShardID, error });
+  logger.error({ shardId: failedShardID, error }, "Discord shard error");
 });
+
+client.on("shardReady", (id) => shardStateGauge.add(+1, { shard_id: String(id) }));
+client.on("shardDisconnect", (_event, id) => shardStateGauge.add(-1, { shard_id: String(id) }));
 
 async function updateSteamAccountPresence() {
   const response = await backend.steamAccountCount(statusWorkerID);
@@ -169,7 +187,7 @@ async function updateSteamAccountPresence() {
 const shutdownTimers: (NodeJS.Timeout | undefined)[] = [];
 
 client.once("clientReady", () => {
-  console.log(`[bot] shard ${shardID}/${shardCount} ready as ${client.user?.tag}`);
+  logger.info({ shardId: shardID, shardCount, tag: client.user?.tag }, "shard ready");
 
   shutdownTimers.push(startShardStatsPusher(client, shardID));
 
@@ -181,7 +199,7 @@ client.once("clientReady", () => {
     presenceRunning = true;
     updateSteamAccountPresence()
       .catch((error) => {
-        console.error("[bot] failed to refresh steam account presence", error);
+        logger.error({ error }, "failed to refresh steam account presence");
       })
       .finally(() => {
         presenceRunning = false;
@@ -217,7 +235,7 @@ client.once("clientReady", () => {
   ]).then((results) => {
     for (const result of results) {
       if (result.status === "rejected") {
-        console.error("[bot] command registration failed", result.reason);
+        logger.error({ error: result.reason }, "command registration failed");
       }
     }
     shutdownTimers.push(startWipeReactScheduler(client));
@@ -263,7 +281,7 @@ function interactionKind(interaction: Interaction) {
 }
 
 function logUnknownInteraction(interaction: Interaction, error: unknown) {
-  console.error("[bot] Discord interaction error: unknown interaction", {
+  logger.error({
     kind: interactionKind(interaction),
     id: interaction.id,
     ageMs: Date.now() - interaction.createdTimestamp,
@@ -272,11 +290,11 @@ function logUnknownInteraction(interaction: Interaction, error: unknown) {
     shardCount,
     pid: process.pid,
     error,
-  });
+  }, "Discord interaction error: unknown interaction");
 }
 
 function logAlreadyAcknowledgedInteraction(interaction: Interaction, error: unknown) {
-  console.error("[bot] Discord interaction error: already acknowledged", {
+  logger.error({
     kind: interactionKind(interaction),
     id: interaction.id,
     ageMs: Date.now() - interaction.createdTimestamp,
@@ -285,7 +303,7 @@ function logAlreadyAcknowledgedInteraction(interaction: Interaction, error: unkn
     shardCount,
     pid: process.pid,
     error,
-  });
+  }, "Discord interaction error: already acknowledged");
 }
 
 // Tracks the last time we POSTed a "user-install seen" heartbeat for a given
@@ -324,16 +342,13 @@ function reportUserInstallSeen(interaction: Interaction): void {
       : undefined;
 
   backend.touchBotUserInstallSeen(config.workerId, userId, metadata).catch((error) => {
-    console.error(JSON.stringify({
-      level: "warn",
-      message: "[bot] touchBotUserInstallSeen failed",
-      userId,
-      error: String(error),
-    }));
+    logger.warn({ userId, error }, "touchBotUserInstallSeen failed");
   });
 }
 
 client.on("interactionCreate", async (interaction) => {
+  gatewayEventCounter.add(1, { event: "interactionCreate" });
+
   // Strip any trailing `#<correlation>` tag from incoming customIds before
   // handlers see them. The raw correlation is recovered by command-usage.ts
   // via the same parseCustomId helper, but every handler in this codebase
@@ -413,6 +428,8 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isChatInputCommand()) {
+      const cmdStart = process.hrtime.bigint();
+      try {
       if (interaction.commandName !== MANAGE_COMMAND_NAME) {
         const category = resolveCommandCategory(
           interaction.commandName,
@@ -530,6 +547,16 @@ client.on("interactionCreate", async (interaction) => {
 
       await handleSettingsChatInput(interaction);
       return;
+      } catch (cmdErr) {
+        commandFailureCounter.add(1, {
+          command: interaction.commandName,
+          reason: classifyError(cmdErr),
+        });
+        throw cmdErr;
+      } finally {
+        const elapsed = Number(process.hrtime.bigint() - cmdStart) / 1e9;
+        commandDurationHist.record(elapsed, { command: interaction.commandName });
+      }
     }
 
     if (interaction.isStringSelectMenu()) {
@@ -643,6 +670,8 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
   } catch (error) {
+    interactionFailureCounter.add(1, { interaction_type: String(interaction.type) });
+
     if (isUnknownInteractionError(error)) {
       logUnknownInteraction(interaction, error);
       return;
@@ -653,7 +682,7 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    console.error("[bot] interaction handling failed", error);
+    logger.error({ error }, "interaction handling failed");
 
     if (interaction.isRepliable()) {
       try {
@@ -668,7 +697,7 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
       } catch (replyError) {
-        console.error("[bot] failed to send interaction error reply", replyError);
+        logger.error({ error: replyError }, "failed to send interaction error reply");
       }
     }
   }
@@ -684,7 +713,7 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 client.login(token).catch((error) => {
-  console.error(`[bot] shard ${shardID} login failed`, error);
+  logger.error({ shardId: shardID, error }, "shard login failed");
   process.exit(1);
 });
 

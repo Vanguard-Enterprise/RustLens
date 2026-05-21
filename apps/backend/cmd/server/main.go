@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"rustlens/backend/internal/observability"
 
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/bmmatch"
@@ -28,9 +31,25 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+		Level:     slog.LevelInfo,
+		AddSource: false,
+	})))
 	cfg := config.Load()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	shutdownObs, err := observability.Init(ctx, cfg)
+	if err != nil {
+		log.Fatalf("observability init failed: %v", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := shutdownObs(shutdownCtx); err != nil {
+			log.Printf("[backend] observability shutdown error: %v", err)
+		}
+	}()
 
 	postgresStore, err := store.NewPostgresStore(ctx, cfg.PostgresURL)
 	if err != nil {
@@ -91,6 +110,7 @@ func main() {
 	}
 
 	shardService := shards.NewService(redisStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
+	shards.RegisterObservableGauges(shardService)
 	bmMatchClient := bmmatch.NewClient(cfg.BMMatchURL, cfg.BMMatchToken, 10*time.Second)
 	platformSyncClient := platformsync.NewClient(cfg.PlatformSyncToken, 10*time.Second)
 	eventsHub := events.NewHub()

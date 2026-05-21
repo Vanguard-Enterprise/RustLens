@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -74,7 +74,7 @@ func (b *RedisBridge) Start(ctx context.Context) error {
 				}
 				var env redisEnvelope
 				if err := json.Unmarshal([]byte(msg.Payload), &env); err != nil {
-					log.Printf("[events] bridge: decode payload: %v", err)
+					slog.Error("events bridge: decode payload", slog.Any("error", err))
 					continue
 				}
 				// Drop our own echoes: PublishWithFanout already delivered
@@ -98,12 +98,12 @@ func (b *RedisBridge) PublishWithFanout(userID string, e Event) {
 
 	payload, err := json.Marshal(redisEnvelope{UserID: userID, Event: e, InstanceID: b.instanceID})
 	if err != nil {
-		log.Printf("[events] bridge: encode payload: %v", err)
+		slog.Error("events bridge: encode payload", slog.Any("error", err))
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), redisPublishTimeout)
 	defer cancel()
 	if err := b.rdb.Publish(ctx, RedisChannel, payload).Err(); err != nil {
-		log.Printf("[events] bridge: redis publish: %v", err)
+		slog.Error("events bridge: redis publish", slog.Any("error", err))
 	}
 }

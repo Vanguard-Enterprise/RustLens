@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -33,16 +34,26 @@ type GuildSettingsPatch struct {
 }
 
 func NewPostgresStore(ctx context.Context, connectionString string) (*PostgresStore, error) {
-	pool, err := pgxpool.New(ctx, connectionString)
+	cfg, err := pgxpool.ParseConfig(connectionString)
 	if err != nil {
 		return nil, err
 	}
+	// Note: WithIncludeQueryParameters() ENABLES leaking bind values into spans.
+	// Default (omit the option) redacts them, which is what we want.
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
 
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, err
 	}
-
+	if err := otelpgx.RecordStats(pool); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("otelpgx record stats: %w", err)
+	}
 	return &PostgresStore{pool: pool}, nil
 }
 

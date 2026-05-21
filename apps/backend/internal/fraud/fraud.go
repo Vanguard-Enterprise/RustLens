@@ -12,6 +12,9 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -50,6 +53,8 @@ func (d *Detector) Record(ctx context.Context, guildID, command string, memberCo
 	if guildID == "" || memberCount <= 0 || memberCount >= cfg.MaxMemberCount {
 		return Alert{}, nil
 	}
+
+	signalCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("signal_type", command)))
 
 	counterKey := fmt.Sprintf("fraud:%s:%s:count", command, guildID)
 	alertedKey := fmt.Sprintf("fraud:%s:%s:alerted", command, guildID)

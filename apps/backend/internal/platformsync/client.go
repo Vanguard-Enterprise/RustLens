@@ -38,6 +38,10 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"rustlens/backend/internal/outboundhttp"
 )
 
 var (
@@ -71,7 +75,14 @@ func NewClient(token string, timeout time.Duration) *Client {
 	}
 	return &Client{
 		token: strings.TrimSpace(token),
-		http:  &http.Client{Timeout: timeout},
+		http: &http.Client{
+			Timeout: timeout,
+			Transport: otelhttp.NewTransport(http.DefaultTransport,
+				otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+					return r.Method + " " + r.URL.Host
+				}),
+			),
+		},
 	}
 }
 
@@ -102,6 +113,7 @@ func (c *Client) Lookup(ctx context.Context, id string) (Lookup, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 
+	outboundhttp.WithTarget(ctx, "platformsync")
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return Lookup{}, err

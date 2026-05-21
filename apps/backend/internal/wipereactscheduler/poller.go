@@ -37,8 +37,10 @@ func (p *Poller) Start(ctx context.Context) {
 }
 
 func (p *Poller) tick(ctx context.Context) error {
+	start := time.Now()
 	schedules, err := p.store.ListAllWipeReactSchedules(ctx)
 	if err != nil {
+		runErrorCounter.Add(ctx, 1)
 		return err
 	}
 
@@ -67,6 +69,7 @@ func (p *Poller) tick(ctx context.Context) error {
 		}
 	}
 
+	runDurationHist.Record(ctx, time.Since(start).Seconds())
 	return nil
 }
 

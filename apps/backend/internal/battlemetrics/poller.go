@@ -3,10 +3,15 @@ package battlemetrics
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
+	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
+	"rustlens/backend/internal/observability"
 	"rustlens/backend/internal/store"
 )
 
@@ -73,7 +78,8 @@ func (p *Poller) runCycle(ctx context.Context) {
 	reserved, err := p.redis.TryReserveBattleMetricsPollerCycle(cadenceCtx, p.lockID, cadenceTTL)
 	cadenceCancel()
 	if err != nil {
-		log.Printf("[battlemetrics] failed to reserve poller cycle: %v", err)
+		observability.Logger(ctx).ErrorContext(ctx, "failed to reserve poller cycle",
+			slog.Any("error", err))
 		return
 	}
 	if !reserved {
@@ -89,7 +95,8 @@ func (p *Poller) runCycle(ctx context.Context) {
 	acquired, err := p.redis.TryAcquireBattleMetricsPollerLock(lockCtx, p.lockID, lockTTL)
 	lockCancel()
 	if err != nil {
-		log.Printf("[battlemetrics] failed to acquire poller lock: %v", err)
+		observability.Logger(ctx).ErrorContext(ctx, "failed to acquire poller lock",
+			slog.Any("error", err))
 		return
 	}
 	if !acquired {
@@ -99,7 +106,8 @@ func (p *Poller) runCycle(ctx context.Context) {
 		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer releaseCancel()
 		if err := p.redis.ReleaseBattleMetricsPollerLock(releaseCtx, p.lockID); err != nil {
-			log.Printf("[battlemetrics] failed to release poller lock: %v", err)
+			observability.Logger(releaseCtx).ErrorContext(releaseCtx, "failed to release poller lock",
+				slog.Any("error", err))
 		}
 	}()
 
@@ -107,14 +115,16 @@ func (p *Poller) runCycle(ctx context.Context) {
 	server, err := p.nextTrackedServerToPoll(dbCtx)
 	dbCancel()
 	if err != nil {
-		log.Printf("[battlemetrics] failed to select next tracked server: %v", err)
+		observability.Logger(ctx).ErrorContext(ctx, "failed to select next tracked server",
+			slog.Any("error", err))
 		return
 	}
 	if server == nil {
 		return
 	}
 
-	observedAt := time.Now().UTC()
+	pollStart := time.Now()
+	observedAt := pollStart.UTC()
 	players, pollErr := p.client.FetchServerPlayers(ctx, server.BmID)
 	if pollErr == nil {
 		inputs := make([]store.PlayerPresenceInput, 0, len(players))
@@ -140,7 +150,11 @@ func (p *Poller) runCycle(ctx context.Context) {
 					pollErr = fmt.Errorf("record empty player poll: %w", incrementErr)
 				} else if emptyPolls < emptyPollsBeforeOffline {
 					shouldSync = false
-					log.Printf("[battlemetrics] delaying empty poll for server %s (%s): %d/%d empty polls", server.BmID, server.Name, emptyPolls, emptyPollsBeforeOffline)
+					observability.Logger(ctx).WarnContext(ctx, "delaying empty poll for server",
+						slog.String("bm_id", server.BmID),
+						slog.String("server_name", server.Name),
+						slog.Int("empty_polls", emptyPolls),
+						slog.Int("threshold", emptyPollsBeforeOffline))
 				}
 			}
 		}
@@ -171,15 +185,45 @@ func (p *Poller) runCycle(ctx context.Context) {
 		pollErrorMessage = pollErr.Error()
 	}
 	if err := p.postgres.RecordTrackedServerPollResult(recordCtx, server.BmID, observedAt, pollErrorMessage); err != nil {
-		log.Printf("[battlemetrics] failed to record poll result for server %s: %v", server.BmID, err)
+		observability.Logger(recordCtx).ErrorContext(recordCtx, "failed to record poll result",
+			slog.String("bm_id", server.BmID),
+			slog.Any("error", err))
 	}
 
+	elapsed := time.Since(pollStart).Seconds()
 	if pollErr != nil {
-		log.Printf("[battlemetrics] poll failed for server %s (%s): %v", server.BmID, server.Name, pollErr)
+		pollErrorCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", reasonFor(pollErr))))
+		observability.Logger(ctx).ErrorContext(ctx, "poll failed for server",
+			slog.String("bm_id", server.BmID),
+			slog.String("server_name", server.Name),
+			slog.Any("error", pollErr))
 		return
 	}
 
-	log.Printf("[battlemetrics] polled server %s (%s): %d players", server.BmID, server.Name, len(players))
+	pollDurationHist.Record(ctx, elapsed)
+	observability.Logger(ctx).InfoContext(ctx, "polled server",
+		slog.String("bm_id", server.BmID),
+		slog.String("server_name", server.Name),
+		slog.Int("player_count", len(players)))
+}
+
+// reasonFor classifies an error into a short label for the poll_error_total
+// metric. Keep this simple: look for obvious substrings and default to "other".
+func reasonFor(err error) string {
+	if err == nil {
+		return "other"
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded"):
+		return "timeout"
+	case strings.Contains(msg, "unauthorized") || strings.Contains(msg, "403") || strings.Contains(msg, "401"):
+		return "auth"
+	case strings.Contains(msg, "429") || strings.Contains(msg, "rate limit") || strings.Contains(msg, "too many requests"):
+		return "rate_limit"
+	default:
+		return "other"
+	}
 }
 
 func (p *Poller) nextTrackedServerToPoll(ctx context.Context) (*store.TrackedServer, error) {
