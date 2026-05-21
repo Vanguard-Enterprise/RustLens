@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -33,6 +34,12 @@ func NewRedisStore(ctx context.Context, redisURL string) (*RedisStore, error) {
 	}
 
 	client := redis.NewClient(options)
+	if err := redisotel.InstrumentTracing(client); err != nil {
+		return nil, fmt.Errorf("redis tracing: %w", err)
+	}
+	if err := redisotel.InstrumentMetrics(client); err != nil {
+		return nil, fmt.Errorf("redis metrics: %w", err)
+	}
 	if err := client.Ping(ctx).Err(); err != nil {
 		return nil, err
 	}
