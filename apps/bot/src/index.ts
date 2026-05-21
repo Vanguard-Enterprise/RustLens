@@ -1,3 +1,4 @@
+import { startObservability } from "./observability.js";
 import { BackendClient, type ShardStatSnapshot, type WorkerStatSnapshot } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { ShardRuntime } from "./shard-runtime.js";
@@ -14,6 +15,9 @@ function isWorkerStatsMessage(value: unknown): value is WorkerStatsMessage {
 
 async function main() {
   const config = loadConfig();
+  const stopObservability = await startObservability();
+  process.once("SIGTERM", () => void stopObservability());
+  process.once("SIGINT", () => void stopObservability());
 
   if (!config.discordToken) {
     throw new Error("DISCORD_TOKEN is required");
