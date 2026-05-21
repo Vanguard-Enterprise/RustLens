@@ -418,23 +418,51 @@ describe("view", () => {
     expect(__testables.parseViewAllPageCustomId("view:all:page:x:123456789012345678")).toBeNull();
   });
 
-  it("parses /view notadded raw button custom ids", () => {
+  it("parses /view notadded raw button custom ids without scope", () => {
     expect(
-      __testables.parseNotAddedRawCustomId("view:notadded:raw:111111111111111111:222222222222222222"),
+      __testables.parseNotAddedRawCustomId("view:notadded:raw:111111111111111111:222222222222222222:0"),
     ).toEqual({
       anchorDiscordId: "111111111111111111",
       ownerId: "222222222222222222",
+      scopeRoleId: null,
+    });
+  });
+
+  it("parses /view notadded raw button custom ids with scope", () => {
+    expect(
+      __testables.parseNotAddedRawCustomId(
+        "view:notadded:raw:111111111111111111:222222222222222222:333333333333333333",
+      ),
+    ).toEqual({
+      anchorDiscordId: "111111111111111111",
+      ownerId: "222222222222222222",
+      scopeRoleId: "333333333333333333",
     });
     expect(__testables.parseNotAddedRawCustomId("view:notadded:raw:111111111111111111")).toBeNull();
     expect(__testables.parseNotAddedRawCustomId("view:all:page:0:1")).toBeNull();
   });
 
   it("renders the not-added embed with the anchor mention", () => {
-    const embed = __testables.buildNotAddedEmbed("111111111111111111", ["222222222222222222", "333333333333333333"]);
+    const embed = __testables.buildNotAddedEmbed(
+      "111111111111111111",
+      ["222222222222222222", "333333333333333333"],
+      null,
+    );
     const json = embed.toJSON();
     expect(json.title).toBe("Users not in friend list");
     expect(json.description).toContain("<@111111111111111111>");
     expect(json.description).toContain("<@222222222222222222>");
     expect(json.description).toContain("<@333333333333333333>");
+    expect(json.description).not.toContain("scope");
+  });
+
+  it("renders the not-added embed with a scope role mention", () => {
+    const embed = __testables.buildNotAddedEmbed(
+      "111111111111111111",
+      ["222222222222222222"],
+      "444444444444444444",
+    );
+    const json = embed.toJSON();
+    expect(json.description).toContain("<@&444444444444444444>");
   });
 });

@@ -35,8 +35,21 @@ var playerFraudConfig = fraud.Config{
 	AlertCooldown:  6 * time.Hour,
 }
 
+// viewNotAddedRateLimitConfig caps the Steam-friend-list-backed
+// /view notadded subcommand. Each call hits the Steam Web API, which
+// is on a shared 100k/day key budget; this admin-only command should
+// not need to fire often.
+var viewNotAddedRateLimitConfig = ratelimit.Config{
+	Quota:          3,
+	Window:         60 * time.Second,
+	BaseCooldown:   60 * time.Second,
+	MaxCooldown:    1 * time.Hour,
+	ViolationDecay: 1 * time.Hour,
+}
+
 var rateLimitCommandConfigs = map[string]ratelimit.Config{
-	"player": playerRateLimitConfig,
+	"player":         playerRateLimitConfig,
+	"view-notadded":  viewNotAddedRateLimitConfig,
 }
 
 var fraudCommandConfigs = map[string]fraud.Config{

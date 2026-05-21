@@ -28,6 +28,7 @@ import {
   resolveSteamInputErrorMessage,
   resolveSteamProfileInput,
 } from "../steam-input.js";
+import { enforceRateLimit } from "../rate-limit.js";
 
 export const VIEW_COMMAND_NAME = "view";
 
@@ -103,6 +104,9 @@ const viewCommand = new SlashCommandBuilder()
       .setDescription("List guild users not in the provided user's Steam friend list")
       .addUserOption((opt) =>
         opt.setName("discord_user").setDescription("Anchor user whose Steam friend list to check against").setRequired(true),
+      )
+      .addRoleOption((opt) =>
+        opt.setName("scope").setDescription("Optional role - only members with this role are checked").setRequired(false),
       ),
   );
 
@@ -788,7 +792,12 @@ export async function handleViewButtonInteraction(interaction: ButtonInteraction
 
   const notAddedRawParsed = parseNotAddedRawCustomId(interaction.customId);
   if (notAddedRawParsed) {
-    await handleViewNotAddedRawButton(interaction, notAddedRawParsed.ownerId, notAddedRawParsed.anchorDiscordId);
+    await handleViewNotAddedRawButton(
+      interaction,
+      notAddedRawParsed.ownerId,
+      notAddedRawParsed.anchorDiscordId,
+      notAddedRawParsed.scopeRoleId,
+    );
     return true;
   }
 
@@ -949,23 +958,33 @@ async function handleViewNoSteamRawButton(interaction: ButtonInteraction, ownerI
   }
 }
 
-function buildNotAddedEmbed(anchorDiscordId: string, userIds: readonly string[]) {
+function buildNotAddedEmbed(
+  anchorDiscordId: string,
+  userIds: readonly string[],
+  scopeRoleId: string | null,
+) {
   let description = userIds.length > 0
     ? userIds.map((userId) => `> * <@${userId}>`).join("\n")
     : "> * None";
   if (description.length > 4096) {
     description = `${description.slice(0, 4093)}...`;
   }
+  const scopeLine = scopeRoleId
+    ? `Checked against <@${anchorDiscordId}>'s Steam friend list (scope: <@&${scopeRoleId}>).`
+    : `Checked against <@${anchorDiscordId}>'s Steam friend list.`;
   return createEmbed()
     .setTitle("Users not in friend list")
-    .setDescription(`Checked against <@${anchorDiscordId}>'s Steam friend list.\n\n${description}`);
+    .setDescription(`${scopeLine}\n\n${description}`);
 }
 
-function buildNotAddedRawButtons(ownerId: string, anchorDiscordId: string) {
+function buildNotAddedRawButtons(ownerId: string, anchorDiscordId: string, scopeRoleId: string | null) {
+  // customId layout: prefix + anchor:owner:scope (scope = "0" when absent;
+  // Discord role snowflakes are never 0). Keep this in sync with the parser.
+  const scopeSegment = scopeRoleId ?? "0";
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId(`${VIEW_NOTADDED_RAW_CUSTOM_ID_PREFIX}${anchorDiscordId}:${ownerId}`)
+        .setCustomId(`${VIEW_NOTADDED_RAW_CUSTOM_ID_PREFIX}${anchorDiscordId}:${ownerId}:${scopeSegment}`)
         .setLabel("View Raw")
         .setEmoji(VIEW_EMOJIS.clipboard)
         .setStyle(ButtonStyle.Secondary),
@@ -978,22 +997,23 @@ function parseNotAddedRawCustomId(customId: string) {
     return null;
   }
   const remainder = customId.slice(VIEW_NOTADDED_RAW_CUSTOM_ID_PREFIX.length);
-  const separatorIndex = remainder.indexOf(":");
-  if (separatorIndex === -1) {
+  const parts = remainder.split(":");
+  if (parts.length !== 3) {
     return null;
   }
-  const anchorDiscordId = remainder.slice(0, separatorIndex);
-  const ownerId = remainder.slice(separatorIndex + 1);
-  if (anchorDiscordId.length === 0 || ownerId.length === 0) {
+  const [anchorDiscordId, ownerId, scopeSegment] = parts;
+  if (anchorDiscordId.length === 0 || ownerId.length === 0 || scopeSegment.length === 0) {
     return null;
   }
-  return { anchorDiscordId, ownerId };
+  const scopeRoleId = scopeSegment === "0" ? null : scopeSegment;
+  return { anchorDiscordId, ownerId, scopeRoleId };
 }
 
 async function computeNotAddedUserIds(
   guildId: string,
   guild: import("discord.js").Guild,
   anchorDiscordId: string,
+  scopeRoleId: string | null,
 ): Promise<{ ok: true; missingUserIds: string[]; anchorSteamId: string } | { ok: false; error: string }> {
   const backend = getBackend();
   const workerId = getWorkerID();
@@ -1013,7 +1033,7 @@ async function computeNotAddedUserIds(
   if (friends.private) {
     return {
       ok: false,
-      error: `<@${anchorDiscordId}>'s Steam friend list is private — they need to make it public for this check to work.`,
+      error: `<@${anchorDiscordId}>'s Steam friend list is private - they need to make it public for this check to work.`,
     };
   }
 
@@ -1026,6 +1046,7 @@ async function computeNotAddedUserIds(
   const missingUserIds = [...members.values()]
     .filter((member) => !member.user.bot)
     .filter((member) => member.id !== anchorDiscordId)
+    .filter((member) => scopeRoleId === null || member.roles.cache.has(scopeRoleId))
     .sort(sortMembers)
     .filter((member) => {
       const steamId = linkByDiscordId.get(member.id);
@@ -1044,18 +1065,26 @@ async function handleViewNotAdded(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   }
 
+  if (await enforceRateLimit(interaction, "view-notadded")) {
+    return;
+  }
+
   const anchorUser = interaction.options.getUser("discord_user", true);
+  const scopeRole = interaction.options.getRole("scope", false);
+  const scopeRoleId = scopeRole ? scopeRole.id : null;
   const guildId = interaction.guildId!;
 
-  const result = await computeNotAddedUserIds(guildId, interaction.guild!, anchorUser.id);
+  const result = await computeNotAddedUserIds(guildId, interaction.guild!, anchorUser.id, scopeRoleId);
   if (!result.ok) {
     await interaction.editReply({ content: result.error });
     return;
   }
 
   await interaction.editReply({
-    embeds: [buildNotAddedEmbed(anchorUser.id, result.missingUserIds)],
-    components: result.missingUserIds.length > 0 ? buildNotAddedRawButtons(interaction.user.id, anchorUser.id) : [],
+    embeds: [buildNotAddedEmbed(anchorUser.id, result.missingUserIds, scopeRoleId)],
+    components: result.missingUserIds.length > 0
+      ? buildNotAddedRawButtons(interaction.user.id, anchorUser.id, scopeRoleId)
+      : [],
   });
 }
 
@@ -1063,6 +1092,7 @@ async function handleViewNotAddedRawButton(
   interaction: ButtonInteraction,
   ownerId: string,
   anchorDiscordId: string,
+  scopeRoleId: string | null,
 ) {
   if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) {
     await interaction.reply({
@@ -1090,7 +1120,7 @@ async function handleViewNotAddedRawButton(
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const result = await computeNotAddedUserIds(interaction.guildId, interaction.guild, anchorDiscordId);
+  const result = await computeNotAddedUserIds(interaction.guildId, interaction.guild, anchorDiscordId, scopeRoleId);
   if (!result.ok) {
     await interaction.editReply({ content: result.error });
     return;
