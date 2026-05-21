@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"time"
 
+	"rustlens/backend/internal/observability"
+
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/bmmatch"
 	"rustlens/backend/internal/cleanup"
@@ -31,6 +33,18 @@ func main() {
 	cfg := config.Load()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	shutdownObs, err := observability.Init(ctx, cfg)
+	if err != nil {
+		log.Fatalf("observability init failed: %v", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := shutdownObs(shutdownCtx); err != nil {
+			log.Printf("[backend] observability shutdown error: %v", err)
+		}
+	}()
 
 	postgresStore, err := store.NewPostgresStore(ctx, cfg.PostgresURL)
 	if err != nil {
