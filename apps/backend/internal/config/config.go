@@ -35,6 +35,15 @@ type Config struct {
 	TrustProxyHeaders    bool
 	TrustProxyIPHeader   string
 	TrustProxyGeoHeader  string
+
+	// Observability.
+	ObservabilityEnabled bool
+	OTLPEndpoint         string
+	PyroscopeAddress     string
+	ServiceName          string
+	ServiceNamespace     string
+	DeploymentEnv        string
+	TraceSampleRatio     float64
 }
 
 func Load() Config {
@@ -71,6 +80,13 @@ func Load() Config {
 		TrustProxyHeaders:    getEnvBool("TRUST_PROXY_HEADERS", false),
 		TrustProxyIPHeader:   strings.TrimSpace(getEnv("TRUST_PROXY_IP_HEADER", "CF-Connecting-IP")),
 		TrustProxyGeoHeader:  strings.TrimSpace(getEnv("TRUST_PROXY_GEO_HEADER", "CF-IPCountry")),
+		ObservabilityEnabled: getEnvBool("OBSERVABILITY_ENABLED", false),
+		OTLPEndpoint:         strings.TrimSpace(getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "")),
+		PyroscopeAddress:     strings.TrimSpace(getEnv("PYROSCOPE_SERVER_ADDRESS", "")),
+		ServiceName:          getEnv("OTEL_SERVICE_NAME", "rustlens-backend"),
+		ServiceNamespace:     getEnv("OTEL_SERVICE_NAMESPACE", "rustlens"),
+		DeploymentEnv:        getEnv("DEPLOYMENT_ENV", "local"),
+		TraceSampleRatio:     getEnvFloat("OTEL_TRACES_SAMPLER_ARG", 0.1),
 	}
 }
 
@@ -104,6 +120,15 @@ func getEnvBool(key string, fallback bool) bool {
 		parsed, err := strconv.ParseBool(value)
 		if err == nil {
 			return parsed
+		}
+	}
+	return fallback
+}
+
+func getEnvFloat(key string, fallback float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return fallback
