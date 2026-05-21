@@ -131,6 +131,20 @@ import { registerUserGuildSync } from "./user-guilds.js";
 import { registerBotGuildSync } from "./bot-guilds.js";
 import { startShardStatsPusher } from "./shard-stats.js";
 import { logger } from "./logger.js";
+import {
+  commandDurationHist,
+  commandFailureCounter,
+  gatewayEventCounter,
+  interactionFailureCounter,
+  shardStateGauge,
+} from "./metrics.js";
+
+function classifyError(err: unknown): string {
+  const msg = String(err).toLowerCase();
+  if (msg.includes("timeout") || msg.includes("timed out")) return "timeout";
+  if (msg.includes("validation") || msg.includes("invalid")) return "validation";
+  return "unknown";
+}
 
 const shardID = Number(process.env.SHARD_ID ?? "0");
 const shardCount = Number(process.env.SHARD_COUNT ?? "1");
@@ -160,6 +174,9 @@ client.on("error", (error) => {
 client.on("shardError", (error, failedShardID) => {
   logger.error({ shardId: failedShardID, error }, "Discord shard error");
 });
+
+client.on("shardReady", (id) => shardStateGauge.add(+1, { shard_id: String(id) }));
+client.on("shardDisconnect", (_event, id) => shardStateGauge.add(-1, { shard_id: String(id) }));
 
 async function updateSteamAccountPresence() {
   const response = await backend.steamAccountCount(statusWorkerID);
@@ -330,6 +347,8 @@ function reportUserInstallSeen(interaction: Interaction): void {
 }
 
 client.on("interactionCreate", async (interaction) => {
+  gatewayEventCounter.add(1, { event: "interactionCreate" });
+
   // Strip any trailing `#<correlation>` tag from incoming customIds before
   // handlers see them. The raw correlation is recovered by command-usage.ts
   // via the same parseCustomId helper, but every handler in this codebase
@@ -409,6 +428,8 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.isChatInputCommand()) {
+      const cmdStart = process.hrtime.bigint();
+      try {
       if (interaction.commandName !== MANAGE_COMMAND_NAME) {
         const category = resolveCommandCategory(
           interaction.commandName,
@@ -526,6 +547,16 @@ client.on("interactionCreate", async (interaction) => {
 
       await handleSettingsChatInput(interaction);
       return;
+      } catch (cmdErr) {
+        commandFailureCounter.add(1, {
+          command: interaction.commandName,
+          reason: classifyError(cmdErr),
+        });
+        throw cmdErr;
+      } finally {
+        const elapsed = Number(process.hrtime.bigint() - cmdStart) / 1e9;
+        commandDurationHist.record(elapsed, { command: interaction.commandName });
+      }
     }
 
     if (interaction.isStringSelectMenu()) {
@@ -639,6 +670,8 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
   } catch (error) {
+    interactionFailureCounter.add(1, { interaction_type: String(interaction.type) });
+
     if (isUnknownInteractionError(error)) {
       logUnknownInteraction(interaction, error);
       return;
