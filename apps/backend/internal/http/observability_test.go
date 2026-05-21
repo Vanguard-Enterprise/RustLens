@@ -15,8 +15,12 @@ import (
 func TestOtelHTTPMiddlewareEmitsRouteSpan(t *testing.T) {
 	rec := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(rec))
+	prev := otel.GetTracerProvider()
 	otel.SetTracerProvider(tp)
-	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	t.Cleanup(func() {
+		_ = tp.Shutdown(context.Background())
+		otel.SetTracerProvider(prev)
+	})
 
 	r := chi.NewRouter()
 	r.Use(WithOTel("rustlens-backend"))
@@ -40,5 +44,8 @@ func TestOtelHTTPMiddlewareEmitsRouteSpan(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("missing http.route attribute, got %v", spans[0].Attributes())
+	}
+	if got, want := spans[0].Name(), "GET /api/healthz"; got != want {
+		t.Fatalf("span name = %q, want %q", got, want)
 	}
 }

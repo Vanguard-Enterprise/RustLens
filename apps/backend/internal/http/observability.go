@@ -13,10 +13,13 @@ import (
 // the http.server.* metric family, with http.route set from chi's resolved
 // route pattern (rather than the raw URL, which would explode cardinality).
 //
-// The middleware runs after chi has resolved the route pattern by deferring
-// the attribute annotation to after next.ServeHTTP returns. At that point chi
-// has populated the route context, and the otelhttp span is still active on
-// r.Context(), so we can attach http.route directly to the span.
+// chi v5 sets r.Pattern (the stdlib field) after routing, and otelhttp v0.68+
+// calls the span-name formatter a second time post-handler when r.Pattern is
+// non-empty. We therefore provide a formatter that reads r.Pattern (chi's
+// resolved route) and returns "METHOD /route/pattern", giving low-cardinality
+// span names in Tempo. The inner wrapped handler additionally sets the
+// http.route attribute and the metric labeler for cardinality-bounded
+// histograms while the span is still active.
 func WithOTel(serviceName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -27,6 +30,7 @@ func WithOTel(serviceName string) func(http.Handler) http.Handler {
 				pattern := rctx.RoutePattern()
 				span := trace.SpanFromContext(r.Context())
 				span.SetAttributes(attribute.String("http.route", pattern))
+				span.SetName(r.Method + " " + pattern)
 				// Also label the metric attributes for cardinality-bounded histograms.
 				if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
 					labeler.Add(attribute.String("http.route", pattern))
@@ -36,9 +40,14 @@ func WithOTel(serviceName string) func(http.Handler) http.Handler {
 		return otelhttp.NewHandler(
 			wrapped,
 			"",
+			otelhttp.WithServerName(serviceName),
+			// chi v5 sets r.Pattern (stdlib field) once routing completes.
+			// otelhttp calls this formatter post-handler when r.Pattern != "".
+			// Using r.Pattern here produces low-cardinality "METHOD /route"
+			// span names rather than the raw URL path.
 			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
-				if rctx := chi.RouteContext(r.Context()); rctx != nil && rctx.RoutePattern() != "" {
-					return r.Method + " " + rctx.RoutePattern()
+				if r.Pattern != "" {
+					return r.Method + " " + r.Pattern
 				}
 				return r.Method + " " + r.URL.Path
 			}),
