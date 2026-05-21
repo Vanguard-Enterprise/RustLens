@@ -163,12 +163,15 @@ func initProfiler(cfg config.Config) (Shutdown, error) {
 	if cfg.PyroscopeAddress == "" {
 		return noopShutdown, nil
 	}
+	// Note: pyroscope-go v1.3+ also auto-reads OTEL_SERVICE_NAME and uses it
+	// as the service_name label. Setting ApplicationName here would produce a
+	// duplicate-label rejection from the Pyroscope distributor, so we omit it
+	// and rely on the env-var path. Same for service.namespace; the OTel
+	// resource attribute env var carries it.
 	p, err := pyroscope.Start(pyroscope.Config{
-		ApplicationName: cfg.ServiceName,
-		ServerAddress:   cfg.PyroscopeAddress,
+		ServerAddress: cfg.PyroscopeAddress,
 		Tags: map[string]string{
 			"environment": cfg.DeploymentEnv,
-			"namespace":   cfg.ServiceNamespace,
 		},
 		ProfileTypes: []pyroscope.ProfileType{
 			pyroscope.ProfileCPU,
