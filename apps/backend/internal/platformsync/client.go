@@ -39,6 +39,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"rustlens/backend/internal/outboundhttp"
 )
 
@@ -73,7 +75,14 @@ func NewClient(token string, timeout time.Duration) *Client {
 	}
 	return &Client{
 		token: strings.TrimSpace(token),
-		http:  &http.Client{Timeout: timeout},
+		http: &http.Client{
+			Timeout: timeout,
+			Transport: otelhttp.NewTransport(http.DefaultTransport,
+				otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+					return r.Method + " " + r.URL.Host
+				}),
+			),
+		},
 	}
 }
 
