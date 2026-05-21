@@ -58,7 +58,7 @@ func (r *RedisStore) Ping(ctx context.Context) error {
 func (r *RedisStore) MarkWorker(ctx context.Context, workerID string, ttl time.Duration) error {
 	pipe := r.client.TxPipeline()
 	pipe.SAdd(ctx, workersKey, workerID)
-	pipe.SetEx(ctx, workerHeartbeatPref+workerID, "1", ttl)
+	pipe.SetEx(ctx, workerHeartbeatPref+workerID, strconv.FormatInt(time.Now().UnixNano(), 10), ttl)
 	_, err := pipe.Exec(ctx)
 	return err
 }
@@ -70,9 +70,49 @@ func (r *RedisStore) RefreshWorker(ctx context.Context, workerID string, ttl tim
 	// heartbeat permanently removes the worker until the bot process restarts.
 	pipe := r.client.TxPipeline()
 	pipe.SAdd(ctx, workersKey, workerID)
-	pipe.SetEx(ctx, workerHeartbeatPref+workerID, "1", ttl)
+	pipe.SetEx(ctx, workerHeartbeatPref+workerID, strconv.FormatInt(time.Now().UnixNano(), 10), ttl)
 	_, err := pipe.Exec(ctx)
 	return err
+}
+
+// LastHeartbeats returns the last heartbeat time for every worker that
+// currently has a heartbeat key in Redis.  It uses SCAN so it never blocks
+// on large key-spaces.  Workers whose value cannot be parsed as a Unix
+// nanosecond integer (e.g. legacy "1" values) are treated as if their last
+// heartbeat was at the Unix epoch, guaranteeing a high age metric that causes
+// the downstream alert to fire rather than silently suppressing it.
+func (r *RedisStore) LastHeartbeats(ctx context.Context) (map[string]time.Time, error) {
+	result := map[string]time.Time{}
+
+	var cursor uint64
+	for {
+		keys, next, err := r.client.Scan(ctx, cursor, workerHeartbeatPref+"*", 100).Result()
+		if err != nil {
+			return nil, err
+		}
+		for _, key := range keys {
+			workerID := strings.TrimPrefix(key, workerHeartbeatPref)
+			val, err := r.client.Get(ctx, key).Result()
+			if err != nil {
+				// Key may have expired between SCAN and GET — skip it.
+				continue
+			}
+			ns, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				// Legacy "1" value or unexpected format: treat as epoch so the
+				// metric reports a very large age and the alert fires.
+				result[workerID] = time.Unix(0, 0)
+				continue
+			}
+			result[workerID] = time.Unix(0, ns)
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+
+	return result, nil
 }
 
 func (r *RedisStore) RemoveWorker(ctx context.Context, workerID string) error {
