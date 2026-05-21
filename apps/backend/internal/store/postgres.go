@@ -38,9 +38,9 @@ func NewPostgresStore(ctx context.Context, connectionString string) (*PostgresSt
 	if err != nil {
 		return nil, err
 	}
-	cfg.ConnConfig.Tracer = otelpgx.NewTracer(
-		otelpgx.WithIncludeQueryParameters(),
-	)
+	// Note: WithIncludeQueryParameters() ENABLES leaking bind values into spans.
+	// Default (omit the option) redacts them, which is what we want.
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
