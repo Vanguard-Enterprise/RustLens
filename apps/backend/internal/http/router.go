@@ -126,6 +126,7 @@ func NewRouter(
 	}
 
 	r := chi.NewRouter()
+	r.Use(WithOTel("rustlens-backend"))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
