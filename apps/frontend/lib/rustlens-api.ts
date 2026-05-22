@@ -1,6 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
+import { backendFetchHist } from "@/lib/observability/metrics";
 import { getSessionToken } from "@/lib/session";
 import { noticeFromBackendError } from "@/lib/session-errors";
 
@@ -266,6 +267,31 @@ function getAppSecret() {
 	return secret;
 }
 
+// Bounded-cardinality endpoint label for the backend-fetch histogram. Strips
+// query strings and replaces dynamic segments (UUIDs, numeric IDs, long
+// opaque tokens) so each backend route shape produces one series.
+function normalizeEndpoint(path: string): string {
+	const noQuery = path.split("?", 1)[0];
+	return noQuery
+		.split("/")
+		.map((seg) => {
+			if (!seg) return seg;
+			if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seg)) return ":id";
+			if (/^\d+$/.test(seg)) return ":id";
+			if (/^[A-Za-z0-9_-]{16,}$/.test(seg)) return ":id";
+			return seg;
+		})
+		.join("/");
+}
+
+function statusClass(status: number): string {
+	if (status >= 500) return "5xx";
+	if (status >= 400) return "4xx";
+	if (status >= 300) return "3xx";
+	if (status >= 200) return "2xx";
+	return "1xx";
+}
+
 async function backendFetch<T>(
 	path: string,
 	init: RequestInit = {},
@@ -282,10 +308,25 @@ async function backendFetch<T>(
 		headers.set("X-RustLens-Session", sessionToken);
 	}
 
-	const response = await fetch(`${API_BASE_URL}${path}`, {
-		...init,
-		headers,
-		cache: "no-store",
+	const endpoint = normalizeEndpoint(path);
+	const start = performance.now();
+	let response: Response;
+	try {
+		response = await fetch(`${API_BASE_URL}${path}`, {
+			...init,
+			headers,
+			cache: "no-store",
+		});
+	} catch (err) {
+		backendFetchHist.record((performance.now() - start) / 1000, {
+			endpoint,
+			status_class: "error",
+		});
+		throw err;
+	}
+	backendFetchHist.record((performance.now() - start) / 1000, {
+		endpoint,
+		status_class: statusClass(response.status),
 	});
 
 	if (!response.ok) {
