@@ -42,6 +42,10 @@ jobs:
           context: .
           file: apps/${{ matrix.service }}/Dockerfile
           push: true
+          build-args: |
+            DEPLOYMENT_VERSION=sha-${{ github.sha }}
+          secrets: |
+            next_server_actions_encryption_key=${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
           tags: |
             ghcr.io/${{ steps.image_owner.outputs.value }}/rustlens-${{ matrix.service }}:main
             ghcr.io/${{ steps.image_owner.outputs.value }}/rustlens-${{ matrix.service }}:sha-${{ github.sha }}
