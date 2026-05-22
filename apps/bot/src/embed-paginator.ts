@@ -200,10 +200,18 @@ function attachPaginatorCollector(
   });
 
   collector.on("end", () => {
-    interaction.editReply({ components: [] }).catch(logDiscordCatch("clear paginator components", undefined, {
-      guildId: interaction.guildId,
-      discordId: interaction.user.id,
-    }));
+    // The interaction webhook token expires 15 minutes after the original
+    // interaction. The collector itself runs for 5 minutes, but if other
+    // replies on the same token pushed us past the 15-minute mark the
+    // editReply 404s and the buttons stay visible forever. Fall back to
+    // message.edit (uses bot auth, no token TTL) on any failure.
+    interaction.editReply({ components: [] }).catch(() => {
+      return message.edit({ components: [] }).catch(logDiscordCatch("clear paginator components", undefined, {
+        guildId: interaction.guildId,
+        discordId: interaction.user.id,
+        messageId: message.id,
+      }));
+    });
   });
 }
 
