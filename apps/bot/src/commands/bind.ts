@@ -32,6 +32,7 @@ import {
 } from "../shared.js";
 import { getFollowupCorrelationId, getOrAssignCorrelationId, withCorrelation } from "../correlation.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
+import { getGuildMembers } from "../guild-member-cache.js";
 
 export const BIND_COMMAND_NAME = "bind";
 
@@ -782,7 +783,8 @@ async function handleMassInvite(interaction: ChatInputCommandInteraction) {
   const role = interaction.options.getRole("scope", true);
   const vcChannel = interaction.options.getChannel("vc", false);
 
-  let targetMembers = guild.members.cache.filter((member) => member.roles.cache.has(role.id));
+  const allMembers = await getGuildMembers(guild);
+  let targetMembers = allMembers.filter((member) => member.roles.cache.has(role.id));
 
   if (vcChannel) {
     targetMembers = targetMembers.filter(
