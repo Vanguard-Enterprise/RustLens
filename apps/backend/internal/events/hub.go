@@ -54,11 +54,14 @@ func (h *Hub) Subscribe(ctx context.Context, userID string) (<-chan Event, func(
 		})
 	}
 
-	// Tie subscription lifetime to ctx.
-	go func() {
-		<-ctx.Done()
-		unsub()
-	}()
+	// Tie subscription lifetime to ctx. Skip when ctx is never-cancel
+	// (Done() == nil) — receiving from a nil channel would leak the goroutine.
+	if done := ctx.Done(); done != nil {
+		go func() {
+			<-done
+			unsub()
+		}()
+	}
 
 	return ch, unsub, nil
 }
