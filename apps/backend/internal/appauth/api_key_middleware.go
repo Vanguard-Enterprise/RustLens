@@ -38,7 +38,23 @@ type APIKeyAuth struct {
 // only on code paths where no Authorization header is presented (pass-through).
 func NewAPIKeyAuth(s *store.APIKeyStore, u UserLoader, h clientip.Headers) func(http.Handler) http.Handler {
 	a := &APIKeyAuth{store: s, users: u, headers: h, recent: map[string]time.Time{}}
+	go a.pruneLoop()
 	return a.handler
+}
+
+func (a *APIKeyAuth) pruneLoop() {
+	t := time.NewTicker(lastUsedDebounce)
+	defer t.Stop()
+	for range t.C {
+		cutoff := time.Now().Add(-lastUsedDebounce)
+		a.mu.Lock()
+		for id, last := range a.recent {
+			if last.Before(cutoff) {
+				delete(a.recent, id)
+			}
+		}
+		a.mu.Unlock()
+	}
 }
 
 func (a *APIKeyAuth) handler(next http.Handler) http.Handler {
