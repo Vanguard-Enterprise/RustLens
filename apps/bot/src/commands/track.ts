@@ -15,10 +15,12 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  DiscordAPIError,
   EmbedBuilder,
   InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
+  RESTJSONErrorCodes,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
 } from "discord.js";
@@ -1385,11 +1387,24 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
     return;
   }
 
-  const channel = await guild.channels.fetch(group.channelId).catch(logDiscordCatch("fetch track group channel", null, {
-    guildId: guild.id,
-    channelId: group.channelId,
-    groupId: group.id,
-  }));
+  let channel;
+  try {
+    channel = await guild.channels.fetch(group.channelId);
+  } catch (error) {
+    // Only treat a confirmed "channel deleted" as a reason to drop the track group.
+    // Transient errors (5xx, missing access, network blips) must NOT delete user data.
+    if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownChannel) {
+      await getBackend().deleteTrackGroup(getWorkerID(), guild.id, group.id).catch(() => null);
+      previousSnapshots.delete(group.id);
+      return;
+    }
+    logDiscordError("fetch track group channel", error, {
+      guildId: guild.id,
+      channelId: group.channelId,
+      groupId: group.id,
+    });
+    return;
+  }
   if (!channel || channel.type !== ChannelType.GuildText) {
     await getBackend().deleteTrackGroup(getWorkerID(), guild.id, group.id).catch(() => null);
     previousSnapshots.delete(group.id);
