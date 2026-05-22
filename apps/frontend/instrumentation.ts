@@ -1,4 +1,3 @@
-import { hostname } from "node:os";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { AggregationTemporality, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { registerOTel } from "@vercel/otel";
@@ -29,9 +28,12 @@ export function register() {
 
     // service.instance.id MUST be unique per process for Mimir to keep each
     // pod's cumulative counters as separate series; without it pod restarts
-    // look like counter resets and rate() inflates dramatically.
+    // look like counter resets and rate() inflates dramatically. Use the
+    // HOSTNAME env var (set to the pod name by K8s) instead of node:os —
+    // instrumentation.ts can be evaluated in the edge runtime which lacks
+    // native node modules.
     const serviceInstanceId =
-        hostname() || `${process.env.OTEL_SERVICE_NAME ?? "rustlens-frontend"}-${process.pid}`;
+        process.env.HOSTNAME ?? `${process.env.OTEL_SERVICE_NAME ?? "rustlens-frontend"}-${process.pid}`;
 
     registerOTel({
         serviceName: process.env.OTEL_SERVICE_NAME ?? "rustlens-frontend",
