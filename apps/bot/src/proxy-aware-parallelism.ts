@@ -23,16 +23,26 @@ export async function mapProxiedRequests<TInput, TOutput>(
 
   const results = new Array<TOutput>(items.length);
   let nextIndex = 0;
+  // Promise.all rejects on the first worker error, but the other workers
+  // keep pulling items until the queue drains — wasting expensive proxied
+  // scrapes after the operation has already failed. Stop picking up new
+  // work once any worker has thrown.
+  let aborted = false;
 
   async function runWorker() {
-    while (true) {
+    while (!aborted) {
       const currentIndex = nextIndex;
       nextIndex += 1;
       if (currentIndex >= items.length) {
         return;
       }
 
-      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+      try {
+        results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+      } catch (err) {
+        aborted = true;
+        throw err;
+      }
     }
   }
 
