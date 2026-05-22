@@ -401,11 +401,6 @@ func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = d.audit.RecordEntry(context.Background(), entry)
 		status, code := mapExecError(execErr)
 		writeJSON(rw, status, errResponse{Error: code, Message: msg})
-		// On execution error we still cache the response so retries with the
-		// same idempotency key get the same failure instead of re-executing.
-		if buf != nil {
-			d.idemCache.put(idemCacheKey, buf.status, buf.body.Bytes())
-		}
 		return
 	}
 
