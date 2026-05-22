@@ -11,6 +11,7 @@ import {
   handleAnnounceChatInput,
 } from "./commands/announce.js";
 import {
+  ANALYZE_COMMAND_NAME,
   ensureAnalyzeCommand,
   handleAnalyzeAutocomplete,
   handleAnalyzeChatInput,
@@ -34,6 +35,7 @@ import {
   handleBindModalSubmit,
 } from "./commands/bind.js";
 import {
+  CHECK_GAME_BANS_COMMAND_NAME,
   ensureCheckGameBansCommand,
   handleCheckGameBansChatInput,
 } from "./commands/checkgamebans.js";
@@ -43,11 +45,13 @@ import {
   handleCreateChatInput,
 } from "./commands/create.js";
 import {
+  COMPARE_COMMAND_NAME,
   ensureCompareCommand,
   handleCompareAutocomplete,
   handleCompareChatInput,
 } from "./commands/compare.js";
 import {
+  ONLINE_COMMAND_NAME,
   ensureOnlineCommand,
   handleOnlineChatInput,
 } from "./commands/online.js";
@@ -113,6 +117,7 @@ import {
   handleTransferModalSubmit,
 } from "./commands/transfer.js";
 import {
+  VIEW_COMMAND_NAME,
   ensureViewCommand,
   handleViewButtonInteraction,
   handleViewChatInput,
@@ -153,6 +158,17 @@ const config = loadConfig();
 const backend = new BackendClient(config.backendUrl, config.jwtSecret, config.jwtIssuer, config.jwtAudience);
 const statusWorkerID = `${config.workerId}-status-${shardID}`;
 const statusRefreshIntervalMs = 60_000;
+
+// Heavy backend commands besides /player that should be rate-limited per
+// user. Each entry consumes a separate budget so users get a fresh quota
+// per command rather than one shared bucket.
+const RATE_LIMITED_COMMANDS = new Set<string>([
+  CHECK_GAME_BANS_COMMAND_NAME,
+  VIEW_COMMAND_NAME,
+  ONLINE_COMMAND_NAME,
+  COMPARE_COMMAND_NAME,
+  ANALYZE_COMMAND_NAME,
+]);
 
 if (!token) {
   throw new Error("DISCORD_TOKEN is required for shard worker process");
@@ -454,6 +470,13 @@ client.on("interactionCreate", async (interaction) => {
           return;
         }
         if (!(await deferPlayerChatInput(interaction))) {
+          return;
+        }
+      } else if (RATE_LIMITED_COMMANDS.has(interaction.commandName)) {
+        // Heavy backend commands: rate-limit at the dispatcher to keep a
+        // single user from hammering proxied scrapes / deep ban lookups.
+        // Defers happen inside each handler, so no defer here.
+        if (await enforceRateLimit(interaction, interaction.commandName)) {
           return;
         }
       }
