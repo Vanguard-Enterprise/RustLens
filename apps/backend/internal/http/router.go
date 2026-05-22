@@ -2,9 +2,7 @@ package httpapi
 
 import (
 	"context"
-	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -30,18 +28,9 @@ import (
 type contextKey string
 
 const claimsContextKey = contextKey("claims")
-const appSessionContextKey = contextKey("app-session")
 
 func claimsFromContext(ctx context.Context) *auth.Claims {
 	claims, ok := ctx.Value(claimsContextKey).(*auth.Claims)
-	if !ok {
-		return nil
-	}
-	return claims
-}
-
-func appSessionFromContext(ctx context.Context) *auth.AppSessionClaims {
-	claims, ok := ctx.Value(appSessionContextKey).(*auth.AppSessionClaims)
 	if !ok {
 		return nil
 	}
@@ -403,44 +392,6 @@ func botJWTMiddleware(validator *auth.Validator) func(next http.Handler) http.Ha
 			}
 
 			ctx := context.WithValue(r.Context(), claimsContextKey, claims)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	}
-}
-
-func appInternalMiddleware(expectedSecret string) func(next http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.TrimSpace(r.Header.Get("X-RustLens-App-Secret")) != expectedSecret {
-				writeError(w, http.StatusUnauthorized, "invalid app secret")
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-func appSessionMiddleware(validator *auth.AppSessionValidator) func(next http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			rawToken := strings.TrimSpace(r.Header.Get("X-RustLens-Session"))
-			if rawToken == "" {
-				writeError(w, http.StatusUnauthorized, "missing app session")
-				return
-			}
-
-			claims, err := validator.Parse(rawToken)
-			if err != nil {
-				status := http.StatusUnauthorized
-				if errors.Is(err, auth.ErrExpiredAppSession) {
-					status = http.StatusUnauthorized
-				}
-				writeError(w, status, "invalid app session")
-				return
-			}
-
-			ctx := context.WithValue(r.Context(), appSessionContextKey, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

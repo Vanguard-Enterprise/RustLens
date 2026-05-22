@@ -85,19 +85,11 @@ func currentUserToMap(current store.CurrentUser) map[string]any {
 }
 
 func requireAppActor(r *http.Request, postgres *store.PostgresStore) (store.AppUser, bool, int, string) {
-	// Prefer the revocation-checked session attached by appauth.RequireSession;
-	// fall back to the lax appSessionContextKey only for routes that haven't
-	// been migrated yet (none today). RequireSession validates the session
-	// epoch + suspended/deleted state on every request.
-	var userID string
-	if s := appauth.SessionFromContext(r.Context()); s != nil {
-		userID = s.UserID
-	} else if s := appSessionFromContext(r.Context()); s != nil {
-		userID = s.UserID
-	}
-	if userID == "" {
+	s := appauth.SessionFromContext(r.Context())
+	if s == nil {
 		return store.AppUser{}, false, http.StatusUnauthorized, "missing app session"
 	}
+	userID := s.UserID
 
 	user, err := postgres.GetAppUserByID(r.Context(), userID)
 	if errors.Is(err, store.ErrAppUserNotFound) {

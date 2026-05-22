@@ -51,7 +51,6 @@ type Handler struct {
 	redis               *store.RedisStore
 	shardService        *shards.Service
 	jwtValidator        *auth.Validator
-	appSessions         *auth.AppSessionValidator
 	steamClient         *steamapi.Client
 	steamSummaryClient  *steamapi.Client
 	battleMetricsClient *battlemetrics.Client
@@ -124,7 +123,6 @@ func NewHandler(
 		redis:               redis,
 		shardService:        shardService,
 		jwtValidator:        auth.NewValidator(cfg.BotServiceJWT, cfg.AllowedJWTIssuer, cfg.AllowedJWTAudience),
-		appSessions:         auth.NewAppSessionValidator(cfg.AppSessionSecret),
 		steamClient:         steamClient,
 		steamSummaryClient:  steamSummaryClient,
 		battleMetricsClient: battleMetricsClient,
