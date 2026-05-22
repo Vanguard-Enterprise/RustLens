@@ -83,8 +83,41 @@ async function main() {
   await reconcile();
   await heartbeat();
 
+  // If we can't reach the backend for long enough that our lease would have
+  // expired, the backend may have reassigned our shards to another worker.
+  // Continuing to run them would produce duplicate Discord gateway sessions.
+  // Shed them defensively after this many consecutive failures.
+  const reconcileFailuresBeforeRelease = Math.max(
+    2,
+    Math.ceil((register.heartbeatTtlSeconds * 1000) / config.reconcileIntervalMs),
+  );
+  let consecutiveReconcileFailures = 0;
+
   const reconcileTimer = setInterval(() => {
-    reconcile().catch((error) => logger.error({ error }, "reconcile failed"));
+    reconcile()
+      .then(() => {
+        consecutiveReconcileFailures = 0;
+      })
+      .catch((error) => {
+        consecutiveReconcileFailures += 1;
+        logger.error(
+          { error, consecutiveReconcileFailures, reconcileFailuresBeforeRelease },
+          "reconcile failed",
+        );
+        if (consecutiveReconcileFailures >= reconcileFailuresBeforeRelease) {
+          const owned = runtime.activeShards();
+          if (owned.length > 0) {
+            logger.warn(
+              { owned },
+              "shedding shards after prolonged reconcile failure to avoid duplicate sessions",
+            );
+            for (const shardID of owned) {
+              runtime.stop(shardID);
+              shardSnapshots.delete(shardID);
+            }
+          }
+        }
+      });
   }, config.reconcileIntervalMs);
 
   const heartbeatTimer = setInterval(() => {
