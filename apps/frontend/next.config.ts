@@ -6,6 +6,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
 	poweredByHeader: false,
+	// Stable per-build identifier emitted on assets as ?dpl= and on client
+	// requests as x-deployment-id. On mismatch, Next triggers a hard reload
+	// instead of failing with "Failed to find Server Action" against an older
+	// HTML/JS cached by the browser.
+	deploymentId: process.env.DEPLOYMENT_VERSION,
 	async rewrites() {
 		return [
 			{
