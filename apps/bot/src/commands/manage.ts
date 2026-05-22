@@ -737,13 +737,21 @@ export async function handleManageButtonInteraction(interaction: ButtonInteracti
     return true;
   }
 
+  // Defer the component update before any backend work so we don't miss the
+  // 3s ack window when the backend is slow. After deferUpdate the interaction
+  // is acknowledged; editReply is the only safe way back, including from the
+  // catch branch (a plain reply() here would 40060).
+  await interaction.deferUpdate();
   try {
     const { items } = await fetchTrackedServers();
     const response = buildTrackedServerListResponse(items, page);
-    await interaction.update({ embeds: [response.embed], components: response.components });
+    await interaction.editReply({ embeds: [response.embed], components: response.components });
   } catch (error) {
     console.error("[bot] /manage server list page failed", error);
-    await interaction.reply({ content: "RustLens could not load the tracked server list.", flags: MessageFlags.Ephemeral });
+    await interaction.followUp({
+      content: "RustLens could not load the tracked server list.",
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   return true;
