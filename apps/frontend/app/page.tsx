@@ -4,6 +4,7 @@ import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { HeroSection } from "@/components/hero";
 import { LogosSection } from "@/components/logos-section";
+import { MouseGridBackground } from "@/components/mouse-grid-background";
 import { PricingSection } from "@/components/pricing-section";
 import { getCsrfToken } from "@/lib/csrf";
 import { getSession } from "@/lib/session";
@@ -22,16 +23,19 @@ export default async function Home() {
 		: null;
 
 	return (
-		<div className="flex min-h-screen flex-col">
-			<Header csrfToken={csrfToken} user={user} />
-			<main className="flex-1">
-				<HeroSection />
-				<LogosSection />
-				<FeatureSection />
-				<PricingSection />
-				<FaqsSection />
-			</main>
-			<Footer />
+		<div className="relative flex min-h-screen flex-col overflow-x-clip">
+			<MouseGridBackground />
+			<div className="relative z-10 flex min-h-screen flex-col">
+				<Header csrfToken={csrfToken} user={user} />
+				<main className="flex-1">
+					<HeroSection />
+					<LogosSection />
+					<FeatureSection />
+					<PricingSection />
+					<FaqsSection />
+				</main>
+				<Footer />
+			</div>
 		</div>
 	);
 }

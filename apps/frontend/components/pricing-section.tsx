@@ -98,10 +98,10 @@ export function PricingSection() {
 
 	return (
 		<div
-			className="flex w-full scroll-mt-24 flex-col items-center justify-center space-y-7 p-4"
+			className="relative flex w-full scroll-mt-24 flex-col items-center justify-center p-4 py-10"
 			id="pricing"
 		>
-			<div className="mx-auto max-w-xl space-y-2">
+			<div className="relative z-10 mx-auto max-w-xl space-y-2">
 				<h2 className="text-center font-bold text-2xl tracking-tight md:text-3xl lg:font-extrabold lg:text-4xl">
 					Pricing that scales with your community
 				</h2>
@@ -111,8 +111,10 @@ export function PricingSection() {
 				</p>
 			</div>
 
-			<FrequencyToggle frequency={frequency} setFrequency={setFrequency} />
-			<div className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-6 md:grid-cols-3">
+			<div className="relative z-10 mt-7">
+				<FrequencyToggle frequency={frequency} setFrequency={setFrequency} />
+			</div>
+			<div className="relative z-10 mx-auto mt-7 grid w-full max-w-4xl grid-cols-1 gap-6 md:grid-cols-3">
 				{plans.map((plan) => (
 					<PricingCard frequency={frequency} key={plan.name} plan={plan} />
 				))}
@@ -135,7 +137,7 @@ export function PricingCard({
 	return (
 		<div
 			className={cn(
-				"relative flex w-full flex-col overflow-hidden rounded-lg border shadow-xs",
+				"relative flex w-full flex-col overflow-hidden rounded-lg border bg-card/15 shadow-xs backdrop-blur-[2px]",
 				plan.highlighted &&
 					"scale-105 border-primary/50 shadow-md ring-1 ring-primary/20",
 				plan.blurred && "select-none [&_*]:blur-[5px] [&_*]:pointer-events-none",

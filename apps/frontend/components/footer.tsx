@@ -67,12 +67,9 @@ export function Footer() {
 								</a>
 							</li>
 						))}
+						<li>&copy; {new Date().getFullYear()} RustLens</li>
 					</ul>
 				</nav>
-			</div>
-
-			<div className="flex border-t bg-[radial-gradient(circle_at_bottom_left,color-mix(in_srgb,var(--accent)_60%,transparent),transparent_55%)] py-4 text-muted-foreground text-sm">
-				<p>&copy; {new Date().getFullYear()} RustLens</p>
 			</div>
 		</footer>
 	);

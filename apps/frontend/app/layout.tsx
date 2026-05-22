@@ -47,16 +47,10 @@ export default async function RootLayout({
 			<body className="min-h-full flex flex-col">
 				<script
 					nonce={nonce}
+					suppressHydrationWarning
 					// biome-ignore lint/security/noDangerouslySetInnerHtml: inline guard runs before hydration
 					dangerouslySetInnerHTML={{
 						__html: `(()=>{try{var n=performance.getEntriesByType('navigation')[0];if(n&&n.type==='back_forward'&&!sessionStorage.getItem('__bfReloaded')){sessionStorage.setItem('__bfReloaded','1');location.reload();}else{sessionStorage.removeItem('__bfReloaded');}addEventListener('pageshow',function(e){if(e.persisted){location.reload();}});}catch(_){}})();`,
-					}}
-				/>
-				<script
-					nonce={nonce}
-					// biome-ignore lint/security/noDangerouslySetInnerHtml: inline pointer tracker runs before hydration
-					dangerouslySetInnerHTML={{
-						__html: `(()=>{try{var r=document.documentElement;var x=-9999,y=-9999,t=0;r.style.setProperty('--mx','-9999px');r.style.setProperty('--my','-9999px');var f=function(){r.style.setProperty('--mx',x+'px');r.style.setProperty('--my',y+'px');t=0;};addEventListener('mousemove',function(e){x=e.clientX;y=e.clientY;if(!t)t=requestAnimationFrame(f);},{passive:true});document.addEventListener('mouseleave',function(){x=-9999;y=-9999;if(!t)t=requestAnimationFrame(f);});}catch(_){}})();`,
 					}}
 				/>
 				<ThemeProvider
@@ -64,6 +58,7 @@ export default async function RootLayout({
 					defaultTheme="system"
 					enableSystem
 					disableTransitionOnChange
+					nonce={nonce}
 				>
 					<TooltipProvider>{children}</TooltipProvider>
 					<Toaster />
