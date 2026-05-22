@@ -253,10 +253,29 @@ func (p *PostgresStore) GetSteamAccountByBmID(ctx context.Context, bmID string) 
 	return record, err
 }
 
+// CountSteamAccounts returns the number of rows in steam_accounts, cached for
+// up to an hour in the cached_counts table. The refresh uses FOR UPDATE SKIP
+// LOCKED so only one backend instance scans the table per refresh window;
+// other instances return the existing cached value.
 func (p *PostgresStore) CountSteamAccounts(ctx context.Context) (int64, error) {
+	if _, err := p.pool.Exec(ctx, `
+		WITH stale AS (
+			SELECT name FROM cached_counts
+			WHERE name = 'steam_accounts'
+			  AND updated_at < now() - interval '1 hour'
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE cached_counts c
+		SET value = (SELECT count(*) FROM steam_accounts),
+		    updated_at = now()
+		FROM stale
+		WHERE c.name = stale.name
+	`); err != nil {
+		return 0, err
+	}
+
 	var count int64
-	err := p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM steam_accounts`).Scan(&count)
-	if err != nil {
+	if err := p.pool.QueryRow(ctx, `SELECT value FROM cached_counts WHERE name = 'steam_accounts'`).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
