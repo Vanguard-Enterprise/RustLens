@@ -110,6 +110,18 @@ func (s *Service) Release(ctx context.Context, workerID string) error {
 }
 
 func (s *Service) Assignments(ctx context.Context, workerID string) ([]int, int, error) {
+	// The caller is, by definition, active right now — it just made an HTTP
+	// call. Refresh its lease before reading ActiveWorkers so a momentary
+	// heartbeat gap doesn't cause us to redistribute its shards to another
+	// worker (which would then run them concurrently with the original,
+	// because the original orchestrator only finds out it lost shards on its
+	// next Assignments() call).
+	if workerID != "" {
+		if err := s.leases.RefreshWorker(ctx, workerID, s.heartbeatTTL); err != nil {
+			return nil, 0, err
+		}
+	}
+
 	workers, err := s.leases.ActiveWorkers(ctx)
 	if err != nil {
 		return nil, 0, err

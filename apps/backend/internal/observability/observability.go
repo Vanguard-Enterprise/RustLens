@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -123,7 +124,17 @@ func initTracer(ctx context.Context, res *resource.Resource, endpoint string, in
 }
 
 func initMeter(ctx context.Context, res *resource.Resource, endpoint string, insecure bool) (Shutdown, error) {
-	opts := []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpoint(endpoint)}
+	opts := []otlpmetricgrpc.Option{
+		otlpmetricgrpc.WithEndpoint(endpoint),
+		// Force cumulative temporality on every instrument kind. Without this,
+		// the SDK's default selector returns delta for UpDownCounters/observable
+		// counters, which Mimir's OTLP /otlp endpoint converts back to
+		// cumulative in a way that inflates rate()/increase() by orders of
+		// magnitude on counter resets — every export looks like a reset.
+		otlpmetricgrpc.WithTemporalitySelector(func(sdkmetric.InstrumentKind) metricdata.Temporality {
+			return metricdata.CumulativeTemporality
+		}),
+	}
 	if insecure {
 		opts = append(opts, otlpmetricgrpc.WithInsecure())
 	}
@@ -163,13 +174,14 @@ func initProfiler(cfg config.Config) (Shutdown, error) {
 	if cfg.PyroscopeAddress == "" {
 		return noopShutdown, nil
 	}
-	// Note: pyroscope-go v1.3+ also auto-reads OTEL_SERVICE_NAME and uses it
-	// as the service_name label. Setting ApplicationName here would produce a
-	// duplicate-label rejection from the Pyroscope distributor, so we omit it
-	// and rely on the env-var path. Same for service.namespace; the OTel
-	// resource attribute env var carries it.
+	// pyroscope-go requires a non-empty ApplicationName; if missing it errors
+	// "new session: service name is required" and the whole observability
+	// init fails, crashlooping the pod. Pass ServiceName here and DO NOT also
+	// set service_name in Tags (that's what caused the duplicate-label
+	// rejection #124 was responding to).
 	p, err := pyroscope.Start(pyroscope.Config{
-		ServerAddress: cfg.PyroscopeAddress,
+		ApplicationName: cfg.ServiceName,
+		ServerAddress:   cfg.PyroscopeAddress,
 		Tags: map[string]string{
 			"environment": cfg.DeploymentEnv,
 		},

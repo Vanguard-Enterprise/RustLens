@@ -7,6 +7,8 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-grpc";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_NAMESPACE } from "@opentelemetry/semantic-conventions";
 
+const { AggregationTemporality } = sdkMetrics;
+
 const enabled = process.env.OBSERVABILITY_ENABLED === "true";
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
@@ -34,7 +36,14 @@ export async function startObservability(): Promise<() => Promise<void>> {
         resource,
         traceExporter: new OTLPTraceExporter({ url: endpoint }),
         metricReader: new sdkMetrics.PeriodicExportingMetricReader({
-            exporter: new OTLPMetricExporter({ url: endpoint }),
+            // Pin every instrument kind to cumulative temporality. The SDK's
+            // default selector returns delta for some kinds; Mimir's OTLP
+            // endpoint then mis-handles the counter-reset semantics and
+            // inflates rate()/increase() by 50–200x.
+            exporter: new OTLPMetricExporter({
+                url: endpoint,
+                temporalityPreference: AggregationTemporality.CUMULATIVE,
+            }),
             exportIntervalMillis: 30_000,
         }),
         logRecordProcessor: new sdkLogs.BatchLogRecordProcessor(new OTLPLogExporter({ url: endpoint })),
