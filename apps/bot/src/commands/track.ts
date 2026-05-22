@@ -710,6 +710,7 @@ async function handleTrackDeleteChatInput(interaction: ChatInputCommandInteracti
   }));
   await getBackend().deleteTrackGroup(getWorkerID(), interaction.guildId, group.id);
   previousSnapshots.delete(group.id);
+  trackViewModes.delete(group.id);
 
   await interaction.editReply({
     embeds: [
@@ -1396,6 +1397,7 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
     if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownChannel) {
       await getBackend().deleteTrackGroup(getWorkerID(), guild.id, group.id).catch(() => null);
       previousSnapshots.delete(group.id);
+      trackViewModes.delete(group.id);
       return;
     }
     logDiscordError("fetch track group channel", error, {
@@ -1408,6 +1410,7 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
   if (!channel || channel.type !== ChannelType.GuildText) {
     await getBackend().deleteTrackGroup(getWorkerID(), guild.id, group.id).catch(() => null);
     previousSnapshots.delete(group.id);
+    trackViewModes.delete(group.id);
     return;
   }
   const textChannel = channel as TextChannel;

@@ -27,6 +27,15 @@ type CacheEntry = {
 const banCache = new Map<string, CacheEntry>();
 const pendingLookups = new Map<string, Promise<Set<BanCategory>>>();
 
+// Expired entries are only purged on read, so users we never see again would
+// linger forever. Sweep periodically.
+setInterval(() => {
+  const now = Date.now();
+  for (const [discordId, entry] of banCache) {
+    if (entry.expiresAt <= now) banCache.delete(discordId);
+  }
+}, CACHE_TTL_MS).unref();
+
 let _backend: BackendClient | undefined;
 let _workerID: string | undefined;
 

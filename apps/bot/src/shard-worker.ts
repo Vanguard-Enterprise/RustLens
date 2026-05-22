@@ -312,6 +312,15 @@ function logAlreadyAcknowledgedInteraction(interaction: Interaction, error: unkn
 const userInstallSeenCache = new Map<string, number>();
 const USER_INSTALL_SEEN_TTL_MS = 5 * 60_000;
 
+// Map entries are only checked on read; without a sweep, every distinct user
+// ever seen by this shard accumulates in memory for the worker's lifetime.
+setInterval(() => {
+  const cutoff = Date.now() - USER_INSTALL_SEEN_TTL_MS;
+  for (const [userId, last] of userInstallSeenCache) {
+    if (last <= cutoff) userInstallSeenCache.delete(userId);
+  }
+}, USER_INSTALL_SEEN_TTL_MS).unref();
+
 function reportUserInstallSeen(interaction: Interaction): void {
   // Discord exposes the user-install owner (ApplicationIntegrationType.UserInstall = 1)
   // on the interaction. Present only when the invocation came via a user install.

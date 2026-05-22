@@ -34,6 +34,15 @@ function getWorkerID(): string {
 const ensureAppUserCache = new Map<string, number>();
 const ENSURE_APP_USER_TTL_MS = 5 * 60_000;
 
+// Entries are only validated on read; without a sweep, every Discord user
+// ever seen by this worker stays in the map for the process lifetime.
+setInterval(() => {
+  const cutoff = Date.now() - ENSURE_APP_USER_TTL_MS;
+  for (const [userId, last] of ensureAppUserCache) {
+    if (last <= cutoff) ensureAppUserCache.delete(userId);
+  }
+}, ENSURE_APP_USER_TTL_MS).unref();
+
 /**
  * Fire-and-forget: on the first call for a given Discord user (within the
  * 5-minute TTL), POST to the backend so an app_users row exists for them.
