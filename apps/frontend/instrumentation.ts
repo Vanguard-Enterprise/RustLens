@@ -1,5 +1,5 @@
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
-import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { AggregationTemporality, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { registerOTel } from "@vercel/otel";
 
 export function register() {
@@ -14,8 +14,15 @@ export function register() {
     // @vercel/otel only configures the trace exporter by default. Wire an
     // explicit OTLP/HTTP metric reader so SSR duration, route hit counters,
     // and backend fetch latency reach Mimir.
+    // Pin every instrument kind to cumulative temporality. The SDK's default
+    // selector returns delta for some kinds; Mimir's OTLP endpoint then
+    // mis-handles counter-reset semantics and inflates rate()/increase()
+    // dramatically.
     const metricReader = new PeriodicExportingMetricReader({
-        exporter: new OTLPMetricExporter({ url: `${endpoint.replace(/\/$/, "")}/v1/metrics` }),
+        exporter: new OTLPMetricExporter({
+            url: `${endpoint.replace(/\/$/, "")}/v1/metrics`,
+            temporalityPreference: AggregationTemporality.CUMULATIVE,
+        }),
         exportIntervalMillis: 30_000,
     });
 
