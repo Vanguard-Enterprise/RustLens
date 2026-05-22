@@ -85,6 +85,10 @@ func (l *Limiter) Consume(ctx context.Context, key string, cfg Config) (Result, 
 	if err := l.rdb.Set(ctx, cooldownKey, "1", cooldown).Err(); err != nil {
 		return Result{}, fmt.Errorf("ratelimit: set cooldown: %w", err)
 	}
+	// Reset the quota counter so the user gets a fresh window after cooldown.
+	if err := l.rdb.Del(ctx, quotaKey).Err(); err != nil {
+		return Result{}, fmt.Errorf("ratelimit: del quota: %w", err)
+	}
 	rejectionCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("bucket", key)))
 	return Result{
 		Allowed:           false,
