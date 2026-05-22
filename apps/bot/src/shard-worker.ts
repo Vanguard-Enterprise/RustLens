@@ -728,7 +728,10 @@ client.login(token).catch((error) => {
   process.exit(1);
 });
 
+let shuttingDown = false;
 async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   for (const timer of shutdownTimers) {
     if (timer) {
       clearInterval(timer);
@@ -736,6 +739,11 @@ async function shutdown() {
   }
   shutdownTimers.length = 0;
   await client.destroy();
+  // recordCommandUsage and similar telemetry POSTs are fire-and-forget. The
+  // dispatcher kicks them off in `finally` and returns; the HTTP request is
+  // still in flight. Without a brief drain window, process.exit kills them
+  // mid-send and the last interactions before SIGTERM lose analytics rows.
+  await new Promise((resolve) => setTimeout(resolve, 500));
   process.exit(0);
 }
 

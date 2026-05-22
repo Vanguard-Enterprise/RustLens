@@ -17,8 +17,10 @@ function isWorkerStatsMessage(value: unknown): value is WorkerStatsMessage {
 async function main() {
   const config = loadConfig();
   const stopObservability = await startObservability();
-  process.once("SIGTERM", () => void stopObservability());
-  process.once("SIGINT", () => void stopObservability());
+  // Note: do NOT install separate signal handlers for stopObservability here.
+  // The single shutdown() handler below owns observability teardown so it
+  // happens *before* process.exit. A fire-and-forget stopObservability raced
+  // shutdown() and lost — the OTel/Pyroscope buffers were dropped on exit.
 
   if (!config.discordToken) {
     throw new Error("DISCORD_TOKEN is required");
@@ -124,7 +126,10 @@ async function main() {
     heartbeat().catch((error) => logger.error({ error }, "heartbeat failed"));
   }, config.heartbeatIntervalMs);
 
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     clearInterval(reconcileTimer);
     clearInterval(heartbeatTimer);
     runtime.stopAll();
@@ -132,6 +137,11 @@ async function main() {
       await backend.release(config.workerId);
     } catch (error) {
       logger.error({ error }, "release failed");
+    }
+    try {
+      await stopObservability();
+    } catch (error) {
+      logger.error({ error }, "observability shutdown failed");
     }
     process.exit(0);
   };
