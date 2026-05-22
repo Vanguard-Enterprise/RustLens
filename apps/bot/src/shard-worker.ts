@@ -682,6 +682,8 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
+    outcome = "error";
+    errorCode = error instanceof Error ? error.message : String(error);
     logger.error({ error }, "interaction handling failed");
 
     if (interaction.isRepliable()) {
