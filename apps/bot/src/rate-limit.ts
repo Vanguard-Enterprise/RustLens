@@ -117,6 +117,9 @@ export async function enforceRateLimit(
       : undefined;
 
   let result: Awaited<ReturnType<BackendClient["consumeRateLimit"]>> | typeof rateLimitTimedOut;
+  // Without clearing the timer the loser of the race keeps a pending
+  // setTimeout in the queue for the full budget per call.
+  let timer: NodeJS.Timeout | undefined;
   try {
     result = await Promise.race([
       getBackend().consumeRateLimit(getWorkerID(), {
@@ -126,7 +129,7 @@ export async function enforceRateLimit(
         memberCount,
       }),
       new Promise<typeof rateLimitTimedOut>((resolve) => {
-        setTimeout(() => resolve(rateLimitTimedOut), RATE_LIMIT_BUDGET_MS);
+        timer = setTimeout(() => resolve(rateLimitTimedOut), RATE_LIMIT_BUDGET_MS);
       }),
     ]);
   } catch (error) {
@@ -136,6 +139,8 @@ export async function enforceRateLimit(
       error,
     });
     return false;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 
   if (result === rateLimitTimedOut) {

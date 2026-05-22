@@ -97,12 +97,20 @@ async function loadBannedCategories(discordId: string): Promise<Set<BanCategory>
 }
 
 async function loadBannedCategoriesWithinInteractionBudget(discordId: string) {
-  return Promise.race([
-    loadBannedCategories(discordId),
-    new Promise<typeof banLookupTimedOut>((resolve) => {
-      setTimeout(() => resolve(banLookupTimedOut), INTERACTION_BAN_LOOKUP_BUDGET_MS);
-    }),
-  ]);
+  // Without clearing the timer, the loser of the race keeps a pending
+  // setTimeout in the queue for the full budget. Autocompletes fire per
+  // keystroke, so unchecked timers pile up fast.
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      loadBannedCategories(discordId),
+      new Promise<typeof banLookupTimedOut>((resolve) => {
+        timer = setTimeout(() => resolve(banLookupTimedOut), INTERACTION_BAN_LOOKUP_BUDGET_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 export function invalidateBanCache(discordId: string) {
