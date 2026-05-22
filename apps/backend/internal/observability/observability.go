@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/grafana/pyroscope-go"
@@ -80,6 +81,21 @@ func Init(ctx context.Context, cfg config.Config) (Shutdown, error) {
 func noopShutdown(context.Context) error { return nil }
 
 func newResource(ctx context.Context, cfg config.Config) (*resource.Resource, error) {
+	// service.instance.id MUST be unique per process for Mimir to keep each
+	// pod's cumulative counters as separate series. Without it, all pods of
+	// the same service collapse into one series; when a pod restarts and its
+	// new counter starts at 0 from the previous high, Prometheus interprets
+	// the drop as a counter reset and adds the prior cumulative as a phantom
+	// increment to rate()/increase(), inflating the reported rate by orders
+	// of magnitude.
+	//
+	// Prefer the K8s pod name (which is also os.Hostname() inside a pod) so
+	// the label is stable for the lifetime of the pod and human-readable.
+	instanceID, err := os.Hostname()
+	if err != nil || instanceID == "" {
+		instanceID = fmt.Sprintf("%s-%d", cfg.ServiceName, os.Getpid())
+	}
+
 	return resource.New(ctx,
 		resource.WithFromEnv(), // picks up OTEL_RESOURCE_ATTRIBUTES
 		resource.WithProcess(),
@@ -87,6 +103,7 @@ func newResource(ctx context.Context, cfg config.Config) (*resource.Resource, er
 		resource.WithAttributes(
 			semconv.ServiceName(cfg.ServiceName),
 			semconv.ServiceNamespace(cfg.ServiceNamespace),
+			semconv.ServiceInstanceID(instanceID),
 			semconv.DeploymentEnvironment(cfg.DeploymentEnv),
 			attribute.String("team", "rustlens"),
 		),

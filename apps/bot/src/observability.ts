@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
 import { NodeSDK, logs as sdkLogs, metrics as sdkMetrics } from "@opentelemetry/sdk-node";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
@@ -5,7 +6,11 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-grpc";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-grpc";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-grpc";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import { ATTR_SERVICE_NAME, ATTR_SERVICE_NAMESPACE } from "@opentelemetry/semantic-conventions";
+import {
+    ATTR_SERVICE_INSTANCE_ID,
+    ATTR_SERVICE_NAME,
+    ATTR_SERVICE_NAMESPACE,
+} from "@opentelemetry/semantic-conventions";
 
 const { AggregationTemporality } = sdkMetrics;
 
@@ -25,9 +30,19 @@ export async function startObservability(): Promise<() => Promise<void>> {
 
     diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
 
+    // service.instance.id MUST be unique per process for Mimir to keep each
+    // pod's cumulative counters as separate series. Without it, all pods of
+    // the same service collapse into one series; when a pod restarts and its
+    // new counter starts at 0, Prometheus interprets the drop as a counter
+    // reset and adds the prior cumulative as a phantom increment to rate(),
+    // inflating reported rates by orders of magnitude. In K8s os.hostname()
+    // returns the pod name, which is unique per pod and stable for its life.
+    const serviceInstanceId = hostname() || `${process.env.OTEL_SERVICE_NAME ?? "rustlens-bot"}-${process.pid}`;
+
     const resource = resourceFromAttributes({
         [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? "rustlens-bot",
         [ATTR_SERVICE_NAMESPACE]: process.env.OTEL_SERVICE_NAMESPACE ?? "rustlens",
+        [ATTR_SERVICE_INSTANCE_ID]: serviceInstanceId,
         "deployment.environment": process.env.DEPLOYMENT_ENV ?? "local",
         team: "rustlens",
     });
