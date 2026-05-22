@@ -62,27 +62,60 @@ async function resolveOwner(guild: Guild): Promise<User | null> {
   }
 }
 
-async function listHumanMemberIds(guild: Guild): Promise<string[]> {
+type FetchedMembers = {
+  ids: string[];
+  totalFetched: number;
+};
+
+async function listHumanMemberIds(guild: Guild): Promise<FetchedMembers> {
   const members = await guild.members.fetch();
-  return members.filter((m) => !m.user.bot).map((m) => m.id);
+  return {
+    ids: members.filter((m) => !m.user.bot).map((m) => m.id),
+    totalFetched: members.size,
+  };
+}
+
+// Discord's guild.memberCount is approximate; allow a small shortfall before
+// declaring the fetch incomplete. Without GuildMembers intent the fetch
+// returns just the cache (which can be 0 or 1), so any significant gap
+// almost always means the intent is missing or chunking was interrupted.
+const MEMBER_FETCH_SHORTFALL_TOLERANCE = 0.05;
+const MEMBER_FETCH_ABSOLUTE_TOLERANCE = 25;
+
+function isMemberFetchComplete(guild: Guild, totalFetched: number): boolean {
+  const expected = guild.memberCount;
+  if (typeof expected !== "number" || expected <= 0) return true;
+  const shortfall = expected - totalFetched;
+  if (shortfall <= MEMBER_FETCH_ABSOLUTE_TOLERANCE) return true;
+  return shortfall / expected <= MEMBER_FETCH_SHORTFALL_TOLERANCE;
 }
 
 async function syncMembers(guild: Guild) {
-  let memberIds: string[];
+  let fetched: FetchedMembers;
   try {
-    memberIds = await listHumanMemberIds(guild);
+    fetched = await listHumanMemberIds(guild);
   } catch (error) {
     console.error("[bot] bot-guilds: failed to fetch members", { guildId: guild.id, error });
     return;
   }
 
+  const fetchComplete = isMemberFetchComplete(guild, fetched.totalFetched);
+  if (!fetchComplete) {
+    console.warn("[bot] bot-guilds: members.fetch returned far fewer members than guild.memberCount", {
+      guildId: guild.id,
+      totalFetched: fetched.totalFetched,
+      approxMemberCount: guild.memberCount,
+    });
+  }
+
+  const memberIds = fetched.ids;
   const batches = chunk(memberIds, MEMBER_BATCH_SIZE);
   if (batches.length === 0) {
-    // No members? Stamp as synced anyway with an empty payload.
+    // No members? Stamp completeness based on the actual fetch result.
     await getBackend().upsertBotGuild(getWorkerID(), {
       ...buildUpsertPayload(guild, await resolveOwner(guild)),
       members: [],
-      membersSyncComplete: true,
+      membersSyncComplete: fetchComplete,
     });
     return;
   }
@@ -94,7 +127,7 @@ async function syncMembers(guild: Guild) {
       await getBackend().upsertBotGuild(getWorkerID(), {
         ...buildUpsertPayload(guild, owner),
         members: batches[i],
-        membersSyncComplete: isLast,
+        membersSyncComplete: isLast && fetchComplete,
       });
     } catch (error) {
       console.error("[bot] bot-guilds: member batch failed", { guildId: guild.id, batchIndex: i, error });
