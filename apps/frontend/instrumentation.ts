@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { AggregationTemporality, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { registerOTel } from "@vercel/otel";
@@ -26,10 +27,17 @@ export function register() {
         exportIntervalMillis: 30_000,
     });
 
+    // service.instance.id MUST be unique per process for Mimir to keep each
+    // pod's cumulative counters as separate series; without it pod restarts
+    // look like counter resets and rate() inflates dramatically.
+    const serviceInstanceId =
+        hostname() || `${process.env.OTEL_SERVICE_NAME ?? "rustlens-frontend"}-${process.pid}`;
+
     registerOTel({
         serviceName: process.env.OTEL_SERVICE_NAME ?? "rustlens-frontend",
         attributes: {
             "service.namespace": process.env.OTEL_SERVICE_NAMESPACE ?? "rustlens",
+            "service.instance.id": serviceInstanceId,
             "deployment.environment": process.env.DEPLOYMENT_ENV ?? "local",
             team: "rustlens",
         },
