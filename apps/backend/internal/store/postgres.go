@@ -923,7 +923,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return fmt.Errorf("create discord_role_connections: %w", err)
 	}
 	if _, err := p.pool.Exec(ctx, `
-		CREATE INDEX IF NOT EXISTS idx_discord_role_connections_active
+		CREATE INDEX IF NOT EXISTS discord_role_connections_active_idx
 		ON discord_role_connections (revoked_at)
 		WHERE revoked_at IS NULL
 	`); err != nil {
