@@ -164,6 +164,54 @@ func (c *Client) FetchUserGuilds(ctx context.Context, accessToken string) ([]Use
 	return out, nil
 }
 
+// ErrRefreshRevoked indicates that Discord rejected the refresh token as
+// no longer valid. Callers should mark the row revoked and prompt re-link.
+var ErrRefreshRevoked = errors.New("discord refresh token revoked")
+
+// RefreshToken exchanges a long-lived refresh_token for a new access_token
+// (and possibly a rotated refresh_token). Returns ErrRefreshRevoked when
+// Discord responds 400 with error="invalid_grant".
+func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (access, refresh string, expiresIn int, err error) {
+	form := url.Values{
+		"client_id":     {c.clientID},
+		"client_secret": {c.clientSecret},
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/api/oauth2/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", "", 0, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cache-Control", "no-store")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", "", 0, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "invalid_grant") {
+		return "", "", 0, ErrRefreshRevoked
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", "", 0, fmt.Errorf("discord refresh: %d %s", resp.StatusCode, string(body))
+	}
+	var out struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int    `json:"expires_in"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return "", "", 0, err
+	}
+	if out.AccessToken == "" || out.RefreshToken == "" {
+		return "", "", 0, errors.New("discord refresh: empty access_token or refresh_token")
+	}
+	return out.AccessToken, out.RefreshToken, out.ExpiresIn, nil
+}
+
 // FetchProfile retrieves the authenticated user's profile from /users/@me.
 func (c *Client) FetchProfile(ctx context.Context, accessToken string) (Profile, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/users/@me", nil)

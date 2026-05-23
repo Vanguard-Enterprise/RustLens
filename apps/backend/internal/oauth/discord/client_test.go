@@ -2,6 +2,7 @@ package discord_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -140,5 +141,55 @@ func TestClient_FetchProfile_NoAvatar(t *testing.T) {
 	}
 	if p.AvatarHash != "" {
 		t.Errorf("AvatarHash with null avatar = %q, want empty", p.AvatarHash)
+	}
+}
+
+func TestRefreshToken_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/oauth2/token" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		if got := r.Form.Get("grant_type"); got != "refresh_token" {
+			t.Errorf("grant_type = %s", got)
+		}
+		if got := r.Form.Get("refresh_token"); got != "rt-old" {
+			t.Errorf("refresh_token = %s", got)
+		}
+		_, _ = w.Write([]byte(`{
+			"access_token": "at-new", "refresh_token": "rt-new",
+			"expires_in": 604800, "token_type": "Bearer", "scope": "identify role_connections.write"
+		}`))
+	}))
+	defer srv.Close()
+
+	c := discord.NewClient("cid", "csecret", discord.WithBaseURL(srv.URL))
+	access, refresh, expiresIn, err := c.RefreshToken(context.Background(), "rt-old")
+	if err != nil {
+		t.Fatalf("RefreshToken: %v", err)
+	}
+	if access != "at-new" || refresh != "rt-new" || expiresIn != 604800 {
+		t.Fatalf("got %q %q %d", access, refresh, expiresIn)
+	}
+}
+
+func TestRefreshToken_InvalidGrant(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+	}))
+	defer srv.Close()
+	c := discord.NewClient("cid", "csecret", discord.WithBaseURL(srv.URL))
+	_, _, _, err := c.RefreshToken(context.Background(), "rt-old")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, discord.ErrRefreshRevoked) {
+		t.Fatalf("err = %v, want ErrRefreshRevoked", err)
 	}
 }
