@@ -3,29 +3,16 @@ package store
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"testing"
 	"time"
 )
-
-func insertTestAppUser(t *testing.T, s *PostgresStore, userID, discordID string) {
-	t.Helper()
-	if _, err := s.pool.Exec(context.Background(), `
-		INSERT INTO app_users (id, discord_id, discord_username, display_name)
-		VALUES ($1, $2, $3, $3)
-	`, userID, discordID, "test_"+userID); err != nil {
-		t.Fatalf("insert app_user: %v", err)
-	}
-}
 
 func TestDiscordRoleConnection_UpsertAndGet(t *testing.T) {
 	ctx := context.Background()
 	s := newTestPostgres(t)
 
-	suffix := time.Now().UnixNano() % 1_000_000_000
-	userID := fmt.Sprintf("usr_rc_%d", suffix)
-	discordID := fmt.Sprintf("3000000%010d", suffix)
-	insertTestAppUser(t, s, userID, discordID)
+	userID := seedTestUser(t, s)
+	discordID := userID + "-discord"
 
 	expires := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
 	row := DiscordRoleConnection{
@@ -54,6 +41,21 @@ func TestDiscordRoleConnection_UpsertAndGet(t *testing.T) {
 	}
 	if !bytes.Equal(got.AccessTokenCT, row.AccessTokenCT) {
 		t.Errorf("AccessTokenCT mismatch")
+	}
+	if !bytes.Equal(got.AccessTokenNonce, row.AccessTokenNonce) {
+		t.Errorf("AccessTokenNonce mismatch")
+	}
+	if !bytes.Equal(got.RefreshTokenCT, row.RefreshTokenCT) {
+		t.Errorf("RefreshTokenCT mismatch")
+	}
+	if !bytes.Equal(got.RefreshTokenNonce, row.RefreshTokenNonce) {
+		t.Errorf("RefreshTokenNonce mismatch")
+	}
+	if got.Scopes != row.Scopes {
+		t.Errorf("Scopes = %q, want %q", got.Scopes, row.Scopes)
+	}
+	if got.LinkedAt.IsZero() {
+		t.Error("LinkedAt should be set")
 	}
 	if !got.AccessExpiresAt.Equal(expires) {
 		t.Errorf("AccessExpiresAt = %v, want %v", got.AccessExpiresAt, expires)
