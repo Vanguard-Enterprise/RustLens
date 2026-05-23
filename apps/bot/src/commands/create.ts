@@ -16,7 +16,6 @@ import {
 } from "discord.js";
 import { BackendClient } from "../backend-client.js";
 import { loadConfig } from "../config.js";
-import { isGuildTooLargeForDms, replyDmLimitError } from "../dm-limit.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { createEmbed, logDiscordCatch, logDiscordError, replyEphemeral } from "../shared.js";
 
@@ -345,11 +344,6 @@ async function handleAcceptInviteButton(interaction: ButtonInteraction): Promise
   const requesterId = interaction.customId.slice(CREATE_INVITE_ACCEPT_PREFIX.length);
   if (!requesterId) {
     await replyEphemeral(interaction, "This accept button is misconfigured.");
-    return;
-  }
-
-  if (isGuildTooLargeForDms(interaction.guild)) {
-    await replyDmLimitError(interaction, interaction.guild);
     return;
   }
 
