@@ -23,6 +23,7 @@ const nextConfig: NextConfig = {
 		return [
 			{ source: "/admin/members", destination: "/admin/users", permanent: true },
 			{ source: "/admin/members/:path*", destination: "/admin/users/:path*", permanent: true },
+			{ source: "/discord", destination: "https://discord.gg/HrREy36F7m", permanent: false },
 		];
 	},
 	async headers() {

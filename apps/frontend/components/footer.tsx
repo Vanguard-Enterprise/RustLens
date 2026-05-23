@@ -13,7 +13,7 @@ const navLinks = [
 
 const socialLinks = [
 	{
-		href: "https://discord.com",
+		href: "/discord",
 		label: "Discord",
 		icon: <FaDiscord aria-hidden="true" className="text-[#5865F2]" />,
 	},
