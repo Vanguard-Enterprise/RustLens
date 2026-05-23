@@ -20,6 +20,7 @@ import (
 	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/platformsync"
 	"rustlens/backend/internal/proxycrypto"
+	"rustlens/backend/internal/roleconnection"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
@@ -51,6 +52,7 @@ func NewRouter(
 	proxyCrypto *proxycrypto.Crypto,
 	eventsHub *events.Hub,
 	publisher events.Publisher,
+	roleConnSyncer *roleconnection.Syncer,
 ) http.Handler {
 	if publisher == nil {
 		publisher = events.NopPublisher{}
@@ -273,6 +275,25 @@ func NewRouter(
 		r.Get("/callback", discordHandler.Callback)
 	})
 
+	if roleConnSyncer != nil {
+		rcDiscordClient := discord.NewClient(
+			cfg.DiscordClientID, cfg.DiscordClientSecret,
+			discord.WithRedirectURI(discord.RoleConnectionRedirectURI(cfg.AppOrigin)),
+		)
+		rcHandler := roleconnection.NewHandler(roleconnection.HandlerConfig{
+			ClientID:     cfg.DiscordClientID,
+			ClientSecret: cfg.DiscordClientSecret,
+			AppOrigin:    cfg.AppOrigin,
+			Syncer:       roleConnSyncer,
+			DiscordAPI:   rcDiscordClient,
+		})
+		r.Route("/api/auth/discord/role-connection", func(r chi.Router) {
+			r.Use(requireSession)
+			r.Get("/", rcHandler.Initiate)
+			r.Get("/callback", rcHandler.Callback)
+		})
+	}
+
 	r.Route("/api/events", func(r chi.Router) {
 		if eventsHub != nil {
 			r.Get("/stream", NewEventsHandler(cfg.AppSessionSecret, eventsHub, postgres.Pool()).ServeHTTP)
@@ -313,6 +334,15 @@ func NewRouter(
 			r.Get("/me/guilds", handler.GetCurrentAppUserGuilds)
 			r.Get("/me/guilds/installed", handler.GetCurrentAppUserInstalledGuilds)
 			r.Get("/me/guilds/{guildID}/links", handler.GetCurrentAppUserGuildLinks)
+			if roleConnSyncer != nil {
+				rcDeleteClient := discord.NewClient(cfg.DiscordClientID, cfg.DiscordClientSecret)
+				rcDelete := roleconnection.NewHandler(roleconnection.HandlerConfig{
+					AppOrigin:  cfg.AppOrigin,
+					Syncer:     roleConnSyncer,
+					DiscordAPI: rcDeleteClient,
+				})
+				r.Delete("/me/discord-role-connection", rcDelete.Disconnect)
+			}
 		})
 
 		r.Group(func(r chi.Router) {

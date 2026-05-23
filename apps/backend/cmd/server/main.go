@@ -88,6 +88,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("proxy crypto init failed: %v", err)
 	}
+
+	var roleConnSyncer *roleconnection.Syncer
+	if proxyCrypto != nil && cfg.DiscordClientID != "" && cfg.DiscordClientSecret != "" {
+		discordRCClient := discord.NewClient(
+			cfg.DiscordClientID, cfg.DiscordClientSecret,
+			discord.WithRedirectURI(discord.RoleConnectionRedirectURI(cfg.AppOrigin)),
+		)
+		roleConnSyncer = roleconnection.NewSyncer(roleconnection.SyncerConfig{
+			Store:         postgresStore,
+			Discord:       discordRCClient,
+			ApplicationID: cfg.DiscordClientID,
+			Cipher:        roleconnection.TokenCipher{Crypto: proxyCrypto},
+		})
+	} else {
+		log.Printf("[backend] role-connection sync disabled (need PROXY_ENCRYPTION_KEY + DISCORD_CLIENT_ID/SECRET)")
+	}
 	proxyEndpoints, err := initialProxyEndpoints(ctx, postgresStore, proxyCrypto, cfg)
 	if err != nil {
 		log.Fatalf("outbound proxy load failed: %v", err)
@@ -150,6 +166,7 @@ func main() {
 		proxyCrypto,
 		eventsHub,
 		eventsBridge,
+		roleConnSyncer,
 	)
 	battleMetricsPoller := battlemetrics.NewPoller(battlemetrics.NewClient(outboundProvider), postgresStore, redisStore, cfg.BattleMetricsPoll)
 	battleMetricsPoller.Start(ctx)
