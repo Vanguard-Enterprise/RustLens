@@ -93,7 +93,7 @@ func (h *Handler) Initiate(w http.ResponseWriter, r *http.Request) {
 	q.Set("state", state)
 	q.Set("code_challenge", discord.PkceChallenge(verifier))
 	q.Set("code_challenge_method", "S256")
-	authorize.RawQuery = q.Encode()
+	authorize.RawQuery = strings.ReplaceAll(q.Encode(), "+", "%20")
 
 	http.Redirect(w, r, authorize.String(), http.StatusFound)
 }
@@ -138,9 +138,28 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	verifierCookie, _ := r.Cookie(discord.CookieRCVerifier)
 	queryState := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
-	if stateCookie == nil || verifierCookie == nil ||
-		queryState == "" || code == "" || queryState != stateCookie.Value {
-		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-state"), http.StatusFound)
+	switch {
+	case stateCookie == nil:
+		slog.Warn("roleconnection callback: state cookie missing",
+			slog.String("user_id", session.UserID))
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-state-cookie"), http.StatusFound)
+		return
+	case verifierCookie == nil:
+		slog.Warn("roleconnection callback: verifier cookie missing",
+			slog.String("user_id", session.UserID))
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-verifier-cookie"), http.StatusFound)
+		return
+	case queryState == "" || code == "":
+		slog.Warn("roleconnection callback: query state or code missing",
+			slog.String("user_id", session.UserID),
+			slog.Bool("state_empty", queryState == ""),
+			slog.Bool("code_empty", code == ""))
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-state-empty"), http.StatusFound)
+		return
+	case queryState != stateCookie.Value:
+		slog.Warn("roleconnection callback: state mismatch",
+			slog.String("user_id", session.UserID))
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-state-mismatch"), http.StatusFound)
 		return
 	}
 
