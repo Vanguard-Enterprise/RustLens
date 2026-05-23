@@ -180,3 +180,26 @@ func (p *PostgresStore) GetUserProGrantedAt(ctx context.Context, userID string) 
 	}
 	return &t, nil
 }
+
+// GetAppUserDisplayName returns app_users.display_name, used as the platform
+// username when pushing metadata. Falls back to discord_username if display_name
+// is empty.
+func (p *PostgresStore) GetAppUserDisplayName(ctx context.Context, userID string) (string, error) {
+	var displayName, discordUsername *string
+	err := p.pool.QueryRow(ctx, `
+		SELECT display_name, discord_username FROM app_users WHERE id = $1
+	`, userID).Scan(&displayName, &discordUsername)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if displayName != nil && *displayName != "" {
+		return *displayName, nil
+	}
+	if discordUsername != nil {
+		return *discordUsername, nil
+	}
+	return "", nil
+}
