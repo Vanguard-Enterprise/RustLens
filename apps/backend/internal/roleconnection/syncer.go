@@ -105,9 +105,8 @@ func (s *Syncer) Push(ctx context.Context, userID string) error {
 
 	access := row.AccessTokenCT
 	accessNonce := row.AccessTokenNonce
-	expiresAt := row.AccessExpiresAt
 
-	if time.Now().Add(tokenSkew).After(expiresAt) {
+	if time.Now().Add(tokenSkew).After(row.AccessExpiresAt) {
 		refreshPT, err := s.cfg.Cipher.Decrypt(row.RefreshTokenCT, row.RefreshTokenNonce)
 		if err != nil {
 			return err
@@ -139,8 +138,6 @@ func (s *Syncer) Push(ctx context.Context, userID string) error {
 		}
 		access = newAccessCT
 		accessNonce = newAccessNonce
-		expiresAt = newExpiresAt
-		_ = expiresAt
 	}
 
 	accessPT, err := s.cfg.Cipher.Decrypt(access, accessNonce)
