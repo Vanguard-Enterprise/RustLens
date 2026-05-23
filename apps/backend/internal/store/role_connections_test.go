@@ -187,6 +187,36 @@ func TestDiscordRoleConnection_ListActive(t *testing.T) {
 	}
 }
 
+func TestGetDiscordRoleConnectionSummary(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	userID := seedTestUser(t, s)
+
+	got, err := s.GetDiscordRoleConnectionSummary(ctx, userID)
+	if err != nil {
+		t.Fatalf("Summary(absent): %v", err)
+	}
+	if got.Linked {
+		t.Error("expected Linked=false when row missing")
+	}
+
+	if err := s.UpsertDiscordRoleConnection(ctx, DiscordRoleConnection{
+		UserID: userID, DiscordID: "d",
+		AccessTokenCT: []byte("x"), AccessTokenNonce: []byte("y"),
+		RefreshTokenCT: []byte("x"), RefreshTokenNonce: []byte("y"),
+		AccessExpiresAt: time.Now().Add(time.Hour), Scopes: "identify",
+	}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	got, err = s.GetDiscordRoleConnectionSummary(ctx, userID)
+	if err != nil {
+		t.Fatalf("Summary(present): %v", err)
+	}
+	if !got.Linked || got.DiscordID == nil || *got.DiscordID != "d" {
+		t.Errorf("summary = %+v", got)
+	}
+}
+
 func TestGetUserProGrantedAt(t *testing.T) {
 	ctx := context.Background()
 	s := newTestPostgres(t)

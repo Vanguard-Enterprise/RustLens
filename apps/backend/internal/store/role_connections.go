@@ -181,6 +181,37 @@ func (p *PostgresStore) GetUserProGrantedAt(ctx context.Context, userID string) 
 	return &t, nil
 }
 
+// DiscordRoleConnectionSummary is the safe-to-expose subset of a row used by
+// the frontend dashboard card. Tokens and ciphertext never leave the backend.
+type DiscordRoleConnectionSummary struct {
+	Linked        bool       `json:"linked"`
+	DiscordID     *string    `json:"discordId"`
+	LinkedAt      *time.Time `json:"linkedAt"`
+	LastPushedAt  *time.Time `json:"lastPushedAt"`
+	LastPushError *string    `json:"lastPushError"`
+	Revoked       bool       `json:"revoked"`
+}
+
+// GetDiscordRoleConnectionSummary returns the safe summary for the dashboard.
+func (p *PostgresStore) GetDiscordRoleConnectionSummary(ctx context.Context, userID string) (DiscordRoleConnectionSummary, error) {
+	row, err := p.GetDiscordRoleConnection(ctx, userID)
+	if err != nil {
+		return DiscordRoleConnectionSummary{}, err
+	}
+	if row == nil {
+		return DiscordRoleConnectionSummary{Linked: false}, nil
+	}
+	id := row.DiscordID
+	return DiscordRoleConnectionSummary{
+		Linked:        row.RevokedAt == nil,
+		DiscordID:     &id,
+		LinkedAt:      &row.LinkedAt,
+		LastPushedAt:  row.LastPushedAt,
+		LastPushError: row.LastPushError,
+		Revoked:       row.RevokedAt != nil,
+	}, nil
+}
+
 // GetAppUserDisplayName returns app_users.display_name, used as the platform
 // username when pushing metadata. Falls back to discord_username if display_name
 // is empty.

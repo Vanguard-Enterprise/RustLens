@@ -256,7 +256,7 @@ func NewRouter(
 		r.Get("/guilds/{guildID}/track-groups/{groupID}/analytics", handler.GetTrackGroupAnalytics)
 	})
 
-	appAuthHandler := appauth.NewHandler(appAuthRepo)
+	appAuthHandler := appauth.NewHandlerWithRoleConnection(appAuthRepo, postgres)
 	requireAppSecret := appauth.RequireAppSecret(cfg.AppAPIInternalSecret)
 	requireSession := appauth.RequireSession(cfg.AppSessionSecret, postgres.Pool())
 

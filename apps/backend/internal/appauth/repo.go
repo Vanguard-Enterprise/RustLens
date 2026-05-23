@@ -11,6 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"rustlens/backend/internal/store"
 )
 
 // AppUser mirrors the frontend AppUser type. Discord identity now lives
@@ -61,6 +63,10 @@ type CurrentUser struct {
 	// Permissions is the flattened set of permission keys resolved from
 	// the user's admin roles. Superadmin implies all permissions.
 	Permissions []string `json:"permissions"`
+	// DiscordRoleConnection is the safe dashboard summary for the linked-roles
+	// feature. Omitted when there is no connection row or the store is not
+	// wired up.
+	DiscordRoleConnection *store.DiscordRoleConnectionSummary `json:"discordRoleConnection,omitempty"`
 }
 
 var (
