@@ -64,3 +64,125 @@ func TestDiscordRoleConnection_UpsertAndGet(t *testing.T) {
 		t.Errorf("RevokedAt = %v, want nil", got.RevokedAt)
 	}
 }
+
+func TestDiscordRoleConnection_Delete(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	userID := seedTestUser(t, s)
+	if err := s.UpsertDiscordRoleConnection(ctx, DiscordRoleConnection{
+		UserID: userID, DiscordID: userID + "-discord",
+		AccessTokenCT: []byte("x"), AccessTokenNonce: []byte("y"),
+		RefreshTokenCT: []byte("x"), RefreshTokenNonce: []byte("y"),
+		AccessExpiresAt: time.Now().Add(time.Hour), Scopes: "identify",
+	}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	if err := s.DeleteDiscordRoleConnection(ctx, userID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	got, err := s.GetDiscordRoleConnection(ctx, userID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got != nil {
+		t.Fatal("expected nil after delete")
+	}
+}
+
+func TestDiscordRoleConnection_MarkRevoked(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	userID := seedTestUser(t, s)
+	if err := s.UpsertDiscordRoleConnection(ctx, DiscordRoleConnection{
+		UserID: userID, DiscordID: userID + "-discord",
+		AccessTokenCT: []byte("x"), AccessTokenNonce: []byte("y"),
+		RefreshTokenCT: []byte("x"), RefreshTokenNonce: []byte("y"),
+		AccessExpiresAt: time.Now().Add(time.Hour), Scopes: "identify",
+	}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	if err := s.MarkDiscordRoleConnectionRevoked(ctx, userID, "invalid_grant"); err != nil {
+		t.Fatalf("MarkRevoked: %v", err)
+	}
+	got, err := s.GetDiscordRoleConnection(ctx, userID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got == nil || got.RevokedAt == nil {
+		t.Fatal("expected RevokedAt to be set")
+	}
+	if got.LastPushError == nil || *got.LastPushError != "invalid_grant" {
+		t.Fatalf("LastPushError = %v, want 'invalid_grant'", got.LastPushError)
+	}
+}
+
+func TestDiscordRoleConnection_RecordPushed(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	userID := seedTestUser(t, s)
+	if err := s.UpsertDiscordRoleConnection(ctx, DiscordRoleConnection{
+		UserID: userID, DiscordID: userID + "-discord",
+		AccessTokenCT: []byte("x"), AccessTokenNonce: []byte("y"),
+		RefreshTokenCT: []byte("x"), RefreshTokenNonce: []byte("y"),
+		AccessExpiresAt: time.Now().Add(time.Hour), Scopes: "identify",
+	}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	if err := s.RecordDiscordRoleConnectionPushed(ctx, userID, "hash-abc"); err != nil {
+		t.Fatalf("RecordPushed: %v", err)
+	}
+	got, err := s.GetDiscordRoleConnection(ctx, userID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.LastPushedHash == nil || *got.LastPushedHash != "hash-abc" {
+		t.Fatalf("LastPushedHash = %v", got.LastPushedHash)
+	}
+	if got.LastPushedAt == nil {
+		t.Fatal("expected LastPushedAt to be set")
+	}
+	if got.LastPushError != nil {
+		t.Fatalf("LastPushError should be cleared, got %v", got.LastPushError)
+	}
+}
+
+func TestDiscordRoleConnection_ListActive(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	activeID := seedTestUser(t, s)
+	revokedID := seedTestUser(t, s)
+	upsert := func(uid string) {
+		if err := s.UpsertDiscordRoleConnection(ctx, DiscordRoleConnection{
+			UserID: uid, DiscordID: uid + "-discord",
+			AccessTokenCT: []byte("x"), AccessTokenNonce: []byte("y"),
+			RefreshTokenCT: []byte("x"), RefreshTokenNonce: []byte("y"),
+			AccessExpiresAt: time.Now().Add(time.Hour), Scopes: "identify",
+		}); err != nil {
+			t.Fatalf("upsert %s: %v", uid, err)
+		}
+	}
+	upsert(activeID)
+	upsert(revokedID)
+	if err := s.MarkDiscordRoleConnectionRevoked(ctx, revokedID, "test"); err != nil {
+		t.Fatalf("MarkRevoked: %v", err)
+	}
+	rows, err := s.ListActiveDiscordRoleConnections(ctx)
+	if err != nil {
+		t.Fatalf("ListActive: %v", err)
+	}
+	var sawActive, sawRevoked bool
+	for _, r := range rows {
+		if r.UserID == activeID {
+			sawActive = true
+		}
+		if r.UserID == revokedID {
+			sawRevoked = true
+		}
+	}
+	if !sawActive {
+		t.Error("expected active row in ListActive result")
+	}
+	if sawRevoked {
+		t.Error("revoked row should be excluded")
+	}
+}
