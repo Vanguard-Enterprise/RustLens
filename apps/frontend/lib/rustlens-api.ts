@@ -1262,6 +1262,14 @@ export type PlayerProfile = {
 	status?: PlayerProfileStatus | null;
 };
 
+export async function deleteDiscordRoleConnection(): Promise<void> {
+	await backendFetch<void>(
+		"/api/app/me/discord-role-connection",
+		{ method: "DELETE" },
+		{ requireSession: true },
+	);
+}
+
 export async function searchPlayers(
 	q: string,
 	includeOffline = false,
