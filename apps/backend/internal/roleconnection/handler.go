@@ -69,18 +69,12 @@ func (h *Handler) Initiate(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-config"), http.StatusFound)
 		return
 	}
-	verifier, err := discord.NewPkceVerifier()
-	if err != nil {
-		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-config"), http.StatusFound)
-		return
-	}
 	returnTo := r.URL.Query().Get("return")
 	if returnTo == "" {
 		returnTo = "dashboard"
 	}
 
 	setShortCookie(w, discord.CookieRCState, state)
-	setShortCookie(w, discord.CookieRCVerifier, verifier)
 	setShortCookie(w, discord.CookieRCReturn, returnTo)
 
 	authorize, _ := url.Parse("https://discord.com/oauth2/authorize")
@@ -91,8 +85,6 @@ func (h *Handler) Initiate(w http.ResponseWriter, r *http.Request) {
 	q.Set("scope", discord.RoleConnectionScopes)
 	q.Set("prompt", "consent")
 	q.Set("state", state)
-	q.Set("code_challenge", discord.PkceChallenge(verifier))
-	q.Set("code_challenge_method", "S256")
 	authorize.RawQuery = strings.ReplaceAll(q.Encode(), "+", "%20")
 
 	http.Redirect(w, r, authorize.String(), http.StatusFound)
@@ -124,7 +116,6 @@ func clearCookie(w http.ResponseWriter, name string) {
 func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		clearCookie(w, discord.CookieRCState)
-		clearCookie(w, discord.CookieRCVerifier)
 		clearCookie(w, discord.CookieRCReturn)
 	}()
 
@@ -135,7 +126,6 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stateCookie, _ := r.Cookie(discord.CookieRCState)
-	verifierCookie, _ := r.Cookie(discord.CookieRCVerifier)
 	queryState := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
 	switch {
@@ -143,11 +133,6 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("roleconnection callback: state cookie missing",
 			slog.String("user_id", session.UserID))
 		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-state-cookie"), http.StatusFound)
-		return
-	case verifierCookie == nil:
-		slog.Warn("roleconnection callback: verifier cookie missing",
-			slog.String("user_id", session.UserID))
-		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-verifier-cookie"), http.StatusFound)
 		return
 	case queryState == "" || code == "":
 		slog.Warn("roleconnection callback: query state or code missing",
@@ -164,7 +149,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	access, refresh, expiresIn, err := h.cfg.DiscordAPI.ExchangeCodeForTokens(ctx, code, verifierCookie.Value)
+	access, refresh, expiresIn, err := h.cfg.DiscordAPI.ExchangeCodeForTokens(ctx, code, "")
 	if err != nil {
 		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-token"), http.StatusFound)
 		return

@@ -295,7 +295,8 @@ func (c *Client) RegisterApplicationMetadata(ctx context.Context, applicationID,
 
 // ExchangeCodeForTokens is like ExchangeCode but additionally returns the
 // refresh_token and expires_in fields. Used by the role-connection flow which
-// needs long-lived push access.
+// needs long-lived push access. When codeVerifier is empty, PKCE is skipped
+// (matching Discord's linked-roles sample which uses client_secret only).
 func (c *Client) ExchangeCodeForTokens(ctx context.Context, code, codeVerifier string) (access, refresh string, expiresIn int, err error) {
 	if c.redirectURI == "" {
 		return "", "", 0, errors.New("discord client: redirect_uri is required for code exchange")
@@ -305,8 +306,10 @@ func (c *Client) ExchangeCodeForTokens(ctx context.Context, code, codeVerifier s
 		"client_secret": {c.clientSecret},
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
-		"code_verifier": {codeVerifier},
 		"redirect_uri":  {c.redirectURI},
+	}
+	if codeVerifier != "" {
+		form.Set("code_verifier", codeVerifier)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		c.baseURL+"/api/oauth2/token", strings.NewReader(form.Encode()))

@@ -50,7 +50,6 @@ func TestHandler_Callback_HappyPath(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet,
 		"/api/auth/discord/role-connection/callback?code=ok&state=s1", nil)
 	req.AddCookie(&http.Cookie{Name: "rl_rc_state", Value: "s1"})
-	req.AddCookie(&http.Cookie{Name: "rl_rc_verifier", Value: "v1"})
 	req.AddCookie(&http.Cookie{Name: "rl_rc_return", Value: "dashboard"})
 	ctx := appauth.InjectSessionForTest(req.Context(), &appauth.SessionUser{UserID: "u1", DiscordID: "d1"})
 	req = req.WithContext(ctx)
@@ -93,7 +92,6 @@ func TestHandler_Callback_DiscordIDMismatch(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet,
 		"/api/auth/discord/role-connection/callback?code=ok&state=s1", nil)
 	req.AddCookie(&http.Cookie{Name: "rl_rc_state", Value: "s1"})
-	req.AddCookie(&http.Cookie{Name: "rl_rc_verifier", Value: "v1"})
 	req.AddCookie(&http.Cookie{Name: "rl_rc_return", Value: "dashboard"})
 	ctx := appauth.InjectSessionForTest(req.Context(), &appauth.SessionUser{UserID: "u1", DiscordID: "d1"})
 	req = req.WithContext(ctx)
@@ -146,17 +144,14 @@ func TestHandler_Initiate_WithSession_RedirectsToDiscord(t *testing.T) {
 		t.Errorf("expected scopes in URL, got %s", loc)
 	}
 	cookies := rec.Result().Cookies()
-	var sawState, sawVerifier bool
+	var sawState bool
 	for _, c := range cookies {
 		if c.Name == "rl_rc_state" {
 			sawState = true
 		}
-		if c.Name == "rl_rc_verifier" {
-			sawVerifier = true
-		}
 	}
-	if !sawState || !sawVerifier {
-		t.Errorf("missing state/verifier cookies: %v", cookies)
+	if !sawState {
+		t.Errorf("missing state cookie: %v", cookies)
 	}
 }
 
