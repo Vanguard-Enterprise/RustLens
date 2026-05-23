@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/oauth/discord"
 	"rustlens/backend/internal/store"
@@ -14,11 +16,13 @@ import (
 
 // HandlerConfig wires runtime dependencies for the OAuth + disconnect handlers.
 type HandlerConfig struct {
-	ClientID     string
-	ClientSecret string
-	AppOrigin    string
-	Syncer       *Syncer
-	DiscordAPI   *discord.Client
+	ClientID      string
+	ClientSecret  string
+	AppOrigin     string
+	Syncer        *Syncer
+	DiscordAPI    *discord.Client
+	SessionSecret string
+	Pool          *pgxpool.Pool
 }
 
 type Handler struct {
@@ -31,10 +35,28 @@ func (h *Handler) frontendURL(path string) string {
 	return strings.TrimRight(h.cfg.AppOrigin, "/") + path
 }
 
+// loadSession returns the session attached to the request. Production callers
+// hit the role-connection OAuth + disconnect routes as a top-level browser
+// navigation (no X-RustLens-Session header), so we read the rustlens_session
+// cookie directly. Test paths that pre-attach a session via context still work.
+func (h *Handler) loadSession(r *http.Request) *appauth.SessionUser {
+	if s := appauth.SessionFromContext(r.Context()); s != nil {
+		return s
+	}
+	if h.cfg.SessionSecret == "" {
+		return nil
+	}
+	s, err := appauth.ValidateSessionFromCookie(r.Context(), r, h.cfg.SessionSecret, h.cfg.Pool)
+	if err != nil {
+		return nil
+	}
+	return s
+}
+
 // Initiate handles GET /api/auth/discord/role-connection.
 // Requires a valid session; sets short-lived PKCE/state/return cookies; 302s to Discord.
 func (h *Handler) Initiate(w http.ResponseWriter, r *http.Request) {
-	if appauth.SessionFromContext(r.Context()) == nil {
+	if h.loadSession(r) == nil {
 		http.Redirect(w, r, h.frontendURL("/login?notice=session-required"), http.StatusFound)
 		return
 	}
@@ -106,7 +128,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		clearCookie(w, discord.CookieRCReturn)
 	}()
 
-	session := appauth.SessionFromContext(r.Context())
+	session := h.loadSession(r)
 	if session == nil {
 		http.Redirect(w, r, h.frontendURL("/login?notice=session-required"), http.StatusFound)
 		return

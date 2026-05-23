@@ -281,14 +281,15 @@ func NewRouter(
 			discord.WithRedirectURI(discord.RoleConnectionRedirectURI(cfg.AppOrigin)),
 		)
 		rcHandler := roleconnection.NewHandler(roleconnection.HandlerConfig{
-			ClientID:     cfg.DiscordClientID,
-			ClientSecret: cfg.DiscordClientSecret,
-			AppOrigin:    cfg.AppOrigin,
-			Syncer:       roleConnSyncer,
-			DiscordAPI:   rcDiscordClient,
+			ClientID:      cfg.DiscordClientID,
+			ClientSecret:  cfg.DiscordClientSecret,
+			AppOrigin:     cfg.AppOrigin,
+			Syncer:        roleConnSyncer,
+			DiscordAPI:    rcDiscordClient,
+			SessionSecret: cfg.AppSessionSecret,
+			Pool:          postgres.Pool(),
 		})
 		r.Route("/api/auth/discord/role-connection", func(r chi.Router) {
-			r.Use(requireSession)
 			r.Get("/", rcHandler.Initiate)
 			r.Get("/callback", rcHandler.Callback)
 		})
