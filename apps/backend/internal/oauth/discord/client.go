@@ -293,6 +293,51 @@ func (c *Client) RegisterApplicationMetadata(ctx context.Context, applicationID,
 	return nil
 }
 
+// ExchangeCodeForTokens is like ExchangeCode but additionally returns the
+// refresh_token and expires_in fields. Used by the role-connection flow which
+// needs long-lived push access.
+func (c *Client) ExchangeCodeForTokens(ctx context.Context, code, codeVerifier string) (access, refresh string, expiresIn int, err error) {
+	if c.redirectURI == "" {
+		return "", "", 0, errors.New("discord client: redirect_uri is required for code exchange")
+	}
+	form := url.Values{
+		"client_id":     {c.clientID},
+		"client_secret": {c.clientSecret},
+		"grant_type":    {"authorization_code"},
+		"code":          {code},
+		"code_verifier": {codeVerifier},
+		"redirect_uri":  {c.redirectURI},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/api/oauth2/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", "", 0, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cache-Control", "no-store")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", "", 0, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", "", 0, fmt.Errorf("discord token exchange: %d %s", resp.StatusCode, string(body))
+	}
+	var out struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int    `json:"expires_in"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return "", "", 0, err
+	}
+	if out.AccessToken == "" {
+		return "", "", 0, errors.New("discord token exchange: empty access_token")
+	}
+	return out.AccessToken, out.RefreshToken, out.ExpiresIn, nil
+}
+
 // FetchProfile retrieves the authenticated user's profile from /users/@me.
 func (c *Client) FetchProfile(ctx context.Context, accessToken string) (Profile, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/users/@me", nil)

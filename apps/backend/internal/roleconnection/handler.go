@@ -1,12 +1,15 @@
 package roleconnection
 
 import (
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/oauth/discord"
+	"rustlens/backend/internal/store"
 )
 
 // HandlerConfig wires runtime dependencies for the OAuth + disconnect handlers.
@@ -92,7 +95,80 @@ func clearCookie(w http.ResponseWriter, name string) {
 	})
 }
 
-// Ensure clearCookie is referenced so it is available for Callback (Task 17)
-// without triggering a compile error. Package-level functions are never flagged
-// as unused by the Go compiler, so no sentinel reference is needed.
-var _ = clearCookie
+// Callback handles GET /api/auth/discord/role-connection/callback.
+// Validates the per-flow cookies, exchanges the code, confirms the linking
+// Discord account matches the session user, stores the encrypted tokens,
+// and synchronously pushes the current PRO metadata.
+func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		clearCookie(w, discord.CookieRCState)
+		clearCookie(w, discord.CookieRCVerifier)
+		clearCookie(w, discord.CookieRCReturn)
+	}()
+
+	session := appauth.SessionFromContext(r.Context())
+	if session == nil {
+		http.Redirect(w, r, h.frontendURL("/login?notice=session-required"), http.StatusFound)
+		return
+	}
+
+	stateCookie, _ := r.Cookie(discord.CookieRCState)
+	verifierCookie, _ := r.Cookie(discord.CookieRCVerifier)
+	queryState := r.URL.Query().Get("state")
+	code := r.URL.Query().Get("code")
+	if stateCookie == nil || verifierCookie == nil ||
+		queryState == "" || code == "" || queryState != stateCookie.Value {
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-state"), http.StatusFound)
+		return
+	}
+
+	ctx := r.Context()
+	access, refresh, expiresIn, err := h.cfg.DiscordAPI.ExchangeCodeForTokens(ctx, code, verifierCookie.Value)
+	if err != nil {
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-token"), http.StatusFound)
+		return
+	}
+	profile, err := h.cfg.DiscordAPI.FetchProfile(ctx, access)
+	if err != nil {
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-profile"), http.StatusFound)
+		return
+	}
+	if profile.ID != session.DiscordID {
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-mismatch"), http.StatusFound)
+		return
+	}
+
+	cipher := h.cfg.Syncer.Cipher()
+	accessCT, accessNonce, err := cipher.Encrypt(access)
+	if err != nil {
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-encrypt"), http.StatusFound)
+		return
+	}
+	refreshCT, refreshNonce, err := cipher.Encrypt(refresh)
+	if err != nil {
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-encrypt"), http.StatusFound)
+		return
+	}
+	if err := h.cfg.Syncer.Store().UpsertDiscordRoleConnection(ctx, store.DiscordRoleConnection{
+		UserID:            session.UserID,
+		DiscordID:         profile.ID,
+		AccessTokenCT:     accessCT,
+		AccessTokenNonce:  accessNonce,
+		RefreshTokenCT:    refreshCT,
+		RefreshTokenNonce: refreshNonce,
+		AccessExpiresAt:   time.Now().Add(time.Duration(expiresIn) * time.Second),
+		Scopes:            discord.RoleConnectionScopes,
+	}); err != nil {
+		http.Redirect(w, r, h.frontendURL("/dashboard?error=discord-persist"), http.StatusFound)
+		return
+	}
+
+	// Immediate push so the role appears before the user's redirect lands.
+	// Errors are logged but do not block the redirect — the reconciler will retry.
+	if err := h.cfg.Syncer.Push(ctx, session.UserID); err != nil {
+		slog.Warn("roleconnection initial push failed",
+			slog.String("user_id", session.UserID), slog.Any("error", err))
+	}
+
+	http.Redirect(w, r, h.frontendURL("/dashboard?notice=discord-linked"), http.StatusFound)
+}

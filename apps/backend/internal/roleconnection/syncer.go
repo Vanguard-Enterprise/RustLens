@@ -171,6 +171,17 @@ func (s *Syncer) Push(ctx context.Context, userID string) error {
 	return s.cfg.Store.RecordDiscordRoleConnectionPushed(ctx, userID, hash)
 }
 
+// Cipher returns the syncer's TokenCipher. Used by the OAuth handler to
+// encrypt freshly-received tokens before persistence.
+func (s *Syncer) Cipher() TokenCipher { return s.cfg.Cipher }
+
+// Store returns the syncer's underlying SyncerStore. Used by the OAuth handler
+// to upsert the row built from the OAuth callback.
+func (s *Syncer) Store() SyncerStore { return s.cfg.Store }
+
+// ApplicationID returns the configured Discord application ID.
+func (s *Syncer) ApplicationID() string { return s.cfg.ApplicationID }
+
 // PushAsync schedules a Push for userID in a fresh detached context. The admin
 // action that grants/revokes PRO calls this so role-action latency does not
 // depend on Discord round-trip time. Errors are logged, not returned.
