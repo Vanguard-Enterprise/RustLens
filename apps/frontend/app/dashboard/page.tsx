@@ -2,6 +2,7 @@ import { Suspense } from "react"
 
 import { AppSidebar } from "./_components/app-sidebar"
 import { DiscordRoleConnectionCard } from "./_components/discord-role-connection-card"
+import { DashboardNoticeToast } from "./_components/notice-toast"
 import { GuildList, GuildListSkeleton } from "./_components/guild-list"
 import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -9,7 +10,18 @@ import { getCsrfToken } from "@/lib/csrf"
 import { getCurrentUserSafe } from "@/lib/rustlens-api"
 import { requireSession } from "@/lib/session"
 
-export default async function Page() {
+type DashboardPageProps = {
+  searchParams: Promise<{ notice?: string | string[]; error?: string | string[] }>
+}
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
+}
+
+export default async function Page({ searchParams }: DashboardPageProps) {
+  const params = await searchParams
+  const notice = firstParam(params.notice)
+  const error = firstParam(params.error)
   const session = await requireSession()
   const [csrfToken, currentUser] = await Promise.all([
     getCsrfToken(),
@@ -41,6 +53,8 @@ export default async function Page() {
     : undefined
 
   return (
+    <>
+    <DashboardNoticeToast notice={notice} error={error} />
     <SidebarProvider
       style={
         {
@@ -83,5 +97,6 @@ export default async function Page() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+    </>
   )
 }
