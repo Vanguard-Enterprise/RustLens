@@ -44,6 +44,15 @@ export type UserGuildMembership = {
 	leftAt: string | null;
 };
 
+export interface DiscordRoleConnectionSummary {
+	linked: boolean;
+	discordId: string | null;
+	linkedAt: string | null;
+	lastPushedAt: string | null;
+	lastPushError: string | null;
+	revoked: boolean;
+}
+
 export type CurrentUser = {
 	user: AppUser;
 	steamAccounts: LinkedSteamAccount[];
@@ -59,6 +68,7 @@ export type CurrentUser = {
 	 * Superadmin implies every registered permission.
 	 */
 	permissions: string[];
+	discordRoleConnection?: DiscordRoleConnectionSummary | null;
 };
 
 export type DashboardGuildOwner = {
