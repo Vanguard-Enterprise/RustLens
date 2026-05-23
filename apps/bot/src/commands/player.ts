@@ -632,7 +632,7 @@ async function ensureSteamAccountByBmIDSafely(bmId: string): Promise<SteamAccoun
 
 async function buildBmOnlyLinksEmbed(
   bmId: string,
-  isAdmin: boolean,
+  canViewSoftLinks: boolean,
   client?: Client,
 ): Promise<{
   embed: EmbedBuilder;
@@ -648,7 +648,7 @@ async function buildBmOnlyLinksEmbed(
     account = null;
   }
   if (account?.steamId) {
-    return buildSteamLinksEmbed(account.steamId, isAdmin, client);
+    return buildSteamLinksEmbed(account.steamId, canViewSoftLinks, client);
   }
 
   const embed = createEmbed()
@@ -666,7 +666,7 @@ async function buildBmOnlyLinksEmbed(
   return { embed, components: [] };
 }
 
-async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean, client?: Client): Promise<{
+async function buildSteamLinksEmbed(steamId: string, canViewSoftLinks: boolean, client?: Client): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<StringSelectMenuBuilder>[];
 }> {
@@ -677,9 +677,9 @@ async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean, client?: 
     backend.getLinksBySteamID(workerId, steamId).catch(() => ({ items: [] as SteamDiscordLink[] })),
   ]);
 
-  const links = linksResponse.items;
-  const { strong, soft } = partitionLinksByDiscord(links);
-  const discordNameById = await fetchDiscordNames(client, links.map((link) => link.discordId));
+  const visibleLinks = filterVisibleLinks(linksResponse.items, canViewSoftLinks);
+  const { strong, soft } = partitionLinksByDiscord(visibleLinks);
+  const discordNameById = await fetchDiscordNames(client, visibleLinks.map((link) => link.discordId));
 
   const title = account?.bmName ? `Links - ${account.bmName}` : "Links";
   const embed = createEmbed()
@@ -704,7 +704,7 @@ async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean, client?: 
       : "> * None",
   });
 
-  if (isAdmin) {
+  if (canViewSoftLinks) {
     embed.addFields({
       name: "Soft links",
       value: soft.length > 0
@@ -722,7 +722,7 @@ async function buildSteamLinksEmbed(steamId: string, isAdmin: boolean, client?: 
     });
   }
 
-  return { embed, components: buildLinkedDiscordSelect(links, isAdmin, discordNameById) };
+  return { embed, components: buildLinkedDiscordSelect(visibleLinks, canViewSoftLinks, discordNameById) };
 }
 
 function partitionLinksByDiscord(links: readonly SteamDiscordLink[]) {
@@ -768,7 +768,7 @@ async function ensureSteamAccountWithBm(steamId: string): Promise<SteamAccount |
   }
 }
 
-async function buildDiscordLinksEmbed(discordUser: User, isAdmin: boolean): Promise<{
+async function buildDiscordLinksEmbed(discordUser: User, canViewSoftLinks: boolean): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<StringSelectMenuBuilder>[];
 }> {
@@ -778,7 +778,7 @@ async function buildDiscordLinksEmbed(discordUser: User, isAdmin: boolean): Prom
     .getLinksByDiscordID(workerId, discordUser.id)
     .catch(() => ({ items: [] as SteamDiscordLink[] }));
 
-  const links = filterVisibleLinks(linksResponse.items, isAdmin);
+  const links = filterVisibleLinks(linksResponse.items, canViewSoftLinks);
   const { strongSteamIds, softSteamIds } = partitionLinksBySteam(links);
 
   const [strongAccounts, softAccounts] = await Promise.all([
@@ -800,7 +800,7 @@ async function buildDiscordLinksEmbed(discordUser: User, isAdmin: boolean): Prom
     name: "Strong links",
     value: formatSteamAccountList(strongSteamIds, strongAccounts),
   });
-  if (isAdmin) {
+  if (canViewSoftLinks) {
     embed.addFields({
       name: "Soft links",
       value: formatSteamAccountList(softSteamIds, softAccounts),
