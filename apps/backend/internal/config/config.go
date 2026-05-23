@@ -30,6 +30,7 @@ type Config struct {
 	AppBaseURL           string
 	DiscordClientID      string
 	DiscordClientSecret  string
+	DiscordBotToken      string
 	DiscordAppPublicKey  string
 	AppOrigin            string
 	TrustProxyHeaders    bool
@@ -75,6 +76,7 @@ func Load() Config {
 		AppBaseURL:           getEnv("APP_BASE_URL", "http://localhost:3000"),
 		DiscordClientID:      getEnv("DISCORD_CLIENT_ID", ""),
 		DiscordClientSecret:  getEnv("DISCORD_CLIENT_SECRET", ""),
+		DiscordBotToken:      strings.TrimSpace(getEnv("DISCORD_BOT_TOKEN", "")),
 		DiscordAppPublicKey:  strings.TrimSpace(getEnv("DISCORD_APP_PUBLIC_KEY", "")),
 		AppOrigin:            getEnv("APP_ORIGIN", "http://localhost"),
 		TrustProxyHeaders:    getEnvBool("TRUST_PROXY_HEADERS", false),
