@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -232,7 +233,7 @@ func (c *Client) PutRoleConnection(ctx context.Context, accessToken, application
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
 		c.baseURL+"/api/users/@me/applications/"+applicationID+"/role-connection",
-		strings.NewReader(string(payload)))
+		bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
