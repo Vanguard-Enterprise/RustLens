@@ -186,3 +186,30 @@ func TestDiscordRoleConnection_ListActive(t *testing.T) {
 		t.Error("revoked row should be excluded")
 	}
 }
+
+func TestGetUserProGrantedAt(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+	proID := seedTestUser(t, s)
+	nonProID := seedTestUser(t, s)
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO admin_user_roles (user_id, role_id)
+		SELECT $1, id FROM admin_roles WHERE key = 'pro'
+	`, proID); err != nil {
+		t.Fatalf("grant pro: %v", err)
+	}
+	gotPro, err := s.GetUserProGrantedAt(ctx, proID)
+	if err != nil {
+		t.Fatalf("GetUserProGrantedAt(pro): %v", err)
+	}
+	if gotPro == nil {
+		t.Fatal("expected non-nil for pro user")
+	}
+	gotNon, err := s.GetUserProGrantedAt(ctx, nonProID)
+	if err != nil {
+		t.Fatalf("GetUserProGrantedAt(non-pro): %v", err)
+	}
+	if gotNon != nil {
+		t.Fatalf("expected nil for non-pro user, got %v", gotNon)
+	}
+}

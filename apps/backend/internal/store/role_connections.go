@@ -160,3 +160,23 @@ func (p *PostgresStore) RecordDiscordRoleConnectionPushError(ctx context.Context
 	`, userID, errMsg)
 	return err
 }
+
+// GetUserProGrantedAt returns the granted_at timestamp for the PRO admin role
+// on a given user, or (nil, nil) if the user does not hold the role. The role
+// key is hardcoded to "pro" because that is the only role this lookup serves.
+func (p *PostgresStore) GetUserProGrantedAt(ctx context.Context, userID string) (*time.Time, error) {
+	var t time.Time
+	err := p.pool.QueryRow(ctx, `
+		SELECT ur.granted_at
+		FROM admin_user_roles ur
+		JOIN admin_roles ar ON ar.id = ur.role_id
+		WHERE ur.user_id = $1 AND ar.key = 'pro'
+	`, userID).Scan(&t)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
