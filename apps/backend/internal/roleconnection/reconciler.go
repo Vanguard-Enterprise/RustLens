@@ -14,7 +14,7 @@ type Pusher interface {
 	Push(ctx context.Context, userID string) error
 }
 
-// ReconcilerStore reuses SyncerStore — only ListActiveDiscordRoleConnections
+// ReconcilerStore reuses SyncerStore - only ListActiveDiscordRoleConnections
 // is actually called, but reusing the interface keeps the fake test setup easy.
 type ReconcilerStore interface {
 	SyncerStore

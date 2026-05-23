@@ -164,7 +164,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Immediate push so the role appears before the user's redirect lands.
-	// Errors are logged but do not block the redirect — the reconciler will retry.
+	// Errors are logged but do not block the redirect - the reconciler will retry.
 	if err := h.cfg.Syncer.Push(ctx, session.UserID); err != nil {
 		slog.Warn("roleconnection initial push failed",
 			slog.String("user_id", session.UserID), slog.Any("error", err))

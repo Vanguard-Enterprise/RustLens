@@ -266,7 +266,7 @@ type ApplicationMetadataRecord struct {
 }
 
 // RegisterApplicationMetadata PUTs the role-connections metadata schema for
-// the application. Idempotent — PUT replaces the entire schema. Authenticated
+// the application. Idempotent - PUT replaces the entire schema. Authenticated
 // with the bot token, NOT the OAuth client secret.
 func (c *Client) RegisterApplicationMetadata(ctx context.Context, applicationID, botToken string, records []ApplicationMetadataRecord) error {
 	payload, err := json.Marshal(records)

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 const NOTICE_MESSAGES: Record<string, { variant: "success" | "info"; text: string }> = {
 	"discord-linked": {
 		variant: "success",
-		text: "Discord connected — your community role will sync shortly.",
+		text: "Discord connected - your community role will sync shortly.",
 	},
 	"discord-unlinked": {
 		variant: "info",
@@ -21,13 +21,13 @@ const ERROR_MESSAGES: Record<string, string> = {
 	"discord-token": "Discord sign-in failed (token exchange). Please try again.",
 	"discord-profile": "Discord sign-in failed (profile fetch). Please try again.",
 	"discord-config": "Discord integration not configured.",
-	"discord-encrypt": "Couldn't save your Discord link — please try again.",
-	"discord-persist": "Couldn't save your Discord link — please try again.",
+	"discord-encrypt": "Couldn't save your Discord link - please try again.",
+	"discord-persist": "Couldn't save your Discord link - please try again.",
 };
 
 /**
  * Reads ?notice= and ?error= from the URL and fires one-shot Sonner toasts.
- * Server-render safe — only fires on first client mount, with ref guards
+ * Server-render safe - only fires on first client mount, with ref guards
  * against React 19 strict-mode double-invocation.
  */
 export function DashboardNoticeToast({

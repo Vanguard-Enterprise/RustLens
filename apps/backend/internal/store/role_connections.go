@@ -116,7 +116,7 @@ func (p *PostgresStore) RecordDiscordRoleConnectionPushed(ctx context.Context, u
 }
 
 // ListActiveDiscordRoleConnections returns all rows with revoked_at IS NULL.
-// Used by the periodic reconciler. Not paginated — the expected cardinality
+// Used by the periodic reconciler. Not paginated - the expected cardinality
 // is hundreds, not millions; revisit if that changes.
 func (p *PostgresStore) ListActiveDiscordRoleConnections(ctx context.Context) ([]DiscordRoleConnection, error) {
 	rows, err := p.pool.Query(ctx, `

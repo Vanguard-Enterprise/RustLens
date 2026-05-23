@@ -284,7 +284,7 @@ Linked Roles requires two configurations in the Discord Developer Portal under y
 
 1. **OAuth2 → Redirects**: add `{APP_ORIGIN}/api/auth/discord/role-connection/callback`.
 2. **App → Linked Roles Verification URL**: set to the same URL. This is what makes the "Link your account" button appear in your community Discord under the linked-role verification prompt.
-3. `DISCORD_BOT_TOKEN` env var must be set on the backend (share with the bot's `DISCORD_TOKEN`) — the backend uses it to PUT the metadata schema at startup.
+3. `DISCORD_BOT_TOKEN` env var must be set on the backend (share with the bot's `DISCORD_TOKEN`) - the backend uses it to PUT the metadata schema at startup.
 
 **App users & browser auth**
 
