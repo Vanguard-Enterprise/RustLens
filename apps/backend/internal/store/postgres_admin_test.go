@@ -47,3 +47,18 @@ func TestEnsureSchema_CreatesAdminTables(t *testing.T) {
 		}
 	}
 }
+
+func TestEnsureSchema_CreatesDiscordRoleConnectionsTable(t *testing.T) {
+	ctx := context.Background()
+	store := newTestPostgres(t)
+	var exists bool
+	if err := store.pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = $1)`,
+		"discord_role_connections",
+	).Scan(&exists); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected discord_role_connections table to exist")
+	}
+}
