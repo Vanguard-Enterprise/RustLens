@@ -18,9 +18,11 @@ import (
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/events"
 	httpapi "rustlens/backend/internal/http"
+	"rustlens/backend/internal/oauth/discord"
 	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/platformsync"
 	"rustlens/backend/internal/proxycrypto"
+	"rustlens/backend/internal/roleconnection"
 	"rustlens/backend/internal/serveranalytics"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
@@ -66,6 +68,22 @@ func main() {
 	if err := postgresStore.EnsureSchema(ctx); err != nil {
 		log.Fatalf("schema migration failed: %v", err)
 	}
+
+	// Best-effort Discord linked-roles schema registration. Idempotent: PUT
+	// replaces the entire schema. We log-and-continue on failure so a Discord
+	// outage at boot does not crash the backend; the per-user push pipeline
+	// is unaffected and the next deploy will re-attempt the PUT.
+	if cfg.DiscordClientID != "" && cfg.DiscordBotToken != "" {
+		discordClient := discord.NewClient(cfg.DiscordClientID, cfg.DiscordClientSecret)
+		regCtx, regCancel := context.WithTimeout(ctx, 10*time.Second)
+		if err := roleconnection.RegisterSchema(regCtx, discordClient, cfg.DiscordClientID, cfg.DiscordBotToken); err != nil {
+			log.Printf("[backend] linked-roles schema registration failed: %v", err)
+		} else {
+			log.Printf("[backend] linked-roles schema registered with discord")
+		}
+		regCancel()
+	}
+
 	proxyCrypto, err := newProxyCrypto(cfg.ProxyEncryptionKey)
 	if err != nil {
 		log.Fatalf("proxy crypto init failed: %v", err)
