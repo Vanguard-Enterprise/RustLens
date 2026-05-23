@@ -20,6 +20,7 @@ import (
 	"rustlens/backend/internal/outboundhttp"
 	"rustlens/backend/internal/platformsync"
 	"rustlens/backend/internal/proxycrypto"
+	"rustlens/backend/internal/roleconnection"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
 	"rustlens/backend/internal/store"
@@ -51,12 +52,13 @@ func NewRouter(
 	proxyCrypto *proxycrypto.Crypto,
 	eventsHub *events.Hub,
 	publisher events.Publisher,
+	roleConnSyncer *roleconnection.Syncer,
 ) http.Handler {
 	if publisher == nil {
 		publisher = events.NopPublisher{}
 	}
 	appAuthRepo := appauth.NewRepo(postgres.Pool())
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher, appAuthRepo)
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher, appAuthRepo, proRoleSyncAdapter{s: roleConnSyncer})
 
 	apiKeyStore := store.NewAPIKeyStore(postgres.Pool())
 	headers := clientip.Headers{
@@ -254,7 +256,7 @@ func NewRouter(
 		r.Get("/guilds/{guildID}/track-groups/{groupID}/analytics", handler.GetTrackGroupAnalytics)
 	})
 
-	appAuthHandler := appauth.NewHandler(appAuthRepo)
+	appAuthHandler := appauth.NewHandlerWithRoleConnection(appAuthRepo, postgres)
 	requireAppSecret := appauth.RequireAppSecret(cfg.AppAPIInternalSecret)
 	requireSession := appauth.RequireSession(cfg.AppSessionSecret, postgres.Pool())
 
@@ -272,6 +274,25 @@ func NewRouter(
 		r.Get("/", discordHandler.Initiate)
 		r.Get("/callback", discordHandler.Callback)
 	})
+
+	if roleConnSyncer != nil {
+		rcDiscordClient := discord.NewClient(
+			cfg.DiscordClientID, cfg.DiscordClientSecret,
+			discord.WithRedirectURI(discord.RoleConnectionRedirectURI(cfg.AppOrigin)),
+		)
+		rcHandler := roleconnection.NewHandler(roleconnection.HandlerConfig{
+			ClientID:     cfg.DiscordClientID,
+			ClientSecret: cfg.DiscordClientSecret,
+			AppOrigin:    cfg.AppOrigin,
+			Syncer:       roleConnSyncer,
+			DiscordAPI:   rcDiscordClient,
+		})
+		r.Route("/api/auth/discord/role-connection", func(r chi.Router) {
+			r.Use(requireSession)
+			r.Get("/", rcHandler.Initiate)
+			r.Get("/callback", rcHandler.Callback)
+		})
+	}
 
 	r.Route("/api/events", func(r chi.Router) {
 		if eventsHub != nil {
@@ -313,6 +334,15 @@ func NewRouter(
 			r.Get("/me/guilds", handler.GetCurrentAppUserGuilds)
 			r.Get("/me/guilds/installed", handler.GetCurrentAppUserInstalledGuilds)
 			r.Get("/me/guilds/{guildID}/links", handler.GetCurrentAppUserGuildLinks)
+			if roleConnSyncer != nil {
+				rcDeleteClient := discord.NewClient(cfg.DiscordClientID, cfg.DiscordClientSecret)
+				rcDelete := roleconnection.NewHandler(roleconnection.HandlerConfig{
+					AppOrigin:  cfg.AppOrigin,
+					Syncer:     roleConnSyncer,
+					DiscordAPI: rcDeleteClient,
+				})
+				r.Delete("/me/discord-role-connection", rcDelete.Disconnect)
+			}
 		})
 
 		r.Group(func(r chi.Router) {
@@ -394,6 +424,18 @@ func botJWTMiddleware(validator *auth.Validator) func(next http.Handler) http.Ha
 			ctx := context.WithValue(r.Context(), claimsContextKey, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
+	}
+}
+
+// proRoleSyncAdapter bridges the actions.RoleSyncHook interface to the
+// roleconnection.Syncer, triggering an async Discord metadata push whenever
+// the "pro" role is granted or revoked. When s is nil (no PROXY_ENCRYPTION_KEY
+// configured), calls are a no-op.
+type proRoleSyncAdapter struct{ s *roleconnection.Syncer }
+
+func (a proRoleSyncAdapter) OnProRoleChanged(userID string) {
+	if a.s != nil {
+		a.s.PushAsync(userID)
 	}
 }
 

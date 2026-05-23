@@ -2,6 +2,8 @@ package discord_test
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -140,5 +142,137 @@ func TestClient_FetchProfile_NoAvatar(t *testing.T) {
 	}
 	if p.AvatarHash != "" {
 		t.Errorf("AvatarHash with null avatar = %q, want empty", p.AvatarHash)
+	}
+}
+
+func TestRefreshToken_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/oauth2/token" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		if got := r.Form.Get("grant_type"); got != "refresh_token" {
+			t.Errorf("grant_type = %s", got)
+		}
+		if got := r.Form.Get("refresh_token"); got != "rt-old" {
+			t.Errorf("refresh_token = %s", got)
+		}
+		_, _ = w.Write([]byte(`{
+			"access_token": "at-new", "refresh_token": "rt-new",
+			"expires_in": 604800, "token_type": "Bearer", "scope": "identify role_connections.write"
+		}`))
+	}))
+	defer srv.Close()
+
+	c := discord.NewClient("cid", "csecret", discord.WithBaseURL(srv.URL))
+	access, refresh, expiresIn, err := c.RefreshToken(context.Background(), "rt-old")
+	if err != nil {
+		t.Fatalf("RefreshToken: %v", err)
+	}
+	if access != "at-new" || refresh != "rt-new" || expiresIn != 604800 {
+		t.Fatalf("got %q %q %d", access, refresh, expiresIn)
+	}
+}
+
+func TestRefreshToken_InvalidGrant(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+	}))
+	defer srv.Close()
+	c := discord.NewClient("cid", "csecret", discord.WithBaseURL(srv.URL))
+	_, _, _, err := c.RefreshToken(context.Background(), "rt-old")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, discord.ErrRefreshRevoked) {
+		t.Fatalf("err = %v, want ErrRefreshRevoked", err)
+	}
+}
+
+func TestPutRoleConnection_Success(t *testing.T) {
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s", r.Method)
+		}
+		if r.URL.Path != "/api/users/@me/applications/APP-ID/role-connection" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer at-1" {
+			t.Errorf("auth = %s", got)
+		}
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"platform_name":"RustLens"}`))
+	}))
+	defer srv.Close()
+	c := discord.NewClient("cid", "csecret", discord.WithBaseURL(srv.URL))
+	body := discord.RoleConnectionBody{
+		PlatformName:     "RustLens",
+		PlatformUsername: "sem",
+		Metadata: map[string]string{
+			"is_pro":    "1",
+			"pro_since": "2026-05-23T12:00:00+00:00",
+		},
+	}
+	if err := c.PutRoleConnection(context.Background(), "at-1", "APP-ID", body); err != nil {
+		t.Fatalf("PutRoleConnection: %v", err)
+	}
+	if !strings.Contains(string(gotBody), `"is_pro":"1"`) {
+		t.Errorf("body missing is_pro: %s", string(gotBody))
+	}
+}
+
+func TestPutRoleConnection_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message":"401: Unauthorized","code":0}`))
+	}))
+	defer srv.Close()
+	c := discord.NewClient("cid", "csecret", discord.WithBaseURL(srv.URL))
+	err := c.PutRoleConnection(context.Background(), "expired", "APP-ID", discord.RoleConnectionBody{PlatformName: "x"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, discord.ErrAccessTokenInvalid) {
+		t.Fatalf("err = %v, want ErrAccessTokenInvalid", err)
+	}
+}
+
+func TestRegisterApplicationMetadata_Success(t *testing.T) {
+	var gotBody []byte
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s", r.Method)
+		}
+		if r.URL.Path != "/api/applications/APP-ID/role-connections/metadata" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		gotAuth = r.Header.Get("Authorization")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	c := discord.NewClient("cid", "csecret", discord.WithBaseURL(srv.URL))
+	records := []discord.ApplicationMetadataRecord{
+		{Type: 7, Key: "is_pro", Name: "PRO subscriber", Description: "Active PRO status"},
+		{Type: 6, Key: "pro_since", Name: "PRO since", Description: "Date PRO was granted"},
+	}
+	if err := c.RegisterApplicationMetadata(context.Background(), "APP-ID", "bot-token-123", records); err != nil {
+		t.Fatalf("RegisterApplicationMetadata: %v", err)
+	}
+	if gotAuth != "Bot bot-token-123" {
+		t.Errorf("auth = %q, want \"Bot bot-token-123\"", gotAuth)
+	}
+	if !strings.Contains(string(gotBody), `"key":"is_pro"`) || !strings.Contains(string(gotBody), `"key":"pro_since"`) {
+		t.Errorf("body missing records: %s", string(gotBody))
 	}
 }

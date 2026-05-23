@@ -1,6 +1,8 @@
 import { Suspense } from "react"
 
 import { AppSidebar } from "./_components/app-sidebar"
+import { DiscordRoleConnectionCard } from "./_components/discord-role-connection-card"
+import { DashboardNoticeToast } from "./_components/notice-toast"
 import { GuildList, GuildListSkeleton } from "./_components/guild-list"
 import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -8,7 +10,18 @@ import { getCsrfToken } from "@/lib/csrf"
 import { getCurrentUserSafe } from "@/lib/rustlens-api"
 import { requireSession } from "@/lib/session"
 
-export default async function Page() {
+type DashboardPageProps = {
+  searchParams: Promise<{ notice?: string | string[]; error?: string | string[] }>
+}
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
+}
+
+export default async function Page({ searchParams }: DashboardPageProps) {
+  const params = await searchParams
+  const notice = firstParam(params.notice)
+  const error = firstParam(params.error)
   const session = await requireSession()
   const [csrfToken, currentUser] = await Promise.all([
     getCsrfToken(),
@@ -40,6 +53,8 @@ export default async function Page() {
     : undefined
 
   return (
+    <>
+    <DashboardNoticeToast notice={notice} error={error} />
     <SidebarProvider
       style={
         {
@@ -59,6 +74,12 @@ export default async function Page() {
         <div className="flex flex-1 flex-col">
           <div className="@container/main flex flex-1 flex-col gap-2">
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+              <div className="px-4 lg:px-6">
+                <DiscordRoleConnectionCard
+                  summary={currentUser?.discordRoleConnection ?? null}
+                  hasPro={liveAdminRoles.includes("pro")}
+                />
+              </div>
               <div className="flex flex-col gap-1 px-4 lg:px-6">
                 <h1 className="font-heading text-xl">Your guilds</h1>
                 <p className="text-sm text-muted-foreground">
@@ -76,5 +97,6 @@ export default async function Page() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+    </>
   )
 }

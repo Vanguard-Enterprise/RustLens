@@ -98,6 +98,9 @@ apps/frontend/
     admin/bm-servers/page.tsx           # Admin tracked BattleMetrics servers management (bm_servers.read; edits require bm_servers.edit)
     dashboard/page.tsx                  # Authenticated user dashboard root
     dashboard/guilds/[guildId]/page.tsx # Per-guild authenticated dashboard view
+    dashboard/_components/discord-role-connection-card.tsx  # Dashboard card showing Discord community role link state
+    dashboard/_components/discord-role-connection-actions.ts # Connect/disconnect server actions
+    dashboard/_components/notice-toast.tsx                  # Dashboard-scoped Sonner notice/error toast component
     search/page.tsx                     # Player search results page (?q=&includeOffline=); admin-only offline toggle
     player/[steamId]/page.tsx           # Public player profile page (mirror of bot /player embed, charts deferred)
     privacy/page.tsx                    # Public privacy-policy page
@@ -167,7 +170,7 @@ apps/backend/
   internal/
     config/config.go         # Env-based config with defaults
     http/
-      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/owner/*, /api/internal/bot/setup/*, /api/auth/discord (+ /callback), /api/events/stream, /api/app/* (auth, me, admin)
+      router.go              # chi routes: /api/docs, /api/healthz, /api/internal/bot/shards/*, /api/internal/bot/owner/*, /api/internal/bot/setup/*, /api/auth/discord (+ /callback), /api/auth/discord/role-connection (+ /callback), /api/events/stream, /api/app/* (auth, me, admin, me/discord-role-connection DELETE)
       handlers.go            # Bot-internal handler implementations
       app_handlers.go        # /api/app aggregate, password-auth, and admin handlers
       events_handlers.go     # Cookie-authenticated SSE handler at /api/events/stream
@@ -176,6 +179,7 @@ apps/backend/
     clientip/                # Trusted-edge client-IP + country header extraction (CF-Connecting-IP / CF-IPCountry)
     appauth/                 # App-session auth: handler, repo, middleware, Discord-OAuth-driven session creation
     oauth/discord/           # Discord OAuth client + initiate/callback handlers backing /api/auth/discord
+    roleconnection/          # Discord linked-roles OAuth + token storage + metadata push (PRO sync)
     admin/                   # Admin RBAC: roles, permissions, audit, action dispatcher
     battlemetrics/
       client.go              # BattleMetrics HTTP client (unauthenticated public API; routed through outbound proxy provider)
@@ -198,6 +202,7 @@ apps/backend/
       postgres.go            # pgx pool + EnsureSchema (auto-migrates all tables listed under "Schema" below)
       app_users.go           # App-user, connected-account, aggregate, and admin listing store logic
       app_password_auth.go   # Password credential, reset-token, and email-verification store logic
+      role_connections.go    # Encrypted Discord OAuth token CRUD + summary for the dashboard
       admin/audit             # Admin RBAC + audit-event store logic
       wipe_reacts.go          # Persisted wipe react CRUD + reaction mutation helpers
       wipe_react_schedules.go # Recurring wipe-react schedule CRUD
@@ -252,6 +257,17 @@ Key patterns:
 - Bot platform-sync route (`POST /api/internal/bot/setup/platform-sync/{platform}/{id}` with `platform` of `steam` or `discord`) is JWT-protected and runs an external `platformsync.io` lookup if the last sync for that `(platform, id)` pair in `platform_sync_state` is older than 14 days. The upstream URL is hard-coded to `https://link.platformsync.io/api.php`; the bearer-style token comes from `PLATFORMSYNC_TOKEN`. Requests are sent **directly** (never proxied). Every `(steam_id, discord_id)` tuple discovered — including all `previous_*_ids` — is upserted as a hard link in `steam_discord_links` with `source='platformsync'`. Only the queried side is recorded in `platform_sync_state`, so a later sync of one of the discovered IDs still hits the upstream.
 - OpenAPI spec is served at `/api/docs/openapi.json`; interactive docs at `/api/docs`.
 - Discord OAuth lives at `/api/auth/discord` (initiate) and `/api/auth/discord/callback` on the **backend**, served by `internal/oauth/discord/`. The callback creates the signed `rustlens_session` cookie shared with Next.js.
+- Discord Linked Roles for the `pro` admin role: `internal/roleconnection/` owns
+  a separate OAuth flow at `/api/auth/discord/role-connection` (+ `/callback`)
+  requesting `identify role_connections.write`. Tokens are stored AES-GCM-encrypted
+  (PROXY_ENCRYPTION_KEY) in `discord_role_connections`. On grant/revoke of the
+  `pro` role the `users.roles.grant`/`revoke` admin actions fire `Syncer.PushAsync`
+  which PUTs `is_pro` + `pro_since` metadata to Discord's
+  `/users/@me/applications/{id}/role-connection`. A 6h reconciler
+  (advisory-locked via `pg_try_advisory_lock`) re-pushes for any drift. Schema
+  registration (`PUT /applications/{id}/role-connections/metadata`) runs once at
+  backend startup using `DISCORD_BOT_TOKEN`. Per-user disconnect:
+  `DELETE /api/app/me/discord-role-connection`.
 - App-facing routes under `/api/app/*` are protected by an internal shared-secret header used only by Next.js server-side code. Session-authenticated `/api/app/*` routes additionally validate the signed frontend session token with `APP_SESSION_SECRET` and derive the actor from that session before resolving current-user/admin authorization through `app_users` roles. Admin RBAC routes are mounted under `/api/app/admin/*` and back the internal-admin dashboard (roles, users, guilds, servers, audit, action dispatcher, CSV export).
 - The admin `GET /api/app/admin/guilds` route reads paginated rows from `bot_guilds` LEFT JOIN `guild_settings` LEFT JOIN `guild_tracked_servers` (count). Query params: `q` (substring on `name`/`owner_username`, prefix on `guild_id`), `page` (default 1), `pageSize` (default 20, capped at 100). Response is `{items, total, page, pageSize}`.
 - The admin `GET /api/app/admin/permissions` route returns the canonical permission catalog from `rbac.AllPermissions()` (key + description). Static; no DB read. Used by the `/admin/roles` page to render the permission checkbox grid.
@@ -261,6 +277,14 @@ Key patterns:
 - Admin BattleMetrics-server routes (`GET/POST /api/app/admin/bm-servers`, `POST /api/app/admin/bm-servers/bulk`, `PUT/DELETE /api/app/admin/bm-servers/{bmID}`) back the `/admin/bm-servers` page. Reads require `bm_servers.read`; mutations require `bm_servers.edit`. Both permissions are seeded onto the `infra_admin` system role alongside the proxy perms. Mutations record `bm_server` audit entries (`bm_servers.create|update|delete|bulk.set_high_freq|bulk.set_standard|bulk.delete`) with the optional `reason` from the request body. The list endpoint supports `q` (name/bm_id substring), `highFrequency` (bool), `hasError` (bool), `sortBy` (`name|bmId|highFrequency|lastPolledAt|pollStatus`), `sortOrder` (`asc|desc`), `page`, `pageSize`. Updates accept a renamed `bmId`, which atomically remaps `guild_tracked_servers` and `player_states` references via the existing `UpdateTrackedServer` transaction. Deletes cascade through FK to per-guild selections, player presence, and player-count history. The bulk endpoint accepts `{action, bmIds[], reason?}` with action of `set_high_freq` / `set_standard` / `delete`, capped at 200 IDs per request, and returns per-item OK/error results plus succeeded/failed counts.
 - The backend runs a rolling BattleMetrics poller that queries one tracked server every `BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS`, polling three `tracked_servers.high_frequency=true` servers followed by one non-high-frequency server when both subsets exist. It updates `tracked_servers.last_polled_at` / `last_poll_error` and syncs per-server player presence into `player_states`.
 - **`/api/events/stream`** is cookie-authenticated (not `/api/app/*`-secret) and serves SSE. Backed by `internal/events/Hub` (in-process pub/sub keyed by user id, capped at 5 connections per user) plus `internal/events/RedisBridge` (multi-pod fanout via Redis pub/sub channel `rustlens:user-events`). Admin actions in `internal/admin/actions/` (`users.roles.grant`, `users.roles.revoke`, `roles.permissions.set`, `users.suspend`, `users.delete`, `users.force_logout`) publish events through `events.Publisher`. `ValidateSession` rejects suspended or deleted users in addition to the `session_epoch` revocation check.
+
+**Discord linked-roles configuration**
+
+Linked Roles requires two configurations in the Discord Developer Portal under your application:
+
+1. **OAuth2 → Redirects**: add `{APP_ORIGIN}/api/auth/discord/role-connection/callback`.
+2. **App → Linked Roles Verification URL**: set to the same URL. This is what makes the "Link your account" button appear in your community Discord under the linked-role verification prompt.
+3. `DISCORD_BOT_TOKEN` env var must be set on the backend (share with the bot's `DISCORD_TOKEN`) - the backend uses it to PUT the metadata schema at startup.
 
 **App users & browser auth**
 
@@ -385,6 +409,7 @@ Each app has a `.env.example` — copy and fill before running.
 | `APP_ORIGIN` | `http://localhost` |
 | `APP_BASE_URL` | `http://localhost:3000` |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | `` (required to enable `/api/auth/discord`) |
+| `DISCORD_BOT_TOKEN` | `` (required for linked-roles schema registration at startup; share with the bot's `DISCORD_TOKEN`) |
 | `APP_ADMIN_DISCORD_IDS` | `` (CSV; bootstraps internal-admin role) |
 | `TRUST_PROXY_HEADERS` | `false` (set `true` only behind a trusted edge that strips client-supplied copies of the headers below) |
 | `TRUST_PROXY_IP_HEADER` | `CF-Connecting-IP` (canonical client-IP header injected by Cloudflare) |

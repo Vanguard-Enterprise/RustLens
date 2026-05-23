@@ -44,6 +44,15 @@ export type UserGuildMembership = {
 	leftAt: string | null;
 };
 
+export interface DiscordRoleConnectionSummary {
+	linked: boolean;
+	discordId: string | null;
+	linkedAt: string | null;
+	lastPushedAt: string | null;
+	lastPushError: string | null;
+	revoked: boolean;
+}
+
 export type CurrentUser = {
 	user: AppUser;
 	steamAccounts: LinkedSteamAccount[];
@@ -59,6 +68,7 @@ export type CurrentUser = {
 	 * Superadmin implies every registered permission.
 	 */
 	permissions: string[];
+	discordRoleConnection?: DiscordRoleConnectionSummary | null;
 };
 
 export type DashboardGuildOwner = {
@@ -1251,6 +1261,14 @@ export type PlayerProfile = {
 	nameGaps: PlayerProfileNameGap[];
 	status?: PlayerProfileStatus | null;
 };
+
+export async function deleteDiscordRoleConnection(): Promise<void> {
+	await backendFetch<void>(
+		"/api/app/me/discord-role-connection",
+		{ method: "DELETE" },
+		{ requireSession: true },
+	);
+}
 
 export async function searchPlayers(
 	q: string,

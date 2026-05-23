@@ -17,7 +17,7 @@
 
 ---
 
-## Phase 1 — Database schema
+## Phase 1 - Database schema
 
 ### Task 1: Add `discord_role_connections` table to EnsureSchema
 
@@ -63,7 +63,7 @@ Add this immediately after the existing `admin_user_roles` migration (after its 
 	}
 ```
 
-The two-column-per-encrypted-field pattern (`*_ct` + `*_nonce`) matches the existing `outbound_proxies` table — see `apps/backend/internal/proxycrypto/crypto.go` where `Encrypt` returns `(ciphertext, nonce, error)`.
+The two-column-per-encrypted-field pattern (`*_ct` + `*_nonce`) matches the existing `outbound_proxies` table - see `apps/backend/internal/proxycrypto/crypto.go` where `Encrypt` returns `(ciphertext, nonce, error)`.
 
 - [ ] **Step 3: Verify build**
 
@@ -112,7 +112,7 @@ git push
 
 ---
 
-## Phase 2 — Store CRUD for role connections
+## Phase 2 - Store CRUD for role connections
 
 ### Task 2: Define the row type and Upsert
 
@@ -194,7 +194,7 @@ func TestDiscordRoleConnection_UpsertAndGet(t *testing.T) {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd apps/backend && TEST_POSTGRES_URL=... go test ./internal/store/ -run TestDiscordRoleConnection_UpsertAndGet -v`
-Expected: FAIL (compile error — `DiscordRoleConnection`, `UpsertDiscordRoleConnection`, `GetDiscordRoleConnection` undefined).
+Expected: FAIL (compile error - `DiscordRoleConnection`, `UpsertDiscordRoleConnection`, `GetDiscordRoleConnection` undefined).
 
 - [ ] **Step 3: Implement the row type and the two methods**
 
@@ -486,7 +486,7 @@ func (p *PostgresStore) RecordDiscordRoleConnectionPushed(ctx context.Context, u
 }
 
 // ListActiveDiscordRoleConnections returns all rows with revoked_at IS NULL.
-// Used by the periodic reconciler. Not paginated — the expected cardinality
+// Used by the periodic reconciler. Not paginated - the expected cardinality
 // is hundreds, not millions; revisit if that changes.
 func (p *PostgresStore) ListActiveDiscordRoleConnections(ctx context.Context) ([]DiscordRoleConnection, error) {
 	rows, err := p.pool.Query(ctx, `
@@ -547,7 +547,7 @@ git push
 
 ### Task 4: Add a `UserHasProRoleGrantedAt` lookup
 
-We need to read `admin_user_roles.granted_at` for the `pro` role to build the metadata. Add a focused helper rather than reusing the broader resolver — the metadata builder only needs this one fact and is on the hot path of every push.
+We need to read `admin_user_roles.granted_at` for the `pro` role to build the metadata. Add a focused helper rather than reusing the broader resolver - the metadata builder only needs this one fact and is on the hot path of every push.
 
 **Files:**
 - Modify: `apps/backend/internal/store/role_connections.go`
@@ -635,12 +635,12 @@ git push
 
 ---
 
-## Phase 3 — Extend the Discord client with the calls Linked Roles needs
+## Phase 3 - Extend the Discord client with the calls Linked Roles needs
 
 The existing `internal/oauth/discord/client.go` covers `ExchangeCode`, `FetchUserGuilds`, `FetchProfile`. Three more calls are needed:
-- `RefreshToken(ctx, refreshToken) (newAccess, newRefresh, expiresIn, error)` — exchanges a refresh token for a new access token.
-- `PutRoleConnection(ctx, accessToken, applicationID, body) error` — pushes per-user metadata.
-- `RegisterApplicationMetadata(ctx, applicationID, botToken, records) error` — one-time schema PUT using `Authorization: Bot {token}` (NOT the OAuth client secret).
+- `RefreshToken(ctx, refreshToken) (newAccess, newRefresh, expiresIn, error)` - exchanges a refresh token for a new access token.
+- `PutRoleConnection(ctx, accessToken, applicationID, body) error` - pushes per-user metadata.
+- `RegisterApplicationMetadata(ctx, applicationID, botToken, records) error` - one-time schema PUT using `Authorization: Bot {token}` (NOT the OAuth client secret).
 
 ### Task 5: Add `RefreshToken` with httptest coverage
 
@@ -978,7 +978,7 @@ type ApplicationMetadataRecord struct {
 }
 
 // RegisterApplicationMetadata PUTs the role-connections metadata schema for
-// the application. Idempotent — PUT replaces the entire schema. Authenticated
+// the application. Idempotent - PUT replaces the entire schema. Authenticated
 // with the bot token, NOT the OAuth client secret.
 func (c *Client) RegisterApplicationMetadata(ctx context.Context, applicationID, botToken string, records []ApplicationMetadataRecord) error {
 	payload, err := json.Marshal(records)
@@ -1056,7 +1056,7 @@ const (
 )
 ```
 
-(Verify `strings` is already imported — it should be from `RedirectURI`.)
+(Verify `strings` is already imported - it should be from `RedirectURI`.)
 
 - [ ] **Step 3: Build**
 
@@ -1073,7 +1073,7 @@ git push
 
 ---
 
-## Phase 4 — `roleconnection` package: Syncer core
+## Phase 4 - `roleconnection` package: Syncer core
 
 The Syncer is the orchestrator: it takes a userID, looks up the row, refreshes the token if expired, builds the metadata, computes the hash, skips no-ops, PUTs to Discord, and records the outcome.
 
@@ -1304,7 +1304,7 @@ git commit -m "feat(backend): roleconnection token cipher wrapper"
 git push
 ```
 
-### Task 11: Syncer.Push — happy path
+### Task 11: Syncer.Push - happy path
 
 **Files:**
 - Modify: `apps/backend/internal/roleconnection/syncer.go`
@@ -1791,7 +1791,7 @@ git push
 
 ---
 
-## Phase 5 — Schema registration at startup
+## Phase 5 - Schema registration at startup
 
 ### Task 13: `RegisterSchema` function
 
@@ -1967,7 +1967,7 @@ Add imports at the top (alongside existing `internal/oauth/discord`):
 	"rustlens/backend/internal/roleconnection"
 ```
 
-(Verify `time` and `context` are already imported — they are.)
+(Verify `time` and `context` are already imported - they are.)
 
 - [ ] **Step 3: Build**
 
@@ -1982,7 +1982,7 @@ DISCORD_BOT_TOKEN=... DISCORD_CLIENT_ID=... DISCORD_CLIENT_SECRET=... cd apps/ba
 ```
 Look for `linked-roles schema registered with discord` in the log on boot. Stop with Ctrl+C.
 
-If no token is available, skip — the build verification above is sufficient.
+If no token is available, skip - the build verification above is sufficient.
 
 - [ ] **Step 5: Commit and push**
 
@@ -1994,9 +1994,9 @@ git push
 
 ---
 
-## Phase 6 — OAuth flow for role-connection linking
+## Phase 6 - OAuth flow for role-connection linking
 
-### Task 16: OAuth handler — Initiate
+### Task 16: OAuth handler - Initiate
 
 **Files:**
 - Create: `apps/backend/internal/roleconnection/handler.go`
@@ -2215,7 +2215,7 @@ git commit -m "feat(backend): roleconnection OAuth initiate handler"
 git push
 ```
 
-### Task 17: OAuth handler — Callback
+### Task 17: OAuth handler - Callback
 
 **Files:**
 - Modify: `apps/backend/internal/roleconnection/handler.go`
@@ -2403,7 +2403,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Immediate push so the role appears before the user's redirect lands.
-	// Errors are logged but do not block the redirect — the reconciler will retry.
+	// Errors are logged but do not block the redirect - the reconciler will retry.
 	if err := h.cfg.Syncer.Push(ctx, session.UserID); err != nil {
 		slog.Warn("roleconnection initial push failed",
 			slog.String("user_id", session.UserID), slog.Any("error", err))
@@ -2432,7 +2432,7 @@ Add imports:
 	"rustlens/backend/internal/store"
 ```
 
-Also rename the existing `ExchangeCode` to `ExchangeCodeForTokens` (returning all three values) — OR add a new function. Add a new function to keep existing callers untouched:
+Also rename the existing `ExchangeCode` to `ExchangeCodeForTokens` (returning all three values) - OR add a new function. Add a new function to keep existing callers untouched:
 
 In `apps/backend/internal/oauth/discord/client.go`, append:
 
@@ -2491,7 +2491,7 @@ Expected: PASS for both.
 - [ ] **Step 5: Run the full backend test suite to make sure nothing else regressed**
 
 Run: `cd apps/backend && go test ./...`
-Expected: all PASS (some store tests will skip without TEST_POSTGRES_URL — that's fine).
+Expected: all PASS (some store tests will skip without TEST_POSTGRES_URL - that's fine).
 
 - [ ] **Step 6: Commit and push**
 
@@ -2692,7 +2692,7 @@ And inside the `r.Route("/api/app", ...)` block, inside the existing session-req
 		})
 ```
 
-(If your router already has a session-required group containing `/me/connections` etc., add the `Delete` route inside it instead of creating a new group — this avoids redundant middleware. Search for `r.Get("/me/connections"` to find that group.)
+(If your router already has a session-required group containing `/me/connections` etc., add the `Delete` route inside it instead of creating a new group - this avoids redundant middleware. Search for `r.Get("/me/connections"` to find that group.)
 
 - [ ] **Step 3: Build**
 
@@ -2709,7 +2709,7 @@ git push
 
 ---
 
-## Phase 7 — Hook syncer into admin grant/revoke actions
+## Phase 7 - Hook syncer into admin grant/revoke actions
 
 ### Task 20: Add an optional Syncer dependency to users.roles.grant and revoke
 
@@ -2731,7 +2731,7 @@ Create `apps/backend/internal/admin/actions/role_sync_hook.go`:
 package actions
 
 // RoleSyncHook is invoked after a successful users.roles.grant or revoke for
-// the "pro" role. Implementations should not block — they are called with the
+// the "pro" role. Implementations should not block - they are called with the
 // user_id and must fire-and-forget any side effects (e.g., Discord push).
 type RoleSyncHook interface {
 	OnProRoleChanged(userID string)
@@ -2761,7 +2761,7 @@ Do the same for `users_roles_revoke.go`.
 
 - [ ] **Step 4: Update callers**
 
-In `apps/backend/internal/http/router.go` (or wherever these actions are instantiated — likely `apps/backend/internal/admin/actions/dispatcher.go`), pass `roleConnSyncer` wrapped as a hook. Add an adapter near the syncer construction in `main.go` OR in the router (keep it next to the call site):
+In `apps/backend/internal/http/router.go` (or wherever these actions are instantiated - likely `apps/backend/internal/admin/actions/dispatcher.go`), pass `roleConnSyncer` wrapped as a hook. Add an adapter near the syncer construction in `main.go` OR in the router (keep it next to the call site):
 
 ```go
 type proRoleSyncAdapter struct{ s *roleconnection.Syncer }
@@ -2796,7 +2796,7 @@ git push
 
 ---
 
-## Phase 8 — Periodic reconciler
+## Phase 8 - Periodic reconciler
 
 ### Task 21: Reconciler with advisory lock
 
@@ -3032,7 +3032,7 @@ git push
 
 ---
 
-## Phase 9 — Surface state on /api/app/me
+## Phase 9 - Surface state on /api/app/me
 
 ### Task 23: Extend CurrentUser with DiscordRoleConnection summary
 
@@ -3178,7 +3178,7 @@ git push
 
 ---
 
-## Phase 10 — Frontend dashboard card
+## Phase 10 - Frontend dashboard card
 
 > **Reminder:** before editing any Next.js file, read the relevant guide in `apps/frontend/node_modules/next/dist/docs/` (server actions, redirect, cookies). Copy idioms from `apps/frontend/app/dashboard/page.tsx`, `apps/frontend/lib/csrf.ts`, `apps/frontend/lib/rustlens-api.ts`.
 
@@ -3391,7 +3391,7 @@ Expected: PASS.
 - [ ] **Step 4: Manual smoke test**
 
 In a separate terminal: `pnpm dev`
-Browse to `http://localhost/dashboard`. The card should appear above your guild list. Without Discord OAuth credentials configured, clicking Connect will 302 to `/dashboard?error=discord-config` — that's expected behavior; it proves the wiring works.
+Browse to `http://localhost/dashboard`. The card should appear above your guild list. Without Discord OAuth credentials configured, clicking Connect will 302 to `/dashboard?error=discord-config` - that's expected behavior; it proves the wiring works.
 
 - [ ] **Step 5: Commit and push**
 
@@ -3413,11 +3413,11 @@ Run: `rg -n "notice=|NoticeToast|discord-state|discord-token" apps/frontend/`
 - [ ] **Step 2: Add the new notice/error codes**
 
 Wherever the existing notice mapping lives (likely `apps/frontend/lib/session-errors.ts` or a similar file), add entries for:
-- `notice=discord-linked` → success toast "Discord connected — your community role will sync shortly."
+- `notice=discord-linked` → success toast "Discord connected - your community role will sync shortly."
 - `notice=discord-unlinked` → info toast "Discord disconnected. You can reconnect anytime from your dashboard."
 - `error=discord-mismatch` → error toast "That Discord account doesn't match your RustLens account. Sign in with the Discord account you used to register."
 - `error=discord-state` / `error=discord-token` / `error=discord-config` → reuse existing generic Discord error mapping if present; otherwise add a generic "Discord sign-in failed, please try again."
-- `error=discord-encrypt` / `error=discord-persist` → "Couldn't save your Discord link — please try again."
+- `error=discord-encrypt` / `error=discord-persist` → "Couldn't save your Discord link - please try again."
 
 - [ ] **Step 3: Lint**
 
@@ -3434,7 +3434,7 @@ git push
 
 ---
 
-## Phase 11 — Documentation
+## Phase 11 - Documentation
 
 ### Task 28: Update AGENTS.md with the new surfaces
 
@@ -3474,7 +3474,7 @@ In the Discord Developer Portal setup notes (add a new short subsection if none 
 > 1. **OAuth2 → Redirects**: add `{APP_ORIGIN}/api/auth/discord/role-connection/callback`.
 > 2. **App → Linked Roles Verification URL**: set to the same URL. This is what makes the "Link your account" button appear in your community Discord under the linked-role verification prompt.
 
-- [ ] **Step 3: Lint check (no tool required — visual review)**
+- [ ] **Step 3: Lint check (no tool required - visual review)**
 
 - [ ] **Step 4: Commit and push**
 

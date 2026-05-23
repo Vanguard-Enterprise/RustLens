@@ -902,6 +902,33 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 	`); err != nil {
 		return fmt.Errorf("create admin_user_roles: %w", err)
 	}
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS discord_role_connections (
+			user_id            TEXT        NOT NULL PRIMARY KEY
+			                    REFERENCES app_users(id) ON DELETE CASCADE,
+			discord_id         TEXT        NOT NULL,
+			access_token_ct    BYTEA       NOT NULL,
+			access_token_nonce BYTEA       NOT NULL,
+			refresh_token_ct   BYTEA       NOT NULL,
+			refresh_token_nonce BYTEA      NOT NULL,
+			access_expires_at  TIMESTAMPTZ NOT NULL,
+			scopes             TEXT        NOT NULL,
+			linked_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+			last_pushed_at     TIMESTAMPTZ NULL,
+			last_pushed_hash   TEXT        NULL,
+			last_push_error    TEXT        NULL,
+			revoked_at         TIMESTAMPTZ NULL
+		)
+	`); err != nil {
+		return fmt.Errorf("create discord_role_connections: %w", err)
+	}
+	if _, err := p.pool.Exec(ctx, `
+		CREATE INDEX IF NOT EXISTS discord_role_connections_active_idx
+		ON discord_role_connections (revoked_at)
+		WHERE revoked_at IS NULL
+	`); err != nil {
+		return fmt.Errorf("index discord_role_connections active: %w", err)
+	}
 
 	// app_users lifecycle columns — suspension and soft-delete tracking
 	// plus a session epoch counter used to invalidate active sessions.

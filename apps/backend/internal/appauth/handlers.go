@@ -1,15 +1,29 @@
 package appauth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+
+	"rustlens/backend/internal/store"
 )
 
+// RoleConnectionSummaryStore is the subset of store needed by Me to surface
+// the dashboard role-connection summary.
+type RoleConnectionSummaryStore interface {
+	GetDiscordRoleConnectionSummary(ctx context.Context, userID string) (store.DiscordRoleConnectionSummary, error)
+}
+
 type Handler struct {
-	repo *Repo
+	repo    *Repo
+	rcStore RoleConnectionSummaryStore // may be nil
 }
 
 func NewHandler(repo *Repo) *Handler { return &Handler{repo: repo} }
+
+func NewHandlerWithRoleConnection(repo *Repo, rc RoleConnectionSummaryStore) *Handler {
+	return &Handler{repo: repo, rcStore: rc}
+}
 
 // Me handles GET /api/app/me. Requires the RequireSession middleware.
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
@@ -22,6 +36,12 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "user_not_found")
 		return
+	}
+	if h.rcStore != nil {
+		summary, err := h.rcStore.GetDiscordRoleConnectionSummary(r.Context(), session.UserID)
+		if err == nil {
+			cu.DiscordRoleConnection = &summary
+		}
 	}
 	writeJSON(w, http.StatusOK, cu)
 }
