@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	"rustlens/backend/internal/oauth/discord"
@@ -168,4 +169,18 @@ func (s *Syncer) Push(ctx context.Context, userID string) error {
 		return err
 	}
 	return s.cfg.Store.RecordDiscordRoleConnectionPushed(ctx, userID, hash)
+}
+
+// PushAsync schedules a Push for userID in a fresh detached context. The admin
+// action that grants/revokes PRO calls this so role-action latency does not
+// depend on Discord round-trip time. Errors are logged, not returned.
+func (s *Syncer) PushAsync(userID string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.Push(ctx, userID); err != nil {
+			slog.Warn("roleconnection async push failed",
+				slog.String("user_id", userID), slog.Any("error", err))
+		}
+	}()
 }
