@@ -6,9 +6,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/oauth/discord"
+	"rustlens/backend/internal/store"
 )
 
 func TestHandler_Callback_HappyPath(t *testing.T) {
@@ -155,5 +157,48 @@ func TestHandler_Initiate_WithSession_RedirectsToDiscord(t *testing.T) {
 	}
 	if !sawState || !sawVerifier {
 		t.Errorf("missing state/verifier cookies: %v", cookies)
+	}
+}
+
+func TestHandler_Disconnect_DeletesRowAndPushesEmpty(t *testing.T) {
+	var pushCalled int
+	discordSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/users/@me/applications/APP/role-connection":
+			pushCalled++
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer discordSrv.Close()
+	cipher := TokenCipher{Crypto: newTestCrypto(t)}
+	at, atNonce, _ := cipher.Encrypt("at")
+	rt, rtNonce, _ := cipher.Encrypt("rt")
+	s := &fakeStore{
+		row: &store.DiscordRoleConnection{
+			UserID: "u1", DiscordID: "d1",
+			AccessTokenCT: at, AccessTokenNonce: atNonce,
+			RefreshTokenCT: rt, RefreshTokenNonce: rtNonce,
+			AccessExpiresAt: time.Now().Add(time.Hour),
+			Scopes:          "identify role_connections.write",
+		},
+		displayName: "sem",
+	}
+	disc := discord.NewClient("cid", "csec", discord.WithBaseURL(discordSrv.URL))
+	syncer := NewSyncer(SyncerConfig{Store: s, Discord: disc, ApplicationID: "APP", Cipher: cipher})
+	h := NewHandler(HandlerConfig{Syncer: syncer, DiscordAPI: disc, AppOrigin: "http://localhost"})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/app/me/discord-role-connection", nil)
+	ctx := appauth.InjectSessionForTest(req.Context(), &appauth.SessionUser{UserID: "u1", DiscordID: "d1"})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	h.Disconnect(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("status = %d", rec.Code)
+	}
+	if s.deleteCalled != 1 {
+		t.Errorf("delete called %d times", s.deleteCalled)
+	}
+	if pushCalled != 1 {
+		t.Errorf("expected best-effort empty push, got %d", pushCalled)
 	}
 }

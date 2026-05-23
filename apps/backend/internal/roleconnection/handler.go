@@ -172,3 +172,42 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, h.frontendURL("/dashboard?notice=discord-linked"), http.StatusFound)
 }
+
+// Disconnect handles DELETE /api/app/me/discord-role-connection.
+// Removes the stored tokens, then best-effort pushes empty metadata so
+// Discord drops the linked role immediately rather than waiting for the
+// user to disconnect from inside Discord.
+func (h *Handler) Disconnect(w http.ResponseWriter, r *http.Request) {
+	session := appauth.SessionFromContext(r.Context())
+	if session == nil {
+		http.Error(w, "unauthenticated", http.StatusUnauthorized)
+		return
+	}
+	row, err := h.cfg.Syncer.Store().GetDiscordRoleConnection(r.Context(), session.UserID)
+	if err != nil {
+		http.Error(w, "store error", http.StatusInternalServerError)
+		return
+	}
+	if row != nil && row.RevokedAt == nil {
+		// Try to push empty metadata with the current access token. Best-effort:
+		// failure here just means Discord will eventually drop the role on the
+		// next reconcile or when the user disconnects from Discord's side.
+		access, derr := h.cfg.Syncer.Cipher().Decrypt(row.AccessTokenCT, row.AccessTokenNonce)
+		if derr == nil {
+			body := discord.RoleConnectionBody{
+				PlatformName: PlatformName, PlatformUsername: "",
+				Metadata: map[string]string{"is_pro": "0"},
+			}
+			if perr := h.cfg.DiscordAPI.PutRoleConnection(r.Context(), access,
+				h.cfg.Syncer.ApplicationID(), body); perr != nil {
+				slog.Warn("roleconnection disconnect push failed",
+					slog.String("user_id", session.UserID), slog.Any("error", perr))
+			}
+		}
+	}
+	if err := h.cfg.Syncer.Store().DeleteDiscordRoleConnection(r.Context(), session.UserID); err != nil {
+		http.Error(w, "delete failed", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
