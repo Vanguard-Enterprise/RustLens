@@ -7,6 +7,60 @@ import (
 	"time"
 )
 
+func TestIsDiscordWebsiteAdminExcludesProOnlyUsers(t *testing.T) {
+	ctx := context.Background()
+	s := newTestPostgres(t)
+
+	suffix := time.Now().UnixNano() % 1_000_000_000
+	proUserID := fmt.Sprintf("usr_pro_%d", suffix)
+	adminUserID := fmt.Sprintf("usr_admin_%d", suffix)
+	proDiscordID := fmt.Sprintf("100000020%09d", suffix)
+	adminDiscordID := fmt.Sprintf("100000021%09d", suffix)
+
+	insertUserWithRole := func(userID, discordID, roleKey string) {
+		t.Helper()
+		if _, err := s.pool.Exec(ctx, `
+			INSERT INTO app_users (id, discord_id, discord_username, display_name)
+			VALUES ($1, $2, $3, $3)
+		`, userID, discordID, "test_"+userID); err != nil {
+			t.Fatalf("insert app user %s: %v", userID, err)
+		}
+		if _, err := s.pool.Exec(ctx, `
+			INSERT INTO admin_user_roles (user_id, role_id)
+			SELECT $1, id FROM admin_roles WHERE key = $2
+		`, userID, roleKey); err != nil {
+			t.Fatalf("grant role %s to %s: %v", roleKey, userID, err)
+		}
+	}
+
+	insertUserWithRole(proUserID, proDiscordID, "pro")
+	insertUserWithRole(adminUserID, adminDiscordID, "moderator")
+
+	proIsAdmin, err := s.IsDiscordWebsiteAdmin(ctx, proDiscordID)
+	if err != nil {
+		t.Fatalf("IsDiscordWebsiteAdmin pro: %v", err)
+	}
+	if proIsAdmin {
+		t.Fatal("PRO-only user should not count as website admin")
+	}
+
+	proHasRole, err := s.DiscordUserHasAdminRole(ctx, proDiscordID, "pro")
+	if err != nil {
+		t.Fatalf("DiscordUserHasAdminRole pro: %v", err)
+	}
+	if !proHasRole {
+		t.Fatal("PRO role check should still return true")
+	}
+
+	adminIsAdmin, err := s.IsDiscordWebsiteAdmin(ctx, adminDiscordID)
+	if err != nil {
+		t.Fatalf("IsDiscordWebsiteAdmin admin: %v", err)
+	}
+	if !adminIsAdmin {
+		t.Fatal("non-PRO admin role should count as website admin")
+	}
+}
+
 func TestHiddenDiscordLinkIdentitySuppressesLinkLookups(t *testing.T) {
 	ctx := context.Background()
 	s := newTestPostgres(t)
