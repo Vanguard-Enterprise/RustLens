@@ -47,3 +47,24 @@ func NewState() (string, error) {
 func RedirectURI(appOrigin string) string {
 	return strings.TrimRight(appOrigin, "/") + "/api/auth/discord/callback"
 }
+
+// RoleConnectionRedirectURI is the OAuth redirect_uri for the linked-roles
+// flow. Distinct from the sign-in flow so Discord can differentiate the two
+// callbacks; both must be registered in the Discord Developer Portal.
+func RoleConnectionRedirectURI(appOrigin string) string {
+	return strings.TrimRight(appOrigin, "/") + "/api/auth/discord/role-connection/callback"
+}
+
+// RoleConnectionScopes is the scope set requested in the linked-roles OAuth
+// flow. `identify` lets us confirm the linking Discord account matches the
+// signed-in app user; `role_connections.write` lets us PUT metadata for that
+// user via /users/@me/applications/{id}/role-connection.
+const RoleConnectionScopes = "identify role_connections.write"
+
+// Cookie names for the role-connection flow. Kept separate from the sign-in
+// flow cookies so a user mid-link does not collide with a concurrent re-login.
+const (
+	CookieRCState    = "rl_rc_state"
+	CookieRCVerifier = "rl_rc_verifier"
+	CookieRCReturn   = "rl_rc_return"
+)
