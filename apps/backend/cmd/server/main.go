@@ -104,6 +104,16 @@ func main() {
 	} else {
 		log.Printf("[backend] role-connection sync disabled (need PROXY_ENCRYPTION_KEY + DISCORD_CLIENT_ID/SECRET)")
 	}
+
+	if roleConnSyncer != nil {
+		reconciler := roleconnection.NewReconciler(roleconnection.ReconcilerConfig{
+			Store:  postgresStore,
+			Pusher: roleConnSyncer,
+			Pool:   postgresStore.Pool(),
+		})
+		reconciler.Start(ctx)
+	}
+
 	proxyEndpoints, err := initialProxyEndpoints(ctx, postgresStore, proxyCrypto, cfg)
 	if err != nil {
 		log.Fatalf("outbound proxy load failed: %v", err)
