@@ -212,6 +212,48 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (access,
 	return out.AccessToken, out.RefreshToken, out.ExpiresIn, nil
 }
 
+// ErrAccessTokenInvalid indicates the access token is expired or revoked.
+// Callers should attempt a refresh, then retry once.
+var ErrAccessTokenInvalid = errors.New("discord access token invalid")
+
+// RoleConnectionBody is the JSON payload for PUT /users/@me/applications/{id}/role-connection.
+type RoleConnectionBody struct {
+	PlatformName     string            `json:"platform_name"`
+	PlatformUsername string            `json:"platform_username,omitempty"`
+	Metadata         map[string]string `json:"metadata"`
+}
+
+// PutRoleConnection pushes the caller's role-connection metadata for our app.
+// Returns ErrAccessTokenInvalid on 401 so the caller can refresh-and-retry.
+func (c *Client) PutRoleConnection(ctx context.Context, accessToken, applicationID string, body RoleConnectionBody) error {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		c.baseURL+"/api/users/@me/applications/"+applicationID+"/role-connection",
+		strings.NewReader(string(payload)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Cache-Control", "no-store")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return ErrAccessTokenInvalid
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("discord put role-connection: %d %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
 // FetchProfile retrieves the authenticated user's profile from /users/@me.
 func (c *Client) FetchProfile(ctx context.Context, accessToken string) (Profile, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/users/@me", nil)

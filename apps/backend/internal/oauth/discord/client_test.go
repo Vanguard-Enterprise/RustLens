@@ -3,6 +3,7 @@ package discord_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -191,5 +192,55 @@ func TestRefreshToken_InvalidGrant(t *testing.T) {
 	}
 	if !errors.Is(err, discord.ErrRefreshRevoked) {
 		t.Fatalf("err = %v, want ErrRefreshRevoked", err)
+	}
+}
+
+func TestPutRoleConnection_Success(t *testing.T) {
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s", r.Method)
+		}
+		if r.URL.Path != "/api/users/@me/applications/APP-ID/role-connection" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer at-1" {
+			t.Errorf("auth = %s", got)
+		}
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"platform_name":"RustLens"}`))
+	}))
+	defer srv.Close()
+	c := discord.NewClient("cid", "csecret", discord.WithBaseURL(srv.URL))
+	body := discord.RoleConnectionBody{
+		PlatformName:     "RustLens",
+		PlatformUsername: "sem",
+		Metadata: map[string]string{
+			"is_pro":    "1",
+			"pro_since": "2026-05-23T12:00:00+00:00",
+		},
+	}
+	if err := c.PutRoleConnection(context.Background(), "at-1", "APP-ID", body); err != nil {
+		t.Fatalf("PutRoleConnection: %v", err)
+	}
+	if !strings.Contains(string(gotBody), `"is_pro":"1"`) {
+		t.Errorf("body missing is_pro: %s", string(gotBody))
+	}
+}
+
+func TestPutRoleConnection_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message":"401: Unauthorized","code":0}`))
+	}))
+	defer srv.Close()
+	c := discord.NewClient("cid", "csecret", discord.WithBaseURL(srv.URL))
+	err := c.PutRoleConnection(context.Background(), "expired", "APP-ID", discord.RoleConnectionBody{PlatformName: "x"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, discord.ErrAccessTokenInvalid) {
+		t.Fatalf("err = %v, want ErrAccessTokenInvalid", err)
 	}
 }
