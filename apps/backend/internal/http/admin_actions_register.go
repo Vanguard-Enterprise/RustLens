@@ -14,7 +14,7 @@ import (
 // appBaseURL is unused now that the email/password admin actions are gone, but
 // the parameter is kept on the call site so future token-generating actions
 // can be wired here without churn.
-func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *rbac.Resolver, pub events.Publisher, _ string) error {
+func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *rbac.Resolver, pub events.Publisher, _ string, hook actions.RoleSyncHook) error {
 	if err := reg.Register(actions.NewAPIKeysCreateAction(pool, resolver)); err != nil {
 		return err
 	}
@@ -42,10 +42,10 @@ func registerAdminActions(reg *actions.Registry, pool *pgxpool.Pool, resolver *r
 	if err := reg.Register(actions.NewUsersForceLogoutAction(pool, pub)); err != nil {
 		return err
 	}
-	if err := reg.Register(actions.NewUsersRolesGrantAction(pool, resolver, pub)); err != nil {
+	if err := reg.Register(actions.NewUsersRolesGrantAction(pool, resolver, pub, hook)); err != nil {
 		return err
 	}
-	if err := reg.Register(actions.NewUsersRolesRevokeAction(pool, resolver, pub)); err != nil {
+	if err := reg.Register(actions.NewUsersRolesRevokeAction(pool, resolver, pub, hook)); err != nil {
 		return err
 	}
 	if err := reg.Register(actions.NewUsersSuspendAction(pool, pub)); err != nil {

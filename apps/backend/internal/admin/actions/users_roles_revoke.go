@@ -17,6 +17,7 @@ type usersRolesRevokeAction struct {
 	pool     *pgxpool.Pool
 	resolver *rbac.Resolver
 	pub      events.Publisher
+	hook     RoleSyncHook
 }
 
 // NewUsersRolesRevokeAction revokes an admin role from a user. Revoking the
@@ -25,8 +26,8 @@ type usersRolesRevokeAction struct {
 // from any user additionally requires the actor to hold admins.grant — the
 // same gate that protects granting the role — so coordinated demotion of a
 // superadmin cannot happen via users.roles.assign alone.
-func NewUsersRolesRevokeAction(pool *pgxpool.Pool, resolver *rbac.Resolver, pub events.Publisher) AdminAction {
-	return &usersRolesRevokeAction{pool: pool, resolver: resolver, pub: pub}
+func NewUsersRolesRevokeAction(pool *pgxpool.Pool, resolver *rbac.Resolver, pub events.Publisher, hook RoleSyncHook) AdminAction {
+	return &usersRolesRevokeAction{pool: pool, resolver: resolver, pub: pub, hook: hook}
 }
 
 func (a *usersRolesRevokeAction) Type() string                 { return "users.roles.revoke" }
@@ -96,6 +97,10 @@ func (a *usersRolesRevokeAction) Execute(ctx context.Context, in ActionInput) (A
 
 	if a.pub != nil {
 		a.pub.PublishWithFanout(p.UserID, events.Event{Type: events.TypeRolesChanged, Reason: events.ReasonRevoke})
+	}
+
+	if p.RoleKey == rbac.RolePRO && a.hook != nil {
+		a.hook.OnProRoleChanged(p.UserID)
 	}
 
 	target := p.UserID

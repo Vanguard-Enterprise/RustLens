@@ -22,13 +22,14 @@ type usersRolesGrantAction struct {
 	pool     *pgxpool.Pool
 	resolver *rbac.Resolver
 	pub      events.Publisher
+	hook     RoleSyncHook
 }
 
 // NewUsersRolesGrantAction grants an admin role to a user. Granting the
 // "superadmin" role requires the actor to hold the admins.grant permission
 // in addition to the base users.roles.assign permission.
-func NewUsersRolesGrantAction(pool *pgxpool.Pool, resolver *rbac.Resolver, pub events.Publisher) AdminAction {
-	return &usersRolesGrantAction{pool: pool, resolver: resolver, pub: pub}
+func NewUsersRolesGrantAction(pool *pgxpool.Pool, resolver *rbac.Resolver, pub events.Publisher, hook RoleSyncHook) AdminAction {
+	return &usersRolesGrantAction{pool: pool, resolver: resolver, pub: pub, hook: hook}
 }
 
 func (a *usersRolesGrantAction) Type() string                 { return "users.roles.grant" }
@@ -87,6 +88,10 @@ func (a *usersRolesGrantAction) Execute(ctx context.Context, in ActionInput) (Ac
 
 	if a.pub != nil {
 		a.pub.PublishWithFanout(p.UserID, events.Event{Type: events.TypeRolesChanged, Reason: events.ReasonGrant})
+	}
+
+	if p.RoleKey == rbac.RolePRO && a.hook != nil {
+		a.hook.OnProRoleChanged(p.UserID)
 	}
 
 	target := p.UserID

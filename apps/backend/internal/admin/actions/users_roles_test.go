@@ -46,10 +46,10 @@ func newRolesHarness(t *testing.T) (*httptest.Server, *store.PostgresStore, *rba
 	pub := &events.RecordingPublisher{}
 	perms := &fakePermResolver{allow: map[string]bool{}}
 	reg := actions.NewRegistry(rbac.IsValidPermission)
-	if err := reg.Register(actions.NewUsersRolesGrantAction(s.Pool(), realResolver, pub)); err != nil {
+	if err := reg.Register(actions.NewUsersRolesGrantAction(s.Pool(), realResolver, pub, nil)); err != nil {
 		t.Fatalf("register grant: %v", err)
 	}
-	if err := reg.Register(actions.NewUsersRolesRevokeAction(s.Pool(), realResolver, pub)); err != nil {
+	if err := reg.Register(actions.NewUsersRolesRevokeAction(s.Pool(), realResolver, pub, nil)); err != nil {
 		t.Fatalf("register revoke: %v", err)
 	}
 

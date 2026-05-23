@@ -58,7 +58,7 @@ func NewRouter(
 		publisher = events.NopPublisher{}
 	}
 	appAuthRepo := appauth.NewRepo(postgres.Pool())
-	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher, appAuthRepo)
+	handler := NewHandler(cfg, postgres, redis, shardService, steamClient, steamSummaryClient, battleMetricsClient, bmMatch, platformSync, outboundProvider, proxyCrypto, publisher, appAuthRepo, proRoleSyncAdapter{s: roleConnSyncer})
 
 	apiKeyStore := store.NewAPIKeyStore(postgres.Pool())
 	headers := clientip.Headers{
@@ -424,6 +424,18 @@ func botJWTMiddleware(validator *auth.Validator) func(next http.Handler) http.Ha
 			ctx := context.WithValue(r.Context(), claimsContextKey, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
+	}
+}
+
+// proRoleSyncAdapter bridges the actions.RoleSyncHook interface to the
+// roleconnection.Syncer, triggering an async Discord metadata push whenever
+// the "pro" role is granted or revoked. When s is nil (no PROXY_ENCRYPTION_KEY
+// configured), calls are a no-op.
+type proRoleSyncAdapter struct{ s *roleconnection.Syncer }
+
+func (a proRoleSyncAdapter) OnProRoleChanged(userID string) {
+	if a.s != nil {
+		a.s.PushAsync(userID)
 	}
 }
 

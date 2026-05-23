@@ -83,6 +83,7 @@ func NewHandler(
 	proxyCrypto *proxycrypto.Crypto,
 	publisher events.Publisher,
 	appauthRepo *appauth.Repo,
+	roleSyncHook actions.RoleSyncHook,
 ) *Handler {
 	if publisher == nil {
 		publisher = events.NopPublisher{}
@@ -95,7 +96,7 @@ func NewHandler(
 	auditStore := audit.NewStore(postgres.Pool())
 	sink := actions.AuditSink(auditSinkAdapter{auditStore})
 	registry := actions.NewRegistry(rbac.IsValidPermission)
-	if err := registerAdminActions(registry, postgres.Pool(), resolver, publisher, cfg.AppBaseURL); err != nil {
+	if err := registerAdminActions(registry, postgres.Pool(), resolver, publisher, cfg.AppBaseURL, roleSyncHook); err != nil {
 		panic(fmt.Errorf("register admin actions: %w", err))
 	}
 	actorResolver := func(r *http.Request) (string, []string, error) {
