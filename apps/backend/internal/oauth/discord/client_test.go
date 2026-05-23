@@ -244,3 +244,35 @@ func TestPutRoleConnection_Unauthorized(t *testing.T) {
 		t.Fatalf("err = %v, want ErrAccessTokenInvalid", err)
 	}
 }
+
+func TestRegisterApplicationMetadata_Success(t *testing.T) {
+	var gotBody []byte
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s", r.Method)
+		}
+		if r.URL.Path != "/api/applications/APP-ID/role-connections/metadata" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		gotAuth = r.Header.Get("Authorization")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	c := discord.NewClient("cid", "csecret", discord.WithBaseURL(srv.URL))
+	records := []discord.ApplicationMetadataRecord{
+		{Type: 7, Key: "is_pro", Name: "PRO subscriber", Description: "Active PRO status"},
+		{Type: 6, Key: "pro_since", Name: "PRO since", Description: "Date PRO was granted"},
+	}
+	if err := c.RegisterApplicationMetadata(context.Background(), "APP-ID", "bot-token-123", records); err != nil {
+		t.Fatalf("RegisterApplicationMetadata: %v", err)
+	}
+	if gotAuth != "Bot bot-token-123" {
+		t.Errorf("auth = %q, want \"Bot bot-token-123\"", gotAuth)
+	}
+	if !strings.Contains(string(gotBody), `"key":"is_pro"`) || !strings.Contains(string(gotBody), `"key":"pro_since"`) {
+		t.Errorf("body missing records: %s", string(gotBody))
+	}
+}

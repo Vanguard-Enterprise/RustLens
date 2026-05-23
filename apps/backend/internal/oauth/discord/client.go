@@ -255,6 +255,44 @@ func (c *Client) PutRoleConnection(ctx context.Context, accessToken, application
 	return nil
 }
 
+// ApplicationMetadataRecord is one entry in the role-connections metadata schema.
+// Type values per https://discord.com/developers/docs/resources/application-role-connection-metadata
+// (6 = datetime_greater_than_or_equal, 7 = boolean_equal).
+type ApplicationMetadataRecord struct {
+	Type        int    `json:"type"`
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// RegisterApplicationMetadata PUTs the role-connections metadata schema for
+// the application. Idempotent — PUT replaces the entire schema. Authenticated
+// with the bot token, NOT the OAuth client secret.
+func (c *Client) RegisterApplicationMetadata(ctx context.Context, applicationID, botToken string, records []ApplicationMetadataRecord) error {
+	payload, err := json.Marshal(records)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		c.baseURL+"/api/applications/"+applicationID+"/role-connections/metadata",
+		bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bot "+botToken)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("discord register app metadata: %d %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // FetchProfile retrieves the authenticated user's profile from /users/@me.
 func (c *Client) FetchProfile(ctx context.Context, accessToken string) (Profile, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/users/@me", nil)
