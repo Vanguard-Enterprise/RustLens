@@ -50,18 +50,22 @@ export async function startObservability(): Promise<() => Promise<void>> {
     sdk = new NodeSDK({
         resource,
         traceExporter: new OTLPTraceExporter({ url: endpoint }),
-        metricReader: new sdkMetrics.PeriodicExportingMetricReader({
-            // Pin every instrument kind to cumulative temporality. The SDK's
-            // default selector returns delta for some kinds; Mimir's OTLP
-            // endpoint then mis-handles the counter-reset semantics and
-            // inflates rate()/increase() by 50–200x.
-            exporter: new OTLPMetricExporter({
-                url: endpoint,
-                temporalityPreference: AggregationTemporality.CUMULATIVE,
+        metricReaders: [
+            new sdkMetrics.PeriodicExportingMetricReader({
+                // Pin every instrument kind to cumulative temporality. The SDK's
+                // default selector returns delta for some kinds; Mimir's OTLP
+                // endpoint then mis-handles the counter-reset semantics and
+                // inflates rate()/increase() by 50–200x.
+                exporter: new OTLPMetricExporter({
+                    url: endpoint,
+                    temporalityPreference: AggregationTemporality.CUMULATIVE,
+                }),
+                exportIntervalMillis: 30_000,
             }),
-            exportIntervalMillis: 30_000,
-        }),
-        logRecordProcessor: new sdkLogs.BatchLogRecordProcessor(new OTLPLogExporter({ url: endpoint })),
+        ],
+        logRecordProcessors: [
+            new sdkLogs.BatchLogRecordProcessor(new OTLPLogExporter({ url: endpoint })),
+        ],
         instrumentations: getNodeAutoInstrumentations({
             "@opentelemetry/instrumentation-fs": { enabled: false },
         }),
@@ -69,10 +73,9 @@ export async function startObservability(): Promise<() => Promise<void>> {
 
     sdk.start();
 
-    // Pyroscope is best-effort. Its native dep (@datadog/pprof) only ships
-    // glibc binaries, so on Alpine/musl the module-load throws synchronously.
-    // Lazy import + try/catch lets the rest of observability come up even when
-    // profiling can't.
+    // Pyroscope is best-effort: keep the try/catch so a missing prebuild
+    // (e.g. when Node bumps an ABI ahead of @datadog/pprof) never blocks
+    // tracing/metrics from coming up.
     if (process.env.PYROSCOPE_SERVER_ADDRESS) {
         try {
             const { default: Pyroscope } = await import("@pyroscope/nodejs");
