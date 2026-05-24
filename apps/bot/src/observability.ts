@@ -17,21 +17,6 @@ const { AggregationTemporality } = sdkMetrics;
 const enabled = process.env.OBSERVABILITY_ENABLED === "true";
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
-// process.report.header.glibcVersionRuntime is populated on glibc and absent
-// (or empty) on musl. Used as a fast precheck before attempting to load any
-// native module that only ships glibc binaries.
-function isMuslRuntime(): boolean {
-    if (process.platform !== "linux") return false;
-    try {
-        const report = process.report?.getReport() as
-            | { header?: { glibcVersionRuntime?: string } }
-            | undefined;
-        return !report?.header?.glibcVersionRuntime;
-    } catch {
-        return false;
-    }
-}
-
 let sdk: NodeSDK | undefined;
 let pyroscopeStarted = false;
 
@@ -88,34 +73,27 @@ export async function startObservability(): Promise<() => Promise<void>> {
 
     sdk.start();
 
-    // Pyroscope is best-effort. Its native dep (@datadog/pprof) only ships
-    // glibc binaries, so on Alpine/musl the module-load throws synchronously.
-    // Detect musl up front and skip cleanly so we don't emit a load-failed
-    // warning on every pod start; only attempt the import on glibc hosts.
+    // Pyroscope is best-effort: keep the try/catch so a missing prebuild
+    // (e.g. when Node bumps an ABI ahead of @datadog/pprof) never blocks
+    // tracing/metrics from coming up.
     if (process.env.PYROSCOPE_SERVER_ADDRESS) {
-        if (isMuslRuntime()) {
-            console.info(
-                "[observability] pyroscope skipped: musl runtime detected, @datadog/pprof ships glibc-only binaries",
+        try {
+            const { default: Pyroscope } = await import("@pyroscope/nodejs");
+            Pyroscope.init({
+                appName: process.env.OTEL_SERVICE_NAME ?? "rustlens-bot",
+                serverAddress: process.env.PYROSCOPE_SERVER_ADDRESS,
+                tags: {
+                    environment: process.env.DEPLOYMENT_ENV ?? "local",
+                    namespace: process.env.OTEL_SERVICE_NAMESPACE ?? "rustlens",
+                },
+            });
+            Pyroscope.start();
+            pyroscopeStarted = true;
+        } catch (err) {
+            console.warn(
+                "[observability] pyroscope unavailable, continuing without profiling:",
+                err instanceof Error ? err.message : String(err),
             );
-        } else {
-            try {
-                const { default: Pyroscope } = await import("@pyroscope/nodejs");
-                Pyroscope.init({
-                    appName: process.env.OTEL_SERVICE_NAME ?? "rustlens-bot",
-                    serverAddress: process.env.PYROSCOPE_SERVER_ADDRESS,
-                    tags: {
-                        environment: process.env.DEPLOYMENT_ENV ?? "local",
-                        namespace: process.env.OTEL_SERVICE_NAMESPACE ?? "rustlens",
-                    },
-                });
-                Pyroscope.start();
-                pyroscopeStarted = true;
-            } catch (err) {
-                console.warn(
-                    "[observability] pyroscope unavailable, continuing without profiling:",
-                    err instanceof Error ? err.message : String(err),
-                );
-            }
         }
     }
 
