@@ -157,10 +157,10 @@ export function UsersTable({ items, selected, onToggle, onToggleAll, sort, onSor
 								</TableCell>
 								<TableCell>
 									<div className="flex flex-wrap gap-1">
-										{it.adminRoles.length === 0 ? (
+										{[...it.adminRoles, ...(it.entitlements ?? [])].length === 0 ? (
 											<span className="text-xs text-muted-foreground">—</span>
 										) : (
-											it.adminRoles.map((r) => (
+											[...it.adminRoles, ...(it.entitlements ?? [])].map((r) => (
 												<Badge
 													key={r}
 													variant={r === "superadmin" ? "destructive" : r === "pro" ? "outline" : "secondary"}

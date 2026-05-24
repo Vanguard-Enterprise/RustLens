@@ -1591,8 +1591,8 @@ func buildOpenAPIDocument() map[string]any {
 			},
 			"/api/internal/bot/setup/discord/{discordID}/has-pro-role": map[string]any{
 				"get": map[string]any{
-					"summary":     "Check Discord user's PRO role",
-					"description": "Returns whether the Discord user is linked to an app user with the seeded PRO admin role.",
+					"summary":     "Check Discord user's PRO entitlement",
+					"description": "Returns whether the Discord user is linked to an app user with the PRO entitlement.",
 					"security":    []map[string][]string{{"bearerAuth": {}}},
 					"parameters": []map[string]any{
 						{
@@ -2476,14 +2476,14 @@ func buildOpenAPIDocument() map[string]any {
 									"type":     "object",
 									"required": []string{"discordId", "interactionType", "command", "outcome", "latencyMs"},
 									"properties": map[string]any{
-										"discordId":       map[string]any{"type": "string"},
-										"guildId":         map[string]any{"type": "string", "nullable": true},
-										"channelId":       map[string]any{"type": "string", "nullable": true},
-										"interactionType": map[string]any{"type": "string", "enum": []string{"command", "button", "modal", "string_select"}},
-										"command":         map[string]any{"type": "string"},
-										"subcommand":      map[string]any{"type": "string", "nullable": true},
-										"target":          map[string]any{"type": "string", "nullable": true},
-										"options":         map[string]any{"type": "object", "additionalProperties": true},
+										"discordId":           map[string]any{"type": "string"},
+										"guildId":             map[string]any{"type": "string", "nullable": true},
+										"channelId":           map[string]any{"type": "string", "nullable": true},
+										"interactionType":     map[string]any{"type": "string", "enum": []string{"command", "button", "modal", "string_select"}},
+										"command":             map[string]any{"type": "string"},
+										"subcommand":          map[string]any{"type": "string", "nullable": true},
+										"target":              map[string]any{"type": "string", "nullable": true},
+										"options":             map[string]any{"type": "object", "additionalProperties": true},
 										"outcome":             map[string]any{"type": "string", "enum": []string{"success", "error", "banned", "denied"}},
 										"errorCode":           map[string]any{"type": "string", "nullable": true},
 										"latencyMs":           map[string]any{"type": "integer", "minimum": 0},
@@ -2575,9 +2575,9 @@ func buildOpenAPIDocument() map[string]any {
 											"summary": map[string]any{
 												"type": "object",
 												"properties": map[string]any{
-													"totalCount":  map[string]any{"type": "integer"},
-													"errorCount":  map[string]any{"type": "integer"},
-													"errorRate":   map[string]any{"type": "number", "format": "float"},
+													"totalCount": map[string]any{"type": "integer"},
+													"errorCount": map[string]any{"type": "integer"},
+													"errorRate":  map[string]any{"type": "number", "format": "float"},
 													"topCommands": map[string]any{
 														"type": "array",
 														"items": map[string]any{
@@ -3384,12 +3384,24 @@ func buildOpenAPIDocument() map[string]any {
 							"type":  "array",
 							"items": map[string]any{"$ref": "#/components/schemas/UserGuildMembership"},
 						},
+						"adminRoles": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
+						"permissions": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
+						"entitlements": map[string]any{
+							"type":  "array",
+							"items": map[string]any{"type": "string"},
+						},
 						"discordAccount": map[string]any{
 							"allOf":    []map[string]any{{"$ref": "#/components/schemas/ConnectedAccount"}},
 							"nullable": true,
 						},
 					},
-					"required": []string{"user", "steamAccounts", "guilds", "discordAccount"},
+					"required": []string{"user", "steamAccounts", "guilds", "adminRoles", "permissions", "entitlements", "discordAccount"},
 				},
 				"CurrentUserConnectionsResponse": map[string]any{
 					"type": "object",

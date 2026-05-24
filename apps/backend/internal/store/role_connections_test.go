@@ -222,10 +222,7 @@ func TestGetUserProGrantedAt(t *testing.T) {
 	s := newTestPostgres(t)
 	proID := seedTestUser(t, s)
 	nonProID := seedTestUser(t, s)
-	if _, err := s.pool.Exec(ctx, `
-		INSERT INTO admin_user_roles (user_id, role_id)
-		SELECT $1, id FROM admin_roles WHERE key = 'pro'
-	`, proID); err != nil {
+	if err := s.GrantUserEntitlement(ctx, proID, EntitlementPRO, ""); err != nil {
 		t.Fatalf("grant pro: %v", err)
 	}
 	gotPro, err := s.GetUserProGrantedAt(ctx, proID)

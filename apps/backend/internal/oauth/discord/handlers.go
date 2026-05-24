@@ -211,15 +211,16 @@ func (h *Handler) mintAndRedirect(w http.ResponseWriter, r *http.Request, userID
 		return
 	}
 	session := appauth.SessionUser{
-		UserID:      cu.User.ID,
-		DisplayName: cu.User.DisplayName,
-		AvatarURL:   cu.User.AvatarURL,
-		Roles:       cu.User.Roles,
-		AdminRoles:  cu.AdminRoles,
-		Permissions: cu.Permissions,
-		DiscordID:   cu.User.DiscordID,
-		Epoch:       cu.User.SessionEpoch,
-		ExpiresAt:   time.Now().Add(14 * 24 * time.Hour).UnixMilli(),
+		UserID:       cu.User.ID,
+		DisplayName:  cu.User.DisplayName,
+		AvatarURL:    cu.User.AvatarURL,
+		Roles:        cu.User.Roles,
+		AdminRoles:   cu.AdminRoles,
+		Permissions:  cu.Permissions,
+		Entitlements: cu.Entitlements,
+		DiscordID:    cu.User.DiscordID,
+		Epoch:        cu.User.SessionEpoch,
+		ExpiresAt:    time.Now().Add(14 * 24 * time.Hour).UnixMilli(),
 	}
 	tok, err := appauth.SerializeSession(session, h.cfg.SessionSecret)
 	if err != nil {

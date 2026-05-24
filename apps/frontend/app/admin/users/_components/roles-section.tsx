@@ -21,6 +21,16 @@ import { grantRoleAction, revokeRoleAction } from "../actions";
 import { GrantRoleDialog } from "./grant-role-dialog";
 import { RevokeRoleDialog } from "./revoke-role-dialog";
 
+const PRO_ENTITLEMENT: AdminRoleItem = {
+	id: "entitlement:pro",
+	key: "pro",
+	name: "PRO",
+	description: "Product entitlement for PRO users",
+	isSystem: true,
+	permissions: [],
+	memberCount: 0,
+};
+
 type Props = {
 	detail: AdminUserDetail;
 	roles: AdminRoleItem[];
@@ -41,7 +51,10 @@ export function RolesSection({
 	if (!canAssign) return null;
 
 	const currentRoles = detail.adminRoles;
-	const assignableRoles = roles.filter((r) => !currentRoles.includes(r.key));
+	const currentEntitlements = detail.entitlements ?? [];
+	const currentKeys = [...currentRoles, ...currentEntitlements];
+	const allAssignable = [...roles, PRO_ENTITLEMENT];
+	const assignableRoles = allAssignable.filter((r) => !currentKeys.includes(r.key));
 
 	const handleGrant = async (userId: string, roleKey: string, reason: string) => {
 		const res = await grantRoleAction(userId, roleKey, reason);
@@ -66,11 +79,11 @@ export function RolesSection({
 
 			<TooltipProvider>
 				<div className="flex flex-wrap gap-2">
-					{currentRoles.length === 0 ? (
-						<span className="text-sm text-muted-foreground">No admin roles assigned.</span>
+					{currentKeys.length === 0 ? (
+						<span className="text-sm text-muted-foreground">No admin roles or entitlements assigned.</span>
 					) : (
-						currentRoles.map((roleKey) => {
-							const role = roles.find((r) => r.key === roleKey);
+						currentKeys.map((roleKey) => {
+							const role = allAssignable.find((r) => r.key === roleKey);
 							const name = role?.name ?? roleKey;
 							const description = role?.description ?? null;
 							const isSuperadmin = roleKey === "superadmin";

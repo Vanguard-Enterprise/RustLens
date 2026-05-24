@@ -17,7 +17,7 @@ func TestIsDiscordWebsiteAdminExcludesProOnlyUsers(t *testing.T) {
 	proDiscordID := fmt.Sprintf("100000020%09d", suffix)
 	adminDiscordID := fmt.Sprintf("100000021%09d", suffix)
 
-	insertUserWithRole := func(userID, discordID, roleKey string) {
+	insertUser := func(userID, discordID string) {
 		t.Helper()
 		if _, err := s.pool.Exec(ctx, `
 			INSERT INTO app_users (id, discord_id, discord_username, display_name)
@@ -25,6 +25,10 @@ func TestIsDiscordWebsiteAdminExcludesProOnlyUsers(t *testing.T) {
 		`, userID, discordID, "test_"+userID); err != nil {
 			t.Fatalf("insert app user %s: %v", userID, err)
 		}
+	}
+	insertUserWithRole := func(userID, discordID, roleKey string) {
+		t.Helper()
+		insertUser(userID, discordID)
 		if _, err := s.pool.Exec(ctx, `
 			INSERT INTO admin_user_roles (user_id, role_id)
 			SELECT $1, id FROM admin_roles WHERE key = $2
@@ -33,7 +37,10 @@ func TestIsDiscordWebsiteAdminExcludesProOnlyUsers(t *testing.T) {
 		}
 	}
 
-	insertUserWithRole(proUserID, proDiscordID, "pro")
+	insertUser(proUserID, proDiscordID)
+	if err := s.GrantUserEntitlement(ctx, proUserID, EntitlementPRO, ""); err != nil {
+		t.Fatalf("grant pro entitlement: %v", err)
+	}
 	insertUserWithRole(adminUserID, adminDiscordID, "moderator")
 
 	proIsAdmin, err := s.IsDiscordWebsiteAdmin(ctx, proDiscordID)
@@ -44,12 +51,12 @@ func TestIsDiscordWebsiteAdminExcludesProOnlyUsers(t *testing.T) {
 		t.Fatal("PRO-only user should not count as website admin")
 	}
 
-	proHasRole, err := s.DiscordUserHasAdminRole(ctx, proDiscordID, "pro")
+	proHasRole, err := s.DiscordUserHasEntitlement(ctx, proDiscordID, EntitlementPRO)
 	if err != nil {
-		t.Fatalf("DiscordUserHasAdminRole pro: %v", err)
+		t.Fatalf("DiscordUserHasEntitlement pro: %v", err)
 	}
 	if !proHasRole {
-		t.Fatal("PRO role check should still return true")
+		t.Fatal("PRO entitlement check should still return true")
 	}
 
 	adminIsAdmin, err := s.IsDiscordWebsiteAdmin(ctx, adminDiscordID)

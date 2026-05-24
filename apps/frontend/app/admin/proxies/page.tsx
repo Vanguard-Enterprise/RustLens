@@ -66,7 +66,7 @@ export default async function AdminProxiesRoute({
 		avatarUrl: session.avatarUrl || undefined,
 		discordUsername: currentUser?.user.discordUsername,
 		isInternalAdmin:
-			(session.adminRoles?.length ?? 0) > 0 ||
+			(session.permissions?.length ?? 0) > 0 ||
 			session.roles.includes("internal_admin"),
 	};
 

@@ -58,9 +58,9 @@ export type CurrentUser = {
 	steamAccounts: LinkedSteamAccount[];
 	guilds: UserGuildMembership[];
 	/**
-	 * Admin role keys granted via admin_user_roles (e.g. "superadmin",
-	 * "moderator"). Distinct from `user.roles` which is the legacy
-	 * app_users.roles JSONB column.
+	 * Permission-bearing admin role keys granted via admin_user_roles (e.g.
+	 * "superadmin", "moderator"). Product entitlements such as PRO are
+	 * exposed separately via `entitlements`.
 	 */
 	adminRoles: string[];
 	/**
@@ -68,6 +68,7 @@ export type CurrentUser = {
 	 * Superadmin implies every registered permission.
 	 */
 	permissions: string[];
+	entitlements?: string[];
 	discordRoleConnection?: DiscordRoleConnectionSummary | null;
 };
 
@@ -102,6 +103,7 @@ export type AdminUserItem = {
 	guildCount: number;
 	steamConnectionCount: number;
 	adminRoles: string[];
+	entitlements?: string[];
 	hasUserAppInstalled: boolean;
 	suspendedAt?: string;
 	deletedAt?: string;
@@ -244,6 +246,7 @@ export type AdminUserDetail = {
 	discordAvatar?: string;
 	guilds: AdminUserGuild[];
 	adminRoles: string[];
+	entitlements?: string[];
 	suspendedAt?: string;
 	suspendReason?: string;
 	deletedAt?: string;

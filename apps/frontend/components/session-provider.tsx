@@ -10,6 +10,7 @@ export type SessionContextValue = {
 	roles: string[];
 	adminRoles: string[];
 	permissions: string[];
+	entitlements: string[];
 	refresh: () => Promise<void>;
 };
 
@@ -38,6 +39,7 @@ export function SessionProvider({
 			roles: snapshot?.user.roles ?? [],
 			adminRoles: snapshot?.adminRoles ?? [],
 			permissions: snapshot?.permissions ?? [],
+			entitlements: snapshot?.entitlements ?? [],
 			refresh,
 		}),
 		[snapshot, refresh],

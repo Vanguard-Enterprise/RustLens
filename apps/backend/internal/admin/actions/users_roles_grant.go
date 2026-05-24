@@ -11,6 +11,7 @@ import (
 
 	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/events"
+	"rustlens/backend/internal/store"
 )
 
 type UsersRoleAssignParams struct {
@@ -60,6 +61,24 @@ func (a *usersRolesGrantAction) Execute(ctx context.Context, in ActionInput) (Ac
 		return ActionResult{}, fmt.Errorf("%w: %s", ErrValidation, err.Error())
 	}
 
+	if p.RoleKey == store.EntitlementPRO {
+		if err := grantEntitlement(ctx, a.pool, p.UserID, p.RoleKey, in.ActorUserID); err != nil {
+			return ActionResult{}, err
+		}
+		if a.pub != nil {
+			a.pub.PublishWithFanout(p.UserID, events.Event{Type: events.TypeRolesChanged, Reason: events.ReasonGrant})
+		}
+		if a.hook != nil {
+			a.hook.OnProRoleChanged(p.UserID)
+		}
+		target := p.UserID
+		return ActionResult{
+			ResourceID:   p.UserID,
+			TargetUserID: &target,
+			Payload:      map[string]any{"userId": p.UserID, "roleKey": p.RoleKey},
+		}, nil
+	}
+
 	var roleID string
 	err := a.pool.QueryRow(ctx, `SELECT id::text FROM admin_roles WHERE key=$1`, p.RoleKey).Scan(&roleID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -90,14 +109,26 @@ func (a *usersRolesGrantAction) Execute(ctx context.Context, in ActionInput) (Ac
 		a.pub.PublishWithFanout(p.UserID, events.Event{Type: events.TypeRolesChanged, Reason: events.ReasonGrant})
 	}
 
-	if p.RoleKey == rbac.RolePRO && a.hook != nil {
-		a.hook.OnProRoleChanged(p.UserID)
-	}
-
 	target := p.UserID
 	return ActionResult{
 		ResourceID:   p.UserID,
 		TargetUserID: &target,
 		Payload:      map[string]any{"userId": p.UserID, "roleKey": p.RoleKey},
 	}, nil
+}
+
+func grantEntitlement(ctx context.Context, pool *pgxpool.Pool, userID, key, grantedBy string) error {
+	var gb any
+	if grantedBy != "" {
+		gb = grantedBy
+	}
+	_, err := pool.Exec(ctx, `
+		INSERT INTO user_entitlements (user_id, key, granted_by)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, key) DO UPDATE
+		SET granted_by = EXCLUDED.granted_by,
+		    granted_at = NOW(),
+		    expires_at = NULL
+	`, userID, key, gb)
+	return err
 }

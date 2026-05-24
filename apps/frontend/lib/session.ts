@@ -12,10 +12,11 @@ export type SessionUser = {
 	roles: string[];
 	/**
 	 * Admin role keys from admin_user_roles. Non-admin users have an empty
-	 * array. Used by requireAdminSession to gate /admin access.
+	 * array.
 	 */
 	adminRoles?: string[];
 	permissions?: string[];
+	entitlements?: string[];
 	discordId?: string;
 	epoch: number;
 	expiresAt: number;
@@ -90,6 +91,7 @@ export function toSessionUser(currentUser: CurrentUser): SessionUser {
 		roles: currentUser.user.roles,
 		adminRoles: currentUser.adminRoles ?? [],
 		permissions: currentUser.permissions ?? [],
+		entitlements: currentUser.entitlements ?? [],
 		discordId: currentUser.user.discordId,
 		epoch: currentUser.user.sessionEpoch ?? 0,
 		expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
@@ -120,11 +122,8 @@ export async function requireSession() {
 
 /**
  * @deprecated Kept as an alias during migration to RBAC. New code should use
- * `requireAdminSession` (any admin role) plus route-level `requirePermission`.
- * This now delegates to `requireAdminSession` so users granted admin roles via
- * `admin_user_roles` are recognised — previously this only matched the legacy
- * "internal_admin" string in `app_users.roles`, which the new RBAC system no
- * longer populates.
+ * `requireAdminSession` (any admin permission or legacy `internal_admin`) plus
+ * route-level `requirePermission`.
  */
 export async function requireInternalAdminSession() {
 	return requireAdminSession();
@@ -138,20 +137,22 @@ export async function requireAdminSession() {
 	// take effect without waiting for the next login. Dynamic import avoids a
 	// static circular dependency with rustlens-api (which imports from here).
 	const { getCurrentUser } = await import("@/lib/rustlens-api");
-	let liveAdminRoles: string[] = [];
 	let livePermissions: string[] = [];
 	let liveRoles: string[] = session.roles ?? [];
+	let liveAdminRoles: string[] = [];
+	let liveEntitlements: string[] = session.entitlements ?? [];
 	try {
 		const current = await getCurrentUser();
 		liveAdminRoles = current.adminRoles ?? [];
 		livePermissions = current.permissions ?? [];
 		liveRoles = current.user.roles ?? [];
+		liveEntitlements = current.entitlements ?? [];
 	} catch {
 		redirect("/login");
 	}
 
 	const legacyInternalAdmin = liveRoles.includes("internal_admin");
-	if (liveAdminRoles.length === 0 && livePermissions.length === 0 && !legacyInternalAdmin) {
+	if (livePermissions.length === 0 && !legacyInternalAdmin) {
 		redirect("/dashboard");
 	}
 
@@ -160,6 +161,7 @@ export async function requireAdminSession() {
 		roles: liveRoles,
 		adminRoles: liveAdminRoles,
 		permissions: livePermissions,
+		entitlements: liveEntitlements,
 	};
 }
 

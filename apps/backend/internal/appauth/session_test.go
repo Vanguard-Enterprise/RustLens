@@ -89,12 +89,13 @@ func TestValidateSession_BadSignature(t *testing.T) {
 func TestSerializeSession_RoundTripsAdminRoles(t *testing.T) {
 	secret := "test-secret"
 	in := appauth.SessionUser{
-		UserID:      "usr_admin_round_trip",
-		Roles:       []string{"user"},
-		AdminRoles:  []string{"superadmin"},
-		Permissions: []string{"users.read"},
-		Epoch:       0,
-		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
+		UserID:       "usr_admin_round_trip",
+		Roles:        []string{"user"},
+		AdminRoles:   []string{"superadmin"},
+		Permissions:  []string{"users.read"},
+		Entitlements: []string{"pro"},
+		Epoch:        0,
+		ExpiresAt:    time.Now().Add(time.Hour).UnixMilli(),
 	}
 	tok, err := appauth.SerializeSession(in, secret)
 	if err != nil {
@@ -106,6 +107,9 @@ func TestSerializeSession_RoundTripsAdminRoles(t *testing.T) {
 	}
 	if len(got.AdminRoles) != 1 || got.AdminRoles[0] != "superadmin" {
 		t.Errorf("AdminRoles = %v, want [superadmin]", got.AdminRoles)
+	}
+	if len(got.Entitlements) != 1 || got.Entitlements[0] != "pro" {
+		t.Errorf("Entitlements = %v, want [pro]", got.Entitlements)
 	}
 }
 

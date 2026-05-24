@@ -198,6 +198,14 @@ function buildFlags(item: AdminUserItem): FlagDef[] {
       className: "text-amber-500",
     });
   }
+  if ((item.entitlements ?? []).includes("pro")) {
+    flags.push({
+      key: "pro",
+      Icon: UserCheckIcon,
+      label: "PRO",
+      className: "text-yellow-600",
+    });
+  }
   if (item.hasUserAppInstalled) {
     flags.push({
       key: "user-app",

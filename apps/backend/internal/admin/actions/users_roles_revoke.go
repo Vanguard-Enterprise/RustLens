@@ -11,6 +11,7 @@ import (
 
 	"rustlens/backend/internal/admin/rbac"
 	"rustlens/backend/internal/events"
+	"rustlens/backend/internal/store"
 )
 
 type usersRolesRevokeAction struct {
@@ -58,6 +59,26 @@ func (a *usersRolesRevokeAction) Execute(ctx context.Context, in ActionInput) (A
 		return ActionResult{}, fmt.Errorf("%w: %s", ErrValidation, err.Error())
 	}
 
+	if p.RoleKey == store.EntitlementPRO {
+		if _, err := a.pool.Exec(ctx, `
+			DELETE FROM user_entitlements WHERE user_id = $1 AND key = $2
+		`, p.UserID, p.RoleKey); err != nil {
+			return ActionResult{}, err
+		}
+		if a.pub != nil {
+			a.pub.PublishWithFanout(p.UserID, events.Event{Type: events.TypeRolesChanged, Reason: events.ReasonRevoke})
+		}
+		if a.hook != nil {
+			a.hook.OnProRoleChanged(p.UserID)
+		}
+		target := p.UserID
+		return ActionResult{
+			ResourceID:   p.UserID,
+			TargetUserID: &target,
+			Payload:      map[string]any{"userId": p.UserID, "roleKey": p.RoleKey},
+		}, nil
+	}
+
 	var roleID string
 	err := a.pool.QueryRow(ctx, `SELECT id::text FROM admin_roles WHERE key=$1`, p.RoleKey).Scan(&roleID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -97,10 +118,6 @@ func (a *usersRolesRevokeAction) Execute(ctx context.Context, in ActionInput) (A
 
 	if a.pub != nil {
 		a.pub.PublishWithFanout(p.UserID, events.Event{Type: events.TypeRolesChanged, Reason: events.ReasonRevoke})
-	}
-
-	if p.RoleKey == rbac.RolePRO && a.hook != nil {
-		a.hook.OnProRoleChanged(p.UserID)
 	}
 
 	target := p.UserID

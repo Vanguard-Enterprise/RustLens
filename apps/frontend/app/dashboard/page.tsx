@@ -32,11 +32,10 @@ export default async function Page({ searchParams }: DashboardPageProps) {
   // cookie session. The cookie is a snapshot captured at login and doesn't
   // reflect role grants made afterwards — falling back to it would force a
   // logout/login dance every time an admin role changes.
-  const liveAdminRoles = currentUser?.adminRoles ?? session.adminRoles ?? []
   const livePermissions = currentUser?.permissions ?? session.permissions ?? []
+  const liveEntitlements = currentUser?.entitlements ?? session.entitlements ?? []
   const liveRoles = currentUser?.user.roles ?? session.roles ?? []
   const isInternalAdmin =
-    liveAdminRoles.length > 0 ||
     livePermissions.length > 0 ||
     liveRoles.includes("internal_admin")
 
@@ -77,7 +76,7 @@ export default async function Page({ searchParams }: DashboardPageProps) {
               <div className="px-4 lg:px-6">
                 <DiscordRoleConnectionCard
                   summary={currentUser?.discordRoleConnection ?? null}
-                  hasPro={liveAdminRoles.includes("pro")}
+                  hasPro={liveEntitlements.includes("pro")}
                 />
               </div>
               <div className="flex flex-col gap-1 px-4 lg:px-6">

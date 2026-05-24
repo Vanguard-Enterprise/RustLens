@@ -775,9 +775,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		return err
 	}
 
-	// Rename legacy PRO role key to lowercase. Runs before SeedPermissionsAndRoles
-	// so the upsert-by-key updates the existing row (preserving member assignments)
-	// instead of inserting a duplicate "pro" alongside an orphaned "PRO".
+	// Rename legacy PRO role key to lowercase before entitlement backfill.
 	if _, err := p.pool.Exec(ctx, `
 		UPDATE admin_roles SET key = 'pro'
 		WHERE key = 'PRO' AND NOT EXISTS (SELECT 1 FROM admin_roles WHERE key = 'pro')
@@ -901,6 +899,36 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		)
 	`); err != nil {
 		return fmt.Errorf("create admin_user_roles: %w", err)
+	}
+	if _, err := p.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS user_entitlements (
+			user_id    TEXT        NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+			key        TEXT        NOT NULL,
+			granted_by TEXT        NULL     REFERENCES app_users(id),
+			granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			expires_at TIMESTAMPTZ NULL,
+			PRIMARY KEY (user_id, key)
+		);
+
+		CREATE INDEX IF NOT EXISTS user_entitlements_key_idx
+		ON user_entitlements (key, user_id);
+	`); err != nil {
+		return fmt.Errorf("create user_entitlements: %w", err)
+	}
+	if _, err := p.pool.Exec(ctx, `
+		INSERT INTO user_entitlements (user_id, key, granted_by, granted_at)
+		SELECT aur.user_id, 'pro', aur.granted_by, aur.granted_at
+		FROM admin_user_roles aur
+		JOIN admin_roles ar ON ar.id = aur.role_id
+		WHERE ar.key = 'pro'
+		ON CONFLICT (user_id, key) DO NOTHING
+	`); err != nil {
+		return fmt.Errorf("backfill pro entitlements: %w", err)
+	}
+	if _, err := p.pool.Exec(ctx, `
+		DELETE FROM admin_roles WHERE key = 'pro'
+	`); err != nil {
+		return fmt.Errorf("remove pro admin role: %w", err)
 	}
 	if _, err := p.pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS discord_role_connections (

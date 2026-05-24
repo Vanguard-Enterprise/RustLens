@@ -17,22 +17,23 @@ import (
 // The payload is a base64url(JSON) dot signature — signature is
 // HMAC-SHA256(encodedPayload, secret), base64url, unpadded.
 type SessionUser struct {
-	UserID      string   `json:"userId"`
-	DisplayName string   `json:"displayName"`
-	AvatarURL   string   `json:"avatarUrl"`
-	Roles       []string `json:"roles"`
-	AdminRoles  []string `json:"adminRoles,omitempty"`
-	Permissions []string `json:"permissions,omitempty"`
-	DiscordID   string   `json:"discordId,omitempty"`
-	Epoch       int      `json:"epoch"`
-	ExpiresAt   int64    `json:"expiresAt"` // milliseconds since epoch, matches JS Date.now()
+	UserID       string   `json:"userId"`
+	DisplayName  string   `json:"displayName"`
+	AvatarURL    string   `json:"avatarUrl"`
+	Roles        []string `json:"roles"`
+	AdminRoles   []string `json:"adminRoles,omitempty"`
+	Permissions  []string `json:"permissions,omitempty"`
+	Entitlements []string `json:"entitlements,omitempty"`
+	DiscordID    string   `json:"discordId,omitempty"`
+	Epoch        int      `json:"epoch"`
+	ExpiresAt    int64    `json:"expiresAt"` // milliseconds since epoch, matches JS Date.now()
 }
 
 var (
-	ErrMalformedToken  = errors.New("malformed session token")
-	ErrBadSignature    = errors.New("invalid session signature")
-	ErrExpired         = errors.New("session expired")
-	ErrSessionRevoked  = errors.New("session revoked")
+	ErrMalformedToken = errors.New("malformed session token")
+	ErrBadSignature   = errors.New("invalid session signature")
+	ErrExpired        = errors.New("session expired")
+	ErrSessionRevoked = errors.New("session revoked")
 )
 
 // ParseSession verifies the HMAC signature on a token produced by

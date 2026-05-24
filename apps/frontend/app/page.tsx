@@ -17,7 +17,7 @@ export default async function Home() {
 				displayName: session.displayName,
 				avatarUrl: session.avatarUrl,
 				isInternalAdmin:
-					(session.adminRoles?.length ?? 0) > 0 ||
+					(session.permissions?.length ?? 0) > 0 ||
 					session.roles.includes("internal_admin"),
 			}
 		: null;

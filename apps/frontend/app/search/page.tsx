@@ -20,7 +20,9 @@ export default async function SearchPage({
 	const trimmed = q.trim();
 	const includeOff = includeOffline === "true";
 	const me = await getCurrentUserSafe();
-	const isAdmin = (me?.adminRoles?.length ?? 0) > 0;
+	const isAdmin =
+		(me?.permissions?.length ?? 0) > 0 ||
+		(me?.user.roles ?? []).includes("internal_admin");
 	const user = {
 		displayName: session.displayName,
 		avatarUrl: session.avatarUrl,

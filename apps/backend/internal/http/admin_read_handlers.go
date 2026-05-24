@@ -22,17 +22,18 @@ import (
 // apps/frontend/lib/rustlens-api.ts.
 
 type adminUserItem struct {
-	User                  adminAppUser `json:"user"`
-	DiscordID             string       `json:"discordId"`
-	DiscordUsername       string       `json:"discordUsername"`
-	DiscordGlobalName     string       `json:"discordGlobalName,omitempty"`
-	DiscordAvatar         string       `json:"discordAvatar,omitempty"`
-	GuildCount            int          `json:"guildCount"`
-	SteamConnectionCount  int          `json:"steamConnectionCount"`
-	AdminRoles            []string     `json:"adminRoles"`
-	HasUserAppInstalled   bool         `json:"hasUserAppInstalled"`
-	SuspendedAt           *string      `json:"suspendedAt,omitempty"`
-	DeletedAt             *string      `json:"deletedAt,omitempty"`
+	User                 adminAppUser `json:"user"`
+	DiscordID            string       `json:"discordId"`
+	DiscordUsername      string       `json:"discordUsername"`
+	DiscordGlobalName    string       `json:"discordGlobalName,omitempty"`
+	DiscordAvatar        string       `json:"discordAvatar,omitempty"`
+	GuildCount           int          `json:"guildCount"`
+	SteamConnectionCount int          `json:"steamConnectionCount"`
+	AdminRoles           []string     `json:"adminRoles"`
+	Entitlements         []string     `json:"entitlements"`
+	HasUserAppInstalled  bool         `json:"hasUserAppInstalled"`
+	SuspendedAt          *string      `json:"suspendedAt,omitempty"`
+	DeletedAt            *string      `json:"deletedAt,omitempty"`
 }
 
 type adminAppUser struct {
@@ -116,6 +117,7 @@ type adminUserDetail struct {
 	DiscordAvatar     string           `json:"discordAvatar,omitempty"`
 	Guilds            []adminUserGuild `json:"guilds"`
 	AdminRoles        []string         `json:"adminRoles"`
+	Entitlements      []string         `json:"entitlements"`
 	SuspendedAt       *string          `json:"suspendedAt,omitempty"`
 	SuspendReason     string           `json:"suspendReason,omitempty"`
 	DeletedAt         *string          `json:"deletedAt,omitempty"`
@@ -194,6 +196,7 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = u.discord_id AND g.left_at IS NULL), 0),
 		       0 AS steam_count,
 		       COALESCE(array_agg(DISTINCT r.key) FILTER (WHERE r.key IS NOT NULL), ARRAY[]::text[]),
+		       COALESCE(array_agg(DISTINCT ue.key) FILTER (WHERE ue.key IS NOT NULL), ARRAY[]::text[]),
 		       EXISTS (
 		           SELECT 1 FROM bot_user_installs bui
 		           WHERE bui.discord_id = u.discord_id
@@ -202,6 +205,7 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 		FROM app_users u
 		LEFT JOIN admin_user_roles aur ON aur.user_id = u.id
 		LEFT JOIN admin_roles r ON r.id = aur.role_id
+		LEFT JOIN user_entitlements ue ON ue.user_id = u.id AND (ue.expires_at IS NULL OR ue.expires_at > NOW())
 		%s
 		GROUP BY u.id
 		ORDER BY %s
@@ -221,13 +225,13 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 		var rolesLegacyJSON string
 		var suspendedAt, deletedAt *time.Time
 		var guildCount, steamCount int64
-		var adminRoleKeys []string
+		var adminRoleKeys, entitlementKeys []string
 		if err := rows.Scan(
 			&it.User.ID, &it.User.DisplayName, &it.User.AvatarURL, &rolesLegacyJSON,
 			&it.User.CreatedAt, &it.User.UpdatedAt, &it.User.LastLoginAt,
 			&suspendedAt, &deletedAt,
 			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
-			&guildCount, &steamCount, &adminRoleKeys, &it.HasUserAppInstalled,
+			&guildCount, &steamCount, &adminRoleKeys, &entitlementKeys, &it.HasUserAppInstalled,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -243,6 +247,10 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 		it.AdminRoles = adminRoleKeys
 		if it.AdminRoles == nil {
 			it.AdminRoles = []string{}
+		}
+		it.Entitlements = entitlementKeys
+		if it.Entitlements == nil {
+			it.Entitlements = []string{}
 		}
 		if suspendedAt != nil {
 			t := suspendedAt.Format(time.RFC3339)
@@ -337,6 +345,12 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = u.discord_id AND g.left_at IS NULL), 0),
 		       0 AS steam_count,
 		       ARRAY[]::text[] AS admin_role_keys,
+		       COALESCE((
+		           SELECT array_agg(ue.key ORDER BY ue.key)
+		           FROM user_entitlements ue
+		           WHERE ue.user_id = u.id
+		             AND (ue.expires_at IS NULL OR ue.expires_at > NOW())
+		       ), ARRAY[]::text[]) AS entitlement_keys,
 		       EXISTS (
 		           SELECT 1 FROM bot_user_installs bui
 		           WHERE bui.discord_id = u.discord_id
@@ -361,13 +375,13 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		var rolesLegacyJSON string
 		var suspendedAt, deletedAt *time.Time
 		var guildCount, steamCount int64
-		var adminRoleKeys []string
+		var adminRoleKeys, entitlementKeys []string
 		if err := rows.Scan(
 			&it.User.ID, &it.User.DisplayName, &it.User.AvatarURL, &rolesLegacyJSON,
 			&it.User.CreatedAt, &it.User.UpdatedAt, &it.User.LastLoginAt,
 			&suspendedAt, &deletedAt,
 			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
-			&guildCount, &steamCount, &adminRoleKeys, &it.HasUserAppInstalled,
+			&guildCount, &steamCount, &adminRoleKeys, &entitlementKeys, &it.HasUserAppInstalled,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -383,6 +397,10 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		it.AdminRoles = adminRoleKeys
 		if it.AdminRoles == nil {
 			it.AdminRoles = []string{}
+		}
+		it.Entitlements = entitlementKeys
+		if it.Entitlements == nil {
+			it.Entitlements = []string{}
 		}
 		if suspendedAt != nil {
 			t := suspendedAt.Format(time.RFC3339)
@@ -552,9 +570,9 @@ func (h *Handler) ListAdminServers(w http.ResponseWriter, r *http.Request) {
 	items := []adminServerItem{}
 	for rows.Next() {
 		var (
-			item        adminServerItem
-			lastPolled  *time.Time
-			guildCount  int64
+			item       adminServerItem
+			lastPolled *time.Time
+			guildCount int64
 		)
 		if err := rows.Scan(&item.ServerBmID, &item.Name, &lastPolled, &item.LastPollError, &guildCount); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -889,6 +907,26 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rrows.Close()
+
+	d.Entitlements = []string{}
+	erows, err := pool.Query(ctx, `
+		SELECT key
+		FROM user_entitlements
+		WHERE user_id = $1
+		  AND (expires_at IS NULL OR expires_at > NOW())
+		ORDER BY key
+	`, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for erows.Next() {
+		var k string
+		if err := erows.Scan(&k); err == nil {
+			d.Entitlements = append(d.Entitlements, k)
+		}
+	}
+	erows.Close()
 
 	// Guilds via the user's discord_id (stored directly on app_users now).
 	// Prefer bot_guilds metadata (authoritative when the bot is in the guild);

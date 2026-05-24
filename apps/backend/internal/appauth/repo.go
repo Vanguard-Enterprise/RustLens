@@ -56,13 +56,15 @@ type CurrentUser struct {
 	User          AppUser               `json:"user"`
 	SteamAccounts []LinkedSteamAccount  `json:"steamAccounts"`
 	Guilds        []UserGuildMembership `json:"guilds"`
-	// AdminRoles are the role keys granted via admin_user_roles (e.g.
-	// "superadmin", "moderator"). Separate from User.Roles which is the
-	// legacy app_users.roles JSONB column.
+	// AdminRoles are permission-bearing role keys granted via admin_user_roles
+	// (e.g. "superadmin", "moderator"). Product entitlements such as PRO are
+	// exposed separately via Entitlements.
 	AdminRoles []string `json:"adminRoles"`
 	// Permissions is the flattened set of permission keys resolved from
 	// the user's admin roles. Superadmin implies all permissions.
 	Permissions []string `json:"permissions"`
+	// Entitlements are non-admin product entitlements such as "pro".
+	Entitlements []string `json:"entitlements"`
 	// DiscordRoleConnection is the safe dashboard summary for the linked-roles
 	// feature. Omitted when there is no connection row or the store is not
 	// wired up.
@@ -99,6 +101,10 @@ func (r *Repo) LoadCurrentUser(ctx context.Context, userID string) (*CurrentUser
 	if err != nil {
 		return nil, err
 	}
+	entitlements, err := r.loadEntitlements(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	// Steam + guilds populated as empty slices; join tables exist but the
 	// shapes diverge from what this minimal implementation needs and the
 	// frontend is tolerant of empty arrays.
@@ -108,6 +114,7 @@ func (r *Repo) LoadCurrentUser(ctx context.Context, userID string) (*CurrentUser
 		Guilds:        []UserGuildMembership{},
 		AdminRoles:    adminRoles,
 		Permissions:   permissions,
+		Entitlements:  entitlements,
 	}, nil
 }
 
@@ -180,6 +187,29 @@ func (r *Repo) loadPermissions(ctx context.Context, userID string, adminRoles []
 			return nil, err
 		}
 		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repo) loadEntitlements(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT key
+		FROM user_entitlements
+		WHERE user_id = $1
+		  AND (expires_at IS NULL OR expires_at > NOW())
+		ORDER BY key
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		out = append(out, key)
 	}
 	return out, rows.Err()
 }
@@ -290,5 +320,3 @@ func newUserID() (string, error) {
 	}
 	return "usr_" + hex.EncodeToString(b[:]), nil
 }
-
-

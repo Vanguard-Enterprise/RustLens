@@ -3024,7 +3024,7 @@ func (h *Handler) HasDiscordPRORole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hasRole, err := h.postgres.DiscordUserHasAdminRole(r.Context(), discordID, rbac.RolePRO)
+	hasRole, err := h.postgres.DiscordUserHasEntitlement(r.Context(), discordID, store.EntitlementPRO)
 	if err != nil {
 		log.Printf("[backend] HasDiscordPRORole error for %s: %v", discordID, err)
 		writeError(w, http.StatusInternalServerError, "failed to check PRO role")

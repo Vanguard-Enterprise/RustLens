@@ -1100,8 +1100,7 @@ func (p *PostgresStore) DeleteGuildSteamDiscordLink(ctx context.Context, guildID
 }
 
 // IsDiscordWebsiteAdmin reports whether the given Discord user has an
-// app_users account with at least one non-PRO admin role granted via
-// admin_user_roles.
+// app_users account with at least one admin permission.
 func (p *PostgresStore) IsDiscordWebsiteAdmin(ctx context.Context, discordID string) (bool, error) {
 	var exists bool
 	err := p.pool.QueryRow(ctx, `
@@ -1110,8 +1109,9 @@ func (p *PostgresStore) IsDiscordWebsiteAdmin(ctx context.Context, discordID str
 			FROM app_users u
 			JOIN admin_user_roles aur ON aur.user_id = u.id
 			JOIN admin_roles r ON r.id = aur.role_id
+			LEFT JOIN admin_role_permissions rp ON rp.role_id = r.id
 			WHERE u.discord_id = $1
-			  AND r.key <> 'pro'
+			  AND (r.key = 'superadmin' OR rp.permission_key IS NOT NULL)
 		)
 	`, discordID).Scan(&exists)
 	if err != nil {

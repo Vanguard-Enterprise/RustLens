@@ -16,7 +16,7 @@ export default async function PlayerProfilePage({ params }: PageProps) {
 		displayName: session.displayName,
 		avatarUrl: session.avatarUrl,
 		isInternalAdmin:
-			(session.adminRoles?.length ?? 0) > 0 ||
+			(session.permissions?.length ?? 0) > 0 ||
 			session.roles.includes("internal_admin"),
 	};
 	const { steamId } = await params;

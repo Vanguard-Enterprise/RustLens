@@ -57,8 +57,8 @@ type playerSearchResponse struct {
 //
 //   - Identifier-shaped queries (Steam ID, BM ID, steamcommunity URL) are
 //     open to any logged-in user and return 0 or 1 results.
-//   - Free-text queries require the caller to have at least one row in
-//     admin_user_roles (i.e. session.AdminRoles is non-empty) and run a
+//   - Free-text queries require the caller to have at least one admin
+//     permission and run a
 //     name-substring search across all globally tracked servers.
 func (h *Handler) SearchPlayers(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
