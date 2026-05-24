@@ -328,13 +328,13 @@ async function backendFetch<T>(
 			cache: "no-store",
 		});
 	} catch (err) {
-		backendFetchHist.record((performance.now() - start) / 1000, {
+		backendFetchHist().record((performance.now() - start) / 1000, {
 			endpoint,
 			status_class: "error",
 		});
 		throw err;
 	}
-	backendFetchHist.record((performance.now() - start) / 1000, {
+	backendFetchHist().record((performance.now() - start) / 1000, {
 		endpoint,
 		status_class: statusClass(response.status),
 	});

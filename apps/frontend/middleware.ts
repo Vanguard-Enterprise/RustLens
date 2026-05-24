@@ -47,7 +47,7 @@ function normalizeRoute(pathname: string): string {
 export function middleware(request: NextRequest) {
 	const start = performance.now();
 	const route = normalizeRoute(request.nextUrl.pathname);
-	routeHitCounter.add(1, { route });
+	routeHitCounter().add(1, { route });
 
 	const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
 	const connectSrc = isDev ? "connect-src 'self' ws: wss:" : "connect-src 'self'";
@@ -79,12 +79,10 @@ export function middleware(request: NextRequest) {
 	const response = NextResponse.next({ request: { headers: requestHeaders } });
 	response.headers.set("Content-Security-Policy", csp);
 
-	// Records middleware processing time per route. This is the only per-route
-	// timing signal we can capture from a Next.js middleware — true SSR
-	// duration (server-component rendering, streaming) happens downstream of
-	// `NextResponse.next()` and is covered by the auto-instrumented
-	// `http_server_request_duration` metric from @vercel/otel.
-	ssrDurationHist.record((performance.now() - start) / 1000, { route });
+	// Records middleware processing time per route. Middleware runs before
+	// server-component rendering, so this captures request-handling overhead
+	// rather than full SSR duration.
+	ssrDurationHist().record((performance.now() - start) / 1000, { route });
 
 	return response;
 }
