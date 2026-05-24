@@ -1,6 +1,7 @@
 import type { ActionRowBuilder, ButtonBuilder, ChatInputCommandInteraction, Client, ModalSubmitInteraction } from "discord.js";
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient, type CommandUsageTarget, type SetSteamCandidate } from "../backend-client.js";
+import { logger } from "../logger.js";
 import { ModalV2Builder, StringSelectBuilder, TextInputBuilder, TextInputStyle } from "../builders/index.js";
 import { loadConfig } from "../config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "../guild-settings.js";
@@ -170,7 +171,7 @@ export async function ensureSetSteamCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /setsteam command (global)");
+  logger.info("ensured /setsteam command (global)");
 }
 
 export async function handleSetSteamChatInput(interaction: ChatInputCommandInteraction) {

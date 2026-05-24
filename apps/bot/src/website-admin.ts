@@ -1,5 +1,6 @@
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { logger } from "./logger.js";
 
 const shardID = process.env.SHARD_ID ?? "0";
 
@@ -60,7 +61,7 @@ export async function isWebsiteAdmin(discordId: string): Promise<boolean> {
       adminCache.set(discordId, { isAdmin, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
       return isAdmin;
     } catch (error) {
-      console.error("[bot] failed to check website admin status", error);
+      logger.error({ error }, "failed to check website admin status");
       return false;
     } finally {
       adminInflight.delete(discordId);
@@ -92,7 +93,7 @@ async function hasProRole(discordId: string): Promise<boolean> {
       proCache.set(discordId, { hasRole, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
       return hasRole;
     } catch (error) {
-      console.error("[bot] failed to check PRO role status", error);
+      logger.error({ error }, "failed to check PRO role status");
       return false;
     } finally {
       proInflight.delete(discordId);

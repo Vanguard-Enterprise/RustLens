@@ -2,6 +2,7 @@ import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import type { CommandUsageTarget } from "../backend-client.js";
 import { getGuildMembers } from "../guild-member-cache.js";
+import { logger } from "../logger.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { logDiscordCatch, logDiscordError } from "../shared.js";
 
@@ -40,7 +41,7 @@ export async function ensureSummonCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /summon command (global)");
+  logger.info("ensured /summon command (global)");
 }
 
 export async function handleSummonChatInput(

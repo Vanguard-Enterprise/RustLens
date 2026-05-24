@@ -1,6 +1,7 @@
 import type { Client, Guild, User } from "discord.js";
 import { BackendClient, type UpsertBotGuildPayload } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { logger } from "./logger.js";
 import { logDiscordError } from "./shared.js";
 
 const MEMBERS_RESYNC_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -95,17 +96,17 @@ async function syncMembers(guild: Guild) {
   try {
     fetched = await listHumanMemberIds(guild);
   } catch (error) {
-    console.error("[bot] bot-guilds: failed to fetch members", { guildId: guild.id, error });
+    logger.error({ guildId: guild.id, error }, "bot-guilds: failed to fetch members");
     return;
   }
 
   const fetchComplete = isMemberFetchComplete(guild, fetched.totalFetched);
   if (!fetchComplete) {
-    console.warn("[bot] bot-guilds: members.fetch returned far fewer members than guild.memberCount", {
+    logger.warn({
       guildId: guild.id,
       totalFetched: fetched.totalFetched,
       approxMemberCount: guild.memberCount,
-    });
+    }, "bot-guilds: members.fetch returned far fewer members than guild.memberCount");
   }
 
   const memberIds = fetched.ids;
@@ -130,7 +131,7 @@ async function syncMembers(guild: Guild) {
         membersSyncComplete: isLast && fetchComplete,
       });
     } catch (error) {
-      console.error("[bot] bot-guilds: member batch failed", { guildId: guild.id, batchIndex: i, error });
+      logger.error({ guildId: guild.id, batchIndex: i, error }, "bot-guilds: member batch failed");
       return;
     }
   }
@@ -141,7 +142,7 @@ async function upsertMetadataOnly(guild: Guild) {
     const owner = await resolveOwner(guild);
     await getBackend().upsertBotGuild(getWorkerID(), buildUpsertPayload(guild, owner));
   } catch (error) {
-    console.error("[bot] bot-guilds: metadata upsert failed", { guildId: guild.id, error });
+    logger.error({ guildId: guild.id, error }, "bot-guilds: metadata upsert failed");
   }
 }
 
@@ -154,7 +155,7 @@ async function handleGuildDelete(guild: Guild) {
   try {
     await getBackend().markBotGuildLeft(getWorkerID(), guild.id);
   } catch (error) {
-    console.error("[bot] bot-guilds: mark left failed", { guildId: guild.id, error });
+    logger.error({ guildId: guild.id, error }, "bot-guilds: mark left failed");
   }
 }
 
@@ -169,7 +170,7 @@ async function handleClientReady(client: Client, shardId: number, shardCount: nu
   try {
     await getBackend().reconcileBotGuilds(getWorkerID(), { shardId, shardCount, guildIds });
   } catch (error) {
-    console.error("[bot] bot-guilds: reconcile failed", { shardId, error });
+    logger.error({ shardId, error }, "bot-guilds: reconcile failed");
   }
 
   for (const guild of guilds) {
@@ -178,7 +179,7 @@ async function handleClientReady(client: Client, shardId: number, shardCount: nu
       const owner = await resolveOwner(guild);
       response = await getBackend().upsertBotGuild(getWorkerID(), buildUpsertPayload(guild, owner));
     } catch (error) {
-      console.error("[bot] bot-guilds: ready metadata upsert failed", { guildId: guild.id, error });
+      logger.error({ guildId: guild.id, error }, "bot-guilds: ready metadata upsert failed");
       continue;
     }
 
@@ -194,22 +195,22 @@ async function handleClientReady(client: Client, shardId: number, shardCount: nu
 export function registerBotGuildSync(client: Client, shardId: number, shardCount: number) {
   client.on("guildCreate", (guild) => {
     handleGuildCreate(guild).catch((error) => {
-      console.error("[bot] bot-guilds: guildCreate handler failed", { guildId: guild.id, error });
+      logger.error({ guildId: guild.id, error }, "bot-guilds: guildCreate handler failed");
     });
   });
   client.on("guildDelete", (guild) => {
     handleGuildDelete(guild).catch((error) => {
-      console.error("[bot] bot-guilds: guildDelete handler failed", { guildId: guild.id, error });
+      logger.error({ guildId: guild.id, error }, "bot-guilds: guildDelete handler failed");
     });
   });
   client.on("guildUpdate", (_oldGuild, guild) => {
     handleGuildUpdate(guild).catch((error) => {
-      console.error("[bot] bot-guilds: guildUpdate handler failed", { guildId: guild.id, error });
+      logger.error({ guildId: guild.id, error }, "bot-guilds: guildUpdate handler failed");
     });
   });
   client.once("clientReady", () => {
     handleClientReady(client, shardId, shardCount).catch((error) => {
-      console.error("[bot] bot-guilds: clientReady handler failed", { shardId, error });
+      logger.error({ shardId, error }, "bot-guilds: clientReady handler failed");
     });
   });
 }

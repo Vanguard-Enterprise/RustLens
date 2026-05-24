@@ -4,6 +4,7 @@ import { BackendClient } from "../backend-client.js";
 import type { CommandUsageTarget } from "../backend-client.js";
 import { loadConfig } from "../config.js";
 import { fetchGuildSettings, hasGuildAdminAccess, resolveConfiguredGuildChannel } from "../guild-settings.js";
+import { logger } from "../logger.js";
 import { createEmbed, formatDiscordUserName, logDiscordCatch } from "../shared.js";
 import { resolveSteamInputErrorMessage } from "../steam-input.js";
 
@@ -222,7 +223,7 @@ export async function ensureAdminCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /admin command (global)");
+  logger.info("ensured /admin command (global)");
 }
 
 export async function handleAdminChatInput(interaction: ChatInputCommandInteraction): Promise<false | true | AdminHandlerResult> {

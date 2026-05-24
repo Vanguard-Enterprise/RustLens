@@ -9,6 +9,7 @@ export type NicknameHandlerResult = {
 };
 import { loadConfig } from "../config.js";
 import { getGuildMembers } from "../guild-member-cache.js";
+import { logger } from "../logger.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { buildFooter, logDiscordCatch, logDiscordError, RUSTLENS_EMBED_COLOR } from "../shared.js";
 
@@ -231,7 +232,7 @@ export async function ensureNicknameCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /nickname command (global)");
+  logger.info("ensured /nickname command (global)");
 }
 
 export async function handleNicknameChatInput(interaction: ChatInputCommandInteraction): Promise<false | true | NicknameHandlerResult> {
@@ -297,20 +298,20 @@ export async function handleNicknameChatInput(interaction: ChatInputCommandInter
         }
         cleanedDiscordIds.add(item.discordId);
         cleanedCount += 1;
-        console.log("[bot] /nickname removed stale guild links", {
+        logger.info({
           guildId: interaction.guildId,
           discordId: item.discordId,
           removedLinks: links.items.length,
           reason: NICKNAME_CLEANUP_REASON_LEFT_GUILD,
-        });
+        }, "/nickname removed stale guild links");
         continue;
       } catch (error) {
-        console.error("[bot] /nickname failed to remove stale guild links", {
+        logger.error({
           guildId: interaction.guildId,
           discordId: item.discordId,
           steamId: item.steamId,
           error,
-        });
+        }, "/nickname failed to remove stale guild links");
       }
 
       failedCount += 1;

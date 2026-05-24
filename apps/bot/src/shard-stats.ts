@@ -1,4 +1,5 @@
 import type { Client } from "discord.js";
+import { logger } from "./logger.js";
 
 export type ShardStatSnapshot = {
   shardId: number;
@@ -65,7 +66,7 @@ export function startShardStatsPusher(client: Client, shardId: number, intervalM
     try {
       process.send?.(buildWorkerStatsMessage(client, shardId));
     } catch (error) {
-      console.error("[bot] failed to push shard stats to parent", error);
+      logger.error({ error }, "failed to push shard stats to parent");
     }
   };
 

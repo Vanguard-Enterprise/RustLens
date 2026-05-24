@@ -2,6 +2,7 @@ import type { Interaction } from "discord.js";
 
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { logger } from "./logger.js";
 
 const shardID = process.env.SHARD_ID ?? "0";
 
@@ -66,12 +67,7 @@ export function ensureAppUser(interaction: Interaction): void {
       avatarHash: u.avatar ?? null,
     })
     .catch((error) => {
-      console.error(JSON.stringify({
-        level:   "warn",
-        message: "[bot] ensureAppUser failed",
-        userId:  u.id,
-        error:   String(error),
-      }));
+      logger.warn({ userId: u.id, error }, "ensureAppUser failed");
     });
 }
 

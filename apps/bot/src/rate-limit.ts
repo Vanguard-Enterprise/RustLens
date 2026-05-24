@@ -7,6 +7,7 @@ import {
 } from "discord.js";
 import { BackendClient, type RateLimitFraudAlert } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { logger } from "./logger.js";
 import { logDiscordError, RUSTLENS_EMBED_COLOR } from "./shared.js";
 
 // Static fraud-alert destination. Fill in to enable; empty string disables
@@ -65,15 +66,13 @@ function buildCooldownEmbed(retryAfterSeconds: number) {
 
 async function postFraudAlert(client: Client, alert: RateLimitFraudAlert) {
   if (!FRAUD_ALERT_CHANNEL_ID) {
-    console.warn("[bot] fraud alert (no channel configured)", alert);
+    logger.warn({ alert }, "fraud alert (no channel configured)");
     return;
   }
   try {
     const channel = await client.channels.fetch(FRAUD_ALERT_CHANNEL_ID);
     if (!channel || channel.type !== ChannelType.GuildText) {
-      console.warn("[bot] fraud alert channel is not a text channel", {
-        channelId: FRAUD_ALERT_CHANNEL_ID,
-      });
+      logger.warn({ channelId: FRAUD_ALERT_CHANNEL_ID }, "fraud alert channel is not a text channel");
       return;
     }
     const windowMinutes = Math.max(1, Math.round(alert.windowSecs / 60));
@@ -133,22 +132,14 @@ export async function enforceRateLimit(
       }),
     ]);
   } catch (error) {
-    console.error("[bot] rate-limit consume failed (failing open)", {
-      discordId: interaction.user.id,
-      command,
-      error,
-    });
+    logger.error({ discordId: interaction.user.id, command, error }, "rate-limit consume failed (failing open)");
     return false;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
 
   if (result === rateLimitTimedOut) {
-    console.warn("[bot] rate-limit consume timed out (failing open)", {
-      discordId: interaction.user.id,
-      command,
-      budgetMs: RATE_LIMIT_BUDGET_MS,
-    });
+    logger.warn({ discordId: interaction.user.id, command, budgetMs: RATE_LIMIT_BUDGET_MS }, "rate-limit consume timed out (failing open)");
     return false;
   }
 

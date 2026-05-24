@@ -1,5 +1,6 @@
 import type { ModalSubmitInteraction, ChatInputCommandInteraction, ButtonInteraction } from "discord.js";
 import { ActionRowBuilder, ButtonBuilder, EmbedBuilder, MessageFlags } from "discord.js";
+import { logger } from "./logger.js";
 
 export const RUSTLENS_EMBED_COLOR = 14582045;
 export const RUSTLENS_EMBED_ICON_URL =
@@ -31,10 +32,7 @@ export function logDiscordError(
   error: unknown,
   details?: Record<string, unknown>,
 ) {
-  console.error(`[bot] Discord error: ${context}`, {
-    ...details,
-    error,
-  });
+  logger.error({ ...details, error }, `Discord error: ${context}`);
 }
 
 export function logDiscordCatch<T>(

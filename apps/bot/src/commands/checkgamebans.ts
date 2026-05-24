@@ -2,6 +2,7 @@ import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, InteractionContextType, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { BackendClient, type GuildRecentGameBan } from "../backend-client.js";
 import { loadConfig } from "../config.js";
+import { logger } from "../logger.js";
 import { getGuildMembers } from "../guild-member-cache.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { buildProOnlyFeatureEmbed, createEmbed } from "../shared.js";
@@ -140,7 +141,7 @@ export async function ensureCheckGameBansCommand(client: Client, shardID: number
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /checkgamebans command (global)");
+  logger.info("ensured /checkgamebans command (global)");
 }
 
 export async function handleCheckGameBansChatInput(interaction: ChatInputCommandInteraction) {
@@ -208,7 +209,7 @@ export async function handleCheckGameBansChatInput(interaction: ChatInputCommand
       await interaction.editReply({ embeds: [buildDeepScopeTooLargeEmbed()] });
       return true;
     }
-    console.error("[bot] /checkgamebans backend call failed", error);
+    logger.error({ error }, "/checkgamebans backend call failed");
     await interaction.editReply({ content: "Failed to check game bans." });
   }
 

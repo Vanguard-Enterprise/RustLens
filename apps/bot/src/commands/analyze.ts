@@ -1,3 +1,4 @@
+import { logger } from "../logger.js";
 import type { AutocompleteInteraction, ChatInputCommandInteraction, Client } from "discord.js";
 import {
   ApplicationIntegrationType,
@@ -146,7 +147,7 @@ function refreshTrackedServerAutocompleteCache() {
       trackedServerAutocompleteCache.expiresAt = Date.now() + TRACKED_SERVER_AUTOCOMPLETE_CACHE_TTL_MS;
     })
     .catch((error) => {
-      console.error("[bot] failed to refresh analyze server autocomplete", error);
+      logger.error({ error }, "failed to refresh analyze server autocomplete");
       if (trackedServerAutocompleteCache.items.length === 0) {
         trackedServerAutocompleteCache.expiresAt = now + 5_000;
       }
@@ -204,7 +205,7 @@ export async function ensureAnalyzeCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /analyze command (global)");
+  logger.info("ensured /analyze command (global)");
 }
 
 export async function handleAnalyzeAutocomplete(interaction: AutocompleteInteraction) {
@@ -254,7 +255,7 @@ export async function handleAnalyzeChatInput(interaction: ChatInputCommandIntera
     try {
       analytics = await getBackend().getServerAnalytics(getWorkerID(), serverBmID, timeframe);
     } catch (error) {
-      console.error("[bot] failed to load server analytics", error);
+      logger.error({ error }, "failed to load server analytics");
       await interaction.editReply({ embeds: [buildErrorEmbed("RustLens could not load analytics for this server.")] });
       return true;
     }
@@ -269,7 +270,7 @@ export async function handleAnalyzeChatInput(interaction: ChatInputCommandIntera
       const file = new AttachmentBuilder(image, { name: "server-analytics.png" });
       await interaction.editReply({ embeds: [buildServerAnalyticsEmbed(analytics)], files: [file] });
     } catch (error) {
-      console.error("[bot] failed to render server analytics chart", error);
+      logger.error({ error }, "failed to render server analytics chart");
       await interaction.editReply({ embeds: [buildErrorEmbed("RustLens could not render the server analytics chart.")] });
     }
 
@@ -300,7 +301,7 @@ export async function handleAnalyzeChatInput(interaction: ChatInputCommandIntera
   try {
     analytics = await getBackend().getPlayerOfflineAnalytics(getWorkerID(), bmID);
   } catch (error) {
-    console.error("[bot] failed to load offline analytics", error);
+    logger.error({ error }, "failed to load offline analytics");
     await interaction.editReply({ embeds: [buildErrorEmbed("RustLens could not load offline analytics for this player.")] });
     return true;
   }
@@ -316,7 +317,7 @@ export async function handleAnalyzeChatInput(interaction: ChatInputCommandIntera
     const file = new AttachmentBuilder(image, { name: "offline-analytics.png" });
     await interaction.editReply({ embeds: [buildOfflineAnalyticsEmbed(analytics)], files: [file] });
   } catch (error) {
-    console.error("[bot] failed to render offline analytics chart", error);
+    logger.error({ error }, "failed to render offline analytics chart");
     await interaction.editReply({ embeds: [buildErrorEmbed("RustLens could not render the offline analytics chart.")] });
   }
 

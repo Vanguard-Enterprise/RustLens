@@ -21,6 +21,7 @@ import {
 import { StringSelectBuilder, ModalV2Builder } from "../builders/index.js";
 import { BackendClient, type GuildSettingsPatch } from "../backend-client.js";
 import { loadConfig } from "../config.js";
+import { logger } from "../logger.js";
 import { fetchGuildSettings, updateGuildSettings } from "../guild-settings.js";
 import { createEmbed, getFieldValues, logDiscordCatch } from "../shared.js";
 
@@ -464,7 +465,7 @@ export async function ensureSettingsCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /settings command (global)");
+  logger.info("ensured /settings command (global)");
 }
 
 export async function handleSettingsChatInput(interaction: ChatInputCommandInteraction) {
@@ -666,7 +667,7 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
       try {
         category = await createTrackedUsersCategory(interaction);
       } catch (error) {
-        console.error("[bot] failed to create tracked users category", error);
+        logger.error({ error }, "failed to create tracked users category");
         await interaction.reply({
           content: "I could not create the Tracked clans category. Check that I have Manage Channels permission.",
           flags: MessageFlags.Ephemeral,

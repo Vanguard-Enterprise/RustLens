@@ -1,6 +1,7 @@
 import type { Client, Guild, GuildMember, PartialGuildMember, User } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { logger } from "./logger.js";
 
 const shardID = process.env.SHARD_ID ?? "0";
 
@@ -51,11 +52,11 @@ async function markLeft(member: GuildMember | PartialGuildMember) {
     try {
       user = await member.client.users.fetch(member.id);
     } catch (error) {
-      console.warn("[bot] markLeft: could not resolve user for partial member", {
+      logger.warn({
         guildId: member.guild.id,
         discordId: member.id,
         error,
-      });
+      }, "markLeft: could not resolve user for partial member");
       return;
     }
   }
@@ -74,21 +75,21 @@ async function markLeft(member: GuildMember | PartialGuildMember) {
 export function registerUserGuildSync(client: Client) {
   client.on("guildMemberAdd", (member: GuildMember) => {
     markActive(member).catch((error) => {
-      console.error("[bot] failed to mark user guild active", {
+      logger.error({
         guildId: member.guild.id,
         discordId: member.id,
         error,
-      });
+      }, "failed to mark user guild active");
     });
   });
 
   client.on("guildMemberRemove", (member: GuildMember | PartialGuildMember) => {
     markLeft(member).catch((error) => {
-      console.error("[bot] failed to mark user guild inactive", {
+      logger.error({
         guildId: member.guild.id,
         discordId: member.id,
         error,
-      });
+      }, "failed to mark user guild inactive");
     });
   });
 }

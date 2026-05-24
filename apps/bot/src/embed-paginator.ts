@@ -9,6 +9,7 @@ import {
   type Message,
   type RepliableInteraction,
 } from "discord.js";
+import { logger } from "./logger.js";
 import { logDiscordCatch } from "./shared.js";
 
 export const PAGINATOR_PREV_ID = "embed-paginator:prev";
@@ -195,7 +196,7 @@ function attachPaginatorCollector(
         components: [buildPaginatorButtons(next, embeds.length)],
       });
     } catch (error) {
-      console.error("[bot] paginator button update failed", error);
+      logger.error({ error }, "paginator button update failed");
     }
   });
 

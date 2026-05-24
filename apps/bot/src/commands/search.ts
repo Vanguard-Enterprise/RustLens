@@ -1,3 +1,4 @@
+import { logger } from "../logger.js";
 import type {
   AutocompleteInteraction,
   ChatInputCommandInteraction,
@@ -112,7 +113,7 @@ function refreshTrackedServerAutocompleteCache() {
       trackedServerAutocompleteCache.expiresAt = Date.now() + TRACKED_SERVER_AUTOCOMPLETE_CACHE_TTL_MS;
     })
     .catch((error) => {
-      console.error("[bot] failed to refresh search autocomplete servers", error);
+      logger.error({ error }, "failed to refresh search autocomplete servers");
       if (trackedServerAutocompleteCache.items.length === 0) {
         trackedServerAutocompleteCache.expiresAt = now + 5_000;
       }
@@ -171,7 +172,7 @@ export async function ensureSearchCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /search command (global)");
+  logger.info("ensured /search command (global)");
 }
 
 export async function handleSearchAutocomplete(interaction: AutocompleteInteraction) {
@@ -252,7 +253,7 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
     );
     results = response.items;
   } catch (error) {
-    console.error("[bot] search backend call failed", error);
+    logger.error({ error }, "search backend call failed");
     await interaction.editReply({
       embeds: [buildSearchEmbed("Error", "Failed to search players. Please try again.")],
     });
@@ -331,7 +332,7 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
         components: buildProfileButtons(result.steamId),
       });
     } catch (error) {
-      console.error(`[bot] failed to post search result for steam ${result.steamId}`, error);
+      logger.error({ steamId: result.steamId, error }, "failed to post search result");
     }
   }
 

@@ -2,6 +2,7 @@ import type { APIEmbedField, ChatInputCommandInteraction, Client } from "discord
 import { ApplicationIntegrationType, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import { BackendClient, type GuildOnlineSummaryItem } from "../backend-client.js";
 import { loadConfig } from "../config.js";
+import { logger } from "../logger.js";
 import { replyPaginatedEmbeds } from "../embed-paginator.js";
 import { createEmbed, FOOTER_TEXT } from "../shared.js";
 
@@ -182,7 +183,7 @@ export async function ensureOnlineCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /online command (global)");
+  logger.info("ensured /online command (global)");
 }
 
 export async function handleOnlineChatInput(interaction: ChatInputCommandInteraction) {
@@ -205,7 +206,7 @@ export async function handleOnlineChatInput(interaction: ChatInputCommandInterac
     const response = await getBackend().listGuildOnlineSummary(getWorkerID(), interaction.guildId);
     items = response.items;
   } catch (error) {
-    console.error("[bot] /online backend call failed", error);
+    logger.error({ error }, "/online backend call failed");
     await interaction.editReply({ content: "Failed to fetch online summary." });
     return true;
   }

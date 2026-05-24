@@ -13,6 +13,7 @@ import {
 } from "../backend-client.js";
 import { loadConfig } from "../config.js";
 import { paginateSections, replyPaginatedEmbeds, type PaginatedSection } from "../embed-paginator.js";
+import { logger } from "../logger.js";
 import { getGuildMembers } from "../guild-member-cache.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { createEmbed } from "../shared.js";
@@ -446,7 +447,7 @@ export async function ensureCompareCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /compare command (global)");
+  logger.info("ensured /compare command (global)");
 }
 
 export async function handleCompareAutocomplete(interaction: AutocompleteInteraction) {

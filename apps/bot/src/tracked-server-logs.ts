@@ -3,6 +3,7 @@ import { EmbedBuilder } from "discord.js";
 import { BackendClient, type TrackedServerLogEvent } from "./backend-client.js";
 import { loadConfig } from "./config.js";
 import { fetchGuildSettings, resolveConfiguredGuildChannel } from "./guild-settings.js";
+import { logger } from "./logger.js";
 import { buildFooter } from "./shared.js";
 
 const POLL_INTERVAL_MS = 20_000;
@@ -39,7 +40,7 @@ export function startTrackedServerLogPoller(client: Client): NodeJS.Timeout {
     try {
       await pollGuilds(client);
     } catch (error) {
-      console.error("[bot] tracked-server-log poller failed", error);
+      logger.error({ error }, "tracked-server-log poller failed");
     } finally {
       running = false;
     }
@@ -56,7 +57,7 @@ async function pollGuilds(client: Client) {
     try {
       await processGuild(guild);
     } catch (error) {
-      console.error(`[bot] tracked-server-log processing failed for guild ${guild.id}`, error);
+      logger.error({ error, guildId: guild.id }, "tracked-server-log processing failed for guild");
     }
   }
 }
@@ -97,7 +98,7 @@ async function processGuild(guild: Guild) {
     try {
       await (channel as { send: (payload: { embeds: EmbedBuilder[] }) => Promise<unknown> }).send({ embeds: [embed] });
     } catch (error) {
-      console.error(`[bot] failed to post tracked-server-log embed for guild ${guild.id}`, error);
+      logger.error({ error, guildId: guild.id }, "failed to post tracked-server-log embed for guild");
       const key = snapshotKey(event);
       const previousState = previousSnapshot.get(key);
       if (previousState) {

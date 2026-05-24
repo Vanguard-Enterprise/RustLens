@@ -14,6 +14,7 @@ import {
 import { BackendClient, type SteamAccount, type SteamProfile } from "../backend-client.js";
 import { extractBmID } from "../bm-input.js";
 import { loadConfig } from "../config.js";
+import { logger } from "../logger.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "../embed-paginator.js";
 import { getGuildMembers } from "../guild-member-cache.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
@@ -657,7 +658,7 @@ export async function ensureViewCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /view command (global)");
+  logger.info("ensured /view command (global)");
 }
 
 export async function handleViewChatInput(interaction: ChatInputCommandInteraction) {

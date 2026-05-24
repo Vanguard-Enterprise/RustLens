@@ -9,6 +9,7 @@ import { EmbedBuilder, MessageFlags } from "discord.js";
 import { BackendClient } from "./backend-client.js";
 import { BAN_CATEGORIES, type BanCategory } from "./ban-categories.js";
 import { loadConfig } from "./config.js";
+import { logger } from "./logger.js";
 import { logDiscordError } from "./shared.js";
 
 const ALL_CATEGORIES: BanCategory[] = BAN_CATEGORIES.map((c) => c.value);
@@ -174,10 +175,10 @@ export async function enforceBanForAutocomplete(
   try {
     categories = await loadBannedCategoriesWithinInteractionBudget(interaction.user.id);
   } catch (error) {
-    console.error("[bot] ban lookup failed (autocomplete; failing closed)", {
+    logger.error({
       discordId: interaction.user.id,
       error,
-    });
+    }, "ban lookup failed (autocomplete; failing closed)");
     try {
       await interaction.respond([]);
     } catch (error) {
@@ -190,11 +191,11 @@ export async function enforceBanForAutocomplete(
   }
 
   if (categories === banLookupTimedOut) {
-    console.warn("[bot] ban lookup timed out before autocomplete acknowledgement", {
+    logger.warn({
       discordId: interaction.user.id,
       category,
       budgetMs: INTERACTION_BAN_LOOKUP_BUDGET_MS,
-    });
+    }, "ban lookup timed out before autocomplete acknowledgement");
     return false;
   }
 
@@ -224,20 +225,20 @@ export async function enforceBan(
   try {
     categories = await loadBannedCategoriesWithinInteractionBudget(interaction.user.id);
   } catch (error) {
-    console.error("[bot] ban lookup failed (failing closed)", {
+    logger.error({
       discordId: interaction.user.id,
       error,
-    });
+    }, "ban lookup failed (failing closed)");
     await replyBanUnavailableEphemeral(interaction);
     return true;
   }
 
   if (categories === banLookupTimedOut) {
-    console.warn("[bot] ban lookup timed out before interaction acknowledgement", {
+    logger.warn({
       discordId: interaction.user.id,
       category,
       budgetMs: INTERACTION_BAN_LOOKUP_BUDGET_MS,
-    });
+    }, "ban lookup timed out before interaction acknowledgement");
     return false;
   }
 
