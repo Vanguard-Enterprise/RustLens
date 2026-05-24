@@ -143,6 +143,12 @@ import {
   interactionFailureCounter,
   shardStateGauge,
 } from "./metrics.js";
+import { startObservability } from "./observability.js";
+
+// OTel SDK must start before metrics are recorded. Static imports above create
+// proxy instruments via @opentelemetry/api; once the SDK registers the real
+// MeterProvider the proxies delegate to it and counters start flowing.
+const stopObservability = await startObservability();
 
 function classifyError(err: unknown): string {
   const msg = String(err).toLowerCase();
@@ -767,6 +773,7 @@ async function shutdown() {
   // still in flight. Without a brief drain window, process.exit kills them
   // mid-send and the last interactions before SIGTERM lose analytics rows.
   await new Promise((resolve) => setTimeout(resolve, 500));
+  await stopObservability();
   process.exit(0);
 }
 
