@@ -29,6 +29,7 @@ const (
 	lowFrequencyPollBatchSize  = 1
 	totalPollBatchSize         = highFrequencyPollBatchSize + lowFrequencyPollBatchSize
 	battleMetricsPollTimeout   = 15 * time.Second
+	minPollerLockTTL           = 75 * time.Second
 	emptyPollsBeforeOffline    = 3
 )
 
@@ -89,7 +90,7 @@ func (p *Poller) runCycle(ctx context.Context) {
 		return
 	}
 
-	lockTTL := 45 * time.Second
+	lockTTL := minPollerLockTTL
 	if p.interval > lockTTL {
 		lockTTL = p.interval + 30*time.Second
 	}
