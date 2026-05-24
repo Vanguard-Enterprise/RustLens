@@ -87,6 +87,8 @@ export function middleware(request: NextRequest) {
 	return response;
 }
 
+export const runtime = "nodejs";
+
 export const config = {
 	matcher: [
 		// Skip Next internals, static assets, and the rewritten backend API.
