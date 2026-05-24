@@ -32,13 +32,10 @@ export async function startObservability(): Promise<() => Promise<void>> {
     diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
 
     // service.instance.id MUST be unique per process for Mimir to keep each
-    // pod's cumulative counters as separate series. Without it, all pods of
-    // the same service collapse into one series; when a pod restarts and its
-    // new counter starts at 0, Prometheus interprets the drop as a counter
-    // reset and adds the prior cumulative as a phantom increment to rate(),
-    // inflating reported rates by orders of magnitude. In K8s os.hostname()
-    // returns the pod name, which is unique per pod and stable for its life.
-    const serviceInstanceId = hostname() || `${process.env.OTEL_SERVICE_NAME ?? "rustlens-bot"}-${process.pid}`;
+    // pod's cumulative counters as separate series. Append the PID so the
+    // main process and forked shard workers each get a distinct ID within
+    // the same pod.
+    const serviceInstanceId = `${hostname() || (process.env.OTEL_SERVICE_NAME ?? "rustlens-bot")}-${process.pid}`;
 
     const resource = resourceFromAttributes({
         [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? "rustlens-bot",
