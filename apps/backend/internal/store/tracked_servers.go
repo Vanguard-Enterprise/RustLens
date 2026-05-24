@@ -495,6 +495,50 @@ func (p *PostgresStore) NextTrackedServerToPoll(ctx context.Context, highFrequen
 	return &item, nil
 }
 
+func (p *PostgresStore) ListTrackedServersToPoll(ctx context.Context, highFrequency bool, limit int) ([]TrackedServer, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+
+	rows, err := p.pool.Query(ctx, `
+		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, high_frequency, last_polled_at, last_poll_error
+		FROM tracked_servers
+		WHERE high_frequency = $1
+		ORDER BY last_polled_at NULLS FIRST, bm_id ASC
+		LIMIT $2
+	`, highFrequency, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]TrackedServer, 0, limit)
+	for rows.Next() {
+		var item TrackedServer
+		if err := rows.Scan(
+			&item.BmID,
+			&item.Name,
+			&item.IsVitality,
+			&item.IsAtlas,
+			&item.IsVital,
+			&item.IsModded,
+			&item.IsOfficial,
+			&item.IsBuild,
+			&item.HighFrequency,
+			&item.LastPolledAt,
+			&item.LastPollError,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 func (p *PostgresStore) RecordTrackedServerPollResult(ctx context.Context, bmID string, polledAt time.Time, pollError string) error {
 	_, err := p.pool.Exec(ctx, `
 		UPDATE tracked_servers

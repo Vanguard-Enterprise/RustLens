@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -16,17 +17,18 @@ import (
 )
 
 type Poller struct {
-	client             *Client
-	postgres           *store.PostgresStore
-	redis              *store.RedisStore
-	interval           time.Duration
-	lockID             string
-	highFrequencyPolls int
+	client   *Client
+	postgres *store.PostgresStore
+	redis    *store.RedisStore
+	interval time.Duration
+	lockID   string
 }
 
 const (
-	highFrequencyPollsBeforeLowFrequency = 3
-	emptyPollsBeforeOffline              = 3
+	highFrequencyPollBatchSize = 2
+	lowFrequencyPollBatchSize  = 1
+	battleMetricsPollTimeout   = 15 * time.Second
+	emptyPollsBeforeOffline    = 3
 )
 
 func NewPoller(client *Client, postgres *store.PostgresStore, redis *store.RedisStore, interval time.Duration) *Poller {
@@ -111,21 +113,36 @@ func (p *Poller) runCycle(ctx context.Context) {
 		}
 	}()
 
-	dbCtx, dbCancel := context.WithTimeout(ctx, 5*time.Second)
-	server, err := p.nextTrackedServerToPoll(dbCtx)
-	dbCancel()
+	servers, err := p.trackedServersToPoll(ctx)
 	if err != nil {
 		observability.Logger(ctx).ErrorContext(ctx, "failed to select next tracked server",
 			slog.Any("error", err))
 		return
 	}
-	if server == nil {
+	if len(servers) == 0 {
 		return
 	}
 
+	var wg sync.WaitGroup
+	wg.Add(len(servers))
+	for _, server := range servers {
+		server := server
+		go func() {
+			defer wg.Done()
+			p.pollServer(ctx, server)
+		}()
+	}
+	wg.Wait()
+}
+
+func (p *Poller) pollServer(ctx context.Context, server store.TrackedServer) {
 	pollStart := time.Now()
 	observedAt := pollStart.UTC()
-	players, pollErr := p.client.FetchServerPlayers(ctx, server.BmID)
+
+	requestCtx, requestCancel := context.WithTimeout(ctx, battleMetricsPollTimeout)
+	players, pollErr := p.client.FetchServerPlayers(requestCtx, server.BmID)
+	requestCancel()
+
 	if pollErr == nil {
 		inputs := make([]store.PlayerPresenceInput, 0, len(players))
 		for _, player := range players {
@@ -161,7 +178,7 @@ func (p *Poller) runCycle(ctx context.Context) {
 
 		if pollErr == nil && shouldSync {
 			syncCtx, syncCancel := context.WithTimeout(ctx, 30*time.Second)
-			err = p.postgres.SyncPlayerStates(syncCtx, server.BmID, inputs, observedAt)
+			err := p.postgres.SyncPlayerStates(syncCtx, server.BmID, inputs, observedAt)
 			syncCancel()
 			if err != nil {
 				pollErr = fmt.Errorf("sync player states: %w", err)
@@ -170,7 +187,7 @@ func (p *Poller) runCycle(ctx context.Context) {
 
 		if pollErr == nil && (len(inputs) > 0 || shouldSync) {
 			stateCtx, stateCancel := context.WithTimeout(ctx, 5*time.Second)
-			err = p.postgres.ResetTrackedServerEmptyPolls(stateCtx, server.BmID)
+			err := p.postgres.ResetTrackedServerEmptyPolls(stateCtx, server.BmID)
 			stateCancel()
 			if err != nil {
 				pollErr = fmt.Errorf("reset empty player polls: %w", err)
@@ -226,26 +243,23 @@ func reasonFor(err error) string {
 	}
 }
 
-func (p *Poller) nextTrackedServerToPoll(ctx context.Context) (*store.TrackedServer, error) {
-	targetHighFrequency := p.highFrequencyPolls < highFrequencyPollsBeforeLowFrequency
-	server, err := p.postgres.NextTrackedServerToPoll(ctx, targetHighFrequency)
+func (p *Poller) trackedServersToPoll(ctx context.Context) ([]store.TrackedServer, error) {
+	dbCtx, dbCancel := context.WithTimeout(ctx, 5*time.Second)
+	highFrequencyServers, err := p.postgres.ListTrackedServersToPoll(dbCtx, true, highFrequencyPollBatchSize)
+	dbCancel()
 	if err != nil {
 		return nil, err
 	}
-	if server == nil {
-		server, err = p.postgres.NextTrackedServerToPoll(ctx, !targetHighFrequency)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if server == nil {
-		return nil, nil
+
+	dbCtx, dbCancel = context.WithTimeout(ctx, 5*time.Second)
+	lowFrequencyServers, err := p.postgres.ListTrackedServersToPoll(dbCtx, false, lowFrequencyPollBatchSize)
+	dbCancel()
+	if err != nil {
+		return nil, err
 	}
 
-	if targetHighFrequency {
-		p.highFrequencyPolls++
-	} else {
-		p.highFrequencyPolls = 0
-	}
-	return server, nil
+	servers := make([]store.TrackedServer, 0, len(highFrequencyServers)+len(lowFrequencyServers))
+	servers = append(servers, highFrequencyServers...)
+	servers = append(servers, lowFrequencyServers...)
+	return servers, nil
 }
