@@ -27,6 +27,7 @@ type Poller struct {
 const (
 	highFrequencyPollBatchSize = 2
 	lowFrequencyPollBatchSize  = 1
+	totalPollBatchSize         = highFrequencyPollBatchSize + lowFrequencyPollBatchSize
 	battleMetricsPollTimeout   = 15 * time.Second
 	emptyPollsBeforeOffline    = 3
 )
@@ -122,6 +123,12 @@ func (p *Poller) runCycle(ctx context.Context) {
 	if len(servers) == 0 {
 		return
 	}
+
+	highFrequencyCount, lowFrequencyCount := countPollFrequencies(servers)
+	observability.Logger(ctx).InfoContext(ctx, "selected battlemetrics poll batch",
+		slog.Int("server_count", len(servers)),
+		slog.Int("high_frequency_count", highFrequencyCount),
+		slog.Int("low_frequency_count", lowFrequencyCount))
 
 	var wg sync.WaitGroup
 	wg.Add(len(servers))
@@ -245,21 +252,56 @@ func reasonFor(err error) string {
 
 func (p *Poller) trackedServersToPoll(ctx context.Context) ([]store.TrackedServer, error) {
 	dbCtx, dbCancel := context.WithTimeout(ctx, 5*time.Second)
-	highFrequencyServers, err := p.postgres.ListTrackedServersToPoll(dbCtx, true, highFrequencyPollBatchSize)
+	highFrequencyServers, err := p.postgres.ListTrackedServersToPoll(dbCtx, true, totalPollBatchSize)
 	dbCancel()
 	if err != nil {
 		return nil, err
 	}
 
 	dbCtx, dbCancel = context.WithTimeout(ctx, 5*time.Second)
-	lowFrequencyServers, err := p.postgres.ListTrackedServersToPoll(dbCtx, false, lowFrequencyPollBatchSize)
+	lowFrequencyServers, err := p.postgres.ListTrackedServersToPoll(dbCtx, false, totalPollBatchSize)
 	dbCancel()
 	if err != nil {
 		return nil, err
 	}
 
-	servers := make([]store.TrackedServer, 0, len(highFrequencyServers)+len(lowFrequencyServers))
-	servers = append(servers, highFrequencyServers...)
-	servers = append(servers, lowFrequencyServers...)
+	servers := make([]store.TrackedServer, 0, totalPollBatchSize)
+	highUsed := appendPollServers(&servers, highFrequencyServers, 0, highFrequencyPollBatchSize)
+	lowUsed := appendPollServers(&servers, lowFrequencyServers, 0, lowFrequencyPollBatchSize)
+	if remaining := totalPollBatchSize - len(servers); remaining > 0 {
+		highUsed += appendPollServers(&servers, highFrequencyServers, highUsed, remaining)
+	}
+	if remaining := totalPollBatchSize - len(servers); remaining > 0 {
+		appendPollServers(&servers, lowFrequencyServers, lowUsed, remaining)
+	}
 	return servers, nil
+}
+
+func appendPollServers(dst *[]store.TrackedServer, src []store.TrackedServer, start int, limit int) int {
+	if limit <= 0 || start >= len(src) {
+		return 0
+	}
+
+	added := 0
+	for _, server := range src[start:] {
+		if added >= limit {
+			break
+		}
+		*dst = append(*dst, server)
+		added++
+	}
+	return added
+}
+
+func countPollFrequencies(servers []store.TrackedServer) (int, int) {
+	highFrequencyCount := 0
+	lowFrequencyCount := 0
+	for _, server := range servers {
+		if server.HighFrequency {
+			highFrequencyCount++
+		} else {
+			lowFrequencyCount++
+		}
+	}
+	return highFrequencyCount, lowFrequencyCount
 }
