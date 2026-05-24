@@ -1,3 +1,4 @@
+import { logger } from "../logger.js";
 import type { ButtonInteraction, ChatInputCommandInteraction, Client, StringSelectMenuInteraction, User } from "discord.js";
 import { ActionRowBuilder, ApplicationIntegrationType, ButtonBuilder, ButtonStyle, EmbedBuilder, InteractionContextType, MessageFlags, SlashCommandBuilder, StringSelectMenuBuilder } from "discord.js";
 import {
@@ -80,7 +81,7 @@ export async function ensurePlayerCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /player command (global)");
+  logger.info("ensured /player command (global)");
 }
 
 export async function handlePlayerChatInput(interaction: ChatInputCommandInteraction) {
@@ -281,7 +282,7 @@ async function handlePlayerDiscordSelectInteraction(interaction: StringSelectMen
     const { embed, components } = await buildDiscordLinksEmbed(discordUser, callerIsAdmin);
     await interaction.editReply({ embeds: [embed], components });
   } catch (error) {
-    console.error("[bot] failed to load discord links from select", { discordId, error });
+    logger.error({ discordId, error }, "failed to load discord links from select");
     await interaction.editReply({ content: "Failed to look up that Discord user." });
   }
 
@@ -324,7 +325,7 @@ async function fetchPlayerProfile(steamId: string): Promise<PlayerProfileResult>
     if (isBmPrivateProfileError(error)) {
       return { kind: "private" };
     }
-    console.error(`[bot] /player getSteamProfile failed for ${steamId}:`, error);
+    logger.error({ steamId, error }, "/player getSteamProfile failed");
     return { kind: "error" };
   }
 }
@@ -414,7 +415,7 @@ async function lookupAccountByIdentifier(identifier: string): Promise<LookupResu
       if (status === 404) {
         return { kind: "not-found" };
       }
-      console.error("[bot] /player getSteamAccount failed", { steamId: identifier, error });
+      logger.error({ steamId: identifier, error }, "/player getSteamAccount failed");
       return { kind: "error" };
     }
   }
@@ -430,7 +431,7 @@ async function lookupAccountByIdentifier(identifier: string): Promise<LookupResu
         // No Steam linkage on file or returned by BM — fall back to BM-only.
         return { kind: "bm-only", bmId: bmID };
       }
-      console.error("[bot] /player getSteamAccountByBmID failed", { bmId: bmID, error });
+      logger.error({ bmId: bmID, error }, "/player getSteamAccountByBmID failed");
       return { kind: "error" };
     }
   }
@@ -454,7 +455,7 @@ async function fetchBmOnlyPlayerProfile(
     if (status === 404) {
       return { kind: "not-found" };
     }
-    console.error("[bot] /player getBmPlayerProfile failed", { bmId, error });
+    logger.error({ bmId, error }, "/player getBmPlayerProfile failed");
     return { kind: "error" };
   }
 }
@@ -476,7 +477,7 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       const analytics = await backend.getBmPlayerAnalytics(workerId, bmId);
       await interaction.editReply({ embeds: [buildAnalyticsEmbed(analytics)] });
     } catch (error) {
-      console.error("[bot] failed to load player analytics (bm)", error);
+      logger.error({ error }, "failed to load player analytics (bm)");
       await interaction.editReply({ content: "Failed to load analytics for this player." });
     }
 
@@ -499,7 +500,7 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       const analytics = await backend.getSteamAnalytics(workerId, steamId);
       await interaction.editReply({ embeds: [buildAnalyticsEmbed(analytics)] });
     } catch (error) {
-      console.error("[bot] failed to load player analytics", error);
+      logger.error({ error }, "failed to load player analytics");
       await interaction.editReply({ content: "Failed to load analytics for this player." });
     }
 
@@ -530,7 +531,7 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       const { embed, components } = await buildBmOnlyLinksEmbed(bmId, await isWebsiteAdmin(interaction.user.id), interaction.client);
       await interaction.editReply({ embeds: [embed], components });
     } catch (error) {
-      console.error("[bot] failed to load bm links", error);
+      logger.error({ error }, "failed to load bm links");
       await interaction.editReply({ content: "Failed to load links for this player." });
     }
 
@@ -558,7 +559,7 @@ export async function handlePlayerButtonInteraction(interaction: ButtonInteracti
       const { embed, components } = await buildSteamLinksEmbed(steamId, await isWebsiteAdmin(interaction.user.id), interaction.client);
       await interaction.editReply({ embeds: [embed], components });
     } catch (error) {
-      console.error("[bot] failed to load steam links", error);
+      logger.error({ error }, "failed to load steam links");
       await interaction.editReply({ content: "Failed to load links for this player." });
     }
 
@@ -593,7 +594,7 @@ function isUnknownInteractionError(error: unknown) {
 
 function logExpiredInteraction(kind: string, id: string, createdTimestamp: number) {
   const config = loadConfig();
-  console.warn("[bot] skipped expired interaction", {
+  logger.warn({
     kind,
     id,
     ageMs: Date.now() - createdTimestamp,
@@ -601,7 +602,7 @@ function logExpiredInteraction(kind: string, id: string, createdTimestamp: numbe
     shardId: Number(process.env.SHARD_ID ?? "0"),
     shardCount: Number(process.env.SHARD_COUNT ?? "1"),
     pid: process.pid,
-  });
+  }, "skipped expired interaction");
 }
 
 async function replyOrEditPlayerButtonError(interaction: ButtonInteraction, content: string) {
@@ -617,7 +618,7 @@ async function runPlatformSyncSafely(platform: "steam" | "discord", id: string):
   try {
     await backend.syncPlatformIdentity(workerId, platform, id);
   } catch (error) {
-    console.error("[bot] platformsync sync failed", { platform, id, error });
+    logger.error({ platform, id, error }, "platformsync sync failed");
   }
 }
 

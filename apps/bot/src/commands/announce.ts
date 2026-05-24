@@ -2,6 +2,7 @@ import type { ChatInputCommandInteraction, Client } from "discord.js";
 import { ApplicationIntegrationType, InteractionContextType, MessageFlags, SlashCommandBuilder } from "discord.js";
 import type { CommandUsageTarget } from "../backend-client.js";
 import { isGuildTooLargeForDms, replyDmLimitError } from "../dm-limit.js";
+import { logger } from "../logger.js";
 import { getGuildMembers } from "../guild-member-cache.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
 import { createEmbed, logDiscordError } from "../shared.js";
@@ -64,7 +65,7 @@ export async function ensureAnnounceCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /announce command (global)");
+  logger.info("ensured /announce command (global)");
 }
 
 export async function handleAnnounceChatInput(

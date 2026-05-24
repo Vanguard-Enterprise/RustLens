@@ -17,6 +17,7 @@ import {
 import { BackendClient } from "../backend-client.js";
 import { loadConfig } from "../config.js";
 import { hasGuildAdminAccess } from "../guild-settings.js";
+import { logger } from "../logger.js";
 import { createEmbed, logDiscordCatch, logDiscordError, replyEphemeral } from "../shared.js";
 
 export const CREATE_COMMAND_NAME = "create";
@@ -182,7 +183,7 @@ export async function ensureCreateCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /create command (global)");
+  logger.info("ensured /create command (global)");
 }
 
 async function handleCreateInvite(interaction: ChatInputCommandInteraction) {

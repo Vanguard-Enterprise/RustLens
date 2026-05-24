@@ -19,6 +19,7 @@ import { invalidateBanCache } from "../ban-check.js";
 import { BackendClient, type CommandUsageTarget, type OwnerProxy, type TrackedServer } from "../backend-client.js";
 import { CheckboxGroupBuilder, ModalV2Builder, RadioGroupBuilder, TextInputBuilder } from "../builders/index.js";
 import { loadConfig } from "../config.js";
+import { logger } from "../logger.js";
 import { PAGE_NEXT_EMOJI, PAGE_PREVIOUS_EMOJI } from "../embed-paginator.js";
 import {
   getOwnerGuildID,
@@ -434,14 +435,14 @@ async function deleteOwnerGuildCommand(client: Client, guildId: string, name: st
   const existingGlobal = globalCommands.find((command) => command.name === name);
   if (existingGlobal) {
     await client.application!.commands.delete(existingGlobal.id);
-    console.log(`[bot] removed legacy global /${name} command`);
+    logger.info({ name }, "removed legacy global command");
   }
 
   const commands = await client.application!.commands.fetch({ guildId });
   const existing = commands.find((command) => command.name === name);
   if (existing) {
     await client.application!.commands.delete(existing.id, guildId);
-    console.log(`[bot] removed legacy /${name} command from owner guild ${guildId}`);
+    logger.info({ name, guildId }, "removed legacy command from owner guild");
   }
 }
 
@@ -451,7 +452,7 @@ export async function ensureManageCommand(client: Client, shardID: number) {
   }
 
   if (!isOwnerCommandConfigured()) {
-    console.warn("[bot] skipping /manage command registration because BOT_OWNER_GUILD_ID or BOT_OWNER_DISCORD_IDS is missing");
+    logger.warn("skipping /manage command registration because BOT_OWNER_GUILD_ID or BOT_OWNER_DISCORD_IDS is missing");
     return;
   }
 
@@ -464,7 +465,7 @@ export async function ensureManageCommand(client: Client, shardID: number) {
     try {
       await deleteOwnerGuildCommand(client, guildId, legacyName);
     } catch (error) {
-      console.warn(`[bot] failed to remove legacy /${legacyName} command; continuing`, error);
+      logger.warn({ name: legacyName, error }, "failed to remove legacy command; continuing");
     }
   }
 
@@ -478,7 +479,7 @@ export async function ensureManageCommand(client: Client, shardID: number) {
     await client.application.commands.create(data, guildId);
   }
 
-  console.log(`[bot] ensured /manage command in owner guild ${guildId}`);
+  logger.info({ guildId }, "ensured /manage command in owner guild");
 }
 
 export async function handleManageAutocomplete(interaction: AutocompleteInteraction) {
@@ -525,7 +526,7 @@ export async function handleManageAutocomplete(interaction: AutocompleteInteract
       return true;
     }
   } catch (error) {
-    console.error("[bot] /manage autocomplete failed", error);
+    logger.error({ error }, "/manage autocomplete failed");
   }
 
   await interaction.respond([]);
@@ -621,7 +622,7 @@ async function handleManageProxy(interaction: ChatInputCommandInteraction, subco
       const { items } = await getBackend().listOwnerProxies(getWorkerID());
       await interaction.editReply({ embeds: [buildOwnerProxyListEmbed(items)] });
     } catch (error) {
-      console.error("[bot] /manage proxy list failed", error);
+      logger.error({ error }, "/manage proxy list failed");
       await interaction.editReply({ content: "Failed to load proxies." });
     }
     return;
@@ -638,7 +639,7 @@ async function handleManageProxy(interaction: ChatInputCommandInteraction, subco
       await getBackend().deleteOwnerProxy(getWorkerID(), proxyID);
       await interaction.editReply({ content: "Removed proxy." });
     } catch (error) {
-      console.error("[bot] /manage proxy remove failed", error);
+      logger.error({ error }, "/manage proxy remove failed");
       await interaction.editReply({ content: "Failed to remove proxy." });
     }
     return;
@@ -653,7 +654,7 @@ async function handleManageStats(interaction: ChatInputCommandInteraction) {
     const stats = await getBackend().ownerStats(getWorkerID());
     await interaction.editReply({ embeds: [buildOwnerStatsEmbed(stats)] });
   } catch (error) {
-    console.error("[bot] /manage stats failed", error);
+    logger.error({ error }, "/manage stats failed");
     await interaction.editReply({ content: "Failed to load bot statistics." });
   }
 }
@@ -670,7 +671,7 @@ async function handleManageBan(interaction: ChatInputCommandInteraction) {
     const response = await getBackend().getUserBan(getWorkerID(), targetUser.id);
     current = response.categories ?? [];
   } catch (error) {
-    console.error("[bot] /manage ban failed to load current bans", { targetId: targetUser.id, error });
+    logger.error({ targetId: targetUser.id, error }, "/manage ban failed to load current bans");
     await replyText(interaction, "RustLens could not load current restrictions for that user.");
     return;
   }
@@ -747,7 +748,7 @@ export async function handleManageButtonInteraction(interaction: ButtonInteracti
     const response = buildTrackedServerListResponse(items, page);
     await interaction.editReply({ embeds: [response.embed], components: response.components });
   } catch (error) {
-    console.error("[bot] /manage server list page failed", error);
+    logger.error({ error }, "/manage server list page failed");
     await interaction.followUp({
       content: "RustLens could not load the tracked server list.",
       flags: MessageFlags.Ephemeral,
@@ -856,7 +857,7 @@ async function handleProxyEditModalSubmit(interaction: ModalSubmitInteraction) {
     const proxy = await getBackend().updateOwnerProxy(getWorkerID(), proxyID, selected === "enabled");
     await interaction.editReply({ content: `Proxy \`${proxyChoiceLabel(proxy)}\` is now ${proxy.enabled ? "enabled" : "disabled"}.` });
   } catch (error) {
-    console.error("[bot] /manage proxy edit failed", error);
+    logger.error({ error }, "/manage proxy edit failed");
     await interaction.editReply({ content: "Failed to update proxy." });
   }
 }
@@ -883,7 +884,7 @@ async function handleBanModalSubmitInternal(interaction: ModalSubmitInteraction)
   try {
     await getBackend().setUserBan(getWorkerID(), targetID, selected, interaction.user.id);
   } catch (error) {
-    console.error("[bot] /manage ban save failed", { targetID, error });
+    logger.error({ targetID, error }, "/manage ban save failed");
     await replyEphemeralEmbed(
       interaction,
       buildBanEmbed("Restriction Save Failed", "RustLens could not save the restrictions for that user."),

@@ -1,3 +1,4 @@
+import { logger } from "../logger.js";
 import { randomUUID } from "node:crypto";
 import type {
   ButtonInteraction,
@@ -850,7 +851,7 @@ export async function ensureBindCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /bind command (global)");
+  logger.info("ensured /bind command (global)");
 }
 
 export async function handleBindChatInput(interaction: ChatInputCommandInteraction) {

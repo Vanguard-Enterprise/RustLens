@@ -33,6 +33,7 @@ import {
   type TrackGroupOnlineRow,
 } from "../backend-client.js";
 import { extractBmID } from "../bm-input.js";
+import { logger } from "../logger.js";
 import { CheckboxGroupBuilder, ModalV2Builder, TextInputBuilder } from "../builders/index.js";
 import { TextInputStyle } from "../builders/types.js";
 import { loadConfig } from "../config.js";
@@ -413,7 +414,7 @@ function buildRemoveStatusEmbed(removedCount: number) {
 
 function refreshTrackGroupInBackground(guild: Guild, guildId: string, groupId: number, context: string) {
   void refreshTrackGroupById(guild, guildId, groupId).catch((error) => {
-    console.error(`[bot] failed to refresh track group ${groupId} after ${context}`, error);
+    logger.error({ groupId, context, error }, "failed to refresh track group");
   });
 }
 
@@ -439,7 +440,7 @@ export async function ensureTrackCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /track command (global)");
+  logger.info("ensured /track command (global)");
 }
 
 export async function handleTrackAutocomplete(interaction: AutocompleteInteraction) {
@@ -828,7 +829,7 @@ async function handleTrackMemberChatInput(
     }));
     return { handled: true, targets: removeTargets };
   } catch (error) {
-    console.error(`[bot] failed to remove track group members for group ${group.id}`, error);
+    logger.error({ groupId: group.id, error }, "failed to remove track group members");
     await interaction.editReply({ embeds: [buildErrorEmbed("RustLens could not remove that player. Try again shortly.")] });
   }
   return true;
@@ -864,7 +865,7 @@ export async function handleTrackButtonInteraction(interaction: ButtonInteractio
     trackViewModes.set(groupId, mode);
     await interaction.deferUpdate();
     await refreshTrackGroupById(interaction.guild, interaction.guildId, groupId, mode).catch((error) => {
-      console.error(`[bot] failed to toggle track group ${groupId} view`, error);
+      logger.error({ groupId, error }, "failed to toggle track group view");
     });
     return true;
   }
@@ -1120,7 +1121,7 @@ export async function handleTrackModalSubmit(interaction: ModalSubmitInteraction
       identifiers,
     );
   } catch (error) {
-    console.error(`[bot] failed to remove track group members for group ${groupId}`, error);
+    logger.error({ groupId, error }, "failed to remove track group members");
     await interaction.editReply({
       embeds: [buildErrorEmbed("RustLens could not remove those members. Try again shortly.")],
     });
@@ -1338,7 +1339,7 @@ export function startTrackGroupPoller(client: Client): NodeJS.Timeout {
     try {
       await pollAllGroups(client);
     } catch (error) {
-      console.error("[bot] track group poller failed", error);
+      logger.error({ error }, "track group poller failed");
     } finally {
       running = false;
     }
@@ -1355,7 +1356,7 @@ async function pollAllGroups(client: Client) {
     try {
       await pollGuildGroups(guild);
     } catch (error) {
-      console.error(`[bot] track group poll failed for guild ${guild.id}`, error);
+      logger.error({ guildId: guild.id, error }, "track group poll failed for guild");
     }
   }
 }
@@ -1378,7 +1379,7 @@ async function pollGuildGroups(guild: Guild) {
     try {
       await refreshTrackGroup(guild, group, serverNameByBmId.get(group.serverBmId) ?? group.serverBmId);
     } catch (error) {
-      console.error(`[bot] failed to refresh track group ${group.id}`, error);
+      logger.error({ groupId: group.id, error }, "failed to refresh track group");
     }
   }
 }
@@ -1441,7 +1442,7 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
     const existing = await findExistingTrackMessage(textChannel, group, serverName);
     if (existing) {
       await existing.edit({ embeds, components }).catch((error) => {
-        console.error(`[bot] failed to edit existing track message ${group.id}`, error);
+        logger.error({ groupId: group.id, error }, "failed to edit existing track message");
       });
       await getBackend().updateTrackGroup(getWorkerID(), guild.id, group.id, {
         messageId: existing.id,
@@ -1471,7 +1472,7 @@ async function refreshTrackGroup(guild: Guild, group: TrackGroup, serverName: st
     message = sent;
   } else {
     await message.edit({ embeds, components }).catch((error) => {
-      console.error(`[bot] failed to edit track message ${group.id}`, error);
+      logger.error({ groupId: group.id, error }, "failed to edit track message");
     });
   }
 
@@ -1580,7 +1581,7 @@ async function claimTrackNotification(guildId: string, groupId: number, row: Tra
     });
     return response.claimed;
   } catch (error) {
-    console.error(`[bot] failed to claim track notification for group ${groupId} steam ${row.steamId}`, error);
+    logger.error({ groupId, steamId: row.steamId, error }, "failed to claim track notification");
     return false;
   }
 }
@@ -1662,7 +1663,7 @@ async function handleAnalyticsButton(
   try {
     analytics = await getBackend().getTrackGroupAnalytics(getWorkerID(), interaction.guildId!, groupId);
   } catch (error) {
-    console.error("[bot] failed to load track group analytics", error);
+    logger.error({ error }, "failed to load track group analytics");
     await interaction.editReply({
       embeds: [buildErrorEmbed("RustLens could not load analytics for this track group.")],
     });
@@ -1699,7 +1700,7 @@ async function handleAnalyticsButton(
       components: [],
     });
   } catch (error) {
-    console.error("[bot] failed to render track group analytics chart", error);
+    logger.error({ error }, "failed to render track group analytics chart");
     await interaction.editReply({
       embeds: [buildErrorEmbed("RustLens could not render the analytics chart.")],
     });
@@ -1726,7 +1727,7 @@ async function handleAnalyticsPage(
   try {
     analytics = await getBackend().getTrackGroupAnalytics(getWorkerID(), interaction.guildId!, groupId);
   } catch (error) {
-    console.error("[bot] failed to load track group analytics", error);
+    logger.error({ error }, "failed to load track group analytics");
     await interaction.editReply({
       embeds: [buildErrorEmbed("RustLens could not refresh analytics for this track group.")],
       components: [],

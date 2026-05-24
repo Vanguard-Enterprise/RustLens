@@ -13,6 +13,7 @@ import {
 } from "discord.js";
 import { BackendClient, type GuildTrackedServer, type TrackedServer } from "../backend-client.js";
 import { loadConfig } from "../config.js";
+import { logger } from "../logger.js";
 import { createEmbed, logDiscordError } from "../shared.js";
 
 export const SERVER_COMMAND_NAME = "server";
@@ -149,7 +150,7 @@ export async function ensureServerCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /server command (global)");
+  logger.info("ensured /server command (global)");
 }
 
 export async function handleServerAutocomplete(interaction: AutocompleteInteraction) {
@@ -240,7 +241,7 @@ export async function handleServerChatInput(interaction: ChatInputCommandInterac
         buildServerEmbed("Tracked Servers", buildGuildTrackedServerListDescription(items)),
       );
     } catch (error) {
-      console.error("[bot] /server list failed", error);
+      logger.error({ error }, "/server list failed");
       await replyError(interaction, "RustLens could not load the tracked server list.");
     }
     return true;

@@ -1,5 +1,6 @@
 import { hostname } from "node:os";
 import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
+import { logger } from "./logger.js";
 import { NodeSDK, logs as sdkLogs, metrics as sdkMetrics } from "@opentelemetry/sdk-node";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-grpc";
@@ -90,9 +91,9 @@ export async function startObservability(): Promise<() => Promise<void>> {
             Pyroscope.start();
             pyroscopeStarted = true;
         } catch (err) {
-            console.warn(
-                "[observability] pyroscope unavailable, continuing without profiling:",
-                err instanceof Error ? err.message : String(err),
+            logger.warn(
+                { error: err instanceof Error ? err.message : String(err) },
+                "pyroscope unavailable, continuing without profiling",
             );
         }
     }

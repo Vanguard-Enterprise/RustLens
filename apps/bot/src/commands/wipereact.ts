@@ -36,6 +36,7 @@ import {
   TextInputStyle,
 } from "../builders/index.js";
 import { loadConfig } from "../config.js";
+import { logger } from "../logger.js";
 import { isGuildTooLargeForDms, replyDmLimitError } from "../dm-limit.js";
 import { getGuildMembers } from "../guild-member-cache.js";
 import {
@@ -2124,7 +2125,7 @@ export async function ensureWipeReactCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /wipereact command (global)");
+  logger.info("ensured /wipereact command (global)");
 }
 
 export async function rehydratePersistedWipeReacts(client: Client) {
@@ -2132,7 +2133,7 @@ export async function rehydratePersistedWipeReacts(client: Client) {
   await Promise.all(
     guilds.map(async (guild) => {
       const records = await listActiveWipeReacts(guild.id).catch((error) => {
-        console.error("[bot] failed to load persisted wipe reacts", { guildId: guild.id, error });
+        logger.error({ guildId: guild.id, error }, "failed to load persisted wipe reacts");
         return null;
       });
       if (!records) {
@@ -3206,19 +3207,19 @@ export function startWipeReactScheduler(client: Client): NodeJS.Timeout {
             }
 
             await processSchedulePost(guild, response.item).catch((error) => {
-              console.error("[bot] schedule tick failed", {
+              logger.error({
                 guildId: guild.id,
                 postId: response.item?.id,
                 scheduleId: response.item?.scheduleId,
                 error,
-              });
+              }, "schedule tick failed");
             });
           }
         } catch (error) {
-          console.error("[bot] failed to poll scheduled wipe reacts for guild", {
+          logger.error({
             guildId: guild.id,
             error,
-          });
+          }, "failed to poll scheduled wipe reacts for guild");
         }
       }
     } finally {
@@ -3264,12 +3265,12 @@ export function startWipeReactScheduler(client: Client): NodeJS.Timeout {
         buildPersistedWipeReact(guild.id, message.channelId, message.id, state),
       );
     } catch (error) {
-      console.error("[bot] failed to persist scheduled wipe react", {
+      logger.error({
         guildId: guild.id,
         scheduleId: post.scheduleId,
         postId: post.id,
         error,
-      });
+      }, "failed to persist scheduled wipe react");
       await message.delete().catch(logDiscordCatch("delete failed scheduled wipe react message", undefined, {
         guildId: guild.id,
         channelId: message.channelId,
@@ -3289,36 +3290,36 @@ export function startWipeReactScheduler(client: Client): NodeJS.Timeout {
       message.id,
       message.channelId,
     ).catch((error) => {
-      console.error("[bot] failed to complete scheduled wipe react post", {
+      logger.error({
         guildId: guild.id,
         scheduleId: post.scheduleId,
         postId: post.id,
         error,
-      });
+      }, "failed to complete scheduled wipe react post");
     });
 
-    console.log("[bot] auto-posted scheduled wipe react", {
+    logger.info({
       guildId: guild.id,
       scheduleId: post.scheduleId,
       postId: post.id,
       wipeUnix: post.wipeUnix,
       messageId: message.id,
-    });
+    }, "auto-posted scheduled wipe react");
   }
 
   const timer = setInterval(() => {
     tick().catch((error) => {
-      console.error("[bot] scheduler tick error", error);
+      logger.error({ error }, "scheduler tick error");
     });
   }, SCHEDULER_INTERVAL_MS);
 
   setTimeout(() => {
     tick().catch((error) => {
-      console.error("[bot] initial scheduler tick error", error);
+      logger.error({ error }, "initial scheduler tick error");
     });
   }, 5000);
 
-  console.log("[bot] wipe react scheduler started");
+  logger.info("wipe react scheduler started");
   return timer;
 }
 

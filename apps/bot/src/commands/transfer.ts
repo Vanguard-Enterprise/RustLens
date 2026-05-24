@@ -20,6 +20,7 @@ import {
 } from "discord.js";
 import { BackendClient } from "../backend-client.js";
 import { loadConfig } from "../config.js";
+import { logger } from "../logger.js";
 import { createEmbed, logDiscordCatch } from "../shared.js";
 
 export const TRANSFER_COMMAND_NAME = "transfer";
@@ -123,7 +124,7 @@ export async function ensureTransferCommand(client: Client, shardID: number) {
     await client.application.commands.create(data);
   }
 
-  console.log("[bot] ensured /transfer command (global)");
+  logger.info("ensured /transfer command (global)");
 }
 
 export async function handleTransferChatInput(interaction: ChatInputCommandInteraction) {
