@@ -126,7 +126,7 @@ export function DashboardAppSidebar({
 }: DashboardAppSidebarProps) {
 	const pathname = usePathname() ?? "";
 	const navMain = buildNavMain(area);
-	const homeHref = area === "admin" ? "/admin" : "/dashboard";
+	const homeHref = "/";
 
 	const [settingsOpen, setSettingsOpen] = React.useState(false);
 

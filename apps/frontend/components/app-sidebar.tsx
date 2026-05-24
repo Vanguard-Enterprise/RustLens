@@ -39,7 +39,7 @@ export function AppSidebar({ pathname, permissions = [], variant }: AppSidebarPr
 					asChild
 					className="gap-2 p-0! group-data-[collapsible=icon]:p-0!"
 				>
-					<Link href={variant === "admin" ? "/admin" : "/dashboard"}>
+					<Link href="/">
 						<Image
 							alt="RustLens"
 							className="size-8 max-w-none shrink-0"
