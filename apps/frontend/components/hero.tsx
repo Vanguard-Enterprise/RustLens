@@ -1,7 +1,12 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ArrowRightIcon, UserPlusIcon } from "lucide-react";
+import Link from "next/link";
 import { FaDiscord } from "react-icons/fa6";
+
+const installBotUrl = process.env.DISCORD_CLIENT_ID
+	? `https://discord.com/oauth2/authorize?client_id=${process.env.DISCORD_CLIENT_ID}&permissions=8&scope=bot+applications.commands`
+	: undefined;
 
 export function HeroSection() {
 	return (
@@ -44,13 +49,19 @@ export function HeroSection() {
 				</p>
 
 				<div className="fade-in slide-in-from-bottom-10 flex w-fit animate-in items-center justify-center gap-3 fill-mode-backwards pt-2 delay-300 duration-500 ease-out">
-					<Button variant="outline">
-						<UserPlusIcon data-icon="inline-start" />
-						Install Bot
-					</Button>
-					<Button>
-						Get started{" "}
-						<ArrowRightIcon data-icon="inline-end" />
+					{installBotUrl && (
+						<Button variant="outline" asChild>
+							<a href={installBotUrl} target="_blank" rel="noopener noreferrer">
+								<UserPlusIcon data-icon="inline-start" />
+								Install Bot
+							</a>
+						</Button>
+					)}
+					<Button asChild>
+						<Link href="/login">
+							Get started{" "}
+							<ArrowRightIcon data-icon="inline-end" />
+						</Link>
 					</Button>
 				</div>
 			</div>

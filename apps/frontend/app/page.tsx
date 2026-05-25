@@ -3,7 +3,7 @@ import { FeatureSection } from "@/components/feature-section";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { HeroSection } from "@/components/hero";
-import { LogosSection } from "@/components/logos-section";
+import { TestimonialsSection } from "@/components/testimonials-section";
 import { MouseGridBackground } from "@/components/mouse-grid-background";
 import { PricingSection } from "@/components/pricing-section";
 import { getCsrfToken } from "@/lib/csrf";
@@ -29,7 +29,7 @@ export default async function Home() {
 				<Header csrfToken={csrfToken} user={user} />
 				<main className="flex-1">
 					<HeroSection />
-					<LogosSection />
+					<TestimonialsSection />
 					<FeatureSection />
 					<PricingSection />
 					<FaqsSection />
