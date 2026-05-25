@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppSidebar } from "../_components/app-sidebar";
 import { UserInstallsTable } from "./_components/user-installs-table";
 import { SiteHeader } from "@/components/site-header";
@@ -19,6 +20,8 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
 function clampPageSize(value: number): number {
   return PAGE_SIZE_OPTIONS.includes(value) ? value : DEFAULT_PAGE_SIZE;
 }
+
+export const metadata: Metadata = { title: "User Installs" };
 
 export default async function AdminUserInstallsPage({
   searchParams,

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react"
 
 import { AppSidebar } from "./_components/app-sidebar"
@@ -9,6 +10,8 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { getCsrfToken } from "@/lib/csrf"
 import { getCurrentUserSafe } from "@/lib/rustlens-api"
 import { requireSession } from "@/lib/session"
+
+export const metadata: Metadata = { title: "Dashboard" };
 
 type DashboardPageProps = {
   searchParams: Promise<{ notice?: string | string[]; error?: string | string[] }>

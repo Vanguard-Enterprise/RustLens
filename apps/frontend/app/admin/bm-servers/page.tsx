@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppSidebar } from "../_components/app-sidebar";
 import { BmServersPage } from "./_components/bm-servers-page";
 import { SiteHeader } from "@/components/site-header";
@@ -41,6 +42,8 @@ function parseBoolParam(v: string | undefined): boolean | undefined {
 	if (v === "false") return false;
 	return undefined;
 }
+
+export const metadata: Metadata = { title: "BattleMetrics Servers" };
 
 export default async function AdminBmServersRoute({
 	searchParams,

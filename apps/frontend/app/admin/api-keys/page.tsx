@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppSidebar } from "../_components/app-sidebar";
 import { ApiKeysPage } from "./_components/api-keys-page";
 import { SiteHeader } from "@/components/site-header";
@@ -9,6 +10,8 @@ import {
 	getCurrentUserSafe,
 } from "@/lib/rustlens-api";
 import { requirePermission } from "@/lib/session";
+
+export const metadata: Metadata = { title: "API Keys" };
 
 function pickStr(v: string | string[] | undefined): string | undefined {
 	if (Array.isArray(v)) return v[0];
