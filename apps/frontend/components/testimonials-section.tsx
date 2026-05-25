@@ -20,10 +20,10 @@ type Testimonial = {
 const testimonials: Testimonial[] = [
 	{
 		quote:
-			"placeholder",
-		name: "Fillee",
-		role: "Founder, Cleanup Crew",
-		avatar: "https://cdn.discordapp.com/avatars/365258431801851905/6d48bfe59b7c5d1741cb5b6b77729a74.webp?size=1024",
+			"The /wipereact schedule command was a huge time saver. Instead of manually setting up a wipe react before every wipe, a single command handled everything automatically.",
+		name: "Eonstriker",
+		role: "Support & Early Adopter, RustLens",
+		avatar: "https://cdn.discordapp.com/avatars/701201435030716477/c736c6c175ec6a8714140fedb1b8c0e6.webp?size=1024",
 	},
 	{
 		quote:
