@@ -17,7 +17,7 @@ export function HeroSection() {
 						"group flex w-fit items-center gap-3 rounded-sm border bg-card p-1 shadow-xs",
 						"fade-in slide-in-from-bottom-10 animate-in fill-mode-backwards transition-all delay-500 duration-500 ease-out"
 					)}
-					href="#link"
+					href="https://rustlens.com/discord"
 				>
 					<FaDiscord aria-hidden="true" className="ml-1 size-4 text-[#5865F2]" />
 
