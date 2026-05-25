@@ -27,7 +27,10 @@ const headingFont = Fraunces({
 export const metadataBase = new URL("https://rustlens.com");
 
 export const metadata: Metadata = {
-	title: "RustLens",
+	title: {
+		default: "RustLens - Discord Bot for Rust Community Management",
+		template: "%s | RustLens",
+	},
 	description:
 		"Discord-first operating layer for Rust communities managing tracked servers, BattleMetrics visibility, and wipe coordination.",
 	themeColor: "#de811d",
