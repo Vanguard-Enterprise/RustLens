@@ -20,10 +20,10 @@ type Testimonial = {
 const testimonials: Testimonial[] = [
 	{
 		quote:
-			"We used to spend hours before every wipe coordinating in spreadsheets. RustLens replaced all of that with a single command.",
-		name: "Jake",
-		role: "Leader, Vortex Clan",
-		avatar: "",
+			"placeholder",
+		name: "Fillee",
+		role: "Founder, Cleanup Crew",
+		avatar: "https://cdn.discordapp.com/avatars/365258431801851905/6d48bfe59b7c5d1741cb5b6b77729a74.webp?size=1024",
 	},
 	{
 		quote:
@@ -111,6 +111,16 @@ export function TestimonialsSection() {
 				<CarouselPrevious />
 				<CarouselNext />
 			</Carousel>
+
+			<p className="text-center text-muted-foreground/60 text-xs">
+				Want to be featured?{" "}
+				<a
+					href="https://rustlens.com/discord"
+					className="underline hover:text-muted-foreground"
+				>
+					Open a ticket in our Discord
+				</a>
+			</p>
 		</section>
 	);
 }
