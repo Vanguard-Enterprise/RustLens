@@ -14,9 +14,7 @@ export function HeroSection() {
 					)}
 					href="#link"
 				>
-					<div className="rounded-xs border bg-card px-1.5 py-0.5 shadow-sm">
-						<FaDiscord aria-hidden="true" className="size-4 text-[#5865F2]" />
-					</div>
+					<FaDiscord aria-hidden="true" className="ml-1 size-4 text-[#5865F2]" />
 
 					<span className="text-xs">Join Community</span>
 					<span className="block h-5 border-l" />
