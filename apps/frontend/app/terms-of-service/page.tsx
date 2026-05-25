@@ -1,10 +1,10 @@
 import { ScaleIcon, ShieldCheckIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/legal-page";
-import { legalOperatorName, termsOfService } from "@/lib/legal-content";
+import { termsOfService } from "@/lib/legal-content";
 
 export const metadata: Metadata = {
-	title: `${termsOfService.title} · ${legalOperatorName}`,
+	title: termsOfService.title,
 	description: termsOfService.description,
 };
 

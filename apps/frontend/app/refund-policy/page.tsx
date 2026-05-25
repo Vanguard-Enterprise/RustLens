@@ -1,10 +1,10 @@
 import { RotateCcwIcon, ScaleIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/legal-page";
-import { legalOperatorName, refundPolicy } from "@/lib/legal-content";
+import { refundPolicy } from "@/lib/legal-content";
 
 export const metadata: Metadata = {
-	title: `${refundPolicy.title} · ${legalOperatorName}`,
+	title: refundPolicy.title,
 	description: refundPolicy.description,
 };
 
