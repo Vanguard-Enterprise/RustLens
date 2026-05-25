@@ -28,6 +28,7 @@ export const metadata: Metadata = {
 	title: "RustLens",
 	description:
 		"Discord-first operating layer for Rust communities managing tracked servers, BattleMetrics visibility, and wipe coordination.",
+	themeColor: "#de811d",
 };
 
 export default async function RootLayout({

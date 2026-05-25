@@ -40,8 +40,8 @@ export function HeroSection() {
 						"fade-in slide-in-from-bottom-10 animate-in fill-mode-backwards delay-200 duration-500 ease-out"
 					)}
 				>
-					RustLens helps your team track player identity, activity, &
-					coordinate wipes reliably.
+					RustLens helps your team track player identity, activity
+					and coordinate wipes reliably.
 				</p>
 
 				<div className="fade-in slide-in-from-bottom-10 flex w-fit animate-in items-center justify-center gap-3 fill-mode-backwards pt-2 delay-300 duration-500 ease-out">
