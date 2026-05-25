@@ -4,10 +4,6 @@ import { ArrowRightIcon, UserPlusIcon } from "lucide-react";
 import Link from "next/link";
 import { FaDiscord } from "react-icons/fa6";
 
-const installBotUrl = process.env.DISCORD_CLIENT_ID
-	? `https://discord.com/oauth2/authorize?client_id=${process.env.DISCORD_CLIENT_ID}&permissions=8&scope=bot+applications.commands`
-	: undefined;
-
 export function HeroSection() {
 	return (
 		<section className="mx-auto w-full max-w-5xl overflow-hidden pt-16">
@@ -49,14 +45,12 @@ export function HeroSection() {
 				</p>
 
 				<div className="fade-in slide-in-from-bottom-10 flex w-fit animate-in items-center justify-center gap-3 fill-mode-backwards pt-2 delay-300 duration-500 ease-out">
-					{installBotUrl && (
-						<Button variant="outline" asChild>
-							<a href={installBotUrl} target="_blank" rel="noopener noreferrer">
-								<UserPlusIcon data-icon="inline-start" />
-								Install Bot
-							</a>
-						</Button>
-					)}
+					<Button variant="outline" asChild>
+						<Link href="/install-bot">
+							<UserPlusIcon data-icon="inline-start" />
+							Install Bot
+						</Link>
+					</Button>
 					<Button asChild>
 						<Link href="/login">
 							Get started{" "}

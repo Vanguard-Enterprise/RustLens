@@ -47,10 +47,7 @@ export default async function Page({ searchParams }: DashboardPageProps) {
     isInternalAdmin,
   }
 
-  const discordClientId = process.env.DISCORD_CLIENT_ID
-  const installBotUrl = discordClientId
-    ? `https://discord.com/oauth2/authorize?client_id=${discordClientId}&permissions=8&scope=bot+applications.commands`
-    : undefined
+  const installBotUrl = "/install-bot"
 
   return (
     <>
