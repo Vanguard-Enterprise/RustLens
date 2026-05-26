@@ -116,6 +116,7 @@ export type AdminUsersQuery = {
 	discord?: "any" | "linked" | "unlinked";
 	steam?: "any" | "linked" | "unlinked";
 	userApp?: "any" | "installed" | "not_installed";
+	entitlement?: string;
 	sort?: string;
 	page?: number;
 	pageSize?: number;
@@ -482,17 +483,17 @@ export async function getAdministrators(params: AdminUsersQuery = {}): Promise<A
 export async function getAdminUsers(params: AdminUsersQuery = {}): Promise<AdminUsersPage> {
 	const sp = new URLSearchParams();
 	if (params.q) sp.set("q", params.q);
+	for (const r of params.role ?? []) sp.append("role", r);
 	if (params.status) sp.set("status", params.status);
 	if (params.discord) sp.set("discord", params.discord);
 	if (params.steam) sp.set("steam", params.steam);
 	if (params.userApp && params.userApp !== "any") sp.set("userApp", params.userApp);
+	if (params.entitlement) sp.set("entitlement", params.entitlement);
 	if (params.sort) sp.set("sort", params.sort);
 	if (params.page) sp.set("page", String(params.page));
 	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
 	if (params.joinedSince) sp.set("joinedSince", params.joinedSince);
 	if (params.joinedBefore) sp.set("joinedBefore", params.joinedBefore);
-	// Backend ignores `role` for /admin/users — non-admin users have no admin
-	// roles by definition. Drop it from the querystring entirely.
 	const qs = sp.toString();
 	return backendFetch<AdminUsersPage>(
 		`/api/app/admin/users${qs ? `?${qs}` : ""}`,

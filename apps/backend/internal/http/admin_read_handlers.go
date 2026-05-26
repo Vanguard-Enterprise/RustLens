@@ -269,17 +269,14 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 
 // ListAdminUsers: GET /api/app/admin/users
 //
-// Inverse of ListAdministrators — returns app_users rows that hold zero admin
-// roles (i.e. no role with any permission grant). Query params mirror
-// ListAdministrators exactly except that the `role` param is ignored: non-admin
-// users have no admin roles by definition, so role-key filtering is meaningless.
+// By default returns app_users rows that hold zero admin roles (members only).
+// When a `role` filter is supplied, the members-only restriction is lifted so
+// users holding those specific admin roles are returned instead. Also supports
+// `entitlement=<key>` to filter by active entitlements (e.g. "pro").
 func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pool := h.postgres.Pool()
 	q := r.URL.Query()
-	// `role` is meaningless here — these users hold no admin roles. Drop it so
-	// buildUsersQuery does not attach a contradicting EXISTS clause.
-	q.Del("role")
 
 	page := 1
 	pageSize := 50
@@ -302,11 +299,15 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Append the members-only restriction.
-	if whereSQL == "" {
-		whereSQL = "WHERE " + membersOnlyClause
-	} else {
-		whereSQL = whereSQL + " AND " + membersOnlyClause
+	// When no explicit role filter is provided, restrict to non-admin users
+	// (the original intent of this endpoint). With a role filter the caller
+	// intentionally wants users holding specific admin roles.
+	if len(q["role"]) == 0 {
+		if whereSQL == "" {
+			whereSQL = "WHERE " + membersOnlyClause
+		} else {
+			whereSQL = whereSQL + " AND " + membersOnlyClause
+		}
 	}
 
 	var total int
@@ -344,7 +345,12 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(u.discord_avatar, ''),
 		       COALESCE((SELECT COUNT(*) FROM user_guilds g WHERE g.discord_id = u.discord_id AND g.left_at IS NULL), 0),
 		       0 AS steam_count,
-		       ARRAY[]::text[] AS admin_role_keys,
+		       COALESCE((
+		           SELECT array_agg(r.key ORDER BY r.key)
+		           FROM admin_user_roles aur
+		           JOIN admin_roles r ON r.id = aur.role_id
+		           WHERE aur.user_id = u.id
+		       ), ARRAY[]::text[]) AS admin_role_keys,
 		       COALESCE((
 		           SELECT array_agg(ue.key ORDER BY ue.key)
 		           FROM user_entitlements ue

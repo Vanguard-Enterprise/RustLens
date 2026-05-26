@@ -124,6 +124,19 @@ func buildUsersQuery(q url.Values) (string, []any, string, error) {
 		return "", nil, "", errors.New("invalid userApp")
 	}
 
+	// Entitlement filter. Single value; matches active (non-expired) rows in
+	// user_entitlements keyed on this exact key (e.g. "pro").
+	if e := strings.TrimSpace(q.Get("entitlement")); e != "" {
+		args = append(args, e)
+		p := fmt.Sprintf("$%d", len(args))
+		where = append(where, fmt.Sprintf(`EXISTS (
+			SELECT 1 FROM user_entitlements ue
+			WHERE ue.user_id = u.id
+			  AND ue.key = %s
+			  AND (ue.expires_at IS NULL OR ue.expires_at > NOW())
+		)`, p))
+	}
+
 	orderBy := orderByClause(q)
 	if orderBy == "" {
 		return "", nil, "", errors.New("invalid sort")

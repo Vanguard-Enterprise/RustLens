@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getCsrfToken } from "@/lib/csrf";
 import {
+  getAdminRoles,
   getAdminUsers,
   getCurrentUserSafe,
   type AdminUsersQuery,
@@ -87,11 +88,23 @@ export default async function AdminUsersRoute({
       ? (userAppRaw as "installed" | "not_installed")
       : null;
 
-  const [csrfToken, currentUser, members] = await Promise.all([
+  const roleRaw = sp.role;
+  const role: string[] = Array.isArray(roleRaw)
+    ? roleRaw
+    : typeof roleRaw === "string" && roleRaw !== ""
+      ? [roleRaw]
+      : [];
+
+  const entitlementRaw = Array.isArray(sp.entitlement) ? sp.entitlement[0] : sp.entitlement;
+  const entitlement: string | null = entitlementRaw || null;
+
+  const [csrfToken, currentUser, allRoles, members] = await Promise.all([
     getCsrfToken(),
     getCurrentUserSafe(),
+    getAdminRoles(),
     getAdminUsers({
       q: q || undefined,
+      role: role.length > 0 ? role : undefined,
       status,
       page,
       pageSize,
@@ -99,6 +112,7 @@ export default async function AdminUsersRoute({
       joinedBefore: joinedBefore ?? undefined,
       sort: sort ?? undefined,
       userApp: userApp ?? undefined,
+      entitlement: entitlement ?? undefined,
     }),
   ]);
 
@@ -144,6 +158,9 @@ export default async function AdminUsersRoute({
                 initialJoinedBefore={joinedBefore}
                 initialSort={sort}
                 initialUserApp={userApp}
+                initialRoles={role}
+                initialEntitlement={entitlement}
+                roles={allRoles}
                 pageSizeOptions={PAGE_SIZE_OPTIONS}
                 data={members}
                 canSuspend={(session.permissions ?? []).includes("users.suspend")}
