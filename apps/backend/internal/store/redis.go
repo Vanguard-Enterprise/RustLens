@@ -190,20 +190,35 @@ func (r *RedisStore) ActiveWorkers(ctx context.Context) ([]string, error) {
 }
 
 func (r *RedisStore) SetLeases(ctx context.Context, workerID string, shardIDs []int) error {
-	if err := r.RemoveLeasesByWorker(ctx, workerID); err != nil {
-		return err
-	}
+	// Atomic swap: remove old leases and write new ones in a single Lua script
+	// so no other client can observe the intermediate "shards unowned" state.
+	const swapScript = `
+local key    = KEYS[1]
+local worker = ARGV[1]
+local count  = tonumber(ARGV[2])
 
-	if len(shardIDs) == 0 {
-		return nil
-	}
+-- Remove every entry currently owned by this worker.
+local all = redis.call("HGETALL", key)
+for i = 1, #all, 2 do
+	if all[i+1] == worker then
+		redis.call("HDEL", key, all[i])
+	end
+end
 
-	pairs := make([]any, 0, len(shardIDs)*2)
+-- Write the new assignments.
+for i = 0, count - 1 do
+	redis.call("HSET", key, ARGV[3 + i], worker)
+end
+return 0
+`
+
+	args := make([]any, 0, 2+len(shardIDs))
+	args = append(args, workerID, len(shardIDs))
 	for _, shardID := range shardIDs {
-		pairs = append(pairs, strconv.Itoa(shardID), workerID)
+		args = append(args, strconv.Itoa(shardID))
 	}
 
-	return r.client.HSet(ctx, leaseMapKey, pairs...).Err()
+	return r.client.Eval(ctx, swapScript, []string{leaseMapKey}, args...).Err()
 }
 
 func (r *RedisStore) RemoveLeasesByWorker(ctx context.Context, workerID string) error {
