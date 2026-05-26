@@ -63,6 +63,7 @@ import { toast } from "sonner";
 
 import { userAvatarUrl } from "@/lib/discord-cdn";
 import type {
+  AdminRoleItem,
   AdminUserItem,
   AdminUsersPage,
   AdminUsersQuery,
@@ -94,6 +95,9 @@ type MembersTableProps = {
   initialJoinedBefore?: string | null;
   initialSort?: string | null;
   initialUserApp?: UserAppFilter | null;
+  initialRoles?: string[];
+  initialEntitlement?: string | null;
+  roles: AdminRoleItem[];
   pageSizeOptions: number[];
   data: AdminUsersPage;
   canSuspend: boolean;
@@ -280,6 +284,9 @@ export function MembersTable({
   initialJoinedBefore = null,
   initialSort = null,
   initialUserApp = null,
+  initialRoles = [],
+  initialEntitlement = null,
+  roles,
   pageSizeOptions,
   data,
   canSuspend,
@@ -379,11 +386,17 @@ export function MembersTable({
   const canNext = data.page < totalPages;
 
   const pushParams = React.useCallback(
-    (updates: Record<string, string | null>) => {
+    (updates: Record<string, string | string[] | null>) => {
       const next = new URLSearchParams(searchParams?.toString() ?? "");
       for (const [k, v] of Object.entries(updates)) {
-        if (v === null || v === "") next.delete(k);
-        else next.set(k, v);
+        if (v === null || v === "") {
+          next.delete(k);
+        } else if (Array.isArray(v)) {
+          next.delete(k);
+          for (const item of v) next.append(k, item);
+        } else {
+          next.set(k, v);
+        }
       }
       const qs = next.toString();
       router.push(qs ? `?${qs}` : "?");
@@ -406,6 +419,27 @@ export function MembersTable({
     pushParams({ status: s === "any" ? null : s, page: null });
   const setUserApp = (value: UserAppFilter | "any") =>
     pushParams({ userApp: value === "any" ? null : value, page: null });
+
+  const [selectedRoles, setSelectedRoles] = React.useState<Set<string>>(
+    () => new Set(initialRoles),
+  );
+  const roleKey = initialRoles.slice().sort().join(",");
+  const [prevRoleKey, setPrevRoleKey] = React.useState(roleKey);
+  if (prevRoleKey !== roleKey) {
+    setPrevRoleKey(roleKey);
+    setSelectedRoles(new Set(initialRoles));
+  }
+  const toggleRole = (key: string) => {
+    const next = new Set(selectedRoles);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setSelectedRoles(next);
+    pushParams({ role: Array.from(next), page: null });
+  };
+
+  const setEntitlement = (value: string | null) =>
+    pushParams({ entitlement: value, page: null });
+
   const sortState = parseSort(initialSort);
   const cycleSort = (field: SortField) => {
     let next: string | null;
@@ -445,7 +479,9 @@ export function MembersTable({
   const activeFilterCount =
     (initialStatus !== "any" ? 1 : 0) +
     (hasJoinedRange ? 1 : 0) +
-    (initialUserApp ? 1 : 0);
+    (initialUserApp ? 1 : 0) +
+    selectedRoles.size +
+    (initialEntitlement ? 1 : 0);
   const hasActiveFilters = activeFilterCount > 0;
 
   const joinedRangeLabel = hasJoinedRange
@@ -496,6 +532,63 @@ export function MembersTable({
                         {s}
                       </Button>
                     ))}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium uppercase text-muted-foreground">
+                      Roles
+                    </span>
+                    {selectedRoles.size > 0 ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto px-1 py-0 text-xs"
+                        onClick={() => {
+                          setSelectedRoles(new Set());
+                          pushParams({ role: [], page: null });
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {roles.length === 0 ? (
+                      <span className="text-xs text-muted-foreground">No roles available.</span>
+                    ) : (
+                      roles.map((r) => (
+                        <Button
+                          key={r.key}
+                          variant={selectedRoles.has(r.key) ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => toggleRole(r.key)}
+                        >
+                          {r.name}
+                        </Button>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium uppercase text-muted-foreground">
+                    Plan
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    <Button
+                      variant={initialEntitlement == null ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setEntitlement(null)}
+                    >
+                      Any
+                    </Button>
+                    <Button
+                      variant={initialEntitlement === "pro" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setEntitlement("pro")}
+                    >
+                      PRO
+                    </Button>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -565,14 +658,18 @@ export function MembersTable({
               className="px-2"
               aria-label="Clear filters"
               title="Clear filters"
-              onClick={() =>
+              onClick={() => {
+                setSelectedRoles(new Set());
                 pushParams({
                   status: null,
                   joinedSince: null,
                   joinedBefore: null,
                   userApp: null,
+                  role: [],
+                  entitlement: null,
                   page: null,
-                })
+                });
+              }
               }
             >
               <XIcon className="size-4" />
