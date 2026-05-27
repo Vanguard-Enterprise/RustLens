@@ -59,31 +59,6 @@ export function HeroSection() {
 					</Button>
 				</div>
 			</div>
-			<div className="relative">
-				<div
-					className={cn(
-						"mask-b-from-60% relative mt-8 -mr-56 overflow-hidden px-2 sm:mt-12 sm:mr-0 md:mt-20",
-						"fade-in slide-in-from-bottom-5 animate-in fill-mode-backwards delay-100 duration-1000 ease-out"
-					)}
-				>
-					<div className="relative inset-shadow-2xs inset-shadow-foreground/10 mx-auto max-w-5xl overflow-hidden rounded-lg border bg-background p-2 shadow-xl ring-1 ring-card dark:inset-shadow-foreground/20 dark:inset-shadow-xs">
-						<img
-							alt="app screen"
-							className="z-2 aspect-video rounded-lg border dark:hidden"
-							height="1080"
-							src="https://storage.efferd.com/screen/dashboard-light.webp"
-							width="1920"
-						/>
-						<img
-							alt="app screen"
-							className="hidden aspect-video rounded-lg bg-background dark:block"
-							height="1080"
-							src="https://storage.efferd.com/screen/dashboard-dark.webp"
-							width="1920"
-						/>
-					</div>
-				</div>
-			</div>
 		</section>
 	);
 }
