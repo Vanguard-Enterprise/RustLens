@@ -16,8 +16,7 @@ export function FaqsSection() {
 					</h2>
 					<p className="max-w-2xl text-muted-foreground">
 						Common questions about how RustLens handles tracked servers,
-						identity links, BattleMetrics visibility, and the current
-						landing experience.
+						identity links, and BattleMetrics visibility.
 					</p>
 				</div>
 				<Accordion className="rounded-lg border bg-card" collapsible type="single">
