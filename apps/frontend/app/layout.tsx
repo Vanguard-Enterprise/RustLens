@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Fraunces, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { ThemeProvider } from "next-themes";
@@ -32,7 +32,6 @@ export const metadata: Metadata = {
 	},
 	description:
 		"Discord-first operating layer for Rust communities managing tracked servers, BattleMetrics visibility, and wipe coordination.",
-	themeColor: "#de811d",
 	openGraph: {
 		siteName: "RustLens",
 		type: "website",
@@ -41,6 +40,13 @@ export const metadata: Metadata = {
 	twitter: {
 		card: "summary_large_image",
 	},
+};
+
+// themeColor must live in a viewport export in this Next version; in the
+// metadata export it is ignored and no <meta name="theme-color"> is emitted,
+// which leaves the Discord embed accent bar gray.
+export const viewport: Viewport = {
+	themeColor: "#de811d",
 };
 
 export default async function RootLayout({
