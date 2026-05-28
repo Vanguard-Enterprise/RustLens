@@ -27,38 +27,10 @@ const testimonials: Testimonial[] = [
 	},
 	{
 		quote:
-			"The /analyze heatmaps changed how we raid. We can actually see when clans go offline instead of guessing.",
-		name: "Rift",
-		role: "Strategist, Obsidian",
-		avatar: "",
-	},
-	{
-		quote:
-			"Tracking alt accounts across wipes was a nightmare. /checkgamebans caught three banned alts in our first week.",
-		name: "Zoe",
-		role: "Admin, Rusty Syndicate",
-		avatar: "",
-	},
-	{
-		quote:
-			"Our members actually check #server-status now because the live player counts auto-update. Less pings in general chat.",
-		name: "Hex",
-		role: "Moderator, Iron Wolves",
-		avatar: "",
-	},
-	{
-		quote:
-			"Setup took five minutes. The bot just works. No config rabbit holes, no weird permissions issues.",
-		name: "Niko",
-		role: "Founder, Deadzone",
-		avatar: "",
-	},
-	{
-		quote:
-			"The /compare command is underrated. Being able to see who played on which servers across wipes is genuinely useful for recruitment.",
-		name: "Mara",
-		role: "Recruiter, Phantom Recon",
-		avatar: "",
+			"Finding a specific player used to mean scrolling BattleMetrics for ages. Now /search pulls them up in a moment, online or off. I love Rustlens",
+		name: "Jinx",
+		role: "Early Adopter, RustLens",
+		avatar: "https://cdn.discordapp.com/avatars/741464240099033118/aee0a09fb6f09fc3941cd8d0e1fa6087.webp?size=1024",
 	},
 ];
 
