@@ -24,9 +24,8 @@ const headingFont = Fraunces({
 	weight: ["500", "600", "700"],
 });
 
-export const metadataBase = new URL("https://rustlens.com");
-
 export const metadata: Metadata = {
+	metadataBase: new URL("https://rustlens.com"),
 	title: {
 		default: "RustLens - Discord Bot for Rust Community Management",
 		template: "%s | RustLens",
