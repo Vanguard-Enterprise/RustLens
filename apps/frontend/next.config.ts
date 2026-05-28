@@ -24,11 +24,9 @@ const nextConfig: NextConfig = {
 			{ source: "/admin/members", destination: "/admin/users", permanent: true },
 			{ source: "/admin/members/:path*", destination: "/admin/users/:path*", permanent: true },
 			{ source: "/discord", destination: "https://discord.gg/HrREy36F7m", permanent: false },
-			{
-				source: "/install-bot",
-				destination: `https://discord.com/oauth2/authorize?client_id=${process.env.DISCORD_CLIENT_ID}&permissions=8&scope=bot%20applications.commands`,
-				permanent: false,
-			},
+			// /install-bot is handled by app/install-bot/route.ts so DISCORD_CLIENT_ID
+			// is read at request time. A config redirect would bake the value into the
+			// build manifest, freezing it to whatever was set during `next build`.
 		];
 	},
 	async headers() {
