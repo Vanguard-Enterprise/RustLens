@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { getCsrfToken } from "@/lib/csrf";
@@ -6,6 +7,8 @@ import { getCurrentUserSafe, searchPlayers } from "@/lib/rustlens-api";
 import type { PlayerSearchResponse } from "@/lib/rustlens-api";
 
 import { SearchResults } from "./_components/search-results";
+
+export const metadata: Metadata = { title: "Search Players" };
 
 type SearchParams = { q?: string; includeOffline?: string };
 

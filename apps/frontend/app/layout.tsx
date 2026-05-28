@@ -24,10 +24,24 @@ const headingFont = Fraunces({
 	weight: ["500", "600", "700"],
 });
 
+export const metadataBase = new URL("https://rustlens.com");
+
 export const metadata: Metadata = {
-	title: "RustLens",
+	title: {
+		default: "RustLens - Discord Bot for Rust Community Management",
+		template: "%s | RustLens",
+	},
 	description:
 		"Discord-first operating layer for Rust communities managing tracked servers, BattleMetrics visibility, and wipe coordination.",
+	themeColor: "#de811d",
+	openGraph: {
+		siteName: "RustLens",
+		type: "website",
+		locale: "en_US",
+	},
+	twitter: {
+		card: "summary_large_image",
+	},
 };
 
 export default async function RootLayout({

@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthPage } from "@/components/auth-page";
 import { getCsrfToken } from "@/lib/csrf";
 import { clearSession, getSession } from "@/lib/session";
 import { type SessionRevokedNotice } from "@/lib/session-errors";
+
+export const metadata: Metadata = { title: "Login" };
 import { NoticeToast } from "./notice-toast";
 
 type LoginPageProps = {

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppSidebar } from "../_components/app-sidebar";
 import { UsersPage } from "../users/_components/users-page";
 import { effectiveRoleFilter } from "../users/_components/role-filter";
@@ -12,6 +13,8 @@ import {
 	type AdminUsersQuery,
 } from "@/lib/rustlens-api";
 import { requirePermission } from "@/lib/session";
+
+export const metadata: Metadata = { title: "Administrators" };
 
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50];

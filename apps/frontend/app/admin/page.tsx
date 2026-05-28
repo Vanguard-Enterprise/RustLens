@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppSidebar } from "./_components/app-sidebar"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { DataTable } from "@/components/data-table"
@@ -9,6 +10,8 @@ import { getCurrentUserSafe } from "@/lib/rustlens-api"
 import { requireAdminSession } from "@/lib/session"
 
 import data from "./data.json"
+
+export const metadata: Metadata = { title: "Admin" };
 
 export default async function Page() {
   const session = await requireAdminSession()

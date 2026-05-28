@@ -201,6 +201,9 @@ export function PricingCard({
 				</h3>
 				<p className="mb-2 font-normal text-muted-foreground text-xs">
 					billed {frequency}
+					{frequency === "yearly" && plan.price.yearly > 0 && (
+						<span> (${plan.price.yearly * 12}/yr)</span>
+					)}
 				</p>
 			</div>
 			<div className="space-y-3 px-4 pt-6 pb-8 text-muted-foreground text-sm">

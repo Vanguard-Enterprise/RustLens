@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppSidebar } from "../_components/app-sidebar";
 import { MembersTable } from "./_components/members-table";
 import { SiteHeader } from "@/components/site-header";
@@ -59,6 +60,8 @@ function parseSortParam(value: string | string[] | undefined): string | null {
   if (!raw) return null;
   return SORTS.has(raw) ? raw : null;
 }
+
+export const metadata: Metadata = { title: "Users" };
 
 export default async function AdminUsersRoute({
   searchParams,

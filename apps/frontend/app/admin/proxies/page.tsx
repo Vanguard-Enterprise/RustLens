@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppSidebar } from "../_components/app-sidebar";
 import { ProxiesPage } from "./_components/proxies-page";
 import { SiteHeader } from "@/components/site-header";
@@ -25,6 +26,8 @@ function parsePositiveInt(v: string | undefined, fallback: number): number {
 	const n = Number.parseInt(v, 10);
 	return Number.isFinite(n) && n > 0 ? n : fallback;
 }
+
+export const metadata: Metadata = { title: "Proxies" };
 
 export default async function AdminProxiesRoute({
 	searchParams,

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppSidebar } from "../_components/app-sidebar";
 import { RolesPage, type RolesInitialQuery } from "./_components/roles-page";
 import { SiteHeader } from "@/components/site-header";
@@ -23,6 +24,8 @@ function parsePositiveInt(v: string | undefined, fallback: number): number {
 	const n = Number.parseInt(v, 10);
 	return Number.isFinite(n) && n > 0 ? n : fallback;
 }
+
+export const metadata: Metadata = { title: "Roles" };
 
 export default async function AdminRolesPage({
 	searchParams,

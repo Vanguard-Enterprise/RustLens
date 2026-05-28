@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { Footer } from "@/components/footer";
@@ -6,6 +7,8 @@ import { PlayerProfileCard } from "@/components/player-profile-card";
 import { getCsrfToken } from "@/lib/csrf";
 import { requireSession } from "@/lib/session";
 import { getPlayerProfile } from "@/lib/rustlens-api";
+
+export const metadata: Metadata = { title: "Player Profile" };
 
 type PageProps = { params: Promise<{ steamId: string }> };
 

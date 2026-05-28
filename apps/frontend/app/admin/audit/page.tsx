@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppSidebar } from "../_components/app-sidebar";
 import { AuditPage } from "./_components/audit-page";
 import { SiteHeader } from "@/components/site-header";
@@ -57,6 +58,8 @@ async function tryGetUserChip(id: string | undefined) {
 		return null;
 	}
 }
+
+export const metadata: Metadata = { title: "Audit Log" };
 
 export default async function AdminAuditRoute({
 	searchParams,

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react"
 
 import { AppSidebar } from "./_components/app-sidebar"
@@ -9,6 +10,8 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { getCsrfToken } from "@/lib/csrf"
 import { getCurrentUserSafe } from "@/lib/rustlens-api"
 import { requireSession } from "@/lib/session"
+
+export const metadata: Metadata = { title: "Dashboard" };
 
 type DashboardPageProps = {
   searchParams: Promise<{ notice?: string | string[]; error?: string | string[] }>
@@ -46,10 +49,7 @@ export default async function Page({ searchParams }: DashboardPageProps) {
     isInternalAdmin,
   }
 
-  const discordClientId = process.env.DISCORD_CLIENT_ID
-  const installBotUrl = discordClientId
-    ? `https://discord.com/oauth2/authorize?client_id=${discordClientId}&permissions=8&scope=bot+applications.commands`
-    : undefined
+  const installBotUrl = "/install-bot"
 
   return (
     <>

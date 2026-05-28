@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -12,6 +13,8 @@ import { guildIconUrl } from "@/lib/discord-cdn";
 import { getCsrfToken } from "@/lib/csrf";
 import { getCurrentUserSafe, getMyInstalledGuilds } from "@/lib/rustlens-api";
 import { requireSession } from "@/lib/session";
+
+export const metadata: Metadata = { title: "Guild" };
 
 function initials(name: string): string {
 	return name

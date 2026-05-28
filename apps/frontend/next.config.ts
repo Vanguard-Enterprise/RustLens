@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
 			{ source: "/admin/members", destination: "/admin/users", permanent: true },
 			{ source: "/admin/members/:path*", destination: "/admin/users/:path*", permanent: true },
 			{ source: "/discord", destination: "https://discord.gg/HrREy36F7m", permanent: false },
+			{
+				source: "/install-bot",
+				destination: `https://discord.com/oauth2/authorize?client_id=${process.env.DISCORD_CLIENT_ID}&permissions=8&scope=bot%20applications.commands`,
+				permanent: false,
+			},
 		];
 	},
 	async headers() {

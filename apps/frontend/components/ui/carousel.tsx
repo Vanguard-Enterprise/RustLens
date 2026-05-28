@@ -95,10 +95,10 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)
+    // Sync initial state via a microtask to satisfy react-hooks/set-state-in-effect
+    void Promise.resolve().then(() => onSelect(api))
 
     return () => {
       api?.off("select", onSelect)

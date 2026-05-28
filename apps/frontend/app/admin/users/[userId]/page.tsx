@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { AppSidebar } from "../../_components/app-sidebar";
@@ -14,6 +15,8 @@ import {
 	getCurrentUserSafe,
 } from "@/lib/rustlens-api";
 import { requirePermission } from "@/lib/session";
+
+export const metadata: Metadata = { title: "User Details" };
 
 export default async function AdminUserDetailRoute({
 	params,
