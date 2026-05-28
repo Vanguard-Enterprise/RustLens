@@ -48,8 +48,18 @@ var viewNotAddedRateLimitConfig = ratelimit.Config{
 }
 
 var rateLimitCommandConfigs = map[string]ratelimit.Config{
-	"player":         playerRateLimitConfig,
-	"view-notadded":  viewNotAddedRateLimitConfig,
+	"player":        playerRateLimitConfig,
+	"view-notadded": viewNotAddedRateLimitConfig,
+	// Heavy chat-input commands added to the bot's RATE_LIMITED_COMMANDS
+	// allowlist in apps/bot/src/shard-worker.ts. Each consumes its own
+	// per-user bucket via key = discordId + ":" + command. Mirroring
+	// playerRateLimitConfig keeps the quota in line with /player, which
+	// has similar backend cost.
+	"view":          playerRateLimitConfig,
+	"checkgamebans": playerRateLimitConfig,
+	"online":        playerRateLimitConfig,
+	"compare":       playerRateLimitConfig,
+	"analyze":       playerRateLimitConfig,
 }
 
 var fraudCommandConfigs = map[string]fraud.Config{
