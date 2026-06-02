@@ -2134,6 +2134,27 @@ func buildOpenAPIDocument() map[string]any {
 							"description": "Page size, default 20, capped at 100.",
 							"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
 						},
+						{
+							"name":        "sort",
+							"in":          "query",
+							"required":    false,
+							"description": "Sort field. Prefix with '-' for descending.",
+							"schema":      map[string]any{"type": "string", "enum": []string{"name", "-name", "members", "-members", "joined", "-joined"}},
+						},
+						{
+							"name":        "joinedSince",
+							"in":          "query",
+							"required":    false,
+							"description": "Installed-at lower bound as RFC3339 or YYYY-MM-DD.",
+							"schema":      map[string]any{"type": "string"},
+						},
+						{
+							"name":        "joinedBefore",
+							"in":          "query",
+							"required":    false,
+							"description": "Installed-at exclusive upper bound as RFC3339 or YYYY-MM-DD.",
+							"schema":      map[string]any{"type": "string"},
+						},
 					},
 					"responses": map[string]any{
 						"200": map[string]any{
@@ -3476,6 +3497,7 @@ func buildOpenAPIDocument() map[string]any {
 						"ownerGlobalName":        map[string]any{"type": "string", "nullable": true},
 						"ownerAvatarHash":        map[string]any{"type": "string", "nullable": true},
 						"approximateMemberCount": map[string]any{"type": "integer", "nullable": true},
+						"installedAt":            map[string]any{"type": "string", "format": "date-time"},
 						"isInstalled":            map[string]any{"type": "boolean"},
 						"leftAt":                 map[string]any{"type": "string", "format": "date-time", "nullable": true},
 						"isConfigured":           map[string]any{"type": "boolean"},
@@ -3484,7 +3506,7 @@ func buildOpenAPIDocument() map[string]any {
 					"required": []string{
 						"guildId", "name", "iconHash",
 						"ownerDiscordId", "ownerUsername", "ownerGlobalName", "ownerAvatarHash",
-						"approximateMemberCount", "isInstalled", "leftAt",
+						"approximateMemberCount", "installedAt", "isInstalled", "leftAt",
 						"isConfigured", "trackedServerCount",
 					},
 				},

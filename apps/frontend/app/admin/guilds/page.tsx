@@ -9,6 +9,7 @@ import { requireAdminSession } from "@/lib/session";
 
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50];
+const SORT_OPTIONS = new Set(["name", "-name", "members", "-members", "joined", "-joined"]);
 
 function parsePositiveInt(value: string | string[] | undefined, fallback: number): number {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -35,11 +36,15 @@ export default async function AdminGuildsPage({
   const q = qRaw ?? "";
   const page = parsePositiveInt(sp.page, 1);
   const pageSize = clampPageSize(parsePositiveInt(sp.pageSize, DEFAULT_PAGE_SIZE));
+  const sortRaw = Array.isArray(sp.sort) ? sp.sort[0] : sp.sort;
+  const sort = sortRaw && SORT_OPTIONS.has(sortRaw) ? sortRaw : undefined;
+  const joinedSince = Array.isArray(sp.joinedSince) ? sp.joinedSince[0] : sp.joinedSince;
+  const joinedBefore = Array.isArray(sp.joinedBefore) ? sp.joinedBefore[0] : sp.joinedBefore;
 
   const [csrfToken, currentUser, guilds] = await Promise.all([
     getCsrfToken(),
     getCurrentUserSafe(),
-    getAdminGuilds({ q: q || undefined, page, pageSize }),
+    getAdminGuilds({ q: q || undefined, page, pageSize, sort, joinedSince, joinedBefore }),
   ]);
 
   const user = {
@@ -79,6 +84,9 @@ export default async function AdminGuildsPage({
               </div>
               <GuildsTable
                 initialQuery={q}
+                initialSort={sort}
+                initialJoinedSince={joinedSince}
+                initialJoinedBefore={joinedBefore}
                 pageSizeOptions={PAGE_SIZE_OPTIONS}
                 data={guilds}
               />

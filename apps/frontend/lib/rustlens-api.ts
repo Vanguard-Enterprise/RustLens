@@ -152,6 +152,7 @@ export type AdminGuildItem = {
 	ownerGlobalName: string | null;
 	ownerAvatarHash: string | null;
 	approximateMemberCount: number | null;
+	installedAt: string;
 	isInstalled: boolean;
 	leftAt: string | null;
 	isConfigured: boolean;
@@ -162,6 +163,9 @@ export type AdminGuildsQuery = {
 	q?: string;
 	page?: number;
 	pageSize?: number;
+	sort?: string;
+	joinedSince?: string;
+	joinedBefore?: string;
 };
 
 export type AdminGuildsPage = {
@@ -520,6 +524,9 @@ export async function getAdminGuilds(params: AdminGuildsQuery = {}): Promise<Adm
 	if (params.q) sp.set("q", params.q);
 	if (params.page) sp.set("page", String(params.page));
 	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	if (params.sort) sp.set("sort", params.sort);
+	if (params.joinedSince) sp.set("joinedSince", params.joinedSince);
+	if (params.joinedBefore) sp.set("joinedBefore", params.joinedBefore);
 	const qs = sp.toString();
 	return backendFetch<AdminGuildsPage>(
 		`/api/app/admin/guilds${qs ? `?${qs}` : ""}`,

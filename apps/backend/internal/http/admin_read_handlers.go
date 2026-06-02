@@ -56,6 +56,7 @@ type adminGuildItem struct {
 	OwnerGlobalName        *string `json:"ownerGlobalName"`
 	OwnerAvatarHash        *string `json:"ownerAvatarHash"`
 	ApproximateMemberCount *int32  `json:"approximateMemberCount"`
+	InstalledAt            string  `json:"installedAt"`
 	IsInstalled            bool    `json:"isInstalled"`
 	LeftAt                 *string `json:"leftAt"`
 	IsConfigured           bool    `json:"isConfigured"`
@@ -128,13 +129,14 @@ type adminUserDetail struct {
 
 // ListAdministrators: GET /api/app/admin/administrators
 // Query:
-//   q=<substring>           matches display_name / app_users.id / discord_username / discord_id
-//   role=<roleKey>          (repeatable) any matched role
-//   status=active|suspended|deleted|any (default: active)
-//   discord=any|linked|unlinked
-//   steam=any|linked|unlinked
-//   sort=<field> or -<field>  field in {createdAt, lastLoginAt, displayName}
-//   page=1 pageSize=50 (max 200)
+//
+//	q=<substring>           matches display_name / app_users.id / discord_username / discord_id
+//	role=<roleKey>          (repeatable) any matched role
+//	status=active|suspended|deleted|any (default: active)
+//	discord=any|linked|unlinked
+//	steam=any|linked|unlinked
+//	sort=<field> or -<field>  field in {createdAt, lastLoginAt, displayName}
+//	page=1 pageSize=50 (max 200)
 func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pool := h.postgres.Pool()
@@ -437,9 +439,13 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 
 // ListAdminGuilds: GET /api/app/admin/guilds
 // Query:
-//   q=<substring>            matches bot_guilds.name (substring), guild_id (prefix), owner_username (substring); ILIKE
-//   page=1 (default)         1-based
-//   pageSize=20 (default)    capped at 100
+//
+//	q=<substring>            matches bot_guilds.name (substring), guild_id (prefix), owner_username (substring); ILIKE
+//	sort=<field> or -<field> field in {name, members, joined}
+//	joinedSince=YYYY-MM-DD|RFC3339  installed_at >= bound
+//	joinedBefore=YYYY-MM-DD|RFC3339 installed_at < bound
+//	page=1 (default)         1-based
+//	pageSize=20 (default)    capped at 100
 func (h *Handler) ListAdminGuilds(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
@@ -458,11 +464,39 @@ func (h *Handler) ListAdminGuilds(w http.ResponseWriter, r *http.Request) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
+	sort := q.Get("sort")
+	switch sort {
+	case "", "name", "-name", "members", "-members", "joined", "-joined":
+	default:
+		writeError(w, http.StatusBadRequest, "invalid sort")
+		return
+	}
+	var joinedSince *time.Time
+	if v := strings.TrimSpace(q.Get("joinedSince")); v != "" {
+		t, err := parseDateBound(v, false)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid joinedSince")
+			return
+		}
+		joinedSince = &t
+	}
+	var joinedBefore *time.Time
+	if v := strings.TrimSpace(q.Get("joinedBefore")); v != "" {
+		t, err := parseDateBound(v, true)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid joinedBefore")
+			return
+		}
+		joinedBefore = &t
+	}
 
 	rows, total, err := h.postgres.ListAdminGuilds(ctx, store.ListAdminGuildsOpts{
-		Q:        q.Get("q"),
-		Page:     page,
-		PageSize: pageSize,
+		Q:            q.Get("q"),
+		Page:         page,
+		PageSize:     pageSize,
+		Sort:         sort,
+		JoinedSince:  joinedSince,
+		JoinedBefore: joinedBefore,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -480,6 +514,7 @@ func (h *Handler) ListAdminGuilds(w http.ResponseWriter, r *http.Request) {
 			OwnerGlobalName:        r.OwnerGlobalName,
 			OwnerAvatarHash:        r.OwnerAvatarHash,
 			ApproximateMemberCount: r.ApproximateMemberCount,
+			InstalledAt:            r.InstalledAt.Format(time.RFC3339),
 			IsInstalled:            r.IsInstalled,
 			IsConfigured:           r.IsConfigured,
 			TrackedServerCount:     int(r.TrackedServerCount),
