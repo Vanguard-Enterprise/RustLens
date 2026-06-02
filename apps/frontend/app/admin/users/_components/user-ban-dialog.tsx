@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ADMIN_BAN_CATEGORIES, type AdminBanCategory } from "@/lib/rustlens-api";
+import { ADMIN_BAN_CATEGORIES, type AdminBanCategory } from "@/lib/admin-ban-categories";
 
 type Props = {
 	open: boolean;
