@@ -69,6 +69,7 @@ export type GuildSettings = {
   trackedUsersCategoryId: string;
   adminRoleId: string;
   alertRoleId: string;
+  limited: boolean;
 };
 
 export type GuildSettingsPatch = Partial<Omit<GuildSettings, "guildId">>;

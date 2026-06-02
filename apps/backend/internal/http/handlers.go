@@ -460,6 +460,7 @@ func writeGuildSettings(w http.ResponseWriter, settings store.GuildSettings) {
 		"trackedUsersCategoryId":    settings.TrackedUsersCategoryID,
 		"adminRoleId":               settings.AdminRoleID,
 		"alertRoleId":               settings.AlertRoleID,
+		"limited":                   settings.Limited,
 	})
 }
 
@@ -620,6 +621,7 @@ type updateGuildSettingsRequest struct {
 	TrackedUsersCategoryID    *string `json:"trackedUsersCategoryId"`
 	AdminRoleID               *string `json:"adminRoleId"`
 	AlertRoleID               *string `json:"alertRoleId"`
+	Limited                   *bool   `json:"limited"`
 }
 
 func validateSnowflakeOptionalField(w http.ResponseWriter, value *string, fieldName string) bool {
@@ -678,6 +680,7 @@ func (h *Handler) UpdateGuildSettings(w http.ResponseWriter, r *http.Request) {
 		TrackedUsersCategoryID:    request.TrackedUsersCategoryID,
 		AdminRoleID:               request.AdminRoleID,
 		AlertRoleID:               request.AlertRoleID,
+		Limited:                   request.Limited,
 	})
 	if err != nil {
 		log.Printf("[backend] UpdateGuildSettings error for guild %s: %v", guildID, err)

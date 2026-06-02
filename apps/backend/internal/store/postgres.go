@@ -22,6 +22,7 @@ type GuildSettings struct {
 	TrackedUsersCategoryID    string
 	AdminRoleID               string
 	AlertRoleID               string
+	Limited                   bool
 }
 
 type GuildSettingsPatch struct {
@@ -31,6 +32,7 @@ type GuildSettingsPatch struct {
 	TrackedUsersCategoryID    *string
 	AdminRoleID               *string
 	AlertRoleID               *string
+	Limited                   *bool
 }
 
 func NewPostgresStore(ctx context.Context, connectionString string) (*PostgresStore, error) {
@@ -144,6 +146,7 @@ func (p *PostgresStore) EnsureSchema(ctx context.Context) error {
 		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS tracked_users_category_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS admin_role_id TEXT NOT NULL DEFAULT '';
 		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS alert_role_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE guild_settings ADD COLUMN IF NOT EXISTS limited BOOLEAN NOT NULL DEFAULT FALSE;
 		ALTER TABLE guild_settings DROP COLUMN IF EXISTS log_channel_id;
 		ALTER TABLE guild_settings DROP COLUMN IF EXISTS alerts_channel_id;
 
@@ -1142,7 +1145,8 @@ func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (G
 			tracked_server_log_channel_id,
 			tracked_users_category_id,
 			admin_role_id,
-			alert_role_id
+			alert_role_id,
+			limited
 		FROM guild_settings
 		WHERE guild_id = $1
 	`, guildID).Scan(
@@ -1152,6 +1156,7 @@ func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (G
 		&settings.TrackedUsersCategoryID,
 		&settings.AdminRoleID,
 		&settings.AlertRoleID,
+		&settings.Limited,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return GuildSettings{
@@ -1162,6 +1167,7 @@ func (p *PostgresStore) GetGuildSettings(ctx context.Context, guildID string) (G
 			TrackedUsersCategoryID:    "",
 			AdminRoleID:               "",
 			AlertRoleID:               "",
+			Limited:                   false,
 		}, nil
 	}
 	if err != nil {
@@ -1190,6 +1196,7 @@ func (p *PostgresStore) UpdateGuildSettings(ctx context.Context, guildID string,
 			tracked_users_category_id = COALESCE($5, tracked_users_category_id),
 			admin_role_id = COALESCE($6, admin_role_id),
 			alert_role_id = COALESCE($7, alert_role_id),
+			limited = COALESCE($8, limited),
 			updated_at = NOW()
 		WHERE guild_id = $1
 	`,
@@ -1200,6 +1207,7 @@ func (p *PostgresStore) UpdateGuildSettings(ctx context.Context, guildID string,
 		patch.TrackedUsersCategoryID,
 		patch.AdminRoleID,
 		patch.AlertRoleID,
+		patch.Limited,
 	)
 	if err != nil {
 		return GuildSettings{}, err

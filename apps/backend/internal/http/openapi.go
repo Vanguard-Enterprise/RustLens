@@ -2779,6 +2779,7 @@ func buildOpenAPIDocument() map[string]any {
 						"trackedUsersCategoryId":    map[string]any{"type": "string"},
 						"adminRoleId":               map[string]any{"type": "string"},
 						"alertRoleId":               map[string]any{"type": "string"},
+						"limited":                   map[string]any{"type": "boolean"},
 					},
 					"required": []string{
 						"guildId",
@@ -2788,6 +2789,7 @@ func buildOpenAPIDocument() map[string]any {
 						"trackedUsersCategoryId",
 						"adminRoleId",
 						"alertRoleId",
+						"limited",
 					},
 				},
 				"UpdateGuildSettingsRequest": map[string]any{
@@ -2799,6 +2801,7 @@ func buildOpenAPIDocument() map[string]any {
 						"trackedUsersCategoryId":    map[string]any{"type": "string"},
 						"adminRoleId":               map[string]any{"type": "string"},
 						"alertRoleId":               map[string]any{"type": "string"},
+						"limited":                   map[string]any{"type": "boolean"},
 					},
 				},
 				"GuildTrackedServer": map[string]any{

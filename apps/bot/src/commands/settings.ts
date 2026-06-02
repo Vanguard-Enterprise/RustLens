@@ -31,6 +31,7 @@ const SETTINGS_SELECT_CUSTOM_ID = "settings:select";
 const SETTINGS_CHANNEL_MODAL_PREFIX = "settings:channel:";
 const SETTINGS_CATEGORY_MODAL_PREFIX = "settings:category:";
 const SETTINGS_ROLE_MODAL_PREFIX = "settings:role:";
+const SETTINGS_LIMITED_MODAL_PREFIX = "settings:limited:";
 const SETTINGS_SELECT_FIELD_CUSTOM_ID = "settings:value";
 const SETTINGS_UNSET_VALUE = "__unset__";
 const SETTINGS_CREATE_TRACKED_USERS_CATEGORY_VALUE = "__create_tracked_users_category__";
@@ -42,6 +43,7 @@ const SETTINGS_OPTION_TRACKED_SERVER_LOGS = "tracked_server_logs";
 const SETTINGS_OPTION_ADMIN_ROLE = "admin_role";
 const SETTINGS_OPTION_ALERT_ROLE = "alert_role";
 const SETTINGS_OPTION_TRACKED_USERS = "tracked_users";
+const SETTINGS_OPTION_LIMITED = "limited";
 
 const guildSettingsCommand = new SlashCommandBuilder()
   .setName(SETTINGS_COMMAND_NAME)
@@ -96,6 +98,12 @@ const settingsChoices: readonly SettingsChoice[] = [
     value: SETTINGS_OPTION_TRACKED_USERS,
     description: "Category where channels get created for tracked users.",
     emoji: "📁",
+  },
+  {
+    label: "Limited Mode",
+    value: SETTINGS_OPTION_LIMITED,
+    description: "Restrict this server to /player and /analyze only",
+    emoji: "🔒",
   },
 ] as const;
 
@@ -187,6 +195,11 @@ async function buildSettingsPayload(guild: Guild) {
       {
         name: "📁 Tracked users",
         value: `Category where channels get created for tracked users.\n${trackedUsersCategoryValue}`,
+        inline: true,
+      },
+      {
+        name: "🔒 Limited Mode",
+        value: `Restricts the server to /player and /analyze.\n${settings.limited ? "`On`" : "`Off`"}`,
         inline: true,
       },
     );
@@ -414,6 +427,30 @@ function buildRoleSettingsModal(
   return modal;
 }
 
+function buildLimitedSettingsModal(currentLimited: boolean) {
+  return new ModalV2Builder()
+    .setTitle("Server Settings")
+    .setCustomId(`${SETTINGS_LIMITED_MODAL_PREFIX}limited`)
+    .addComponent(
+      "Limited Mode",
+      new StringSelectBuilder()
+        .setCustomId(SETTINGS_SELECT_FIELD_CUSTOM_ID)
+        .setRequired(true)
+        .setMinValues(1)
+        .setMaxValues(1)
+        .addOption({
+          label: "On",
+          value: "on",
+          ...(currentLimited && { default: true }),
+        })
+        .addOption({
+          label: "Off",
+          value: "off",
+          ...(!currentLimited && { default: true }),
+        }),
+    );
+}
+
 function parseSettingsSelection(interaction: ModalSubmitInteraction) {
   const value = getFieldValues(interaction, SETTINGS_SELECT_FIELD_CUSTOM_ID)[0];
   if (!value) {
@@ -535,6 +572,13 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
     return true;
   }
 
+  if (selected === SETTINGS_OPTION_LIMITED) {
+    await interaction.showModal(
+      buildLimitedSettingsModal(settings.limited).toJSON() as any,
+    );
+    return true;
+  }
+
   if (selected === SETTINGS_OPTION_TRACKED_USERS) {
     const categories = await fetchGuildCategoryOptions(interaction.guild);
     await interaction.showModal(
@@ -596,7 +640,8 @@ export async function handleSettingsSelect(interaction: StringSelectMenuInteract
 export async function handleSettingsModalSubmit(interaction: ModalSubmitInteraction) {
   if (!interaction.customId.startsWith(SETTINGS_CHANNEL_MODAL_PREFIX) &&
       !interaction.customId.startsWith(SETTINGS_CATEGORY_MODAL_PREFIX) &&
-      !interaction.customId.startsWith(SETTINGS_ROLE_MODAL_PREFIX)) {
+      !interaction.customId.startsWith(SETTINGS_ROLE_MODAL_PREFIX) &&
+      !interaction.customId.startsWith(SETTINGS_LIMITED_MODAL_PREFIX)) {
     return false;
   }
 
@@ -605,6 +650,14 @@ export async function handleSettingsModalSubmit(interaction: ModalSubmitInteract
       content: "This modal can only be used in a server.",
       flags: MessageFlags.Ephemeral,
     });
+    return true;
+  }
+
+  if (interaction.customId.startsWith(SETTINGS_LIMITED_MODAL_PREFIX)) {
+    const value = getFieldValues(interaction, SETTINGS_SELECT_FIELD_CUSTOM_ID)[0];
+    const limited = value === "on";
+    await updateGuildSettings(interaction.guildId, { limited });
+    await refreshSettingsMessage(interaction, interaction.guild);
     return true;
   }
 
