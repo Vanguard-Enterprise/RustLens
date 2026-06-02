@@ -9,14 +9,18 @@ import type {
 import { PermissionFlagsBits } from "discord.js";
 import { BackendClient, type GuildSettingsPatch } from "./backend-client.js";
 import { loadConfig } from "./config.js";
+import { logger } from "./logger.js";
 import { logDiscordCatch } from "./shared.js";
 
 const shardID = process.env.SHARD_ID ?? "0";
 
 let _backend: BackendClient | undefined;
 let _workerID: string | undefined;
+// Test injection point. When non-null, used instead of the real lazy-init path.
+let _backendOverride: BackendClient | null = null;
 
 function getBackend() {
+  if (_backendOverride) return _backendOverride;
   if (!_backend) {
     const config = loadConfig();
     _backend = new BackendClient(
@@ -32,8 +36,13 @@ function getBackend() {
 }
 
 function getWorkerID() {
+  if (_backendOverride) return "test-worker";
   getBackend();
   return _workerID!;
+}
+
+export function __setBackendForTests(backend: BackendClient | null): void {
+  _backendOverride = backend;
 }
 
 export type GuildAdminInteraction =
@@ -46,8 +55,42 @@ export async function fetchGuildSettings(guildId: string) {
   return getBackend().guildSettings(getWorkerID(), guildId);
 }
 
+// `isGuildLimited` is called on every slash command, so the limited flag is
+// cached in-memory with a short TTL to avoid a backend round-trip per command.
+const LIMITED_CACHE_TTL_MS = 60_000;
+const limitedCache = new Map<string, { limited: boolean; expiresAt: number }>();
+
+export async function isGuildLimited(guildId: string): Promise<boolean> {
+  const cached = limitedCache.get(guildId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.limited;
+  }
+
+  try {
+    const settings = await fetchGuildSettings(guildId);
+    limitedCache.set(guildId, {
+      limited: settings.limited,
+      expiresAt: Date.now() + LIMITED_CACHE_TTL_MS,
+    });
+    return settings.limited;
+  } catch (error) {
+    // Fail open: a backend hiccup must not lock a guild out of every command.
+    logger.warn({ guildId, error }, "isGuildLimited backend lookup failed; failing open");
+    return false;
+  }
+}
+
+export function invalidateGuildLimitedCache(guildId: string): void {
+  limitedCache.delete(guildId);
+}
+
 export async function updateGuildSettings(guildId: string, patch: GuildSettingsPatch) {
-  return getBackend().updateGuildSettings(getWorkerID(), guildId, patch);
+  const result = await getBackend().updateGuildSettings(getWorkerID(), guildId, patch);
+  limitedCache.set(guildId, {
+    limited: result.limited,
+    expiresAt: Date.now() + LIMITED_CACHE_TTL_MS,
+  });
+  return result;
 }
 
 function interactionMemberHasRole(interaction: GuildAdminInteraction, roleId: string) {

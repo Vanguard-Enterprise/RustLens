@@ -25,6 +25,8 @@ import {
   enforceBanForAutocomplete,
 } from "./ban-check.js";
 import { enforceRateLimit } from "./rate-limit.js";
+import { isGuildLimited } from "./guild-settings.js";
+import { getOwnerDiscordIDs } from "./owner-guard.js";
 import { ensureAppUser } from "./ensure-app-user.js";
 import { recordCommandUsage, type Outcome } from "./command-usage.js";
 import { parseCustomId, rememberParentCorrelation } from "./correlation.js";
@@ -92,6 +94,7 @@ import {
   handleServerChatInput,
 } from "./commands/server.js";
 import {
+  SETTINGS_COMMAND_NAME,
   ensureSettingsCommand,
   handleSettingsChatInput,
   handleSettingsModalSubmit,
@@ -468,6 +471,24 @@ client.on("interactionCreate", async (interaction) => {
         );
         if (await enforceBan(interaction, category)) {
           outcome = "banned"; return;
+        }
+      }
+
+      if (interaction.inGuild() && interaction.guildId) {
+        const limitedAllowed =
+          interaction.commandName === PLAYER_COMMAND_NAME ||
+          interaction.commandName === ANALYZE_COMMAND_NAME ||
+          interaction.commandName === SETTINGS_COMMAND_NAME;
+        if (!limitedAllowed && !getOwnerDiscordIDs().includes(interaction.user.id)) {
+          if (await isGuildLimited(interaction.guildId)) {
+            await interaction.reply({
+              content:
+                "🔒 This server is in limited mode. Only `/player` and `/analyze` are available here.",
+              flags: MessageFlags.Ephemeral,
+            });
+            outcome = "denied";
+            return;
+          }
         }
       }
 
