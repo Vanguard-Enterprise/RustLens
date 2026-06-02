@@ -262,11 +262,15 @@ function calculateBmHoursRisk(profile: SteamProfile | null) {
     return null;
   }
 
-  if (bmHours < 25) {
-    return { level: 10, hours: bmHours };
-  }
-
-  const level = Math.max(0, Math.min(10, 11 - Math.floor(bmHours / 25)));
+  const level =
+    bmHours < 50 ? 10 :
+    bmHours < 100 ? 9 :
+    bmHours < 200 ? 8 :
+    bmHours < 300 ? 6 :
+    bmHours < 400 ? 4 :
+    bmHours < 500 ? 2 :
+    bmHours < 600 ? 1 :
+    0;
   return { level, hours: bmHours };
 }
 
@@ -278,7 +282,14 @@ function calculateAccountCreatedRisk(profile: SteamProfile | null, now: Date = n
 
   const nowUnix = Math.floor(now.getTime() / 1000);
   const ageDays = Math.max(0, (nowUnix - firstSeenUnix) / SECONDS_PER_DAY);
-  const level = Math.max(0, Math.min(10, 11 - Math.ceil(ageDays / 10)));
+  const level =
+    ageDays < 15 ? 10 :
+    ageDays < DAYS_PER_MONTH ? 8 :
+    ageDays < 2 * DAYS_PER_MONTH ? 6 :
+    ageDays < 3 * DAYS_PER_MONTH ? 4 :
+    ageDays < 4 * DAYS_PER_MONTH ? 2 :
+    ageDays < 5 * DAYS_PER_MONTH ? 1 :
+    0;
   return { level, firstSeenUnix };
 }
 

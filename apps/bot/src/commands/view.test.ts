@@ -45,7 +45,7 @@ describe("view", () => {
     expect(embed.fields?.[0]?.value).toContain("https://steamcommunity.com/profiles/76561198000000000");
     expect(embed.fields?.[0]?.value).toContain("https://www.battlemetrics.com/rcon/players/918543318");
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
-    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_6:1487595718431739954>");
     expect(embed.fields).toHaveLength(11);
   });
 
@@ -73,7 +73,7 @@ describe("view", () => {
 
     expect(embed.title).toBe("turn it up - successfully linked");
     expect(embed.fields?.find((field) => field.name.includes("Rust"))?.value).toBe("**7347** hours");
-    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_5:1487595720956448949>");
+    expect(embed.fields?.find((field) => field.name.startsWith("Risk Factor"))?.name).toBe("Risk Factor <:risk_6:1487595718431739954>");
     expect(embed.fields).toHaveLength(11);
     expect(embed.fields?.[0]?.value).toContain("<@123456789012345678>");
   });
@@ -297,24 +297,45 @@ describe("view", () => {
     expect(__testables.calculateServersPlayedRisk({ serversPlayed: 0 } as never)).toEqual({ level: 10, servers: 0 });
   });
 
-  it("scores BM hours risk with 25-hour buckets", () => {
+  it("scores BM hours risk with configured thresholds", () => {
     expect(__testables.calculateBmHoursRisk({ hours: { bm: 0 } } as never)).toEqual({ level: 10, hours: 0 });
-    expect(__testables.calculateBmHoursRisk({ hours: { bm: 24 } } as never)).toEqual({ level: 10, hours: 24 });
-    expect(__testables.calculateBmHoursRisk({ hours: { bm: 25 } } as never)).toEqual({ level: 10, hours: 25 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 49 } } as never)).toEqual({ level: 10, hours: 49 });
     expect(__testables.calculateBmHoursRisk({ hours: { bm: 50 } } as never)).toEqual({ level: 9, hours: 50 });
-    expect(__testables.calculateBmHoursRisk({ hours: { bm: 75 } } as never)).toEqual({ level: 8, hours: 75 });
-    expect(__testables.calculateBmHoursRisk({ hours: { bm: 275 } } as never)).toEqual({ level: 0, hours: 275 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 99 } } as never)).toEqual({ level: 9, hours: 99 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 100 } } as never)).toEqual({ level: 8, hours: 100 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 199 } } as never)).toEqual({ level: 8, hours: 199 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 200 } } as never)).toEqual({ level: 6, hours: 200 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 299 } } as never)).toEqual({ level: 6, hours: 299 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 300 } } as never)).toEqual({ level: 4, hours: 300 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 399 } } as never)).toEqual({ level: 4, hours: 399 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 400 } } as never)).toEqual({ level: 2, hours: 400 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 499 } } as never)).toEqual({ level: 2, hours: 499 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 500 } } as never)).toEqual({ level: 1, hours: 500 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 599 } } as never)).toEqual({ level: 1, hours: 599 });
+    expect(__testables.calculateBmHoursRisk({ hours: { bm: 600 } } as never)).toEqual({ level: 0, hours: 600 });
   });
 
-  it("scores account-created risk in 10-day buckets", () => {
+  it("scores account-created risk with configured age thresholds", () => {
     const now = new Date("2026-04-01T00:00:00Z");
 
-    expect(__testables.calculateAccountCreatedRisk({ firstSeenUnix: Math.floor(new Date("2026-03-27T00:00:00Z").getTime() / 1000) } as never, now))
-      .toEqual({ level: 10, firstSeenUnix: Math.floor(new Date("2026-03-27T00:00:00Z").getTime() / 1000) });
-    expect(__testables.calculateAccountCreatedRisk({ firstSeenUnix: Math.floor(new Date("2026-03-12T00:00:00Z").getTime() / 1000) } as never, now))
-      .toEqual({ level: 9, firstSeenUnix: Math.floor(new Date("2026-03-12T00:00:00Z").getTime() / 1000) });
-    expect(__testables.calculateAccountCreatedRisk({ firstSeenUnix: Math.floor(new Date("2026-03-02T00:00:00Z").getTime() / 1000) } as never, now))
-      .toEqual({ level: 8, firstSeenUnix: Math.floor(new Date("2026-03-02T00:00:00Z").getTime() / 1000) });
+    const expectAge = (days: number, level: number) => {
+      const firstSeenUnix = Math.floor(now.getTime() / 1000) - days * 86400;
+      expect(__testables.calculateAccountCreatedRisk({ firstSeenUnix } as never, now))
+        .toEqual({ level, firstSeenUnix });
+    };
+
+    expectAge(14, 10);
+    expectAge(15, 8);
+    expectAge(29, 8);
+    expectAge(30, 6);
+    expectAge(59, 6);
+    expectAge(60, 4);
+    expectAge(89, 4);
+    expectAge(90, 2);
+    expectAge(119, 2);
+    expectAge(120, 1);
+    expectAge(149, 1);
+    expectAge(150, 0);
   });
 
   it("includes the account-created line in the risk factor field", () => {
