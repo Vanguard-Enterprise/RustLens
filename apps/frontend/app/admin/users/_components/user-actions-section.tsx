@@ -6,10 +6,11 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import type { AdminRoleItem, AdminUserDetail } from "@/lib/rustlens-api";
 
-import { deleteUserAction, suspendUserAction, unsuspendUserAction } from "../actions";
+import { deleteUserAction, setUserBanAction, suspendUserAction, unsuspendUserAction } from "../actions";
 import { DeleteDialog } from "./delete-dialog";
 import { RolesSection } from "./roles-section";
 import { SuspendDialog } from "./suspend-dialog";
+import { UserBanDialog } from "./user-ban-dialog";
 
 type Props = {
 	detail: AdminUserDetail;
@@ -20,7 +21,7 @@ type Props = {
 	canDelete: boolean;
 };
 
-type DialogKey = "suspend" | "unsuspend" | "delete" | null;
+type DialogKey = "restrictions" | "suspend" | "unsuspend" | "delete" | null;
 
 export function UserActionsSection({
 	detail,
@@ -51,10 +52,19 @@ export function UserActionsSection({
 					<div>
 						<h2 className="text-lg font-semibold">Account status</h2>
 						<p className="text-sm text-muted-foreground">
-							Suspend, unsuspend, or permanently delete this user.
+							Manage bot restrictions, website suspension, or permanent deletion.
 						</p>
 					</div>
 					<div className="flex flex-wrap gap-2">
+						{canSuspend ? (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => setDialog("restrictions")}
+							>
+								Manage restrictions
+							</Button>
+						) : null}
 						{canSuspend && !isSuspended ? (
 							<Button
 								variant="destructive"
@@ -93,6 +103,18 @@ export function UserActionsSection({
 						onConfirm={async (userId, reason) => {
 							const action = dialog === "unsuspend" ? unsuspendUserAction : suspendUserAction;
 							const res = await action(userId, reason);
+							if (!res.ok) throw new Error(res.error);
+							router.refresh();
+						}}
+					/>
+					<UserBanDialog
+						open={dialog === "restrictions"}
+						onOpenChange={(o) => !o && close()}
+						userId={detail.user.id}
+						displayName={detail.user.displayName}
+						initialCategories={detail.banCategories ?? []}
+						onConfirm={async (userId, categories, reason) => {
+							const res = await setUserBanAction(userId, categories, reason);
 							if (!res.ok) throw new Error(res.error);
 							router.refresh();
 						}}

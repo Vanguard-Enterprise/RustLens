@@ -92,3 +92,27 @@ func TestListAdminUsers_SearchAndPagination(t *testing.T) {
 		t.Errorf("page1: want len=2 total=3, got len=%d total=%d", len(r.Items), r.Total)
 	}
 }
+
+func TestListAdminUsers_IncludesBanCategories(t *testing.T) {
+	ts := newTestHandlerServer(t)
+
+	seedUser(t, ts.pool, "usr_banned_member", "Banned Member", seedOpts{
+		Discord:   "banned",
+		DiscordID: "discord_banned_member",
+	})
+	if _, err := ts.pool.Exec(context.Background(), `
+		INSERT INTO user_bans (discord_id, categories, updated_by)
+		VALUES ($1, ARRAY['lookup', 'activity']::text[], 'seed')
+	`, "discord_banned_member"); err != nil {
+		t.Fatalf("seed user_bans: %v", err)
+	}
+
+	resp := ts.getUsersList(t, "/api/app/admin/users?q=banned")
+	if resp.Total != 1 {
+		t.Fatalf("total: want 1, got %d", resp.Total)
+	}
+	got := resp.Items[0].BanCategories
+	if len(got) != 2 || got[0] != "lookup" || got[1] != "activity" {
+		t.Fatalf("banCategories = %v, want [lookup activity]", got)
+	}
+}

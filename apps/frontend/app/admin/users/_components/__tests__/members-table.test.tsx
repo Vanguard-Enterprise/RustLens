@@ -27,8 +27,11 @@ const bulkUser = vi.fn();
 const suspendUser = vi.fn();
 const unsuspendUser = vi.fn();
 const deleteUser = vi.fn();
+const setUserBan = vi.fn();
 
 vi.mock("../../actions", () => ({
+  setUserBanAction: (userId: string, categories: string[], reason: string) =>
+    setUserBan(userId, categories, reason),
   suspendUserAction: (userId: string, reason: string) =>
     suspendUser(userId, reason),
   unsuspendUserAction: (userId: string, reason: string) =>
@@ -51,6 +54,7 @@ beforeEach(() => {
   suspendUser.mockReset();
   unsuspendUser.mockReset();
   deleteUser.mockReset();
+  setUserBan.mockReset();
   routerPush.mockReset();
   routerRefresh.mockReset();
 });
@@ -79,6 +83,7 @@ function fixturePage(items: number) {
       steamConnectionCount: 0,
       adminRoles:          [],
       hasUserAppInstalled: false,
+      banCategories:       [],
     })),
     total:    items,
     page:     1,
@@ -386,6 +391,46 @@ describe("MembersTable", () => {
     expect(
       screen.queryByRole("button", { name: /^unsuspend$/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens user restrictions and saves selected categories", async () => {
+    setUserBan.mockResolvedValue({ ok: true, result: { userId: "usr_0" } });
+    const data = fixturePage(1);
+    data.items[0].banCategories = ["lookup"];
+
+    render(
+      <MembersTable
+        initialQuery=""
+        initialStatus="active"
+        roles={[]}
+        pageSizeOptions={[10, 20, 30, 40, 50]}
+        data={data}
+        canSuspend
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /manage user restrictions/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: /restrict user 0/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Player And Account Lookup").closest("label")?.querySelector("[role='checkbox']"),
+    ).toHaveAttribute("data-state", "checked");
+
+    fireEvent.click(screen.getByText("Activity, Presence, And Checks"));
+    fireEvent.change(screen.getByLabelText(/^reason$/i), {
+      target: { value: "command abuse" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save restrictions/i }));
+
+    await waitFor(() => expect(setUserBan).toHaveBeenCalledTimes(1));
+    expect(setUserBan).toHaveBeenCalledWith(
+      "usr_0",
+      ["lookup", "activity"],
+      "command abuse",
+    );
+    await waitFor(() => expect(routerRefresh).toHaveBeenCalledTimes(1));
   });
 
   it("clicking a row checkbox does not trigger row navigation", () => {

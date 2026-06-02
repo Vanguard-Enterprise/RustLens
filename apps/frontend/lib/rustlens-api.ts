@@ -105,9 +105,21 @@ export type AdminUserItem = {
 	adminRoles: string[];
 	entitlements?: string[];
 	hasUserAppInstalled: boolean;
+	banCategories?: AdminBanCategory[];
 	suspendedAt?: string;
 	deletedAt?: string;
 };
+
+export const ADMIN_BAN_CATEGORIES = [
+	{ value: "setup", label: "Setup And Configuration" },
+	{ value: "linking", label: "Steam Linking And Identity" },
+	{ value: "lookup", label: "Player And Account Lookup" },
+	{ value: "activity", label: "Activity, Presence, And Checks" },
+	{ value: "coordination", label: "Guild Coordination And Utility" },
+	{ value: "other", label: "Other" },
+] as const;
+
+export type AdminBanCategory = (typeof ADMIN_BAN_CATEGORIES)[number]["value"];
 
 export type AdminUsersQuery = {
 	q?: string;
@@ -248,6 +260,7 @@ export type AdminUserDetail = {
 	guilds: AdminUserGuild[];
 	adminRoles: string[];
 	entitlements?: string[];
+	banCategories?: AdminBanCategory[];
 	suspendedAt?: string;
 	suspendReason?: string;
 	deletedAt?: string;
@@ -1091,6 +1104,18 @@ export async function suspendAdminUser(userId: string, reason: string) {
 
 export async function unsuspendAdminUser(userId: string, reason: string) {
 	return postAdminAction<{ userId: string }>("users.unsuspend", { userId }, reason);
+}
+
+export async function setAdminUserBan(
+	userId: string,
+	categories: AdminBanCategory[],
+	reason: string,
+) {
+	return postAdminAction<{ userId: string; discordId: string; categories: AdminBanCategory[] }>(
+		"users.ban.set",
+		{ userId, categories },
+		reason,
+	);
 }
 
 export async function deleteAdminUser(

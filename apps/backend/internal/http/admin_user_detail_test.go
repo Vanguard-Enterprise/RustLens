@@ -36,6 +36,12 @@ func TestGetAdminUser_HappyPath(t *testing.T) {
 	if err := rb.AssignRole(ctx, "usr_detail_1", modID, ""); err != nil {
 		t.Fatalf("assign role: %v", err)
 	}
+	if _, err := ts.pool.Exec(ctx, `
+		INSERT INTO user_bans (discord_id, categories, updated_by)
+		VALUES ($1, ARRAY['setup', 'lookup']::text[], 'seed')
+	`, "d_alice"); err != nil {
+		t.Fatalf("seed user_bans: %v", err)
+	}
 
 	// Seed an audit_events row targeting this user
 	targetUser := "usr_detail_1"
@@ -72,6 +78,9 @@ func TestGetAdminUser_HappyPath(t *testing.T) {
 	}
 	if d.DiscordGlobalName != "Alice Wonderland" {
 		t.Errorf("discordGlobalName = %q", d.DiscordGlobalName)
+	}
+	if len(d.BanCategories) != 2 || d.BanCategories[0] != "setup" || d.BanCategories[1] != "lookup" {
+		t.Errorf("banCategories = %v, want [setup lookup]", d.BanCategories)
 	}
 	foundMod := false
 	for _, k := range d.AdminRoles {
@@ -141,4 +150,3 @@ func TestListAdminUserAudit_PaginatesByBefore(t *testing.T) {
 		t.Fatalf("limit=2 returned %d", len(resp.Items))
 	}
 }
-

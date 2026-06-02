@@ -1,5 +1,6 @@
 export type AdminActionKey =
   | "users.edit"
+  | "users.ban.set"
   | "users.suspend"
   | "users.unsuspend"
   | "users.delete"
@@ -34,6 +35,14 @@ export const ADMIN_ACTIONS: Record<AdminActionKey, AdminActionMeta> = {
     label: "Edit user",
     permission: "users.edit",
     requiresReason: false,
+    dangerous: false,
+    resourceType: "user",
+  },
+  "users.ban.set": {
+    key: "users.ban.set",
+    label: "Manage restrictions",
+    permission: "users.suspend",
+    requiresReason: true,
     dangerous: false,
     resourceType: "user",
   },

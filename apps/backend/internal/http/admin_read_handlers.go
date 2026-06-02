@@ -32,6 +32,7 @@ type adminUserItem struct {
 	AdminRoles           []string     `json:"adminRoles"`
 	Entitlements         []string     `json:"entitlements"`
 	HasUserAppInstalled  bool         `json:"hasUserAppInstalled"`
+	BanCategories        []string     `json:"banCategories"`
 	SuspendedAt          *string      `json:"suspendedAt,omitempty"`
 	DeletedAt            *string      `json:"deletedAt,omitempty"`
 }
@@ -118,6 +119,7 @@ type adminUserDetail struct {
 	Guilds            []adminUserGuild `json:"guilds"`
 	AdminRoles        []string         `json:"adminRoles"`
 	Entitlements      []string         `json:"entitlements"`
+	BanCategories     []string         `json:"banCategories"`
 	SuspendedAt       *string          `json:"suspendedAt,omitempty"`
 	SuspendReason     string           `json:"suspendReason,omitempty"`
 	DeletedAt         *string          `json:"deletedAt,omitempty"`
@@ -197,6 +199,7 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 		       0 AS steam_count,
 		       COALESCE(array_agg(DISTINCT r.key) FILTER (WHERE r.key IS NOT NULL), ARRAY[]::text[]),
 		       COALESCE(array_agg(DISTINCT ue.key) FILTER (WHERE ue.key IS NOT NULL), ARRAY[]::text[]),
+		       COALESCE((SELECT ub.categories FROM user_bans ub WHERE ub.discord_id = u.discord_id), ARRAY[]::text[]),
 		       EXISTS (
 		           SELECT 1 FROM bot_user_installs bui
 		           WHERE bui.discord_id = u.discord_id
@@ -225,13 +228,13 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 		var rolesLegacyJSON string
 		var suspendedAt, deletedAt *time.Time
 		var guildCount, steamCount int64
-		var adminRoleKeys, entitlementKeys []string
+		var adminRoleKeys, entitlementKeys, banCategories []string
 		if err := rows.Scan(
 			&it.User.ID, &it.User.DisplayName, &it.User.AvatarURL, &rolesLegacyJSON,
 			&it.User.CreatedAt, &it.User.UpdatedAt, &it.User.LastLoginAt,
 			&suspendedAt, &deletedAt,
 			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
-			&guildCount, &steamCount, &adminRoleKeys, &entitlementKeys, &it.HasUserAppInstalled,
+			&guildCount, &steamCount, &adminRoleKeys, &entitlementKeys, &banCategories, &it.HasUserAppInstalled,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -251,6 +254,10 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 		it.Entitlements = entitlementKeys
 		if it.Entitlements == nil {
 			it.Entitlements = []string{}
+		}
+		it.BanCategories = banCategories
+		if it.BanCategories == nil {
+			it.BanCategories = []string{}
 		}
 		if suspendedAt != nil {
 			t := suspendedAt.Format(time.RFC3339)
@@ -357,6 +364,7 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		           WHERE ue.user_id = u.id
 		             AND (ue.expires_at IS NULL OR ue.expires_at > NOW())
 		       ), ARRAY[]::text[]) AS entitlement_keys,
+		       COALESCE((SELECT ub.categories FROM user_bans ub WHERE ub.discord_id = u.discord_id), ARRAY[]::text[]) AS ban_categories,
 		       EXISTS (
 		           SELECT 1 FROM bot_user_installs bui
 		           WHERE bui.discord_id = u.discord_id
@@ -381,13 +389,13 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		var rolesLegacyJSON string
 		var suspendedAt, deletedAt *time.Time
 		var guildCount, steamCount int64
-		var adminRoleKeys, entitlementKeys []string
+		var adminRoleKeys, entitlementKeys, banCategories []string
 		if err := rows.Scan(
 			&it.User.ID, &it.User.DisplayName, &it.User.AvatarURL, &rolesLegacyJSON,
 			&it.User.CreatedAt, &it.User.UpdatedAt, &it.User.LastLoginAt,
 			&suspendedAt, &deletedAt,
 			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
-			&guildCount, &steamCount, &adminRoleKeys, &entitlementKeys, &it.HasUserAppInstalled,
+			&guildCount, &steamCount, &adminRoleKeys, &entitlementKeys, &banCategories, &it.HasUserAppInstalled,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -407,6 +415,10 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 		it.Entitlements = entitlementKeys
 		if it.Entitlements == nil {
 			it.Entitlements = []string{}
+		}
+		it.BanCategories = banCategories
+		if it.BanCategories == nil {
+			it.BanCategories = []string{}
 		}
 		if suspendedAt != nil {
 			t := suspendedAt.Format(time.RFC3339)
@@ -864,13 +876,15 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 		       created_at, updated_at, last_login_at,
 		       suspended_at, COALESCE(suspend_reason,''), deleted_at,
 		       COALESCE(discord_id, ''), COALESCE(discord_username, ''),
-		       COALESCE(discord_global_name, ''), COALESCE(discord_avatar, '')
+		       COALESCE(discord_global_name, ''), COALESCE(discord_avatar, ''),
+		       COALESCE((SELECT ub.categories FROM user_bans ub WHERE ub.discord_id = app_users.discord_id), ARRAY[]::text[])
 		FROM app_users WHERE id = $1
 	`, id).Scan(
 		&d.User.ID, &d.User.DisplayName, &d.User.AvatarURL, &rolesJSON,
 		&d.User.CreatedAt, &d.User.UpdatedAt, &d.User.LastLoginAt,
 		&suspendedAt, &d.SuspendReason, &deletedAt,
 		&d.DiscordID, &d.DiscordUsername, &d.DiscordGlobalName, &d.DiscordAvatar,
+		&d.BanCategories,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -885,6 +899,9 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if d.User.Roles == nil {
 		d.User.Roles = []string{}
+	}
+	if d.BanCategories == nil {
+		d.BanCategories = []string{}
 	}
 	if suspendedAt != nil {
 		s := suspendedAt.Format(time.RFC3339)
