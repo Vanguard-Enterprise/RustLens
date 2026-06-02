@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { AdminUsersPage } from "@/lib/rustlens-api";
 
 import { MembersTable } from "../members-table";
 
@@ -59,7 +60,7 @@ beforeEach(() => {
   routerRefresh.mockReset();
 });
 
-function fixturePage(items: number) {
+function fixturePage(items: number): AdminUsersPage {
   return {
     items: Array.from({ length: items }, (_, i) => ({
       user: {
