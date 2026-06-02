@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -286,6 +288,7 @@ type AdminGuildRow struct {
 	OwnerGlobalName        *string
 	OwnerAvatarHash        *string
 	ApproximateMemberCount *int32
+	InstalledAt            time.Time
 	IsInstalled            bool
 	LeftAt                 *time.Time
 	IsConfigured           bool
@@ -298,9 +301,12 @@ type AdminGuildRow struct {
 // bot_guilds.guild_id (prefix), and bot_guilds.owner_username (substring), all
 // case-insensitive. Empty string disables the WHERE clause.
 type ListAdminGuildsOpts struct {
-	Q        string
-	Page     int // 1-based; values <= 0 are treated as 1
-	PageSize int // values <= 0 or > 100 are clamped to 20
+	Q            string
+	Page         int // 1-based; values <= 0 are treated as 1
+	PageSize     int // values <= 0 or > 100 are clamped to 20
+	Sort         string
+	JoinedSince  *time.Time
+	JoinedBefore *time.Time
 }
 
 // ListAdminGuilds returns one paginated page of bot_guilds rows joined with
@@ -318,22 +324,56 @@ func (p *PostgresStore) ListAdminGuilds(ctx context.Context, opts ListAdminGuild
 	}
 	offset := (page - 1) * pageSize
 
-	const whereClause = `
-		WHERE ($1 = ''
-		       OR bg.name ILIKE '%' || $1 || '%'
-		       OR bg.guild_id ILIKE $1 || '%'
-		       OR bg.owner_username ILIKE '%' || $1 || '%')
-	`
+	args := []any{}
+	where := []string{}
+	if q := strings.TrimSpace(opts.Q); q != "" {
+		args = append(args, q)
+		where = append(where, fmt.Sprintf(`(
+			bg.name ILIKE '%%' || $%[1]d || '%%'
+			OR bg.guild_id ILIKE $%[1]d || '%%'
+			OR bg.owner_username ILIKE '%%' || $%[1]d || '%%'
+		)`, len(args)))
+	}
+	if opts.JoinedSince != nil {
+		args = append(args, *opts.JoinedSince)
+		where = append(where, fmt.Sprintf("bg.installed_at >= $%d", len(args)))
+	}
+	if opts.JoinedBefore != nil {
+		args = append(args, *opts.JoinedBefore)
+		where = append(where, fmt.Sprintf("bg.installed_at < $%d", len(args)))
+	}
+	whereClause := ""
+	if len(where) > 0 {
+		whereClause = "WHERE " + strings.Join(where, " AND ")
+	}
+
+	orderBy := "bg.name ASC, bg.guild_id ASC"
+	switch opts.Sort {
+	case "name":
+		orderBy = "bg.name ASC, bg.guild_id ASC"
+	case "-name":
+		orderBy = "bg.name DESC, bg.guild_id ASC"
+	case "members":
+		orderBy = "bg.approximate_member_count ASC NULLS LAST, bg.guild_id ASC"
+	case "-members":
+		orderBy = "bg.approximate_member_count DESC NULLS LAST, bg.guild_id ASC"
+	case "joined":
+		orderBy = "bg.installed_at ASC, bg.guild_id ASC"
+	case "-joined":
+		orderBy = "bg.installed_at DESC, bg.guild_id ASC"
+	}
 
 	var total int
-	if err := p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM bot_guilds bg `+whereClause, opts.Q).Scan(&total); err != nil {
+	if err := p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM bot_guilds bg `+whereClause, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
+	queryArgs := append([]any{}, args...)
+	queryArgs = append(queryArgs, pageSize, offset)
 	rows, err := p.pool.Query(ctx, `
 		SELECT bg.guild_id, bg.name, bg.icon_hash,
 		       bg.owner_discord_id, bg.owner_username, bg.owner_global_name, bg.owner_avatar_hash,
-		       bg.approximate_member_count, bg.is_installed, bg.left_at,
+		       bg.approximate_member_count, bg.installed_at, bg.is_installed, bg.left_at,
 		       (gs.guild_id IS NOT NULL) AS is_configured,
 		       COALESCE(gts.cnt, 0)      AS tracked_server_count
 		FROM bot_guilds bg
@@ -344,9 +384,9 @@ func (p *PostgresStore) ListAdminGuilds(ctx context.Context, opts ListAdminGuild
 			GROUP BY guild_id
 		) gts ON gts.guild_id = bg.guild_id
 		`+whereClause+`
-		ORDER BY bg.name ASC, bg.guild_id ASC
-		LIMIT $2 OFFSET $3
-	`, opts.Q, pageSize, offset)
+		ORDER BY `+orderBy+`
+		LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs))+`
+	`, queryArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -358,7 +398,7 @@ func (p *PostgresStore) ListAdminGuilds(ctx context.Context, opts ListAdminGuild
 		if err := rows.Scan(
 			&r.GuildID, &r.Name, &r.IconHash,
 			&r.OwnerDiscordID, &r.OwnerUsername, &r.OwnerGlobalName, &r.OwnerAvatarHash,
-			&r.ApproximateMemberCount, &r.IsInstalled, &r.LeftAt,
+			&r.ApproximateMemberCount, &r.InstalledAt, &r.IsInstalled, &r.LeftAt,
 			&r.IsConfigured, &r.TrackedServerCount,
 		); err != nil {
 			return nil, 0, err

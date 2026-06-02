@@ -64,6 +64,7 @@ import { toast } from "sonner";
 import { userAvatarUrl } from "@/lib/discord-cdn";
 import type {
   AdminRoleItem,
+  AdminBanCategory,
   AdminUserItem,
   AdminUsersPage,
   AdminUsersQuery,
@@ -72,11 +73,13 @@ import type {
 import {
   bulkUserAction,
   deleteUserAction,
+  setUserBanAction,
   suspendUserAction,
   unsuspendUserAction,
 } from "../actions";
 import { DeleteDialog } from "./delete-dialog";
 import { SuspendDialog } from "./suspend-dialog";
+import { UserBanDialog } from "./user-ban-dialog";
 
 type MemberStatus = NonNullable<AdminUsersQuery["status"]>;
 type UserAppFilter = "installed" | "not_installed";
@@ -135,6 +138,12 @@ type DeleteTarget = {
   displayName: string;
 };
 
+type RestrictionTarget = {
+  userId: string;
+  displayName: string;
+  categories: AdminBanCategory[];
+};
+
 const SEARCH_DEBOUNCE_MS = 300;
 
 type BulkAction = "suspend" | "unsuspend";
@@ -191,6 +200,15 @@ function buildFlags(item: AdminUserItem): FlagDef[] {
       key: "suspended",
       Icon: BanIcon,
       label: "Suspended",
+      className: "text-destructive",
+    });
+  }
+  const banCategories = item.banCategories ?? [];
+  if (banCategories.length > 0) {
+    flags.push({
+      key: "restricted",
+      Icon: BanIcon,
+      label: `Restricted: ${banCategories.join(", ")}`,
       className: "text-destructive",
     });
   }
@@ -297,6 +315,7 @@ export function MembersTable({
   const [searchValue, setSearchValue] = React.useState(initialQuery);
   const [suspendTarget, setSuspendTarget] = React.useState<SuspendTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<DeleteTarget | null>(null);
+  const [restrictionTarget, setRestrictionTarget] = React.useState<RestrictionTarget | null>(null);
   const [bulkAction, setBulkAction] = React.useState<BulkAction | null>(null);
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
 
@@ -830,6 +849,24 @@ export function MembersTable({
                               size="icon"
                               className="size-8"
                               onClick={() =>
+                                setRestrictionTarget({
+                                  userId: u.user.id,
+                                  displayName: memberLabel(u),
+                                  categories: u.banCategories ?? [],
+                                })
+                              }
+                              aria-label="Manage user restrictions"
+                              title="Manage user restrictions"
+                            >
+                              <ShieldIcon className="size-4" />
+                            </Button>
+                          ) : null}
+                          {canSuspend ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() =>
                                 setSuspendTarget({
                                   mode: isSuspended ? "unsuspend" : "suspend",
                                   userId: u.user.id,
@@ -890,6 +927,20 @@ export function MembersTable({
               const action =
                 suspendTarget?.mode === "unsuspend" ? unsuspendUserAction : suspendUserAction;
               const res = await action(userId, reason);
+              if (!res.ok) throw new Error(res.error);
+              router.refresh();
+            }}
+          />
+          <UserBanDialog
+            open={restrictionTarget !== null}
+            onOpenChange={(o) => {
+              if (!o) setRestrictionTarget(null);
+            }}
+            userId={restrictionTarget?.userId ?? ""}
+            displayName={restrictionTarget?.displayName ?? ""}
+            initialCategories={restrictionTarget?.categories ?? []}
+            onConfirm={async (userId, categories, reason) => {
+              const res = await setUserBanAction(userId, categories, reason);
               if (!res.ok) throw new Error(res.error);
               router.refresh();
             }}

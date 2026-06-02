@@ -11,8 +11,10 @@ import {
 	editAdminUser,
 	revokeAdminUserRole,
 	searchAdminUsers,
+	setAdminUserBan,
 	suspendAdminUser,
 	unsuspendAdminUser,
+	type AdminBanCategory,
 	type AdminCommandUsageItem,
 	type AdminCommandUsageTarget,
 	type AdminUserItem,
@@ -129,6 +131,22 @@ export async function unsuspendUserAction(
 	} catch (err) {
 		return { ok: false, error: (err as Error).message };
 	}
+}
+
+export async function setUserBanAction(
+	userId: string,
+	categories: AdminBanCategory[],
+	reason: string,
+): Promise<ActionResult> {
+	await requirePermission("users.suspend");
+	const res = await withReason(reason, () =>
+		setAdminUserBan(userId, categories, reason.trim()),
+	);
+	if (res.ok) {
+		revalidateLists();
+		revalidatePath(userPath(userId));
+	}
+	return res;
 }
 
 export async function deleteUserAction(

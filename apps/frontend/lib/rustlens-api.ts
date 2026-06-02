@@ -1,6 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
+import type { AdminBanCategory } from "@/lib/admin-ban-categories";
 import { backendFetchHist } from "@/lib/observability/metrics";
 import { getSessionToken } from "@/lib/session";
 import { noticeFromBackendError } from "@/lib/session-errors";
@@ -105,9 +106,12 @@ export type AdminUserItem = {
 	adminRoles: string[];
 	entitlements?: string[];
 	hasUserAppInstalled: boolean;
+	banCategories?: AdminBanCategory[];
 	suspendedAt?: string;
 	deletedAt?: string;
 };
+
+export type { AdminBanCategory } from "@/lib/admin-ban-categories";
 
 export type AdminUsersQuery = {
 	q?: string;
@@ -140,6 +144,7 @@ export type AdminGuildItem = {
 	ownerGlobalName: string | null;
 	ownerAvatarHash: string | null;
 	approximateMemberCount: number | null;
+	installedAt: string;
 	isInstalled: boolean;
 	leftAt: string | null;
 	isConfigured: boolean;
@@ -150,6 +155,9 @@ export type AdminGuildsQuery = {
 	q?: string;
 	page?: number;
 	pageSize?: number;
+	sort?: string;
+	joinedSince?: string;
+	joinedBefore?: string;
 };
 
 export type AdminGuildsPage = {
@@ -248,6 +256,7 @@ export type AdminUserDetail = {
 	guilds: AdminUserGuild[];
 	adminRoles: string[];
 	entitlements?: string[];
+	banCategories?: AdminBanCategory[];
 	suspendedAt?: string;
 	suspendReason?: string;
 	deletedAt?: string;
@@ -507,6 +516,9 @@ export async function getAdminGuilds(params: AdminGuildsQuery = {}): Promise<Adm
 	if (params.q) sp.set("q", params.q);
 	if (params.page) sp.set("page", String(params.page));
 	if (params.pageSize) sp.set("pageSize", String(params.pageSize));
+	if (params.sort) sp.set("sort", params.sort);
+	if (params.joinedSince) sp.set("joinedSince", params.joinedSince);
+	if (params.joinedBefore) sp.set("joinedBefore", params.joinedBefore);
 	const qs = sp.toString();
 	return backendFetch<AdminGuildsPage>(
 		`/api/app/admin/guilds${qs ? `?${qs}` : ""}`,
@@ -1091,6 +1103,18 @@ export async function suspendAdminUser(userId: string, reason: string) {
 
 export async function unsuspendAdminUser(userId: string, reason: string) {
 	return postAdminAction<{ userId: string }>("users.unsuspend", { userId }, reason);
+}
+
+export async function setAdminUserBan(
+	userId: string,
+	categories: AdminBanCategory[],
+	reason: string,
+) {
+	return postAdminAction<{ userId: string; discordId: string; categories: AdminBanCategory[] }>(
+		"users.ban.set",
+		{ userId, categories },
+		reason,
+	);
 }
 
 export async function deleteAdminUser(

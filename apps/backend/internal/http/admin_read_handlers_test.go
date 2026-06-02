@@ -208,6 +208,19 @@ func insertBotGuild(t *testing.T, ts *testHandlerServer, guildID, name, ownerUse
 	}
 }
 
+func insertBotGuildWithMeta(t *testing.T, ts *testHandlerServer, guildID, name string, members int, installedAt string) {
+	t.Helper()
+	if _, err := ts.pool.Exec(context.Background(), `
+		INSERT INTO bot_guilds (
+			guild_id, name, owner_username, approximate_member_count,
+			is_installed, installed_at, metadata_updated_at
+		)
+		VALUES ($1, $2, 'owner', $3, TRUE, $4::timestamptz, NOW())
+	`, guildID, name, members, installedAt); err != nil {
+		t.Fatalf("insert bot_guilds meta: %v", err)
+	}
+}
+
 func insertGuildSettings(t *testing.T, ts *testHandlerServer, guildID string) {
 	t.Helper()
 	if _, err := ts.pool.Exec(context.Background(), `
@@ -342,5 +355,29 @@ func TestListAdminGuilds_ConfiguredAndTrackedCount(t *testing.T) {
 	}
 	if got := byID["222222222222222222"]; got.IsConfigured || got.TrackedServerCount != 0 {
 		t.Errorf("Bare: want isConfigured=false count=0, got %+v", got)
+	}
+}
+
+func TestListAdminGuilds_SortAndJoinedFilter(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	wipeGuildTables(t, ts)
+
+	insertBotGuildWithMeta(t, ts, "111111111111111111", "Alpha", 10, "2026-01-01T00:00:00Z")
+	insertBotGuildWithMeta(t, ts, "222222222222222222", "Bravo", 30, "2026-02-01T00:00:00Z")
+	insertBotGuildWithMeta(t, ts, "333333333333333333", "Charlie", 20, "2026-03-01T00:00:00Z")
+
+	byMembers := ts.getGuilds(t, "/api/app/admin/guilds?sort=-members")
+	if byMembers.Items[0].GuildID != "222222222222222222" {
+		t.Fatalf("sort=-members first = %s, want Bravo", byMembers.Items[0].GuildID)
+	}
+
+	byJoined := ts.getGuilds(t, "/api/app/admin/guilds?sort=joined")
+	if byJoined.Items[0].GuildID != "111111111111111111" || byJoined.Items[0].InstalledAt == "" {
+		t.Fatalf("sort=joined first = %+v, want Alpha with installedAt", byJoined.Items[0])
+	}
+
+	filtered := ts.getGuilds(t, "/api/app/admin/guilds?joinedSince=2026-02-01&joinedBefore=2026-03-01")
+	if filtered.Total != 1 || filtered.Items[0].GuildID != "222222222222222222" {
+		t.Fatalf("joined filter got total=%d items=%+v, want Bravo only", filtered.Total, filtered.Items)
 	}
 }
