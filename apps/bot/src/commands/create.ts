@@ -40,6 +40,8 @@ const ACCEPT_BUTTON_EMOJI = { name: "user_tick", id: "1499109036954751138" };
 const NO_REQUIRED_ROLE_SENTINEL = "0";
 
 const PENDING_INVITE_TTL_MS = 30 * 60 * 1000;
+const DISCORD_UNKNOWN_CHANNEL_CODE = 10003;
+const DISCORD_UNKNOWN_MESSAGE_CODE = 10008;
 
 type PendingInvite = {
   guildId: string;
@@ -60,6 +62,72 @@ function prunePendingInvites(now = Date.now()) {
       pendingInvites.delete(key);
     }
   }
+}
+
+function discordErrorCode(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error
+    ? (error as { code?: unknown }).code
+    : null;
+}
+
+function isUnknownDiscordResource(error: unknown) {
+  const code = discordErrorCode(error);
+  return code === DISCORD_UNKNOWN_CHANNEL_CODE || code === DISCORD_UNKNOWN_MESSAGE_CODE;
+}
+
+function getMessageFetcher(channel: unknown) {
+  const messages = (channel as { messages?: { fetch?: (messageId: string) => Promise<unknown> } } | null)?.messages;
+  return typeof messages?.fetch === "function" ? messages.fetch.bind(messages) : null;
+}
+
+async function pendingInviteRequestStillExists(
+  interaction: ButtonInteraction,
+  pending: PendingInvite,
+) {
+  if (!interaction.guild || !pending.channelId || !pending.messageId) {
+    return true;
+  }
+
+  const channel = await interaction.guild.channels
+    .fetch(pending.channelId)
+    .catch((error: unknown) => {
+      if (isUnknownDiscordResource(error)) {
+        return null;
+      }
+      logDiscordError("fetch pending create invite channel", error, {
+        guildId: pending.guildId,
+        channelId: pending.channelId,
+        messageId: pending.messageId,
+      });
+      return undefined;
+    });
+
+  if (channel === undefined) {
+    return true;
+  }
+
+  if (channel === null) {
+    return false;
+  }
+
+  const fetchMessage = getMessageFetcher(channel);
+  if (!fetchMessage) {
+    return false;
+  }
+
+  const message = await fetchMessage(pending.messageId).catch((error: unknown) => {
+    if (isUnknownDiscordResource(error)) {
+      return null;
+    }
+    logDiscordError("fetch pending create invite message", error, {
+      guildId: pending.guildId,
+      channelId: pending.channelId,
+      messageId: pending.messageId,
+    });
+    return undefined;
+  });
+
+  return message !== null;
 }
 
 const createCommand = new SlashCommandBuilder()
@@ -282,12 +350,16 @@ async function handleRequestInviteButton(interaction: ButtonInteraction) {
   prunePendingInvites();
 
   const pendingKey = pendingInviteKey(interaction.guildId, interaction.user.id);
-  if (pendingInvites.has(pendingKey)) {
+  const pendingInvite = pendingInvites.get(pendingKey);
+  if (pendingInvite && await pendingInviteRequestStillExists(interaction, pendingInvite)) {
     await replyEphemeral(
       interaction,
       "You already have a pending clan invite request. Wait for an admin to accept it before requesting another.",
     );
     return;
+  }
+  if (pendingInvite) {
+    pendingInvites.delete(pendingKey);
   }
 
   pendingInvites.set(pendingKey, {
@@ -302,24 +374,22 @@ async function handleRequestInviteButton(interaction: ButtonInteraction) {
   const requesterAvatarURL =
     member?.displayAvatarURL({ size: 1024 }) ?? interaction.user.displayAvatarURL({ size: 1024 });
 
+  let replyMessage;
   try {
-    await interaction.reply({
+    replyMessage = await interaction.reply({
       content: `<@&${pingRoleId}> <@${interaction.user.id}>`,
       embeds: [buildClanInviteEmbed(steamId, requesterDisplayName, requesterAvatarURL)],
       components: [buildAcceptButton(interaction.user.id)],
       allowedMentions: { roles: [pingRoleId], users: [interaction.user.id] },
+      fetchReply: true,
     });
   } catch (error) {
     pendingInvites.delete(pendingKey);
     throw error;
   }
 
-  const replyMessage = await interaction.fetchReply().catch(logDiscordCatch("fetch create invite reply", null, {
-    guildId: interaction.guildId,
-    discordId: interaction.user.id,
-  }));
   const existing = pendingInvites.get(pendingKey);
-  if (replyMessage && existing) {
+  if (existing) {
     pendingInvites.set(pendingKey, {
       ...existing,
       channelId: replyMessage.channelId,
@@ -422,3 +492,10 @@ export async function handleCreateButtonInteraction(interaction: ButtonInteracti
 
   return false;
 }
+
+export const __testables = {
+  pendingInvites,
+  pendingInviteKey,
+  pendingInviteRequestStillExists,
+  prunePendingInvites,
+};
