@@ -13,15 +13,28 @@ export const metadata: Metadata = { title: "Guild Details" };
 
 export default async function AdminGuildDetailRoute({
 	params,
+	searchParams,
 }: {
 	params: Promise<{ guildId: string }>;
+	searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
 	const session = await requirePermission("guilds.read");
 	const { guildId } = await params;
+	const sp = await searchParams;
+	const pageParam = (name: string) => {
+		const raw = Array.isArray(sp[name]) ? sp[name]?.[0] : sp[name];
+		const value = Number.parseInt(raw ?? "", 10);
+		return Number.isFinite(value) && value > 0 ? value : undefined;
+	};
 
 	let detail;
 	try {
-		detail = await getAdminGuild(guildId);
+		detail = await getAdminGuild(guildId, {
+			memberPage: pageParam("memberPage"),
+			linkPage: pageParam("linkPage"),
+			trackGroupPage: pageParam("trackGroupPage"),
+			usagePage: pageParam("usagePage"),
+		});
 	} catch (err) {
 		const status = (err as Error & { status?: number }).status;
 		const message = (err as Error).message;

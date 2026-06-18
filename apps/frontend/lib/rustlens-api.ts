@@ -296,6 +296,12 @@ export type AdminGuildUsageSummary = {
 	topCommands: Array<{ command: string; count: number }>;
 };
 
+export type AdminGuildDetailPageInfo = {
+	page: number;
+	pageSize: number;
+	total: number;
+};
+
 export type AdminGuildDetail = {
 	guild: AdminGuildItem;
 	stats: AdminGuildDetailStats;
@@ -309,11 +315,19 @@ export type AdminGuildDetail = {
 	trackGroups: AdminGuildTrackGroup[];
 	recentUsage: AdminGuildUsageItem[];
 	usageSummary: AdminGuildUsageSummary;
-	limits: {
-		members: number;
-		links: number;
-		recentUsage: number;
+	pagination: {
+		members: AdminGuildDetailPageInfo;
+		links: AdminGuildDetailPageInfo;
+		trackGroups: AdminGuildDetailPageInfo;
+		recentUsage: AdminGuildDetailPageInfo;
 	};
+};
+
+export type AdminGuildDetailQuery = {
+	memberPage?: number;
+	linkPage?: number;
+	trackGroupPage?: number;
+	usagePage?: number;
 };
 
 export type AdminUserInstallItem = {
@@ -676,9 +690,18 @@ export async function getAdminGuilds(params: AdminGuildsQuery = {}): Promise<Adm
 	);
 }
 
-export async function getAdminGuild(guildId: string): Promise<AdminGuildDetail> {
+export async function getAdminGuild(
+	guildId: string,
+	params: AdminGuildDetailQuery = {},
+): Promise<AdminGuildDetail> {
+	const sp = new URLSearchParams();
+	if (params.memberPage) sp.set("memberPage", String(params.memberPage));
+	if (params.linkPage) sp.set("linkPage", String(params.linkPage));
+	if (params.trackGroupPage) sp.set("trackGroupPage", String(params.trackGroupPage));
+	if (params.usagePage) sp.set("usagePage", String(params.usagePage));
+	const qs = sp.toString();
 	return backendFetch<AdminGuildDetail>(
-		`/api/app/admin/guilds/${encodeURIComponent(guildId)}`,
+		`/api/app/admin/guilds/${encodeURIComponent(guildId)}${qs ? `?${qs}` : ""}`,
 		undefined,
 		{ requireSession: true },
 	);

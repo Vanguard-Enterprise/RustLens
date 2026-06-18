@@ -452,6 +452,7 @@ func TestGetAdminGuild_ReturnsStoredGuildDetail(t *testing.T) {
 		TrackGroups      []adminGuildTrackGroupItem `json:"trackGroups"`
 		RecentUsage      []adminGuildUsageItem      `json:"recentUsage"`
 		UsageSummary     adminGuildUsageSummary     `json:"usageSummary"`
+		Pagination       adminGuildDetailPages      `json:"pagination"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal detail: %v; body=%s", err, rr.Body.String())
@@ -482,5 +483,55 @@ func TestGetAdminGuild_ReturnsStoredGuildDetail(t *testing.T) {
 	}
 	if len(resp.RecentUsage) != 1 || resp.UsageSummary.TotalCount != 1 {
 		t.Fatalf("usage = %+v summary=%+v", resp.RecentUsage, resp.UsageSummary)
+	}
+	if resp.Pagination.Members.Page != 1 || resp.Pagination.Members.Total != 1 {
+		t.Fatalf("pagination.members = %+v", resp.Pagination.Members)
+	}
+}
+
+func TestGetAdminGuild_PaginatesStoredMembers(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	ctx := context.Background()
+	guildID := "111111111111111111"
+	if _, err := ts.pool.Exec(ctx, `
+		TRUNCATE command_usage, track_group_members, track_groups, wipe_react_schedules,
+			wipe_reacts, guild_steam_discord_links, user_guilds, app_users,
+			bot_guilds, guild_settings, guild_tracked_servers, tracked_servers
+		RESTART IDENTITY CASCADE
+	`); err != nil {
+		t.Fatalf("truncate detail tables: %v", err)
+	}
+	if _, err := ts.pool.Exec(ctx, `
+		INSERT INTO bot_guilds (guild_id, name, owner_username, is_installed, installed_at, metadata_updated_at)
+		VALUES ($1, 'Alpha', 'owner', TRUE, NOW(), NOW());
+		INSERT INTO user_guilds (discord_id, guild_id, is_active, first_seen_at, last_seen_at)
+		SELECT 'member_' || n::text, $1, TRUE, NOW(), NOW() - (n || ' minutes')::interval
+		FROM generate_series(1, 101) AS n
+	`, guildID); err != nil {
+		t.Fatalf("seed paginated members: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/app/admin/guilds/"+guildID+"?memberPage=2", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("guildID", guildID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	ts.h.GetAdminGuild(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GetAdminGuild status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp struct {
+		Members    []adminGuildMemberItem `json:"members"`
+		Pagination adminGuildDetailPages  `json:"pagination"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal detail: %v; body=%s", err, rr.Body.String())
+	}
+	if resp.Pagination.Members.Page != 2 || resp.Pagination.Members.Total != 101 {
+		t.Fatalf("pagination.members = %+v", resp.Pagination.Members)
+	}
+	if len(resp.Members) != 1 {
+		t.Fatalf("members page 2 len = %d, want 1", len(resp.Members))
 	}
 }

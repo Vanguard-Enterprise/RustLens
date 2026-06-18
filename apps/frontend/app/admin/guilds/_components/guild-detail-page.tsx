@@ -21,6 +21,7 @@ import {
 import { guildIconUrl, userAvatarUrl } from "@/lib/discord-cdn";
 import type {
 	AdminGuildDetail,
+	AdminGuildDetailPageInfo,
 	AdminGuildMember,
 	AdminGuildUsageItem,
 	AdminGuildWipeReact,
@@ -66,6 +67,17 @@ function shortCommand(row: AdminGuildUsageItem): string {
 	return row.subcommand ? `/${row.command} ${row.subcommand}` : `/${row.command}`;
 }
 
+function pageCount(info: AdminGuildDetailPageInfo): number {
+	return Math.max(1, Math.ceil(info.total / info.pageSize));
+}
+
+function pageSummary(info: AdminGuildDetailPageInfo, noun: string): string {
+	if (info.total === 0) return `0 ${noun}`;
+	const start = (info.page - 1) * info.pageSize + 1;
+	const end = Math.min(info.total, info.page * info.pageSize);
+	return `${start}-${end} of ${formatNumber(info.total)} ${noun}`;
+}
+
 function Stat({ label, value }: { label: string; value: string | number }) {
 	return (
 		<Card size="sm">
@@ -104,6 +116,49 @@ function EmptyRow({ colSpan, label }: { colSpan: number; label: string }) {
 				{label}
 			</TableCell>
 		</TableRow>
+	);
+}
+
+function Pager({
+	info,
+	hrefForPage,
+	label,
+}: {
+	info: AdminGuildDetailPageInfo;
+	hrefForPage: (page: number) => string;
+	label: string;
+}) {
+	if (info.total <= info.pageSize) {
+		return null;
+	}
+	const pages = pageCount(info);
+	const prev = Math.max(1, info.page - 1);
+	const next = Math.min(pages, info.page + 1);
+	const linkClass = "rounded-md border px-3 py-1 text-sm hover:bg-muted";
+	const disabledClass = "rounded-md border px-3 py-1 text-sm text-muted-foreground opacity-50";
+
+	return (
+		<div className="mt-3 flex items-center justify-between gap-3 text-sm">
+			<div className="text-muted-foreground">
+				Page {info.page} of {pages}
+			</div>
+			<div className="flex items-center gap-2" aria-label={`${label} pagination`}>
+				{info.page > 1 ? (
+					<Link href={hrefForPage(prev)} className={linkClass}>
+						Previous
+					</Link>
+				) : (
+					<span className={disabledClass}>Previous</span>
+				)}
+				{info.page < pages ? (
+					<Link href={hrefForPage(next)} className={linkClass}>
+						Next
+					</Link>
+				) : (
+					<span className={disabledClass}>Next</span>
+				)}
+			</div>
+		</div>
 	);
 }
 
@@ -229,6 +284,24 @@ export function GuildDetailPage({ detail }: Props) {
 		detail.usageSummary.totalCount > 0
 			? `${Math.round(detail.usageSummary.errorRate * 1000) / 10}%`
 			: "0%";
+	const pageHref = (
+		param: "memberPage" | "linkPage" | "trackGroupPage" | "usagePage",
+		page: number,
+	) => {
+		const params = new URLSearchParams();
+		const current = {
+			memberPage: detail.pagination.members.page,
+			linkPage: detail.pagination.links.page,
+			trackGroupPage: detail.pagination.trackGroups.page,
+			usagePage: detail.pagination.recentUsage.page,
+		};
+		current[param] = page;
+		for (const [key, value] of Object.entries(current)) {
+			if (value > 1) params.set(key, String(value));
+		}
+		const qs = params.toString();
+		return `/admin/guilds/${encodeURIComponent(guild.guildId)}${qs ? `?${qs}` : ""}`;
+	};
 
 	return (
 		<div className="flex flex-col gap-6">
@@ -374,18 +447,28 @@ export function GuildDetailPage({ detail }: Props) {
 							</TableBody>
 						</Table>
 					</div>
+					<Pager
+						info={detail.pagination.trackGroups}
+						label="Track groups"
+						hrefForPage={(page) => pageHref("trackGroupPage", page)}
+					/>
 				</Section>
 			</div>
 
 			<Section
 				title="Member Snapshot"
-				description={`Showing up to ${detail.limits.members} stored members`}
+				description={pageSummary(detail.pagination.members, "stored members")}
 			>
 				<MembersTable members={detail.members} />
+				<Pager
+					info={detail.pagination.members}
+					label="Members"
+					hrefForPage={(page) => pageHref("memberPage", page)}
+				/>
 			</Section>
 
 			<div className="grid gap-4 xl:grid-cols-2">
-				<Section title="Steam Links" description={`Showing up to ${detail.limits.links} guild links`}>
+				<Section title="Steam Links" description={pageSummary(detail.pagination.links, "guild links")}>
 					<div className="overflow-hidden rounded-lg border">
 						<Table>
 							<TableHeader>
@@ -412,6 +495,11 @@ export function GuildDetailPage({ detail }: Props) {
 							</TableBody>
 						</Table>
 					</div>
+					<Pager
+						info={detail.pagination.links}
+						label="Steam links"
+						hrefForPage={(page) => pageHref("linkPage", page)}
+					/>
 				</Section>
 
 				<Section title="Wipe React Schedules">
@@ -444,7 +532,7 @@ export function GuildDetailPage({ detail }: Props) {
 				</Section>
 			</div>
 
-			<Section title="Recent Usage" description={`Showing up to ${detail.limits.recentUsage} interactions`}>
+			<Section title="Recent Usage" description={pageSummary(detail.pagination.recentUsage, "interactions")}>
 				<div className="overflow-hidden rounded-lg border">
 					<Table>
 						<TableHeader>
@@ -477,6 +565,11 @@ export function GuildDetailPage({ detail }: Props) {
 						</TableBody>
 					</Table>
 				</div>
+				<Pager
+					info={detail.pagination.recentUsage}
+					label="Recent usage"
+					hrefForPage={(page) => pageHref("usagePage", page)}
+				/>
 			</Section>
 
 			<Section title="Recent Wipe React History">

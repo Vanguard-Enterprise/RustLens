@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -13,6 +14,19 @@ import (
 )
 
 const adminGuildDetailListLimit = 100
+
+type adminGuildDetailPage struct {
+	Page     int   `json:"page"`
+	PageSize int   `json:"pageSize"`
+	Total    int64 `json:"total"`
+}
+
+type adminGuildDetailPages struct {
+	Members     adminGuildDetailPage `json:"members"`
+	Links       adminGuildDetailPage `json:"links"`
+	TrackGroups adminGuildDetailPage `json:"trackGroups"`
+	RecentUsage adminGuildDetailPage `json:"recentUsage"`
+}
 
 type adminGuildSettingsItem struct {
 	GuildID                   string `json:"guildId"`
@@ -132,6 +146,16 @@ func (h *Handler) GetAdminGuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	q := r.URL.Query()
+	memberPage := parseAdminGuildDetailPage(q.Get("memberPage"))
+	linkPage := parseAdminGuildDetailPage(q.Get("linkPage"))
+	trackGroupPage := parseAdminGuildDetailPage(q.Get("trackGroupPage"))
+	usagePage := parseAdminGuildDetailPage(q.Get("usagePage"))
+	memberOffset := (memberPage - 1) * adminGuildDetailListLimit
+	linkOffset := (linkPage - 1) * adminGuildDetailListLimit
+	trackGroupOffset := (trackGroupPage - 1) * adminGuildDetailListLimit
+	usageOffset := (usagePage - 1) * adminGuildDetailListLimit
+
 	guild, err := h.getAdminGuildItem(ctx, guildID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "guild not found")
@@ -171,27 +195,37 @@ func (h *Handler) GetAdminGuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	members, err := h.listAdminGuildMembers(ctx, guildID)
+	members, err := h.listAdminGuildMembers(ctx, guildID, adminGuildDetailListLimit, memberOffset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	links, err := h.listAdminGuildSteamLinks(ctx, guildID)
+	links, err := h.listAdminGuildSteamLinks(ctx, guildID, adminGuildDetailListLimit, linkOffset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	trackGroups, err := h.listAdminGuildTrackGroups(ctx, guildID)
+	trackGroups, err := h.listAdminGuildTrackGroups(ctx, guildID, adminGuildDetailListLimit, trackGroupOffset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	recentUsage, err := h.listAdminGuildRecentUsage(ctx, guildID)
+	recentUsage, err := h.listAdminGuildRecentUsage(ctx, guildID, adminGuildDetailListLimit, usageOffset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	usageSummary, err := h.adminGuildUsageSummary(ctx, guildID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	linkTotal, err := h.countAdminGuildSteamLinks(ctx, guildID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	recentUsageTotal, err := h.countAdminGuildUsage(ctx, guildID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -232,12 +266,40 @@ func (h *Handler) GetAdminGuild(w http.ResponseWriter, r *http.Request) {
 		"trackGroups":      trackGroups,
 		"recentUsage":      recentUsage,
 		"usageSummary":     usageSummary,
-		"limits": map[string]any{
-			"members":     adminGuildDetailListLimit,
-			"links":       adminGuildDetailListLimit,
-			"recentUsage": adminGuildDetailListLimit,
+		"pagination": adminGuildDetailPages{
+			Members: adminGuildDetailPage{
+				Page:     memberPage,
+				PageSize: adminGuildDetailListLimit,
+				Total:    stats.MemberCount,
+			},
+			Links: adminGuildDetailPage{
+				Page:     linkPage,
+				PageSize: adminGuildDetailListLimit,
+				Total:    linkTotal,
+			},
+			TrackGroups: adminGuildDetailPage{
+				Page:     trackGroupPage,
+				PageSize: adminGuildDetailListLimit,
+				Total:    stats.TrackGroupCount,
+			},
+			RecentUsage: adminGuildDetailPage{
+				Page:     usagePage,
+				PageSize: adminGuildDetailListLimit,
+				Total:    recentUsageTotal,
+			},
 		},
 	})
+}
+
+func parseAdminGuildDetailPage(raw string) int {
+	if raw == "" {
+		return 1
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 1
+	}
+	return n
 }
 
 func (h *Handler) getAdminGuildItem(ctx context.Context, guildID string) (adminGuildItem, error) {
@@ -317,7 +379,7 @@ func (h *Handler) adminGuildStats(ctx context.Context, guildID string, usage adm
 	return stats, nil
 }
 
-func (h *Handler) listAdminGuildMembers(ctx context.Context, guildID string) ([]adminGuildMemberItem, error) {
+func (h *Handler) listAdminGuildMembers(ctx context.Context, guildID string, limit int, offset int) ([]adminGuildMemberItem, error) {
 	rows, err := h.postgres.Pool().Query(ctx, `
 		SELECT ug.discord_id,
 		       u.id,
@@ -343,8 +405,8 @@ func (h *Handler) listAdminGuildMembers(ctx context.Context, guildID string) ([]
 		GROUP BY ug.discord_id, u.id, u.display_name, u.discord_global_name, u.discord_username,
 		         u.discord_avatar, ug.is_active, ug.is_owner, ug.first_seen_at, ug.last_seen_at, ug.left_at
 		ORDER BY (ug.is_active AND ug.left_at IS NULL) DESC, ug.last_seen_at DESC, ug.discord_id ASC
-		LIMIT $2
-	`, guildID, adminGuildDetailListLimit)
+		LIMIT $2 OFFSET $3
+	`, guildID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +439,7 @@ func (h *Handler) listAdminGuildMembers(ctx context.Context, guildID string) ([]
 	return items, rows.Err()
 }
 
-func (h *Handler) listAdminGuildSteamLinks(ctx context.Context, guildID string) ([]adminGuildSteamLinkItem, error) {
+func (h *Handler) listAdminGuildSteamLinks(ctx context.Context, guildID string, limit int, offset int) ([]adminGuildSteamLinkItem, error) {
 	rows, err := h.postgres.Pool().Query(ctx, `
 		SELECT gsl.discord_id, gsl.steam_id, u.id,
 		       COALESCE(NULLIF(u.display_name, ''), NULLIF(u.discord_global_name, ''), NULLIF(u.discord_username, '')) AS display_name,
@@ -387,8 +449,8 @@ func (h *Handler) listAdminGuildSteamLinks(ctx context.Context, guildID string) 
 		LEFT JOIN app_users u ON u.discord_id = gsl.discord_id
 		WHERE gsl.guild_id = $1
 		ORDER BY gsl.created_at DESC, gsl.discord_id ASC, gsl.steam_id ASC
-		LIMIT $2
-	`, guildID, adminGuildDetailListLimit)
+		LIMIT $2 OFFSET $3
+	`, guildID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -412,7 +474,7 @@ func (h *Handler) listAdminGuildSteamLinks(ctx context.Context, guildID string) 
 	return items, rows.Err()
 }
 
-func (h *Handler) listAdminGuildTrackGroups(ctx context.Context, guildID string) ([]adminGuildTrackGroupItem, error) {
+func (h *Handler) listAdminGuildTrackGroups(ctx context.Context, guildID string, limit int, offset int) ([]adminGuildTrackGroupItem, error) {
 	rows, err := h.postgres.Pool().Query(ctx, `
 		SELECT tg.id, tg.name, tg.server_bm_id, ts.name,
 		       tg.channel_id, tg.message_id, tg.send_updates, tg.ping_alert_role_on_empty,
@@ -427,8 +489,8 @@ func (h *Handler) listAdminGuildTrackGroups(ctx context.Context, guildID string)
 		) m ON m.track_group_id = tg.id
 		WHERE tg.guild_id = $1
 		ORDER BY tg.name ASC, tg.id ASC
-		LIMIT $2
-	`, guildID, adminGuildDetailListLimit)
+		LIMIT $2 OFFSET $3
+	`, guildID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -459,7 +521,7 @@ func (h *Handler) listAdminGuildTrackGroups(ctx context.Context, guildID string)
 	return items, rows.Err()
 }
 
-func (h *Handler) listAdminGuildRecentUsage(ctx context.Context, guildID string) ([]adminGuildUsageItem, error) {
+func (h *Handler) listAdminGuildRecentUsage(ctx context.Context, guildID string, limit int, offset int) ([]adminGuildUsageItem, error) {
 	rows, err := h.postgres.Pool().Query(ctx, `
 		SELECT cu.id, cu.app_user_id, cu.discord_id, cu.channel_id, cu.channel_name,
 		       cu.interaction_type, cu.command, cu.subcommand, cu.outcome, cu.error_code,
@@ -470,8 +532,8 @@ func (h *Handler) listAdminGuildRecentUsage(ctx context.Context, guildID string)
 		LEFT JOIN app_users u ON u.id = cu.app_user_id
 		WHERE cu.guild_id = $1
 		ORDER BY cu.created_at DESC, cu.id DESC
-		LIMIT $2
-	`, guildID, adminGuildDetailListLimit)
+		LIMIT $2 OFFSET $3
+	`, guildID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -501,6 +563,26 @@ func (h *Handler) listAdminGuildRecentUsage(ctx context.Context, guildID string)
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (h *Handler) countAdminGuildSteamLinks(ctx context.Context, guildID string) (int64, error) {
+	var total int64
+	err := h.postgres.Pool().QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM guild_steam_discord_links
+		WHERE guild_id = $1
+	`, guildID).Scan(&total)
+	return total, err
+}
+
+func (h *Handler) countAdminGuildUsage(ctx context.Context, guildID string) (int64, error) {
+	var total int64
+	err := h.postgres.Pool().QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM command_usage
+		WHERE guild_id = $1
+	`, guildID).Scan(&total)
+	return total, err
 }
 
 func (h *Handler) adminGuildUsageSummary(ctx context.Context, guildID string) (adminGuildUsageSummary, error) {
