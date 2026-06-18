@@ -226,6 +226,9 @@ export function GuildsTable({
     });
   const clearJoinedRange = () =>
     pushParams({ joinedSince: null, joinedBefore: null, page: null });
+  const openGuild = (guildId: string) => {
+    router.push(`/admin/guilds/${encodeURIComponent(guildId)}`);
+  };
   const hasJoinedRange = !!(initialJoinedSince || initialJoinedBefore);
   const joinedRangeLabel = hasJoinedRange
     ? `${formatDateLabel(joinedSinceDate) || "…"} – ${formatDateLabel(joinedBeforeDate) || "…"}`
@@ -355,7 +358,19 @@ export function GuildsTable({
                   ? userAvatarUrl(g.ownerDiscordId, g.ownerAvatarHash, 64)
                   : null;
                 return (
-                  <TableRow key={g.guildId}>
+                  <TableRow
+                    key={g.guildId}
+                    role="link"
+                    tabIndex={0}
+                    className="cursor-pointer"
+                    onClick={() => openGuild(g.guildId)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openGuild(g.guildId);
+                      }
+                    }}
+                  >
                     <TableCell>
                       <Avatar className="size-8">
                         {iconUrl && <AvatarImage src={iconUrl} alt={g.name} />}
@@ -368,7 +383,10 @@ export function GuildsTable({
                     <TableCell>
                       <button
                         type="button"
-                        onClick={() => navigator.clipboard?.writeText(g.guildId)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          navigator.clipboard?.writeText(g.guildId);
+                        }}
                         className="font-mono text-xs text-muted-foreground hover:text-foreground"
                         title="Click to copy"
                       >

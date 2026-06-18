@@ -378,6 +378,7 @@ func NewRouter(
 			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/users/{id}/command-usage/{usageId}/targets", handler.AdminGetCommandUsageTargets)
 			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/users/{id}/command-usage/{usageId}/children", handler.AdminGetCommandUsageChildren)
 			r.With(requireAdminPerm(rbac.PermGuildsRead)).Get("/guilds", handler.ListAdminGuilds)
+			r.With(requireAdminPerm(rbac.PermGuildsRead)).Get("/guilds/{guildID}", handler.GetAdminGuild)
 			r.With(requireAdminPerm(rbac.PermUsersRead)).Get("/user-installs", handler.ListAdminUserInstalls)
 			r.With(requireAdminPerm(rbac.PermBmServersRead)).Get("/servers", handler.ListAdminServers)
 			r.With(requireAdminPerm(rbac.PermAuditRead)).Get("/audit", handler.ListAdminAudit)
