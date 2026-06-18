@@ -137,7 +137,7 @@ func guildSettingsItem(settings store.GuildSettings) adminGuildSettingsItem {
 // GetAdminGuild: GET /api/app/admin/guilds/{guildID}
 //
 // Returns a compact read-only aggregate for a single guild. Large collections
-// are capped to adminGuildDetailListLimit; counts in stats reflect full totals.
+// are paginated at adminGuildDetailListLimit; counts in stats reflect full totals.
 func (h *Handler) GetAdminGuild(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	guildID := chi.URLParam(r, "guildID")
