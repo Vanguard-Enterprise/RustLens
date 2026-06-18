@@ -9,6 +9,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rustlens/backend/internal/store"
@@ -379,5 +380,158 @@ func TestListAdminGuilds_SortAndJoinedFilter(t *testing.T) {
 	filtered := ts.getGuilds(t, "/api/app/admin/guilds?joinedSince=2026-02-01&joinedBefore=2026-03-01")
 	if filtered.Total != 1 || filtered.Items[0].GuildID != "222222222222222222" {
 		t.Fatalf("joined filter got total=%d items=%+v, want Bravo only", filtered.Total, filtered.Items)
+	}
+}
+
+func TestGetAdminGuild_ReturnsStoredGuildDetail(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	ctx := context.Background()
+	guildID := "111111111111111111"
+	discordID := "222222222222222222"
+	steamID := "76561198000000000"
+	if _, err := ts.pool.Exec(ctx, `
+		TRUNCATE command_usage, track_group_members, track_groups, wipe_react_schedules,
+			wipe_reacts, guild_steam_discord_links, user_guilds, app_users,
+			bot_guilds, guild_settings, guild_tracked_servers, tracked_servers
+		RESTART IDENTITY CASCADE
+	`); err != nil {
+		t.Fatalf("truncate detail tables: %v", err)
+	}
+	if _, err := ts.pool.Exec(ctx, `
+		INSERT INTO bot_guilds (guild_id, name, owner_username, is_installed, installed_at, metadata_updated_at)
+		VALUES ($1, 'Alpha', 'owner', TRUE, NOW(), NOW());
+		INSERT INTO guild_settings (guild_id, admin_role_id, limited)
+		VALUES ($1, '333333333333333333', TRUE);
+		INSERT INTO app_users (id, discord_id, discord_username, display_name)
+		VALUES ('usr_1', $2, 'member', 'Member One');
+		INSERT INTO user_guilds (discord_id, guild_id, is_active)
+		VALUES ($2, $1, TRUE);
+		INSERT INTO guild_steam_discord_links (guild_id, discord_id, steam_id)
+		VALUES ($1, $2, $3);
+		INSERT INTO tracked_servers (bm_id, name)
+		VALUES ('12345', 'Vital 10x');
+		INSERT INTO guild_tracked_servers (guild_id, server_bm_id)
+		VALUES ($1, '12345');
+		INSERT INTO track_groups (guild_id, name, server_bm_id, online_count, created_by)
+		VALUES ($1, 'raiders', '12345', 1, $2);
+		INSERT INTO track_group_members (track_group_id, steam_id, bm_id)
+		SELECT id, $3, '999' FROM track_groups WHERE guild_id = $1;
+		INSERT INTO wipe_reacts (
+			message_id, guild_id, channel_id, creator_id, name, time_zone, scheduled_unix, embed_timestamp
+		)
+		VALUES ('444444444444444444', $1, '555555555555555555', $2, 'Thursday Wipe', 'Europe/London', EXTRACT(EPOCH FROM NOW())::bigint + 3600, NOW()::text);
+		INSERT INTO wipe_react_schedules (guild_id, days, time_zone, post_before, created_by, name)
+		VALUES ($1, '["thu"]'::jsonb, 'Europe/London', '1h', $2, 'Weekly');
+		INSERT INTO command_usage (
+			app_user_id, discord_id, guild_id, interaction_type, command, outcome, latency_ms
+		)
+		VALUES ('usr_1', $2, $1, 'command', 'bind', 'success', 42)
+	`, guildID, discordID, steamID); err != nil {
+		t.Fatalf("seed detail: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/app/admin/guilds/"+guildID, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("guildID", guildID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	ts.h.GetAdminGuild(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GetAdminGuild status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp struct {
+		Guild            adminGuildItem             `json:"guild"`
+		Stats            adminGuildDetailStats      `json:"stats"`
+		Settings         adminGuildSettingsItem     `json:"settings"`
+		TrackedServers   []map[string]any           `json:"trackedServers"`
+		ActiveWipeReacts []map[string]any           `json:"activeWipeReacts"`
+		Schedules        []map[string]any           `json:"schedules"`
+		Members          []adminGuildMemberItem     `json:"members"`
+		Links            []adminGuildSteamLinkItem  `json:"links"`
+		TrackGroups      []adminGuildTrackGroupItem `json:"trackGroups"`
+		RecentUsage      []adminGuildUsageItem      `json:"recentUsage"`
+		UsageSummary     adminGuildUsageSummary     `json:"usageSummary"`
+		Pagination       adminGuildDetailPages      `json:"pagination"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal detail: %v; body=%s", err, rr.Body.String())
+	}
+	if resp.Guild.GuildID != guildID || resp.Guild.Name != "Alpha" {
+		t.Fatalf("guild = %+v", resp.Guild)
+	}
+	if !resp.Settings.Limited || resp.Settings.AdminRoleID != "333333333333333333" {
+		t.Fatalf("settings = %+v", resp.Settings)
+	}
+	if resp.Stats.ActiveMemberCount != 1 || resp.Stats.LinkedMemberCount != 1 || resp.Stats.Usage30dCount != 1 {
+		t.Fatalf("stats = %+v", resp.Stats)
+	}
+	if len(resp.Members) != 1 || resp.Members[0].SteamIDs[0] != steamID {
+		t.Fatalf("members = %+v", resp.Members)
+	}
+	if len(resp.TrackedServers) != 1 || resp.TrackedServers[0]["bmId"] != "12345" {
+		t.Fatalf("trackedServers = %+v", resp.TrackedServers)
+	}
+	if len(resp.ActiveWipeReacts) != 1 || resp.ActiveWipeReacts[0]["messageId"] != "444444444444444444" {
+		t.Fatalf("activeWipeReacts = %+v", resp.ActiveWipeReacts)
+	}
+	if len(resp.Schedules) != 1 || resp.Schedules[0]["name"] != "Weekly" {
+		t.Fatalf("schedules = %+v", resp.Schedules)
+	}
+	if len(resp.TrackGroups) != 1 || resp.TrackGroups[0].MemberCount != 1 {
+		t.Fatalf("trackGroups = %+v", resp.TrackGroups)
+	}
+	if len(resp.RecentUsage) != 1 || resp.UsageSummary.TotalCount != 1 {
+		t.Fatalf("usage = %+v summary=%+v", resp.RecentUsage, resp.UsageSummary)
+	}
+	if resp.Pagination.Members.Page != 1 || resp.Pagination.Members.Total != 1 {
+		t.Fatalf("pagination.members = %+v", resp.Pagination.Members)
+	}
+}
+
+func TestGetAdminGuild_PaginatesStoredMembers(t *testing.T) {
+	ts := newTestHandlerServer(t)
+	ctx := context.Background()
+	guildID := "111111111111111111"
+	if _, err := ts.pool.Exec(ctx, `
+		TRUNCATE command_usage, track_group_members, track_groups, wipe_react_schedules,
+			wipe_reacts, guild_steam_discord_links, user_guilds, app_users,
+			bot_guilds, guild_settings, guild_tracked_servers, tracked_servers
+		RESTART IDENTITY CASCADE
+	`); err != nil {
+		t.Fatalf("truncate detail tables: %v", err)
+	}
+	if _, err := ts.pool.Exec(ctx, `
+		INSERT INTO bot_guilds (guild_id, name, owner_username, is_installed, installed_at, metadata_updated_at)
+		VALUES ($1, 'Alpha', 'owner', TRUE, NOW(), NOW());
+		INSERT INTO user_guilds (discord_id, guild_id, is_active, first_seen_at, last_seen_at)
+		SELECT 'member_' || n::text, $1, TRUE, NOW(), NOW() - (n || ' minutes')::interval
+		FROM generate_series(1, 101) AS n
+	`, guildID); err != nil {
+		t.Fatalf("seed paginated members: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/app/admin/guilds/"+guildID+"?memberPage=2", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("guildID", guildID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	ts.h.GetAdminGuild(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GetAdminGuild status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp struct {
+		Members    []adminGuildMemberItem `json:"members"`
+		Pagination adminGuildDetailPages  `json:"pagination"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal detail: %v; body=%s", err, rr.Body.String())
+	}
+	if resp.Pagination.Members.Page != 2 || resp.Pagination.Members.Total != 101 {
+		t.Fatalf("pagination.members = %+v", resp.Pagination.Members)
+	}
+	if len(resp.Members) != 1 {
+		t.Fatalf("members page 2 len = %d, want 1", len(resp.Members))
 	}
 }

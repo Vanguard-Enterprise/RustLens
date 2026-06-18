@@ -56,4 +56,17 @@ describe("GuildsTable", () => {
     fireEvent.click(screen.getByRole("button", { name: /sort by members/i }));
     expect(routerPush).toHaveBeenCalledWith("?sort=-members");
   });
+
+  it("opens the guild detail page when a guild row is clicked", () => {
+    render(
+      <GuildsTable
+        initialQuery=""
+        pageSizeOptions={[10, 20, 30, 40, 50]}
+        data={fixturePage()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: /alpha/i }));
+    expect(routerPush).toHaveBeenCalledWith("/admin/guilds/111111111111111111");
+  });
 });

@@ -9,6 +9,7 @@ import type {
 import {
   ActionRowBuilder,
   ApplicationIntegrationType,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -185,6 +186,11 @@ const maxRocketsPerCraftCommand = 20;
 const maxC4PerCraftCommand = 20;
 const gunpowderCraftsPerC4 = 100;
 const explosivesPerC4 = 20;
+const DISCORD_EMBED_DESCRIPTION_MAX_LENGTH = 4096;
+const MASS_INVITE_ATTACHMENT_NAME = "mass-invite-bind.txt";
+const MASS_INVITE_IMPORTANT_TITLE = "⚠️ Important";
+const MASS_INVITE_IMPORTANT_CONTENT =
+  "Rust's new console has a character limit, to use long invite binds, type `client.legacyconsoletoggle` in your console and paste the bind in there.";
 
 const bindCommand = new SlashCommandBuilder()
   .setName(BIND_COMMAND_NAME)
@@ -762,9 +768,38 @@ function buildC4BindEmbed(command: string) {
 function buildBindEmbed(title: string, command: string) {
   return createEmbed()
     .setTitle(title)
-    .setDescription(`\`\`\`\n${command}\n\`\`\``);
+    .setDescription(buildBindDescription(command));
 }
 
+function buildBindDescription(command: string) {
+  return `\`\`\`\n${command}\n\`\`\``;
+}
+
+function buildMassInviteBindReply(command: string) {
+  const inlineDescription = buildBindDescription(command);
+  if (inlineDescription.length <= DISCORD_EMBED_DESCRIPTION_MAX_LENGTH) {
+    return {
+      embeds: [buildBindEmbed("Mass invite bind", command)],
+    };
+  }
+
+  const embed = createEmbed()
+    .setTitle("Mass invite bind")
+    .setDescription("The invite bind is attached as a text file because it is too long for a Discord embed.")
+    .addFields({
+      name: MASS_INVITE_IMPORTANT_TITLE,
+      value: MASS_INVITE_IMPORTANT_CONTENT,
+    });
+
+  return {
+    embeds: [embed],
+    files: [
+      new AttachmentBuilder(Buffer.from(`${command}\n`, "utf8"), {
+        name: MASS_INVITE_ATTACHMENT_NAME,
+      }),
+    ],
+  };
+}
 
 async function handleMassInvite(interaction: ChatInputCommandInteraction) {
   const guild = interaction.guild;
@@ -831,9 +866,7 @@ async function handleMassInvite(interaction: ChatInputCommandInteraction) {
   const chatCommands = steamIds.map((id) => `/clan invite ${id}`);
   const bindStr = `bind ${key} chat.say "${chatCommands.join(";")}"`;
 
-  await interaction.editReply({
-    embeds: [buildBindEmbed("Mass invite bind", bindStr)],
-  });
+  await interaction.editReply(buildMassInviteBindReply(bindStr));
 }
 
 export async function ensureBindCommand(client: Client, shardID: number) {
@@ -1086,6 +1119,7 @@ export async function handleBindModalSubmit(interaction: ModalSubmitInteraction)
 export const __testables = {
   buildBindCommand,
   buildBindC4Modal,
+  buildMassInviteBindReply,
   buildCraftCommands,
   buildBindFullkitFinishModal,
   buildBindFullkitStartModal,

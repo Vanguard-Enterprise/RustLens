@@ -167,6 +167,169 @@ export type AdminGuildsPage = {
 	pageSize: number;
 };
 
+export type AdminGuildSettings = {
+	guildId: string;
+	wipeReactLogChannelId: string;
+	linkingLogChannelId: string;
+	trackedServerLogChannelId: string;
+	trackedUsersCategoryId: string;
+	adminRoleId: string;
+	alertRoleId: string;
+	limited: boolean;
+};
+
+export type AdminGuildDetailStats = {
+	memberCount: number;
+	activeMemberCount: number;
+	linkedMemberCount: number;
+	trackedServerCount: number;
+	trackGroupCount: number;
+	activeWipeReactCount: number;
+	wipeReactCount: number;
+	scheduleCount: number;
+	usage30dCount: number;
+	usage30dErrorCount: number;
+};
+
+export type AdminGuildTrackedServer = {
+	guildId: string;
+	bmId: string;
+	name: string;
+};
+
+export type AdminGuildWipeReact = {
+	guildId: string;
+	channelId: string;
+	messageId: string;
+	creatorId: string;
+	name: string;
+	description: string;
+	timeZone: string;
+	scheduledUnix: number;
+	askLateReason: boolean;
+	askDeclinedReason: boolean;
+	acceptedUserIds: string[];
+	declinedUserIds: string[];
+	lateUserIds: string[];
+	embedTimestamp: string;
+};
+
+export type AdminGuildWipeReactSchedule = {
+	id: number;
+	guildId: string;
+	days: string[];
+	includesForceWipe: boolean;
+	time: string;
+	timeZone: string;
+	repeat: string;
+	postBefore: string;
+	name: string;
+	description: string;
+	askLateReason: boolean;
+	askDeclinedReason: boolean;
+	channelId: string;
+	lastPostedForUnix: number;
+	createdBy: string;
+};
+
+export type AdminGuildMember = {
+	discordId: string;
+	appUserId: string | null;
+	displayName: string | null;
+	discordUsername: string | null;
+	globalName: string | null;
+	avatarHash: string | null;
+	isActive: boolean;
+	isOwner: boolean;
+	firstSeenAt: string;
+	lastSeenAt: string;
+	leftAt: string | null;
+	steamIds: string[];
+};
+
+export type AdminGuildSteamLink = {
+	discordId: string;
+	steamId: string;
+	appUserId: string | null;
+	displayName: string | null;
+	discordUsername: string | null;
+	createdAt: string;
+};
+
+export type AdminGuildTrackGroup = {
+	id: number;
+	name: string;
+	serverBmId: string;
+	serverName: string | null;
+	channelId: string;
+	messageId: string;
+	sendUpdates: boolean;
+	pingAlertRoleOnEmpty: boolean;
+	onlineCount: number;
+	memberCount: number;
+	createdBy: string;
+	createdAt: string;
+	updatedAt: string;
+};
+
+export type AdminGuildUsageItem = {
+	id: number;
+	appUserId: string;
+	discordId: string;
+	channelId: string | null;
+	channelName: string | null;
+	interactionType: "command" | "button" | "modal" | "string_select";
+	command: string;
+	subcommand: string | null;
+	outcome: "success" | "error" | "banned" | "denied";
+	errorCode: string | null;
+	latencyMs: number;
+	createdAt: string;
+	displayName: string | null;
+	discordUsername: string | null;
+};
+
+export type AdminGuildUsageSummary = {
+	totalCount: number;
+	errorCount: number;
+	errorRate: number;
+	topCommands: Array<{ command: string; count: number }>;
+};
+
+export type AdminGuildDetailPageInfo = {
+	page: number;
+	pageSize: number;
+	total: number;
+};
+
+export type AdminGuildDetail = {
+	guild: AdminGuildItem;
+	stats: AdminGuildDetailStats;
+	settings: AdminGuildSettings;
+	trackedServers: AdminGuildTrackedServer[];
+	activeWipeReacts: AdminGuildWipeReact[];
+	recentWipeReacts: AdminGuildWipeReact[];
+	schedules: AdminGuildWipeReactSchedule[];
+	members: AdminGuildMember[];
+	links: AdminGuildSteamLink[];
+	trackGroups: AdminGuildTrackGroup[];
+	recentUsage: AdminGuildUsageItem[];
+	usageSummary: AdminGuildUsageSummary;
+	pagination: {
+		members: AdminGuildDetailPageInfo;
+		links: AdminGuildDetailPageInfo;
+		trackGroups: AdminGuildDetailPageInfo;
+		recentUsage: AdminGuildDetailPageInfo;
+	};
+};
+
+export type AdminGuildDetailQuery = {
+	memberPage?: number;
+	linkPage?: number;
+	trackGroupPage?: number;
+	usagePage?: number;
+};
+
 export type AdminUserInstallItem = {
 	discordId: string;
 	username: string;
@@ -522,6 +685,23 @@ export async function getAdminGuilds(params: AdminGuildsQuery = {}): Promise<Adm
 	const qs = sp.toString();
 	return backendFetch<AdminGuildsPage>(
 		`/api/app/admin/guilds${qs ? `?${qs}` : ""}`,
+		undefined,
+		{ requireSession: true },
+	);
+}
+
+export async function getAdminGuild(
+	guildId: string,
+	params: AdminGuildDetailQuery = {},
+): Promise<AdminGuildDetail> {
+	const sp = new URLSearchParams();
+	if (params.memberPage) sp.set("memberPage", String(params.memberPage));
+	if (params.linkPage) sp.set("linkPage", String(params.linkPage));
+	if (params.trackGroupPage) sp.set("trackGroupPage", String(params.trackGroupPage));
+	if (params.usagePage) sp.set("usagePage", String(params.usagePage));
+	const qs = sp.toString();
+	return backendFetch<AdminGuildDetail>(
+		`/api/app/admin/guilds/${encodeURIComponent(guildId)}${qs ? `?${qs}` : ""}`,
 		undefined,
 		{ requireSession: true },
 	);
