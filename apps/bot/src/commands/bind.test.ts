@@ -437,6 +437,42 @@ describe("bind command", () => {
     });
   });
 
+  it("builds a short mass invite bind reply inline", () => {
+    const command = 'bind g chat.say "/clan invite 76561198000000000"';
+    const response = __testables.buildMassInviteBindReply(command);
+    const embed = response.embeds[0].data;
+
+    expect(response.files).toBeUndefined();
+    expect(embed.title).toBe("Mass invite bind");
+    expect(embed.description).toBe(`\`\`\`\n${command}\n\`\`\``);
+  });
+
+  it("attaches long mass invite bind replies as text files", () => {
+    const chatCommands = Array.from({ length: 140 }, (_, index) => {
+      return `/clan invite ${76561198000000000n + BigInt(index)}`;
+    });
+    const command = `bind g chat.say "${chatCommands.join(";")}"`;
+    const response = __testables.buildMassInviteBindReply(command);
+    const embed = response.embeds[0].data;
+    const file = response.files?.[0];
+
+    expect(embed.title).toBe("Mass invite bind");
+    expect(embed.description).toBe(
+      "The invite bind is attached as a text file because it is too long for a Discord embed.",
+    );
+    expect(embed.description).not.toContain(command);
+    expect(embed.fields).toEqual([
+      {
+        name: "⚠️ Important",
+        value:
+          "Rust's new console has a character limit, to use long invite binds, type `client.legacyconsoletoggle` in your console and paste the bind in there.",
+      },
+    ]);
+    expect(file?.name).toBe("mass-invite-bind.txt");
+    expect(Buffer.isBuffer(file?.attachment)).toBe(true);
+    expect((file?.attachment as Buffer).toString("utf8")).toBe(`${command}\n`);
+  });
+
   it("builds turret craft commands in the requested order", () => {
     const result = __testables.buildTurretCraftCommands(
       ["hmlmg"],
