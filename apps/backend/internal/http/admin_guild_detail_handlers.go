@@ -181,13 +181,10 @@ func (h *Handler) GetAdminGuild(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	recentWipeReacts, err := h.postgres.ListWipeReacts(ctx, guildID)
+	recentWipeReacts, err := h.postgres.ListPastWipeReacts(ctx, guildID, time.Now().Unix(), 10)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
-	}
-	if len(recentWipeReacts) > 10 {
-		recentWipeReacts = recentWipeReacts[:10]
 	}
 	schedules, err := h.postgres.ListWipeReactSchedules(ctx, guildID)
 	if err != nil {
