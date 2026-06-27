@@ -101,9 +101,9 @@ func (h *Handler) GetServerPlayerCountAnalytics(w http.ResponseWriter, r *http.R
 		Start:       selectedStart.Format(time.RFC3339),
 		Stop:        selectedStop.Format(time.RFC3339),
 		Points:      selected,
-		Weekdays:    computeServerAnalyticsWeekdays(selected),
+		Weekdays:    computeServerAnalyticsWeekdays(allPoints),
 		CachedAt:    entry.FetchedAt.UTC().Format(time.RFC3339),
-		CacheWindow: timeframe,
+		CacheWindow: serverAnalyticsCacheWindow(allPoints),
 	})
 }
 
