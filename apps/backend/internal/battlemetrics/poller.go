@@ -73,9 +73,24 @@ func (p *Poller) loop(ctx context.Context) {
 }
 
 func (p *Poller) runCycle(ctx context.Context) {
-	cadenceTTL := p.interval
-	if cadenceTTL <= 0 {
+	if p.interval <= 0 {
 		return
+	}
+
+	// The cadence key is set with SetNX and never explicitly released, so it
+	// must expire before the next ticker tick. If its TTL equalled the interval,
+	// the key set just after one tick would still be alive when the next tick
+	// fires, making every other SetNX fail and halving the effective poll rate.
+	// Reserve for the interval minus a small margin (≈10%, floored) so the key
+	// reliably expires before the next cycle, while staying positive for small
+	// intervals.
+	margin := p.interval / 10
+	if margin < 250*time.Millisecond {
+		margin = 250 * time.Millisecond
+	}
+	cadenceTTL := p.interval - margin
+	if cadenceTTL <= 0 {
+		cadenceTTL = p.interval / 2
 	}
 
 	cadenceCtx, cadenceCancel := context.WithTimeout(ctx, 2*time.Second)

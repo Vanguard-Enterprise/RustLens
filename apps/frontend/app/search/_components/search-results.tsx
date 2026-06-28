@@ -25,12 +25,20 @@ export function SearchResults({
 	const [response, setResponse] = useState<PlayerSearchResponse>(initialResponse);
 
 	useEffect(() => {
-		if (includeOffline === initialIncludeOffline) return;
+		if (includeOffline === initialIncludeOffline) {
+			setResponse(initialResponse);
+			return;
+		}
+		let cancelled = false;
 		(async () => {
 			const res = await searchPlayersAction(initialQuery, includeOffline);
+			if (cancelled) return;
 			if (!("error" in res)) setResponse(res);
 		})();
-	}, [includeOffline, initialIncludeOffline, initialQuery]);
+		return () => {
+			cancelled = true;
+		};
+	}, [includeOffline, initialIncludeOffline, initialQuery, initialResponse]);
 
 	return (
 		<div className="mt-4 flex flex-col gap-4">

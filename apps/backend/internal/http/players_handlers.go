@@ -9,26 +9,41 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/redis/go-redis/v9"
 
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/players"
 	"rustlens/backend/internal/store"
 )
 
-// allowPlayerSearch is a minimal per-userID sliding-window counter using
-// Redis INCR/EXPIRE. Fails open on Redis errors. scope is one of
-// "search" or "profile".
+// playerSearchLimitScript atomically increments the counter and, when it is
+// the first hit in the window, sets the TTL in the same round trip. Doing the
+// INCR and EXPIRE atomically prevents a crash/error between the two from
+// leaving a counter key with no TTL, which would permanently lock the
+// user/scope. Returns the post-increment count.
+var playerSearchLimitScript = redis.NewScript(`
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then
+	redis.call("PEXPIRE", KEYS[1], ARGV[1])
+end
+return count
+`)
+
+// allowPlayerSearch is a minimal per-userID fixed-window counter using an
+// atomic Redis INCR + PEXPIRE Lua script. Fails open on Redis errors. scope is
+// one of "search" or "profile".
 func (h *Handler) allowPlayerSearch(ctx context.Context, userID, scope string, max int, window time.Duration) bool {
 	if h.redis == nil || userID == "" {
 		return true
 	}
 	key := "rustlens:players_" + scope + ":" + userID
-	count, err := h.redis.Client().Incr(ctx, key).Result()
+	res, err := playerSearchLimitScript.Run(ctx, h.redis.Client(), []string{key}, window.Milliseconds()).Result()
 	if err != nil {
 		return true // fail open on Redis hiccup
 	}
-	if count == 1 {
-		_ = h.redis.Client().Expire(ctx, key, window).Err()
+	count, ok := res.(int64)
+	if !ok {
+		return true // fail open on unexpected reply shape
 	}
 	return count <= int64(max)
 }

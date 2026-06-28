@@ -110,7 +110,7 @@ func computeNextPostTime(schedule store.WipeReactSchedule, nowUnix int64) *nextP
 
 	var earliestWipeUnix int64
 	for _, dayName := range schedule.Days {
-		nextOccurrence := computeNextWeekdayOccurrence(dayName, schedule.Time, schedule.TimeZone, schedule.Repeat, afterUnix)
+		nextOccurrence := computeNextWeekdayOccurrence(dayName, schedule.Time, schedule.TimeZone, schedule.Repeat, afterUnix, nowUnix)
 		if nextOccurrence == 0 {
 			continue
 		}
@@ -120,7 +120,7 @@ func computeNextPostTime(schedule store.WipeReactSchedule, nowUnix int64) *nextP
 	}
 
 	if schedule.IncludesForceWipe {
-		nextForceWipe := computeNextForceWipeOccurrence(afterUnix)
+		nextForceWipe := computeNextForceWipeOccurrence(afterUnix, nowUnix)
 		if nextForceWipe != 0 && (earliestWipeUnix == 0 || nextForceWipe < earliestWipeUnix) {
 			earliestWipeUnix = nextForceWipe
 		}
@@ -136,7 +136,7 @@ func computeNextPostTime(schedule store.WipeReactSchedule, nowUnix int64) *nextP
 	}
 }
 
-func computeNextWeekdayOccurrence(dayName string, timeText string, timeZone string, repeat string, afterUnix int64) int64 {
+func computeNextWeekdayOccurrence(dayName string, timeText string, timeZone string, repeat string, afterUnix int64, nowUnix int64) int64 {
 	targetDay, ok := dayNameToWeekday[dayName]
 	if !ok {
 		return 0
@@ -180,6 +180,12 @@ func computeNextWeekdayOccurrence(dayName string, timeText string, timeZone stri
 		if candidateUnix <= afterUnix {
 			continue
 		}
+		// The wipe itself must still be in the future. Otherwise a freshly
+		// created schedule (where afterUnix is backdated by postBefore to allow
+		// lead time) could enqueue a reminder for a wipe that already happened.
+		if candidateUnix <= nowUnix {
+			continue
+		}
 		if minGapSeconds > 0 && candidateUnix-afterUnix < minGapSeconds {
 			continue
 		}
@@ -190,7 +196,7 @@ func computeNextWeekdayOccurrence(dayName string, timeText string, timeZone stri
 	return 0
 }
 
-func computeNextForceWipeOccurrence(afterUnix int64) int64 {
+func computeNextForceWipeOccurrence(afterUnix int64, nowUnix int64) int64 {
 	loc, err := time.LoadLocation("Europe/London")
 	if err != nil {
 		return 0
@@ -211,7 +217,10 @@ func computeNextForceWipeOccurrence(afterUnix int64) int64 {
 			if candidate.Weekday() != time.Thursday {
 				continue
 			}
-			if candidate.Unix() > afterUnix {
+			// The force-wipe time must be both after the dedup floor and still
+			// in the future, so a fresh schedule never enqueues a post for a
+			// force wipe that already passed.
+			if candidate.Unix() > afterUnix && candidate.Unix() > nowUnix {
 				return candidate.Unix()
 			}
 			break

@@ -20,7 +20,10 @@ export async function GET(request: Request) {
 		maxAge: 0,
 		httpOnly: true,
 		sameSite: "lax",
-		secure: process.env.NODE_ENV === "production",
+		// Must match setSession()'s attributes (always Secure) so the browser
+		// reliably deletes the cookie on an HTTPS staging build running with
+		// NODE_ENV != production.
+		secure: true,
 	});
 	response.headers.set("Cache-Control", "no-store");
 	return response;

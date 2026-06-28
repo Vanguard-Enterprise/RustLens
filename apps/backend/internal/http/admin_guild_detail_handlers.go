@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -162,74 +163,88 @@ func (h *Handler) GetAdminGuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild getAdminGuildItem error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	settings, err := h.postgres.GetGuildSettings(ctx, guildID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild GetGuildSettings error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	trackedServers, err := h.postgres.ListGuildTrackedServers(ctx, guildID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild ListGuildTrackedServers error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	activeWipeReacts, err := h.postgres.ListActiveWipeReacts(ctx, guildID, time.Now().Unix())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild ListActiveWipeReacts error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	recentWipeReacts, err := h.postgres.ListPastWipeReacts(ctx, guildID, time.Now().Unix(), 10)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild ListPastWipeReacts error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	schedules, err := h.postgres.ListWipeReactSchedules(ctx, guildID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild ListWipeReactSchedules error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	members, err := h.listAdminGuildMembers(ctx, guildID, adminGuildDetailListLimit, memberOffset)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild listAdminGuildMembers error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	links, err := h.listAdminGuildSteamLinks(ctx, guildID, adminGuildDetailListLimit, linkOffset)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild listAdminGuildSteamLinks error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	trackGroups, err := h.listAdminGuildTrackGroups(ctx, guildID, adminGuildDetailListLimit, trackGroupOffset)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild listAdminGuildTrackGroups error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	recentUsage, err := h.listAdminGuildRecentUsage(ctx, guildID, adminGuildDetailListLimit, usageOffset)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild listAdminGuildRecentUsage error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	usageSummary, err := h.adminGuildUsageSummary(ctx, guildID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild adminGuildUsageSummary error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	linkTotal, err := h.countAdminGuildSteamLinks(ctx, guildID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild countAdminGuildSteamLinks error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	recentUsageTotal, err := h.countAdminGuildUsage(ctx, guildID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild countAdminGuildUsage error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	stats, err := h.adminGuildStats(ctx, guildID, usageSummary)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminGuild adminGuildStats error for %s: %v", guildID, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 

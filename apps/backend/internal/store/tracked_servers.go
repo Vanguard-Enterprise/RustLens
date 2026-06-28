@@ -310,7 +310,7 @@ func (p *PostgresStore) UpdateTrackedServer(
 	}()
 
 	var existing TrackedServer
-	row := p.pool.QueryRow(ctx, `
+	row := tx.QueryRow(ctx, `
 		SELECT bm_id, name, is_vitality, is_atlas, is_vital, is_modded, is_official, is_build, high_frequency, last_polled_at, last_poll_error
 		FROM tracked_servers
 		WHERE bm_id = $1
@@ -369,6 +369,38 @@ func (p *PostgresStore) UpdateTrackedServer(
 
 	if _, err := tx.Exec(ctx, `
 		UPDATE player_states
+		SET server_bm_id = $2
+		WHERE server_bm_id = $1
+	`, currentBmID, nextBmID); err != nil {
+		return TrackedServer{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE track_groups
+		SET server_bm_id = $2
+		WHERE server_bm_id = $1
+	`, currentBmID, nextBmID); err != nil {
+		return TrackedServer{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE server_player_count_history
+		SET server_bm_id = $2
+		WHERE server_bm_id = $1
+	`, currentBmID, nextBmID); err != nil {
+		return TrackedServer{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE server_player_count_history_fetches
+		SET server_bm_id = $2
+		WHERE server_bm_id = $1
+	`, currentBmID, nextBmID); err != nil {
+		return TrackedServer{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE track_analytics_sessions_cache
 		SET server_bm_id = $2
 		WHERE server_bm_id = $1
 	`, currentBmID, nextBmID); err != nil {

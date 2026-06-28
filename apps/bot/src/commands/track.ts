@@ -1596,16 +1596,42 @@ async function refreshTrackGroupById(guild: Guild, guildId: string, groupId: num
 }
 
 async function findExistingTrackMessage(textChannel: TextChannel, group: TrackGroup, serverName: string) {
-  const expectedTitle = `${group.name} - ${serverName}`;
+  // The real embed title is built by buildTrackEmbeds as
+  //   `${emoji} ${count} - ${group.name} - ${serverName}` (primary, index 0)
+  //   `${emoji} ${count} - ${group.name} - ${serverName} cont.` (continuation)
+  // The emoji/count vary, so match on the stable trailing identifier instead of
+  // the full title. Include the leading " - " delimiter so a group whose name is
+  // a bare suffix of another's (e.g. "A" vs "XA") on the same server can't match.
+  const stableSuffix = ` - ${group.name} - ${serverName}`;
+  const isPrimaryTitle = (title: string | null | undefined) =>
+    typeof title === "string" && title.endsWith(stableSuffix);
+  const isContinuationTitle = (title: string | null | undefined) =>
+    typeof title === "string" && title.endsWith(`${stableSuffix} cont.`);
+  const matchesGroup = (title: string | null | undefined) =>
+    isPrimaryTitle(title) || isContinuationTitle(title);
+
   const messages = await textChannel.messages.fetch({ limit: 25 }).catch(logDiscordCatch("fetch recent track messages", null, {
     guildId: textChannel.guildId,
     channelId: textChannel.id,
     groupId: group.id,
   }));
-  return messages?.find((message) =>
-    message.author.id === textChannel.client.user?.id &&
-    message.embeds.some((embed) => embed.title === expectedTitle),
-  ) ?? null;
+  if (!messages) {
+    return null;
+  }
+  // Prefer the message carrying the primary (non-`cont.`) embed so we pin/edit
+  // the leading embed rather than a continuation.
+  const isOwnMessage = (authorId: string) => authorId === textChannel.client.user?.id;
+  return (
+    messages.find((message) =>
+      isOwnMessage(message.author.id) &&
+      message.embeds.some((embed) => isPrimaryTitle(embed.title)),
+    ) ??
+    messages.find((message) =>
+      isOwnMessage(message.author.id) &&
+      message.embeds.some((embed) => matchesGroup(embed.title)),
+    ) ??
+    null
+  );
 }
 
 function buildJoinLeaveEmbed(row: TrackGroupOnlineRow, isOnline: boolean, serverName: string) {

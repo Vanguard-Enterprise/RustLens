@@ -26,31 +26,36 @@ type PlayerSearchHit struct {
 // where offline_since is within the last 24 hours.
 func (p *PostgresStore) SearchPlayersByName(ctx context.Context, q string, includeOffline bool) ([]PlayerSearchHit, error) {
 	rows, err := p.pool.Query(ctx, `
-		SELECT DISTINCT ON (sa.steam_id)
-		       sa.steam_id,
-		       sa.bm_id,
-		       NULLIF(bpc.bm_name, '') AS bm_name,
-		       NULLIF(sac.avatar_image, '') AS avatar_image,
-		       ts.bm_id      AS server_bm_id,
-		       ts.name       AS server_name,
-		       ps.is_online,
-		       COALESCE(ps.online_since, ps.offline_since, ps.updated_at) AS last_seen
-		  FROM steam_accounts        sa
-		  JOIN player_states         ps  ON ps.player_bm_id = sa.bm_id
-		  JOIN tracked_servers       ts  ON ts.bm_id        = ps.server_bm_id
-		  LEFT JOIN bm_profile_cache bpc ON bpc.bm_id       = sa.bm_id
-		  LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
-		 WHERE (
-		        bpc.bm_name      ILIKE '%' || $1 || '%'
-		     OR sac.persona_name ILIKE '%' || $1 || '%'
-		       )
-		   AND (
-		        ps.is_online
-		     OR ($2 AND ps.offline_since IS NOT NULL AND ps.offline_since > now() - interval '24 hours')
-		       )
-		 ORDER BY sa.steam_id,
-		          ps.is_online DESC,
-		          COALESCE(ps.online_since, ps.offline_since, ps.updated_at) DESC
+		SELECT *
+		  FROM (
+			SELECT DISTINCT ON (sa.steam_id)
+			       sa.steam_id,
+			       sa.bm_id,
+			       NULLIF(bpc.bm_name, '') AS bm_name,
+			       NULLIF(sac.avatar_image, '') AS avatar_image,
+			       ts.bm_id      AS server_bm_id,
+			       ts.name       AS server_name,
+			       ps.is_online,
+			       COALESCE(ps.online_since, ps.offline_since, ps.updated_at) AS last_seen
+			  FROM steam_accounts        sa
+			  JOIN player_states         ps  ON ps.player_bm_id = sa.bm_id
+			  JOIN tracked_servers       ts  ON ts.bm_id        = ps.server_bm_id
+			  LEFT JOIN bm_profile_cache bpc ON bpc.bm_id       = sa.bm_id
+			  LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
+			 WHERE (
+			        bpc.bm_name      ILIKE '%' || $1 || '%'
+			     OR sac.persona_name ILIKE '%' || $1 || '%'
+			       )
+			   AND (
+			        ps.is_online
+			     OR ($2 AND ps.offline_since IS NOT NULL AND ps.offline_since > now() - interval '24 hours')
+			       )
+			 ORDER BY sa.steam_id,
+			          ps.is_online DESC,
+			          COALESCE(ps.online_since, ps.offline_since, ps.updated_at) DESC
+		       ) t
+		 ORDER BY t.is_online DESC,
+		          t.last_seen DESC
 		 LIMIT 20
 	`, q, includeOffline)
 	if err != nil {

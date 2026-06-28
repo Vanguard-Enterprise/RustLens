@@ -118,10 +118,23 @@ async function consumeRedisRateLimit(
 
 	const redisKey = `rate-limit:${key}`;
 	const ttlSeconds = Math.max(1, Math.ceil(window.windowMs / 1000));
-	const count = await client.incr(redisKey);
-	if (count === 1) {
-		await client.expire(redisKey, ttlSeconds);
-	}
+	// Atomically increment and, on the first hit in the window, set the TTL in
+	// the same round trip. Doing INCR + EXPIRE atomically prevents a crash or
+	// error between the two from leaving a counter key with no TTL, which would
+	// permanently lock the key.
+	const count = Number(
+		await client.eval(
+			`local count = redis.call("INCR", KEYS[1])
+if count == 1 then
+	redis.call("EXPIRE", KEYS[1], ARGV[1])
+end
+return count`,
+			{
+				keys: [redisKey],
+				arguments: [String(ttlSeconds)],
+			},
+		),
+	);
 
 	const ttl = await client.ttl(redisKey);
 	if (count > window.max) {

@@ -313,6 +313,31 @@ async function fetchGuildRoleOptions(guild: Guild) {
     .sort((left, right) => right.position - left.position || left.name.localeCompare(right.name));
 }
 
+// Discord caps a string-select at 25 options. When the source list is longer
+// than the available slots we slice it down, but the currently-configured value
+// might fall outside that slice — leaving the menu with no `default: true`
+// option and hiding the current selection. This guarantees the current value is
+// always present (so it can be defaulted) while keeping the total within `max`.
+function sliceWithCurrent<T extends { id: string }>(
+  items: T[],
+  currentId: string,
+  max: number,
+): T[] {
+  const sliced = items.slice(0, max);
+
+  if (currentId.length === 0 || sliced.some((item) => item.id === currentId)) {
+    return sliced;
+  }
+
+  const current = items.find((item) => item.id === currentId);
+  if (!current) {
+    return sliced;
+  }
+
+  // Drop the lowest-priority entry to make room for the current value.
+  return [...items.slice(0, max - 1), current];
+}
+
 function buildChannelSettingsModal(
   fieldKey: keyof Pick<
     GuildSettingsPatch,
@@ -338,7 +363,7 @@ function buildChannelSettingsModal(
           ...(currentChannelId.length === 0 && { default: true }),
         })
         .addOptions(
-          ...channels.slice(0, 24).map((channel) => ({
+          ...sliceWithCurrent(channels, currentChannelId, 24).map((channel) => ({
             label: trimOptionLabel(`#${channel.name}`),
             value: channel.id,
             description: trimOptionDescription(
@@ -383,7 +408,7 @@ function buildCategorySettingsModal(
           description: `Create a ${TRACKED_USERS_CATEGORY_NAME} category`,
         })
         .addOptions(
-          ...categories.slice(0, 23).map((category) => ({
+          ...sliceWithCurrent(categories, currentCategoryId, 23).map((category) => ({
             label: trimOptionLabel(category.name),
             value: category.id,
             ...(category.id === currentCategoryId && { default: true }),
@@ -416,7 +441,7 @@ function buildRoleSettingsModal(
           ...(currentRoleId.length === 0 && { default: true }),
         })
         .addOptions(
-          ...roles.slice(0, 24).map((role) => ({
+          ...sliceWithCurrent(roles, currentRoleId, 24).map((role) => ({
             label: trimOptionLabel(role.name),
             value: role.id,
             ...(role.id === currentRoleId && { default: true }),

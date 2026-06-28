@@ -1739,8 +1739,12 @@ func (h *Handler) SearchPlayerStatesOnServer(w http.ResponseWriter, r *http.Requ
 			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
 			return
 		}
-		if parsed > 20 {
-			parsed = 20
+		// Cap at 21 (not 20) so callers can request one extra row purely to
+		// detect that more than the 20-result display cap matched. The bot's
+		// /search command relies on this overflow signal for its
+		// "scope too wide" guard while still rendering at most 20 results.
+		if parsed > 21 {
+			parsed = 21
 		}
 		limit = parsed
 	}

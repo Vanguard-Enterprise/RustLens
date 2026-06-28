@@ -1,6 +1,6 @@
 import "server-only";
 
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import type { AdminBanCategory } from "@/lib/admin-ban-categories";
 import { backendFetchHist } from "@/lib/observability/metrics";
 import { getSessionToken } from "@/lib/session";
@@ -585,7 +585,11 @@ export function getCurrentUser() {
 export async function getCurrentUserSafe() {
 	try {
 		return await getCurrentUser();
-	} catch {
+	} catch (err) {
+		// Re-throw Next.js redirect/control-flow errors (e.g. the redirect()
+		// backendFetch fires on a revoked/invalid session) so they propagate
+		// instead of being swallowed into a silent logged-out render.
+		unstable_rethrow(err);
 		return null;
 	}
 }

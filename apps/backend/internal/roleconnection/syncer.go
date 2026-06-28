@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"rustlens/backend/internal/oauth/discord"
@@ -78,9 +79,58 @@ type SyncerConfig struct {
 
 type Syncer struct {
 	cfg SyncerConfig
+
+	// userLocks serializes Push per user id within this process. The 6h
+	// reconciler is advisory-locked only ACROSS pods, and PushAsync spawns
+	// detached goroutines, so two Push calls for the same user can otherwise
+	// run concurrently. When the access token is near expiry both would read
+	// the same row, decrypt the same refresh token, and call Discord
+	// RefreshToken; Discord invalidates the old refresh token on first use, so
+	// the second call gets invalid_grant and would wrongly mark a still-valid
+	// connection revoked. Holding a per-user mutex across the whole Push (read
+	// -> refresh -> upsert -> push) ensures the second caller re-reads the row
+	// with the rotated token. Entries are reference-counted and removed once no
+	// caller holds them, so the map stays bounded to in-flight users.
+	locksMu   sync.Mutex
+	userLocks map[string]*refMutex
 }
 
-func NewSyncer(cfg SyncerConfig) *Syncer { return &Syncer{cfg: cfg} }
+// refMutex is a per-user mutex with a waiter count so the owning map entry can
+// be reclaimed when the last holder releases it.
+type refMutex struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func NewSyncer(cfg SyncerConfig) *Syncer {
+	return &Syncer{cfg: cfg, userLocks: make(map[string]*refMutex)}
+}
+
+// lockUser acquires the per-user lock for userID and returns a release func.
+// The map entry is created on first use and deleted once the last waiter
+// releases, keeping userLocks bounded to currently-active users.
+func (s *Syncer) lockUser(userID string) func() {
+	s.locksMu.Lock()
+	rm, ok := s.userLocks[userID]
+	if !ok {
+		rm = &refMutex{}
+		s.userLocks[userID] = rm
+	}
+	rm.refs++
+	s.locksMu.Unlock()
+
+	rm.mu.Lock()
+
+	return func() {
+		rm.mu.Unlock()
+		s.locksMu.Lock()
+		rm.refs--
+		if rm.refs == 0 {
+			delete(s.userLocks, userID)
+		}
+		s.locksMu.Unlock()
+	}
+}
 
 // pushSkipDuration controls how often Push runs even when the hash is unchanged.
 // The periodic reconciler always re-pushes after this many hours regardless of
@@ -96,6 +146,12 @@ const tokenSkew = 60 * time.Second
 // Returns discord.ErrRefreshRevoked when the row had to be marked revoked
 // during this call.
 func (s *Syncer) Push(ctx context.Context, userID string) error {
+	// Serialize Push per user within this process so concurrent calls (6h
+	// reconciler + admin-triggered PushAsync) never both consume the same
+	// rotating Discord refresh token. See userLocks for details.
+	release := s.lockUser(userID)
+	defer release()
+
 	row, err := s.cfg.Store.GetDiscordRoleConnection(ctx, userID)
 	if err != nil {
 		return err

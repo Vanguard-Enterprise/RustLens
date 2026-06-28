@@ -346,6 +346,14 @@ func (h *Handler) BulkAdminProxies(w http.ResponseWriter, r *http.Request) {
 		if request.Enabled != nil {
 			desired = *request.Enabled
 		}
+		// Derive the audit label from the actual effect rather than the
+		// requested action, so a request whose `enabled` override flips the
+		// intent (e.g. action "enable" with enabled:false) is audited as the
+		// mutation that really happened.
+		auditAction := "proxies.bulk.disable"
+		if desired {
+			auditAction = "proxies.bulk.enable"
+		}
 		for _, id := range request.IDs {
 			res := adminProxyBulkResultItem{ID: id}
 			_, err := h.postgres.SetOutboundProxyEnabled(r.Context(), id, desired)
@@ -360,7 +368,7 @@ func (h *Handler) BulkAdminProxies(w http.ResponseWriter, r *http.Request) {
 				res.OK = true
 				succeeded++
 			}
-			h.recordProxyAudit(r.Context(), r, actorID, "proxies.bulk."+request.Action, strconv.FormatInt(id, 10), request.Reason, resultOf(res.OK), res.Error)
+			h.recordProxyAudit(r.Context(), r, actorID, auditAction, strconv.FormatInt(id, 10), request.Reason, resultOf(res.OK), res.Error)
 			results = append(results, res)
 		}
 	case "delete":

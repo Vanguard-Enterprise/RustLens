@@ -167,7 +167,8 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 	var total int
 	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM app_users u %s`, whereSQL)
 	if err := pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ListAdministrators count query error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -219,7 +220,8 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := pool.Query(ctx, listSQL, args...)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ListAdministrators list query error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	defer rows.Close()
@@ -238,7 +240,8 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
 			&guildCount, &steamCount, &adminRoleKeys, &entitlementKeys, &banCategories, &it.HasUserAppInstalled,
 		); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("[backend] ListAdministrators row scan error: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		if rolesLegacyJSON != "" {
@@ -270,6 +273,11 @@ func (h *Handler) ListAdministrators(w http.ResponseWriter, r *http.Request) {
 			it.DeletedAt = &t
 		}
 		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[backend] ListAdministrators rows iteration error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": items, "total": total, "page": page, "pageSize": pageSize,
@@ -322,7 +330,8 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 	var total int
 	countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM app_users u %s`, whereSQL)
 	if err := pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ListAdminUsers count query error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -380,7 +389,8 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := pool.Query(ctx, listSQL, args...)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ListAdminUsers list query error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	defer rows.Close()
@@ -399,7 +409,8 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 			&it.DiscordID, &it.DiscordUsername, &it.DiscordGlobalName, &it.DiscordAvatar,
 			&guildCount, &steamCount, &adminRoleKeys, &entitlementKeys, &banCategories, &it.HasUserAppInstalled,
 		); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("[backend] ListAdminUsers row scan error: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		if rolesLegacyJSON != "" {
@@ -431,6 +442,11 @@ func (h *Handler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 			it.DeletedAt = &t
 		}
 		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[backend] ListAdminUsers rows iteration error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": items, "total": total, "page": page, "pageSize": pageSize,
@@ -499,7 +515,8 @@ func (h *Handler) ListAdminGuilds(w http.ResponseWriter, r *http.Request) {
 		JoinedBefore: joinedBefore,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ListAdminGuilds store error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -565,7 +582,8 @@ func (h *Handler) ListAdminUserInstalls(w http.ResponseWriter, r *http.Request) 
 		PageSize: pageSize,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ListAdminUserInstalls store error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -615,7 +633,8 @@ func (h *Handler) ListAdminServers(w http.ResponseWriter, r *http.Request) {
 		LIMIT 500
 	`)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ListAdminServers query error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	defer rows.Close()
@@ -628,7 +647,8 @@ func (h *Handler) ListAdminServers(w http.ResponseWriter, r *http.Request) {
 			guildCount int64
 		)
 		if err := rows.Scan(&item.ServerBmID, &item.Name, &lastPolled, &item.LastPollError, &guildCount); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("[backend] ListAdminServers row scan error: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		if lastPolled != nil {
@@ -637,6 +657,11 @@ func (h *Handler) ListAdminServers(w http.ResponseWriter, r *http.Request) {
 		}
 		item.GuildCount = int(guildCount)
 		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[backend] ListAdminServers rows iteration error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
@@ -768,7 +793,8 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := pool.Query(ctx, sql, args...)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ListAdminAudit query error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	defer rows.Close()
@@ -783,7 +809,8 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 			reason      *string
 		)
 		if err := rows.Scan(&item.ID, &item.ActorUserID, &item.TargetUserID, &item.EventType, &payloadJSON, &result, &reason, &item.CreatedAt); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("[backend] ListAdminAudit row scan error: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		item.Payload = map[string]any{}
@@ -801,7 +828,8 @@ func (h *Handler) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] ListAdminAudit rows iteration error: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -926,7 +954,8 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminUser query error for %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	if rolesJSON != "" {
@@ -955,7 +984,8 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 		WHERE aur.user_id = $1 ORDER BY r.key
 	`, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminUser admin roles query error for %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	for rrows.Next() {
@@ -975,7 +1005,8 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 		ORDER BY key
 	`, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[backend] GetAdminUser entitlements query error for %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	for erows.Next() {
@@ -1013,7 +1044,8 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 			ORDER BY COALESCE(NULLIF(bg.name, ''), NULLIF(ug.name, ''), ug.guild_id)
 		`, d.DiscordID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("[backend] GetAdminUser guilds query error for %s: %v", id, err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		for grows.Next() {
@@ -1044,7 +1076,8 @@ func (h *Handler) GetAdminUser(w http.ResponseWriter, r *http.Request) {
 		}
 		grows.Close()
 		if err := grows.Err(); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("[backend] GetAdminUser guilds rows iteration error for %s: %v", id, err)
+			writeError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 	}

@@ -1181,8 +1181,8 @@ func buildOpenAPIDocument() map[string]any {
 							"name":        "limit",
 							"in":          "query",
 							"required":    false,
-							"description": "Maximum number of results to return. Defaults to 20 and is capped at 20.",
-							"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": 20, "default": 20},
+							"description": "Maximum number of results to return. Defaults to 20 and is capped at 21 (one extra row above the 20-result display cap so callers can detect that the result set overflowed).",
+							"schema":      map[string]any{"type": "integer", "minimum": 1, "maximum": 21, "default": 20},
 						},
 						{
 							"name":        "includeOffline",

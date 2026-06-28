@@ -27,7 +27,7 @@ func (p *PostgresStore) OwnerStats(ctx context.Context, nowUnix int64) (OwnerSta
 	}{
 		{`SELECT COUNT(*) FROM guild_settings`, nil, &stats.ConfiguredGuilds},
 		{`SELECT COUNT(*) FROM steam_accounts`, nil, &stats.SteamAccounts},
-		{`SELECT COUNT(*) FROM guild_steam_discord_links`, nil, &stats.HardLinks},
+		{`SELECT COUNT(*) FROM steam_discord_links WHERE type = 'hard'`, nil, &stats.HardLinks},
 		{`SELECT COUNT(DISTINCT discord_id) FROM guild_steam_discord_links`, nil, &stats.UniqueLinkedDiscords},
 		{`SELECT COUNT(*) FROM tracked_servers`, nil, &stats.TrackedServers},
 		{`SELECT COUNT(*) FROM player_states WHERE is_online`, nil, &stats.OnlineTrackedPlayers},

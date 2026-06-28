@@ -38,7 +38,10 @@ export async function GET(request: Request) {
 		maxAge: SESSION_TTL_SECONDS,
 		httpOnly: true,
 		sameSite: "lax",
-		secure: process.env.NODE_ENV === "production",
+		// Always Secure to match setSession()'s invariant; gating on NODE_ENV
+		// would re-mint the cookie without Secure on an HTTPS staging build
+		// running with NODE_ENV != production.
+		secure: true,
 	});
 	response.headers.set("Cache-Control", "no-store");
 	return response;

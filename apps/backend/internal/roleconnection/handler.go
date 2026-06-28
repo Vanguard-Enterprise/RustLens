@@ -196,7 +196,53 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 			slog.String("user_id", session.UserID), slog.Any("error", err))
 	}
 
-	http.Redirect(w, r, h.frontendURL("/dashboard?notice=discord-linked"), http.StatusFound)
+	// Honor the ?return= destination stashed in CookieRCReturn during Initiate,
+	// but only when it is a safe same-origin relative path; otherwise fall back
+	// to the dashboard. The discord-linked notice is preserved either way.
+	target := "/dashboard?notice=discord-linked"
+	if rc, cerr := r.Cookie(discord.CookieRCReturn); cerr == nil {
+		if path, ok := safeReturnPath(rc.Value); ok {
+			target = withNotice(path, "discord-linked")
+		}
+	}
+
+	http.Redirect(w, r, h.frontendURL(target), http.StatusFound)
+}
+
+// safeReturnPath validates a stored ?return= destination before it is used as a
+// redirect target. To prevent open redirects it only accepts same-origin,
+// relative paths: the value must begin with a single "/" and must not be a
+// protocol-relative ("//...") URL, carry a scheme/host, or contain a backslash
+// (which some browsers normalize to "/"). It returns the validated path and
+// whether it is safe to use.
+func safeReturnPath(raw string) (string, bool) {
+	if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return "", false
+	}
+	if strings.ContainsAny(raw, "\\") {
+		return "", false
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	if u.IsAbs() || u.Scheme != "" || u.Host != "" {
+		return "", false
+	}
+	return raw, true
+}
+
+// withNotice adds (or overwrites) the notice query parameter on an already
+// validated same-origin relative path, preserving any existing query/fragment.
+func withNotice(path, notice string) string {
+	u, err := url.Parse(path)
+	if err != nil {
+		return path
+	}
+	q := u.Query()
+	q.Set("notice", notice)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // Disconnect handles DELETE /api/app/me/discord-role-connection.
