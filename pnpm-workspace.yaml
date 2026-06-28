@@ -1,3 +1,27 @@
 packages:
   - apps/frontend
   - apps/bot
+
+# Dependency overrides live here (pnpm >= 10.6 no longer reads `pnpm.overrides`
+# from package.json). Security pins are scoped to each advisory's affected range
+# so unrelated majors are left untouched.
+overrides:
+  # Pre-existing pins (migrated from the now-ignored package.json `pnpm` field)
+  lodash@<4.18.0: '>=4.18.0'
+  postcss@<8.5.10: '>=8.5.10'
+  ip-address@<10.1.1: '>=10.1.1'
+  '@datadog/pprof': ^5.14.4
+  # Security remediation (Dependabot alerts). Targets are caret-bounded to the
+  # patched version so packages stay within the same major (no breaking bumps).
+  undici@>=7.0.0 <7.28.0: ^7.28.0
+  undici@>=6.0.0 <6.27.0: ^6.27.0
+  hono@<4.12.25: ^4.12.25
+  protobufjs@<=7.6.2: ^7.6.3
+  ws@>=8.0.0 <8.21.0: ^8.21.0
+  shell-quote@>=1.1.0 <=1.8.3: ^1.8.4
+  qs@>=6.11.1 <=6.15.1: ^6.15.2
+  js-yaml@>=4.0.0 <=4.1.1: ^4.2.0
+  esbuild@>=0.27.3 <0.28.1: ^0.28.1
+  vite@>=8.0.0 <=8.0.15: ^8.0.16
+  '@opentelemetry/core@<2.8.0': ^2.8.0
+  '@babel/core@<=7.29.0': ^7.29.6
