@@ -358,7 +358,7 @@ func (h *Handler) adminGuildStats(ctx context.Context, guildID string, usage adm
 			(SELECT COUNT(DISTINCT discord_id) FROM guild_steam_discord_links WHERE guild_id = $1),
 			(SELECT COUNT(*) FROM guild_tracked_servers WHERE guild_id = $1),
 			(SELECT COUNT(*) FROM track_groups WHERE guild_id = $1),
-			(SELECT COUNT(*) FROM wipe_reacts WHERE guild_id = $1 AND scheduled_unix >= EXTRACT(EPOCH FROM NOW())::bigint),
+			(SELECT COUNT(*) FROM wipe_reacts WHERE guild_id = $1 AND scheduled_unix > EXTRACT(EPOCH FROM NOW())::bigint),
 			(SELECT COUNT(*) FROM wipe_reacts WHERE guild_id = $1),
 			(SELECT COUNT(*) FROM wipe_react_schedules WHERE guild_id = $1)
 	`, guildID).Scan(
