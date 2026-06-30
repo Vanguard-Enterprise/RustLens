@@ -7,6 +7,7 @@ mod admin;
 mod appauth;
 mod cookies;
 mod discord;
+mod events_handler;
 mod handlers;
 mod state;
 
@@ -32,10 +33,15 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("connecting to Postgres")?;
 
+    let hub = Arc::new(rustlens_events::Hub::new());
+    let events = rustlens_events::RedisBridge::start(hub.clone(), &config.redis_url);
+
     let state = Arc::new(AppState {
         config,
         pool,
         http: reqwest::Client::new(),
+        hub,
+        events,
     });
 
     let app = Router::new()
@@ -48,6 +54,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/app/admin/users", get(admin::list_users))
         .route("/api/app/admin/administrators", get(admin::list_administrators))
         .route("/api/app/admin/audit", get(admin::list_audit))
+        .route("/api/events/stream", get(events_handler::stream))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", state.config.port);
