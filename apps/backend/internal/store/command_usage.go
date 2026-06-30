@@ -490,7 +490,11 @@ func (p *PostgresStore) ListUserCommandUsageFiltered(
 			dn := displayName
 			userMap[discordID] = userEnrichment{AppUserID: appUserID, DisplayName: &dn, AvatarHash: avatar}
 		}
+		uRowsErr := uRows.Err()
 		uRows.Close()
+		if uRowsErr != nil {
+			return page, fmt.Errorf("enrich users: %w", uRowsErr)
+		}
 	}
 
 	type guildEnrichment struct {
@@ -520,7 +524,11 @@ func (p *PostgresStore) ListUserCommandUsageFiltered(
 			}
 			guildMap[gid] = guildEnrichment{Name: name, IconHash: icon}
 		}
+		gRowsErr := gRows.Err()
 		gRows.Close()
+		if gRowsErr != nil {
+			return page, fmt.Errorf("enrich guilds: %w", gRowsErr)
+		}
 	}
 
 	// Apply enrichment: live values win over snapshot.

@@ -159,9 +159,9 @@ function refreshTrackedServerAutocompleteCache() {
   return trackedServerAutocompleteCache.refresh;
 }
 
-async function loadTrackedServerAutocompleteItems() {
+function loadTrackedServerAutocompleteItems() {
   if (trackedServerAutocompleteCache.expiresAt <= Date.now()) {
-    await refreshTrackedServerAutocompleteCache();
+    void refreshTrackedServerAutocompleteCache();
   }
   return trackedServerAutocompleteCache.items;
 }
@@ -220,7 +220,7 @@ export async function handleAnalyzeAutocomplete(interaction: AutocompleteInterac
   }
 
   const needle = String(focused.value ?? "").trim().toLocaleLowerCase();
-  const choices = (await loadTrackedServerAutocompleteItems())
+  const choices = loadTrackedServerAutocompleteItems()
     .filter((server) => {
       if (needle.length === 0) {
         return true;

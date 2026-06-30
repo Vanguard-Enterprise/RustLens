@@ -765,7 +765,10 @@ client.on("interactionCreate", async (interaction) => {
   } catch (err) {
     outcome = "error";
     errorCode = err instanceof Error ? err.message : String(err);
-    throw err;
+    logger.error({ error: err }, "interaction dispatch failed unexpectedly");
+    // Do not re-throw: discord.js does not await/catch this async listener, so a
+    // re-throw becomes an unhandledRejection (and can crash the process). Fall
+    // through to `finally` so the error outcome is still recorded.
   } finally {
     if (trackUsage) {
       recordCommandUsage(interaction, outcome, errorCode, startedAt, recordTargets);

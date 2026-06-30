@@ -322,7 +322,9 @@ export async function handleSearchChatInput(interaction: ChatInputCommandInterac
     return profile;
   });
 
-  await progressUpdate;
+  await progressUpdate.catch((error) => {
+    logger.error({ error }, "failed to post search progress update");
+  });
 
   for (const [index, result] of results.entries()) {
     const profile = profiles[index];
