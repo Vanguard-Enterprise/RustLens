@@ -1,0 +1,12 @@
+[package]
+name = "rustlens-crypto"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "AES-256-GCM token encryption, byte-compatible with the Go backend's proxycrypto."
+
+[dependencies]
+aes-gcm = { workspace = true }
+base64 = { workspace = true }
+rand = { workspace = true }
+thiserror = { workspace = true }

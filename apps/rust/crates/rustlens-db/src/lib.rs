@@ -13,6 +13,7 @@ pub mod admin;
 pub mod admin_actions;
 pub mod identity;
 pub mod rbac;
+pub mod role_connections;
 
 /// Connect to Postgres and return a pooled handle.
 pub async fn connect(database_url: &str, max_connections: u32) -> Result<PgPool, sqlx::Error> {

@@ -10,6 +10,7 @@ mod discord;
 mod dispatcher;
 mod events_handler;
 mod handlers;
+mod role_connection;
 mod state;
 
 use std::sync::Arc;
@@ -17,7 +18,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use axum::{
     Router,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use rustlens_config::IdentityConfig;
 
@@ -40,13 +41,34 @@ async fn main() -> anyhow::Result<()> {
     let hub = Arc::new(rustlens_events::Hub::new());
     let events = rustlens_events::RedisBridge::start(hub.clone(), &config.redis_url);
 
+    // Build the role-connection cipher (linked-roles feature) when configured.
+    let cipher = match config.proxy_encryption_key.as_deref() {
+        Some(key) => match rustlens_crypto::Cipher::from_base64_key(key) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                tracing::error!("invalid PROXY_ENCRYPTION_KEY, linked-roles disabled: {e}");
+                None
+            }
+        },
+        None => None,
+    };
+
     let state = Arc::new(AppState {
         config,
         pool,
         http: reqwest::Client::new(),
         hub,
         events,
+        cipher,
     });
+
+    // Register the linked-roles metadata schema once at startup (best-effort).
+    if state.config.role_connection_enabled() && state.config.discord_bot_token.is_some() {
+        match role_connection::register_schema(&state).await {
+            Ok(()) => tracing::info!("linked-roles metadata schema registered"),
+            Err(e) => tracing::warn!("linked-roles metadata schema registration failed: {e:#}"),
+        }
+    }
 
     let app = Router::new()
         .route("/api/healthz", get(healthz))
@@ -59,6 +81,15 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/app/admin/administrators", get(admin::list_administrators))
         .route("/api/app/admin/audit", get(admin::list_audit))
         .route("/api/app/admin/actions/{type}", post(dispatcher::dispatch))
+        .route("/api/auth/discord/role-connection", get(role_connection::initiate))
+        .route(
+            "/api/auth/discord/role-connection/callback",
+            get(role_connection::callback),
+        )
+        .route(
+            "/api/app/me/discord-role-connection",
+            delete(role_connection::disconnect),
+        )
         .route("/api/events/stream", get(events_handler::stream))
         .with_state(state.clone());
 

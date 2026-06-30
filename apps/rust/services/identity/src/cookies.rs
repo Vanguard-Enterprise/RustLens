@@ -11,6 +11,10 @@ pub const SESSION_COOKIE: &str = "rustlens_session";
 pub const STATE_COOKIE: &str = "rustlens_discord_oauth_state";
 /// Per-flow PKCE verifier cookie (matches Go's `CookieVerifier`).
 pub const VERIFIER_COOKIE: &str = "rustlens_discord_oauth_verifier";
+/// Role-connection OAuth state cookie (Go `CookieRCState`).
+pub const RC_STATE_COOKIE: &str = "rl_rc_state";
+/// Role-connection post-link return-destination cookie (Go `CookieRCReturn`).
+pub const RC_RETURN_COOKIE: &str = "rl_rc_return";
 
 /// 14 days, in seconds (matches Go's session `MaxAge`).
 pub const SESSION_MAX_AGE: i64 = 60 * 60 * 24 * 14;

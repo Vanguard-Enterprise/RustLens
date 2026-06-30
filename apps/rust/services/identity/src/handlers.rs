@@ -197,7 +197,22 @@ pub async fn me(State(st): Shared, headers: HeaderMap) -> Response {
     }
 
     match identity::load_current_user(&st.pool, &session.user_id).await {
-        Ok(Some(cu)) => (StatusCode::OK, Json(cu)).into_response(),
+        Ok(Some(mut cu)) => {
+            // When linked-roles is configured, attach the dashboard summary
+            // (present with `linked:false` when there is no connection row).
+            if st.config.role_connection_enabled() {
+                if let Ok(summary) =
+                    rustlens_db::role_connections::get_role_connection_summary(
+                        &st.pool,
+                        &session.user_id,
+                    )
+                    .await
+                {
+                    cu.discord_role_connection = Some(summary);
+                }
+            }
+            (StatusCode::OK, Json(cu)).into_response()
+        }
         Ok(None) => error_json(StatusCode::NOT_FOUND, "app user not found"),
         Err(e) => {
             tracing::error!("/api/app/me: load current user failed: {e:#}");

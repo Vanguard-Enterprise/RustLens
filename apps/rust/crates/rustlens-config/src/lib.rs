@@ -38,6 +38,13 @@ pub struct IdentityConfig {
     /// Where the browser lands after a successful login when no explicit
     /// return path is supplied. Defaults to `{app_base_url}/dashboard`.
     pub app_base_url: String,
+    /// Base64 AES-256 key for encrypting Discord role-connection OAuth tokens at
+    /// rest (`PROXY_ENCRYPTION_KEY`, shared with the Go backend). When unset the
+    /// linked-roles feature is disabled.
+    pub proxy_encryption_key: Option<String>,
+    /// Discord bot token, used to register the linked-roles metadata schema at
+    /// startup (`DISCORD_BOT_TOKEN`).
+    pub discord_bot_token: Option<String>,
 }
 
 impl IdentityConfig {
@@ -57,6 +64,8 @@ impl IdentityConfig {
             app_origin: opt("APP_ORIGIN").unwrap_or_else(|| "http://localhost".to_string()),
             app_base_url: opt("APP_BASE_URL")
                 .unwrap_or_else(|| "http://localhost:3000".to_string()),
+            proxy_encryption_key: opt("PROXY_ENCRYPTION_KEY"),
+            discord_bot_token: opt("DISCORD_BOT_TOKEN"),
         })
     }
 
@@ -78,6 +87,20 @@ impl IdentityConfig {
     /// Default post-login destination: `{app_origin}/dashboard`.
     pub fn default_post_login_url(&self) -> String {
         self.frontend_url("/dashboard")
+    }
+
+    /// The Discord role-connection OAuth callback URL.
+    pub fn role_connection_redirect_uri(&self) -> String {
+        format!(
+            "{}/api/auth/discord/role-connection/callback",
+            self.app_origin.trim_end_matches('/')
+        )
+    }
+
+    /// Whether the Discord linked-roles feature is configured (encryption key +
+    /// Discord client credentials present).
+    pub fn role_connection_enabled(&self) -> bool {
+        self.proxy_encryption_key.is_some() && !self.discord_client_id.is_empty()
     }
 }
 
