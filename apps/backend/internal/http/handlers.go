@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/singleflight"
 
 	"rustlens/backend/internal/admin/actions"
 	"rustlens/backend/internal/admin/audit"
@@ -22,7 +23,6 @@ import (
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
-	"rustlens/backend/internal/bmmatch"
 	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/events"
@@ -32,6 +32,7 @@ import (
 	"rustlens/backend/internal/proxycrypto"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
+	"rustlens/backend/internal/steammatch"
 	"rustlens/backend/internal/store"
 )
 
@@ -54,7 +55,8 @@ type Handler struct {
 	steamClient         *steamapi.Client
 	steamSummaryClient  *steamapi.Client
 	battleMetricsClient *battlemetrics.Client
-	bmMatch             *bmmatch.Client
+	bmMatch             steammatch.Resolver
+	bmBackfill          singleflight.Group
 	platformSync        *platformsync.Client
 	rbacStore           *rbac.Store
 	rbacResolver        *rbac.Resolver
@@ -77,7 +79,7 @@ func NewHandler(
 	steamClient *steamapi.Client,
 	steamSummaryClient *steamapi.Client,
 	battleMetricsClient *battlemetrics.Client,
-	bmMatch *bmmatch.Client,
+	bmMatch steammatch.Resolver,
 	platformSync *platformsync.Client,
 	outboundProvider *outboundhttp.Provider,
 	proxyCrypto *proxycrypto.Crypto,
@@ -2305,10 +2307,51 @@ func (h *Handler) upsertResolvedSteamAccount(ctx context.Context, steamID string
 	return h.postgres.GetSteamAccountBySteamID(ctx, steamID)
 }
 
+// resolveSteamAccountBySteamID resolves and persists a Steam ID's BM linkage.
+// The resolver source (bmsearch) is async for cold players, so the inline
+// attempt is bounded by a short deadline; if the lookup is still pending the
+// caller gets a Steam-only "not found" now and a detached goroutine finishes
+// the resolution + persist so the bm_id is cached for next time (HYBRID).
 func (h *Handler) resolveSteamAccountBySteamID(ctx context.Context, steamID string) (store.SteamAccount, error) {
+	inlineCtx, cancel := context.WithTimeout(ctx, h.cfg.BMSearchInlineWait)
+	defer cancel()
+
+	account, err := h.resolveSteamAccountBySteamIDWithin(inlineCtx, steamID)
+	if errors.Is(err, steammatch.ErrPending) {
+		h.backfillSteamAccountBmID(steamID)
+		return store.SteamAccount{}, store.ErrSteamAccountNotFound
+	}
+	return account, err
+}
+
+// backfillSteamAccountBmID re-runs the resolve+persist for a Steam ID in the
+// background with a generous deadline so an enqueued bmsearch lookup has time
+// to drain the worker queue. Concurrent backfills for the same Steam ID are
+// de-duplicated.
+func (h *Handler) backfillSteamAccountBmID(steamID string) {
+	go func() {
+		_, _, _ = h.bmBackfill.Do(steamID, func() (any, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			defer cancel()
+			if _, err := h.resolveSteamAccountBySteamIDWithin(ctx, steamID); err != nil &&
+				!errors.Is(err, store.ErrSteamAccountNotFound) && !errors.Is(err, steammatch.ErrPending) {
+				log.Printf("[backend] bmsearch backfill error for %s: %v", steamID, err)
+			}
+			return nil, nil
+		})
+	}()
+}
+
+// resolveSteamAccountBySteamIDWithin is the core resolve+persist, bounded only
+// by the supplied ctx. It propagates steammatch.ErrPending so the inline caller
+// can decide to backfill; all other resolver misses map to ErrSteamAccountNotFound.
+func (h *Handler) resolveSteamAccountBySteamIDWithin(ctx context.Context, steamID string) (store.SteamAccount, error) {
 	bmID, err := h.bmMatch.SteamToBM(ctx, steamID)
 	if err != nil {
-		if errors.Is(err, bmmatch.ErrNotFound) || errors.Is(err, bmmatch.ErrNotConfigured) {
+		if errors.Is(err, steammatch.ErrPending) {
+			return store.SteamAccount{}, steammatch.ErrPending
+		}
+		if errors.Is(err, steammatch.ErrNotFound) || errors.Is(err, steammatch.ErrNotConfigured) {
 			return store.SteamAccount{}, store.ErrSteamAccountNotFound
 		}
 		return store.SteamAccount{}, err
@@ -2368,7 +2411,7 @@ func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (s
 		// so fall back to the matching service for the Steam ID.
 		resolved, lookupErr := h.bmMatch.BMToSteam(ctx, bmID)
 		if lookupErr != nil {
-			if errors.Is(lookupErr, bmmatch.ErrNotFound) || errors.Is(lookupErr, bmmatch.ErrNotConfigured) {
+			if errors.Is(lookupErr, steammatch.ErrNotFound) || errors.Is(lookupErr, steammatch.ErrNotConfigured) {
 				return store.SteamAccount{}, store.ErrSteamAccountNotFound
 			}
 			return store.SteamAccount{}, lookupErr
@@ -2390,7 +2433,7 @@ func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (s
 func (h *Handler) resolveSteamAccountFromBmMatch(ctx context.Context, bmID string) (store.SteamAccount, error) {
 	resolved, err := h.bmMatch.BMToSteam(ctx, bmID)
 	if err != nil {
-		if errors.Is(err, bmmatch.ErrNotFound) || errors.Is(err, bmmatch.ErrNotConfigured) {
+		if errors.Is(err, steammatch.ErrNotFound) || errors.Is(err, steammatch.ErrNotConfigured) {
 			return store.SteamAccount{}, store.ErrSteamAccountNotFound
 		}
 		return store.SteamAccount{}, err
