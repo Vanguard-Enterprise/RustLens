@@ -22,6 +22,10 @@ pub struct IdentityConfig {
     /// HMAC secret for the `rustlens_session` cookie. Shared with the Go
     /// backend and the Next.js frontend.
     pub app_session_secret: String,
+    /// Shared internal secret gating the `/api/app/*` surface (the
+    /// `X-RustLens-App-Secret` header). Only the Next.js server sends it.
+    /// Shared with the Go backend (`APP_API_INTERNAL_SECRET`).
+    pub app_api_internal_secret: String,
     pub discord_client_id: String,
     pub discord_client_secret: String,
     /// Canonical external origin used to build OAuth redirect URIs, e.g.
@@ -43,6 +47,7 @@ impl IdentityConfig {
                 "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable".to_string()
             }),
             app_session_secret: req("APP_SESSION_SECRET")?,
+            app_api_internal_secret: req("APP_API_INTERNAL_SECRET")?,
             discord_client_id: req("DISCORD_CLIENT_ID")?,
             discord_client_secret: req("DISCORD_CLIENT_SECRET")?,
             app_origin: opt("APP_ORIGIN").unwrap_or_else(|| "http://localhost".to_string()),
