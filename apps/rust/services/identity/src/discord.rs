@@ -131,3 +131,57 @@ pub async fn fetch_profile(
         avatar_hash: raw.avatar.unwrap_or_default(),
     })
 }
+
+/// A guild the authenticated user is a member of, from
+/// `GET /users/@me/guilds`. Mirrors the Go `discord.UserGuild` subset.
+#[derive(Debug, Clone)]
+pub struct UserGuild {
+    pub id: String,
+    pub name: String,
+    /// Icon hash, empty when the guild has no icon (Go maps `*string` → `""`).
+    pub icon_hash: String,
+    pub approximate_member_count: Option<i32>,
+    pub owner: bool,
+}
+
+/// Fetch the authenticated user's guild list
+/// (`GET /api/users/@me/guilds?with_counts=true`). Requires the `guilds` scope,
+/// already requested at authorize time. No pagination (mirrors the Go client).
+pub async fn fetch_user_guilds(
+    http: &reqwest::Client,
+    access_token: &str,
+) -> anyhow::Result<Vec<UserGuild>> {
+    let resp = http
+        .get(format!("{DISCORD_BASE}/api/users/@me/guilds?with_counts=true"))
+        .header("Authorization", format!("Bearer {access_token}"))
+        .header("Cache-Control", "no-store")
+        .send()
+        .await
+        .context("discord guilds request")?;
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!("discord guilds fetch: {status} {body}"));
+    }
+
+    #[derive(Deserialize)]
+    struct RawGuild {
+        id: String,
+        name: String,
+        icon: Option<String>,
+        #[serde(default)]
+        owner: bool,
+        approximate_member_count: Option<i32>,
+    }
+    let raw: Vec<RawGuild> = serde_json::from_str(&body).context("parse guilds response")?;
+    Ok(raw
+        .into_iter()
+        .map(|g| UserGuild {
+            id: g.id,
+            name: g.name,
+            icon_hash: g.icon.unwrap_or_default(),
+            approximate_member_count: g.approximate_member_count,
+            owner: g.owner,
+        })
+        .collect())
+}

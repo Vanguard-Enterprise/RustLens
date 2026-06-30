@@ -125,9 +125,27 @@ pub async fn callback(
         tracing::warn!("discord callback: touch last login failed: {e:#}");
     }
 
-    // NOTE: guild sync (user_guilds) is intentionally omitted from the login
-    // milestone — it's product data owned by the Go backend and is
-    // log-and-continue there too.
+    // Sync the user's guild list into user_guilds. Log-and-continue on either
+    // the fetch or the sync (matches Go): a stale guild list must not block
+    // sign-in. Keyed on the Discord ID, like the Go backend.
+    match discord::fetch_user_guilds(&st.http, &access).await {
+        Ok(guilds) => {
+            let inputs: Vec<identity::UserGuildInput> = guilds
+                .into_iter()
+                .map(|g| identity::UserGuildInput {
+                    guild_id: g.id,
+                    name: g.name,
+                    icon_hash: g.icon_hash,
+                    approximate_member_count: g.approximate_member_count,
+                    is_owner: g.owner,
+                })
+                .collect();
+            if let Err(e) = identity::sync_user_guilds(&st.pool, &profile.id, &inputs).await {
+                tracing::warn!("discord callback: sync user guilds failed: {e:#}");
+            }
+        }
+        Err(e) => tracing::warn!("discord callback: fetch user guilds failed: {e:#}"),
+    }
 
     let cu = match identity::load_current_user(&st.pool, &user_id).await {
         Ok(Some(cu)) => cu,

@@ -161,6 +161,87 @@ pub async fn find_or_create_by_discord_id(
     Ok(id)
 }
 
+/// One guild membership to sync into `user_guilds` at login. Mirrors the Go
+/// `store.SyncUserGuildInput`. `icon_hash` is empty when the guild has no icon.
+#[derive(Debug, Clone)]
+pub struct UserGuildInput {
+    pub guild_id: String,
+    pub name: String,
+    pub icon_hash: String,
+    pub approximate_member_count: Option<i32>,
+    pub is_owner: bool,
+}
+
+/// Sync the user's current guild list into `user_guilds` in one transaction,
+/// mirroring the Go `SyncUserGuildsForUser`:
+///   1. upsert every guild the user is currently in as active (preserving
+///      `first_seen_at`),
+///   2. mark any previously-active guild not in the new list as inactive,
+///      stamping `left_at` if not already set.
+///
+/// An empty `guilds` list is valid: statement (1) inserts nothing and statement
+/// (2) deactivates all currently-active rows (`guild_id <> ALL('{}')` is true
+/// for every row) — same as Go.
+pub async fn sync_user_guilds(
+    pool: &PgPool,
+    discord_id: &str,
+    guilds: &[UserGuildInput],
+) -> Result<(), sqlx::Error> {
+    let gids: Vec<String> = guilds.iter().map(|g| g.guild_id.clone()).collect();
+    let names: Vec<String> = guilds.iter().map(|g| g.name.clone()).collect();
+    let icons: Vec<String> = guilds.iter().map(|g| g.icon_hash.clone()).collect();
+    let members: Vec<Option<i32>> =
+        guilds.iter().map(|g| g.approximate_member_count).collect();
+    let owners: Vec<bool> = guilds.iter().map(|g| g.is_owner).collect();
+
+    let mut tx = pool.begin().await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_guilds (
+            discord_id, guild_id, is_active, first_seen_at, last_seen_at, left_at,
+            name, icon_hash, approximate_member_count, is_owner
+        )
+        SELECT $1, t.gid, TRUE, NOW(), NOW(), NULL, t.name, t.icon, t.members, t.is_owner
+        FROM unnest($2::text[], $3::text[], $4::text[], $5::int[], $6::bool[])
+            AS t(gid, name, icon, members, is_owner)
+        ON CONFLICT (discord_id, guild_id) DO UPDATE
+        SET is_active = TRUE,
+            last_seen_at = NOW(),
+            left_at = NULL,
+            name = EXCLUDED.name,
+            icon_hash = EXCLUDED.icon_hash,
+            approximate_member_count = EXCLUDED.approximate_member_count,
+            is_owner = EXCLUDED.is_owner
+        "#,
+    )
+    .bind(discord_id)
+    .bind(&gids)
+    .bind(&names)
+    .bind(&icons)
+    .bind(&members)
+    .bind(&owners)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE user_guilds
+        SET is_active = FALSE,
+            left_at = COALESCE(left_at, NOW())
+        WHERE discord_id = $1
+          AND is_active = TRUE
+          AND guild_id <> ALL($2::text[])
+        "#,
+    )
+    .bind(discord_id)
+    .bind(&gids)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await
+}
+
 /// `UPDATE app_users SET last_login_at = NOW()`. Mirrors `TouchLastLogin`.
 pub async fn touch_last_login(pool: &PgPool, user_id: &str) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE app_users SET last_login_at = NOW() WHERE id = $1")
