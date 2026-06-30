@@ -1,8 +1,46 @@
 # Rust Identity Service — Completeness Spec
 
-Status: **DRAFT for review** (do not implement until approved)
+Status: **✅ COMPLETE** — all spec items implemented, verified, and merged to
+`rework/rust-backend`.
 Author: migration work, 2026-06-30
 Branch base: `rework/rust-backend`
+
+## Completion summary
+
+Every item below is done. Each was `cargo build` / `cargo clippy --all-targets`
+clean and `cargo test` green, and end-to-end smoke-tested against throwaway
+Postgres/Redis before merge.
+
+| Item | Scope | PR | Status |
+|---|---|---|---|
+| Spec | this document | #167 | ✅ merged |
+| 1 | `/api/app/me` `steamAccounts` + `guilds` | #167 | ✅ merged |
+| 2 | guild sync on the OAuth callback (`user_guilds`) | #168 | ✅ merged |
+| 3a | admin read routes (permissions/roles/users/administrators/audit) + auth gate | #169 | ✅ merged |
+| 5 | `/api/events/stream` SSE + Redis fan-out (`rustlens-events`) | #170 | ✅ merged |
+| 3b | admin action dispatcher + role/user-lifecycle mutations + event publish | #171 | ✅ merged |
+| 4a | role-connection OAuth + AES-GCM token storage (`rustlens-crypto`) | #172 | ✅ merged |
+| 4b | role-connection reconciler + token refresh + on-grant push hook | #173 | ✅ merged |
+| — | `/api/app/me` aligned onto the header-based auth gate | #174 | ✅ merged |
+
+Workspace grew to **6 crates**: `rustlens-session`, `rustlens-config`,
+`rustlens-db`, `rustlens-events`, `rustlens-crypto`, + `services/identity`.
+
+### Deferred follow-ups (NOT part of this spec — intentionally out of scope)
+
+Confirmed not implemented; none are cutover-blocking for the auth surface:
+
+- **Admin API-key auth path** (the `api_keys.manage` permission *string* exists
+  in the catalog, but there is no API-key auth, no `api_keys.*` actions, and no
+  `…/admin/api-keys` route). Admin routes are session+app-secret only.
+- **Dispatcher rate-limiting + idempotency** (the Go token-bucket +
+  `Idempotency-Key` replay; deliberately omitted — they don't change the
+  normal-call contract).
+- **Remaining admin routes**: guilds list+detail, user detail, user-installs,
+  servers, bm-servers / proxies CRUD, command-usage, `audit/{id}` +
+  `audit/event-types`.
+- **Infra**: Rust Dockerfile, CI cargo job, Traefik routing — not deploying
+  during this migration.
 
 ## 0. Purpose & ground rules
 
@@ -37,14 +75,14 @@ path; see §3.
 All of these are served by the Go backend today. The identity service will take
 them over (logically owned by the identity domain per the migration plan).
 
-| Route | Method | Auth | Status today (Rust) | Item |
+| Route | Method | Auth | Status (Rust) | Item |
 |---|---|---|---|---|
-| `/api/app/me` | GET | session cookie | partial (steam/guilds empty) | 1 |
-| `/api/auth/discord` (+`/callback`) | GET | none / state cookie | done; callback missing guild sync | 2 |
-| `/api/app/admin/*` | GET/POST/… | session **or** API key + per-perm | missing | 3 |
-| `/api/auth/discord/role-connection` (+`/callback`) | GET | session cookie | missing | 4 |
-| `/api/app/me/discord-role-connection` | DELETE | session cookie | missing | 4 |
-| `/api/events/stream` | GET | session cookie (SSE) | missing | 5 |
+| `/api/app/me` | GET | app-secret + session header | ✅ done (#167, #174) | 1 |
+| `/api/auth/discord` (+`/callback`) | GET | none / state cookie | ✅ done incl. guild sync (#168) | 2 |
+| `/api/app/admin/*` | GET/POST/… | app-secret + session header + per-perm | ✅ done (read routes + dispatcher; API-key auth deferred) (#169, #171) | 3 |
+| `/api/auth/discord/role-connection` (+`/callback`) | GET | session cookie | ✅ done (#172) | 4 |
+| `/api/app/me/discord-role-connection` | DELETE | app-secret + session header | ✅ done (#172) | 4 |
+| `/api/events/stream` | GET | session cookie (SSE) | ✅ done (#170) | 5 |
 
 ---
 
@@ -79,7 +117,7 @@ existing `load_app_user` already selects `discord_id`. Restructure
 `load_current_user` to load the user first, then pass `user.discord_id` to the
 new join queries.
 
-### 2.3 App-secret header (item 3, partial)
+### 2.3 App-secret header (item 3) — ✅ done; also applied to `/me` (PR #174)
 
 Go guards `/api/app/*` (non-`/me`) behind an internal shared-secret header
 (`APP_API_INTERNAL_SECRET`) for server-only Next.js calls, **bypassed when an
@@ -91,6 +129,9 @@ API keys, or session-only is acceptable for the milestone.
 ---
 
 ## 3. ITEM 1 — Fill `/api/app/me` `steamAccounts` + `guilds` (HIGHEST PRIORITY)
+
+> **✅ DONE — PR #167.** Implemented as specified; `/me` populates both arrays.
+> (Note: `/me` was later aligned onto the header-based auth gate in PR #174.)
 
 ### 3.1 Critical nuance (read before implementing)
 
@@ -242,6 +283,9 @@ JSON the frontend already parses as ISO strings.
 
 ## 4. ITEM 2 — Guild sync on the OAuth callback
 
+> **✅ DONE — PR #168.** `sync_user_guilds` ports the two-statement transaction;
+> log-and-continue wired into the callback. DB-gated integration test added.
+
 ### 4.1 Go behavior (`oauth/discord/handlers.go:164-173`, `store/bot_guilds.go:144-197`)
 
 On callback, **if a guild syncer is configured**, fetch the user's guild list
@@ -310,6 +354,12 @@ rows — preserve that exact behavior (pass empty arrays).
 ---
 
 ## 5. ITEM 3 — `/api/app/admin/*` RBAC routes
+
+> **✅ DONE — 3a (read routes + auth gate) PR #169, 3b (dispatcher + mutations)
+> PR #171.** Per the §5.3 cut line: read routes = permissions/roles/users/
+> administrators/audit; dispatcher actions = the role + user-lifecycle set, each
+> publishing the Item 5 events. Auth = app-secret + session header (admin API-key
+> path deferred). Rate-limiting + idempotency deferred (see follow-ups at top).
 
 This is the largest item: 28 Go routes, a 14-action mutation dispatcher, a
 27-key permission catalog, plus rate-limiting, idempotency, and audit. Propose
@@ -415,6 +465,11 @@ row written, and (paired with Item 5) the SSE event published.
 
 ## 6. ITEM 4 — Role-connection OAuth (`pro` linked roles)
 
+> **✅ DONE — 4a (OAuth + storage + initial push + `/me` summary + schema
+> registration) PR #172, 4b (reconciler + refresh-on-expiry + on-grant push hook)
+> PR #173.** New `rustlens-crypto` crate (AES-256-GCM, byte-compatible with the
+> Go proxycrypto). Both phases of §6.5 are complete.
+
 ### 6.1 Routes (`router.go:292-295, 345`)
 
 - `GET /api/auth/discord/role-connection` — initiate; **requires session**
@@ -480,6 +535,11 @@ is in scope now.
 ---
 
 ## 7. ITEM 5 — `/api/events/stream` SSE + Redis bridge
+
+> **✅ DONE — PR #170.** New `rustlens-events` crate (Hub + RedisBridge on
+> `rustlens:user-events`). Cookie-authed SSE with the exact Go wire format, 25s
+> ping, one-shot `session.expiring`; the publisher is consumed by the Item 3b
+> dispatcher.
 
 ### 7.1 SSE handler (`events_handlers.go`)
 
@@ -569,9 +629,13 @@ fanout) and the connection is told to close; assert `ping` every ~25s.
 
 ## 8.6 Implementation order
 
-1 → 2 → 5(crate scaffolding) → 3a → 3b(+5 publishers) → 4. Item 1 ships first
-and standalone. Item 5's crate is scaffolded before 3b so the dispatcher can
-publish events. Item 4 last.
+> **✅ EXECUTED.** Actual merge order: 1 (#167) → 2 (#168) → 3a (#169) → 5 (#170)
+> → 3b (#171) → 4a (#172) → 4b (#173) → `/me` header-auth alignment (#174). Item
+> 5 landed before 3b so the dispatcher could publish events, as planned.
+
+Original plan: 1 → 2 → 5(crate scaffolding) → 3a → 3b(+5 publishers) → 4. Item 1
+ships first and standalone. Item 5's crate is scaffolded before 3b so the
+dispatcher can publish events. Item 4 last.
 
 ---
 
