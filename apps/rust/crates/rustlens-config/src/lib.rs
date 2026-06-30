@@ -19,6 +19,9 @@ pub enum ConfigError {
 pub struct IdentityConfig {
     pub port: u16,
     pub postgres_url: String,
+    /// Redis connection URL for the SSE cross-pod event bridge. Mirrors the Go
+    /// `REDIS_URL` default.
+    pub redis_url: String,
     /// HMAC secret for the `rustlens_session` cookie. Shared with the Go
     /// backend and the Next.js frontend.
     pub app_session_secret: String,
@@ -46,6 +49,7 @@ impl IdentityConfig {
             postgres_url: opt("POSTGRES_URL").unwrap_or_else(|| {
                 "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable".to_string()
             }),
+            redis_url: opt("REDIS_URL").unwrap_or_else(|| "redis://localhost:6379/0".to_string()),
             app_session_secret: req("APP_SESSION_SECRET")?,
             app_api_internal_secret: req("APP_API_INTERNAL_SECRET")?,
             discord_client_id: req("DISCORD_CLIENT_ID")?,

@@ -4,6 +4,7 @@ members = [
     "crates/rustlens-session",
     "crates/rustlens-config",
     "crates/rustlens-db",
+    "crates/rustlens-events",
     "services/identity",
 ]
 
@@ -16,6 +17,7 @@ rust-version = "1.96"
 rustlens-session = { path = "crates/rustlens-session" }
 rustlens-config = { path = "crates/rustlens-config" }
 rustlens-db = { path = "crates/rustlens-db" }
+rustlens-events = { path = "crates/rustlens-events" }
 
 # third-party
 serde = { version = "1", features = ["derive"] }
@@ -46,3 +48,6 @@ rand = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
+redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
+futures-util = "0.3"
+tokio-stream = "0.1"

@@ -13,8 +13,9 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 
 use rustlens_db::identity::{self, Revocation};
-use rustlens_session::{SessionUser, parse_session};
+use rustlens_session::{SessionError, SessionUser, parse_session};
 
+use crate::cookies::{self, SESSION_COOKIE};
 use crate::state::AppState;
 
 /// The shared-secret header gating `/api/app/*` (Go `appSecretHeader`).
@@ -81,6 +82,35 @@ pub async fn require_session(headers: &HeaderMap, st: &AppState) -> Result<Sessi
         Err(e) => {
             tracing::error!("appauth: revocation check failed: {e:#}");
             Err(err_json(StatusCode::UNAUTHORIZED, "invalid_session"))
+        }
+    }
+}
+
+/// Validate the session from the `rustlens_session` **cookie** (used by the
+/// browser-direct SSE endpoint, not the header-forwarded `/api/app/*` routes).
+/// Mirrors Go `ValidateSessionFromCookie`'s error classification:
+///   - missing cookie → `session_required`
+///   - expired        → `session_expired`
+///   - revoked        → `session_revoked`
+///   - otherwise      → `invalid_session`
+pub async fn validate_session_cookie(
+    headers: &HeaderMap,
+    st: &AppState,
+) -> Result<SessionUser, (StatusCode, &'static str)> {
+    let Some(token) = cookies::read_cookie(headers, SESSION_COOKIE) else {
+        return Err((StatusCode::UNAUTHORIZED, "session_required"));
+    };
+    let session = match parse_session(&token, &st.config.app_session_secret) {
+        Ok(s) => s,
+        Err(SessionError::Expired) => return Err((StatusCode::UNAUTHORIZED, "session_expired")),
+        Err(_) => return Err((StatusCode::UNAUTHORIZED, "invalid_session")),
+    };
+    match identity::revocation_check(&st.pool, &session.user_id, session.epoch).await {
+        Ok(Revocation::Valid) => Ok(session),
+        Ok(Revocation::Revoked) => Err((StatusCode::UNAUTHORIZED, "session_revoked")),
+        Err(e) => {
+            tracing::error!("appauth: SSE revocation check failed: {e:#}");
+            Err((StatusCode::INTERNAL_SERVER_ERROR, "invalid_session"))
         }
     }
 }
