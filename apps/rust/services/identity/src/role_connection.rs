@@ -215,9 +215,13 @@ pub async fn disconnect(State(st): Shared, headers: HeaderMap) -> Response {
     StatusCode::NO_CONTENT.into_response()
 }
 
-/// Push the user's current linked-roles metadata using the stored (fresh) access
-/// token. Skips an unchanged push made within the last 24h. Does NOT refresh an
-/// expired token (Phase 4b).
+/// Seconds of clock skew: refresh the access token when it expires within this
+/// window (Go `tokenSkew`).
+const TOKEN_SKEW_SECS: i64 = 60;
+
+/// Push the user's current linked-roles metadata to Discord, refreshing the
+/// access token first when it is within 60s of expiry. Skips an unchanged push
+/// made within the last 24h. A rejected refresh token marks the row revoked.
 pub async fn push(st: &AppState, user_id: &str) -> anyhow::Result<()> {
     use anyhow::Context;
     let Some(row) = rc::get_role_connection(&st.pool, user_id).await? else {
@@ -227,9 +231,54 @@ pub async fn push(st: &AppState, user_id: &str) -> anyhow::Result<()> {
         return Ok(());
     }
     let cipher = st.cipher.as_ref().context("role-connection feature disabled")?;
-    let access = cipher
-        .decrypt(&row.access_token_ct, &row.access_token_nonce)
-        .map_err(|e| anyhow::anyhow!("decrypt access token: {e}"))?;
+
+    // Refresh the access token when it is at/near expiry; otherwise decrypt the
+    // stored one.
+    let access = if Utc::now() + Duration::seconds(TOKEN_SKEW_SECS) > row.access_expires_at {
+        let refresh_pt = cipher
+            .decrypt(&row.refresh_token_ct, &row.refresh_token_nonce)
+            .map_err(|e| anyhow::anyhow!("decrypt refresh token: {e}"))?;
+        match discord::refresh_token(
+            &st.http,
+            &st.config.discord_client_id,
+            &st.config.discord_client_secret,
+            &refresh_pt,
+        )
+        .await?
+        {
+            discord::RefreshOutcome::Revoked => {
+                rc::mark_revoked(&st.pool, user_id, "invalid_grant").await?;
+                return Err(anyhow::anyhow!("refresh token revoked"));
+            }
+            discord::RefreshOutcome::Refreshed(new_access, new_refresh, expires_in) => {
+                let (access_ct, access_nonce) = cipher
+                    .encrypt(&new_access)
+                    .map_err(|e| anyhow::anyhow!("encrypt access: {e}"))?;
+                let (refresh_ct, refresh_nonce) = cipher
+                    .encrypt(&new_refresh)
+                    .map_err(|e| anyhow::anyhow!("encrypt refresh: {e}"))?;
+                rc::upsert_role_connection(
+                    &st.pool,
+                    &rc::NewRoleConnection {
+                        user_id,
+                        discord_id: &row.discord_id,
+                        access_token_ct: &access_ct,
+                        access_token_nonce: &access_nonce,
+                        refresh_token_ct: &refresh_ct,
+                        refresh_token_nonce: &refresh_nonce,
+                        access_expires_at: Utc::now() + Duration::seconds(expires_in),
+                        scopes: &row.scopes,
+                    },
+                )
+                .await?;
+                new_access
+            }
+        }
+    } else {
+        cipher
+            .decrypt(&row.access_token_ct, &row.access_token_nonce)
+            .map_err(|e| anyhow::anyhow!("decrypt access token: {e}"))?
+    };
 
     let granted = rc::get_user_pro_granted_at(&st.pool, user_id).await?;
     let display = rc::get_app_user_display_name(&st.pool, user_id).await?;
@@ -252,6 +301,65 @@ pub async fn push(st: &AppState, user_id: &str) -> anyhow::Result<()> {
             Err(e)
         }
     }
+}
+
+/// Advisory-lock key shared with the Go reconciler so only one pod reconciles.
+const RECONCILE_LOCK_KEY: i64 = 7_427_198_631_011;
+/// Reconcile interval (Go default: 6h).
+const RECONCILE_INTERVAL_SECS: u64 = 6 * 60 * 60;
+/// Politeness delay between per-user pushes (Go default: 200ms).
+const RECONCILE_SLEEP_MS: u64 = 200;
+
+/// Background reconciler: re-push metadata for every active connection on
+/// startup and every 6h, so PRO grants/revokes and token refreshes converge even
+/// if a live push was missed. Spawned only when the feature is configured.
+pub async fn reconcile_loop(st: Arc<AppState>) {
+    loop {
+        reconcile_once(&st).await;
+        tokio::time::sleep(std::time::Duration::from_secs(RECONCILE_INTERVAL_SECS)).await;
+    }
+}
+
+async fn reconcile_once(st: &AppState) {
+    // Hold the advisory lock on a dedicated connection for the whole pass so
+    // only one pod runs at a time (matches the Go reconciler).
+    let mut conn = match st.pool.acquire().await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("rc reconciler: acquire connection failed: {e}");
+            return;
+        }
+    };
+    let got: bool = match sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
+        .bind(RECONCILE_LOCK_KEY)
+        .fetch_one(&mut *conn)
+        .await
+    {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!("rc reconciler: advisory lock failed: {e}");
+            return;
+        }
+    };
+    if !got {
+        tracing::info!("rc reconciler: another pod holds the lock, skipping");
+        return;
+    }
+
+    let users = rc::list_active_role_connections(&st.pool).await.unwrap_or_default();
+    let count = users.len();
+    for uid in users {
+        if let Err(e) = push(st, &uid).await {
+            tracing::warn!("rc reconciler: push failed for {uid}: {e:#}");
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(RECONCILE_SLEEP_MS)).await;
+    }
+
+    let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+        .bind(RECONCILE_LOCK_KEY)
+        .execute(&mut *conn)
+        .await;
+    tracing::info!("rc reconciler: pushed {count} connection(s)");
 }
 
 /// Register the linked-roles metadata schema with Discord (bot-token auth). Runs

@@ -191,6 +191,59 @@ pub async fn exchange_code_for_tokens(
     ))
 }
 
+/// Outcome of a refresh-token exchange.
+pub enum RefreshOutcome {
+    /// New `(access, refresh, expires_in_secs)`.
+    Refreshed(String, String, i64),
+    /// Discord rejected the refresh token (`400 invalid_grant`) — the grant is
+    /// permanently revoked.
+    Revoked,
+}
+
+/// Exchange a refresh token for a new access+refresh pair. Mirrors the Go
+/// `RefreshToken`: `400 invalid_grant` maps to [`RefreshOutcome::Revoked`].
+pub async fn refresh_token(
+    http: &reqwest::Client,
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+) -> anyhow::Result<RefreshOutcome> {
+    let params = [
+        ("client_id", client_id),
+        ("client_secret", client_secret),
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh_token),
+    ];
+    let resp = http
+        .post(format!("{DISCORD_BASE}/api/oauth2/token"))
+        .header("Cache-Control", "no-store")
+        .form(&params)
+        .send()
+        .await
+        .context("discord refresh request")?;
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if status == reqwest::StatusCode::BAD_REQUEST && body.contains("invalid_grant") {
+        return Ok(RefreshOutcome::Revoked);
+    }
+    if !status.is_success() {
+        return Err(anyhow!("discord refresh: {status} {body}"));
+    }
+    #[derive(Deserialize)]
+    struct TokenResp {
+        access_token: Option<String>,
+        refresh_token: Option<String>,
+        expires_in: Option<i64>,
+    }
+    let parsed: TokenResp = serde_json::from_str(&body).context("parse refresh response")?;
+    let access = parsed.access_token.filter(|t| !t.is_empty());
+    let refresh = parsed.refresh_token.filter(|t| !t.is_empty());
+    match (access, refresh) {
+        (Some(a), Some(r)) => Ok(RefreshOutcome::Refreshed(a, r, parsed.expires_in.unwrap_or(0))),
+        _ => Err(anyhow!("discord refresh: empty access_token or refresh_token")),
+    }
+}
+
 /// The PUT body for `/users/@me/applications/{id}/role-connection`.
 #[derive(Debug, Clone, Serialize)]
 pub struct RoleConnectionBody {
