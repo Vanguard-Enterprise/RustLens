@@ -80,8 +80,10 @@ pub struct AdminRoleItem {
 /// every other role resolves to its `admin_role_permissions` rows, sorted.
 /// Mirrors the Go `ListAdminRoles`.
 pub async fn list_admin_roles(pool: &PgPool) -> Result<Vec<AdminRoleItem>, sqlx::Error> {
+    // admin_roles.id is UUID; cast to text so it scans as String and matches
+    // the Go `Role.ID.String()` form.
     let rows = sqlx::query(
-        r#"SELECT r.id, r.key, r.name, COALESCE(r.description, ''), r.is_system,
+        r#"SELECT r.id::text, r.key, r.name, COALESCE(r.description, ''), r.is_system,
                   COUNT(ur.user_id)::int AS member_count
            FROM admin_roles r
            LEFT JOIN admin_user_roles ur ON ur.role_id = r.id
@@ -104,7 +106,7 @@ pub async fn list_admin_roles(pool: &PgPool) -> Result<Vec<AdminRoleItem>, sqlx:
             rbac::ALL_PERMISSIONS.iter().map(|p| p.key.to_string()).collect()
         } else {
             let prows = sqlx::query(
-                "SELECT permission_key FROM admin_role_permissions WHERE role_id = $1 ORDER BY permission_key",
+                "SELECT permission_key FROM admin_role_permissions WHERE role_id::text = $1 ORDER BY permission_key",
             )
             .bind(&id)
             .fetch_all(pool)
