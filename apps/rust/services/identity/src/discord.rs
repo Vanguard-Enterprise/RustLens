@@ -6,7 +6,7 @@ use anyhow::{Context, anyhow};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::RngCore;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use rustlens_db::identity::DiscordProfile;
@@ -142,6 +142,122 @@ pub struct UserGuild {
     pub icon_hash: String,
     pub approximate_member_count: Option<i32>,
     pub owner: bool,
+}
+
+/// Exchange an authorization code for access **and** refresh tokens (the
+/// role-connection flow, no PKCE). Returns `(access, refresh, expires_in_secs)`.
+/// Mirrors the Go `ExchangeCodeForTokens`.
+pub async fn exchange_code_for_tokens(
+    http: &reqwest::Client,
+    client_id: &str,
+    client_secret: &str,
+    code: &str,
+    redirect_uri: &str,
+) -> anyhow::Result<(String, String, i64)> {
+    let params = [
+        ("client_id", client_id),
+        ("client_secret", client_secret),
+        ("grant_type", "authorization_code"),
+        ("code", code),
+        ("redirect_uri", redirect_uri),
+    ];
+    let resp = http
+        .post(format!("{DISCORD_BASE}/api/oauth2/token"))
+        .header("Cache-Control", "no-store")
+        .form(&params)
+        .send()
+        .await
+        .context("discord rc token request")?;
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!("discord token exchange: {status} {body}"));
+    }
+    #[derive(Deserialize)]
+    struct TokenResp {
+        access_token: Option<String>,
+        refresh_token: Option<String>,
+        expires_in: Option<i64>,
+    }
+    let parsed: TokenResp = serde_json::from_str(&body).context("parse rc token response")?;
+    let access = parsed
+        .access_token
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| anyhow!("discord token exchange: empty access_token"))?;
+    Ok((
+        access,
+        parsed.refresh_token.unwrap_or_default(),
+        parsed.expires_in.unwrap_or(0),
+    ))
+}
+
+/// The PUT body for `/users/@me/applications/{id}/role-connection`.
+#[derive(Debug, Clone, Serialize)]
+pub struct RoleConnectionBody {
+    pub platform_name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub platform_username: String,
+    pub metadata: std::collections::BTreeMap<String, String>,
+}
+
+/// Push linked-roles metadata for the user. Mirrors the Go `PutRoleConnection`.
+pub async fn put_role_connection(
+    http: &reqwest::Client,
+    access_token: &str,
+    application_id: &str,
+    body: &RoleConnectionBody,
+) -> anyhow::Result<()> {
+    let resp = http
+        .put(format!(
+            "{DISCORD_BASE}/api/users/@me/applications/{application_id}/role-connection"
+        ))
+        .header("Authorization", format!("Bearer {access_token}"))
+        .header("Cache-Control", "no-store")
+        .json(body)
+        .send()
+        .await
+        .context("discord put role-connection")?;
+    let status = resp.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    let text = resp.text().await.unwrap_or_default();
+    Err(anyhow!("discord put role-connection: {status} {text}"))
+}
+
+/// One linked-roles metadata field definition.
+#[derive(Debug, Clone, Serialize)]
+pub struct ApplicationMetadataRecord {
+    #[serde(rename = "type")]
+    pub field_type: i32,
+    pub key: String,
+    pub name: String,
+    pub description: String,
+}
+
+/// Register the linked-roles metadata schema (bot-token auth). Mirrors the Go
+/// `RegisterApplicationMetadata`.
+pub async fn register_application_metadata(
+    http: &reqwest::Client,
+    application_id: &str,
+    bot_token: &str,
+    records: &[ApplicationMetadataRecord],
+) -> anyhow::Result<()> {
+    let resp = http
+        .put(format!(
+            "{DISCORD_BASE}/api/applications/{application_id}/role-connections/metadata"
+        ))
+        .header("Authorization", format!("Bot {bot_token}"))
+        .json(records)
+        .send()
+        .await
+        .context("discord register app metadata")?;
+    let status = resp.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    let text = resp.text().await.unwrap_or_default();
+    Err(anyhow!("discord register app metadata: {status} {text}"))
 }
 
 /// Fetch the authenticated user's guild list

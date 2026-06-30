@@ -15,6 +15,8 @@ pub struct AppState {
     pub hub: Arc<Hub>,
     /// Cross-pod publisher (local hub + Redis fan-out). Used by admin mutations
     /// (spec Item 3b) to push `roles.changed` / `session.revoked` events.
-    #[allow(dead_code)] // wired here; consumed by the action dispatcher (Item 3b)
     pub events: Arc<RedisBridge>,
+    /// AES-GCM cipher for Discord role-connection tokens. `None` disables the
+    /// linked-roles feature (no `PROXY_ENCRYPTION_KEY`).
+    pub cipher: Option<rustlens_crypto::Cipher>,
 }
