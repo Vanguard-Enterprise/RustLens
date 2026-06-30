@@ -22,23 +22,29 @@ export function SearchResults({
 	initialResponse,
 }: Props) {
 	const [includeOffline, setIncludeOffline] = useState(initialIncludeOffline);
-	const [response, setResponse] = useState<PlayerSearchResponse>(initialResponse);
+	// Results for the toggled-away state are fetched lazily; the displayed
+	// response is derived below so we never sync state inside the effect.
+	const [fetched, setFetched] = useState<PlayerSearchResponse | null>(null);
 
 	useEffect(() => {
 		if (includeOffline === initialIncludeOffline) {
-			setResponse(initialResponse);
 			return;
 		}
 		let cancelled = false;
 		(async () => {
 			const res = await searchPlayersAction(initialQuery, includeOffline);
 			if (cancelled) return;
-			if (!("error" in res)) setResponse(res);
+			if (!("error" in res)) setFetched(res);
 		})();
 		return () => {
 			cancelled = true;
 		};
-	}, [includeOffline, initialIncludeOffline, initialQuery, initialResponse]);
+	}, [includeOffline, initialIncludeOffline, initialQuery]);
+
+	const response =
+		includeOffline === initialIncludeOffline
+			? initialResponse
+			: (fetched ?? initialResponse);
 
 	return (
 		<div className="mt-4 flex flex-col gap-4">
