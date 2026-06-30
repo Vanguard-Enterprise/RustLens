@@ -9,8 +9,8 @@ use axum::response::{IntoResponse, Response};
 use chrono::Utc;
 use serde::Deserialize;
 
-use rustlens_db::identity::{self, CurrentUser, Revocation};
-use rustlens_session::{SessionError, SessionUser, parse_session, serialize_session};
+use rustlens_db::identity::{self, CurrentUser};
+use rustlens_session::{SessionUser, serialize_session};
 
 use crate::cookies::{
     self, SESSION_COOKIE, SESSION_MAX_AGE, SHORT_MAX_AGE, STATE_COOKIE, VERIFIER_COOKIE,
@@ -171,30 +171,20 @@ pub async fn callback(
     redirect_with_headers(&st.config.default_post_login_url(), out)
 }
 
-/// `GET /api/app/me` — return the current user, session-authenticated.
+/// `GET /api/app/me` — current user, authenticated via the `/api/app/*` gate
+/// (`X-RustLens-App-Secret` + the forwarded `X-RustLens-Session` header), matching
+/// the Go backend. The browser never calls this directly; the Next.js server
+/// validates the cookie and forwards the session token in the header.
 pub async fn me(State(st): Shared, headers: HeaderMap) -> Response {
-    let Some(token) = cookies::read_cookie(&headers, SESSION_COOKIE) else {
-        return error_json(StatusCode::UNAUTHORIZED, "missing session");
-    };
-
-    let session = match parse_session(&token, &st.config.app_session_secret) {
-        Ok(s) => s,
-        Err(SessionError::Expired) => {
-            return error_json(StatusCode::UNAUTHORIZED, "session expired");
-        }
-        Err(_) => return error_json(StatusCode::UNAUTHORIZED, "invalid session"),
-    };
-
-    match identity::revocation_check(&st.pool, &session.user_id, session.epoch).await {
-        Ok(Revocation::Valid) => {}
-        Ok(Revocation::Revoked) => {
-            return error_json(StatusCode::UNAUTHORIZED, "session revoked");
-        }
-        Err(e) => {
-            tracing::error!("/api/app/me: revocation check failed: {e:#}");
-            return error_json(StatusCode::INTERNAL_SERVER_ERROR, "internal error");
-        }
+    if let Err(resp) =
+        crate::appauth::require_app_secret(&headers, &st.config.app_api_internal_secret)
+    {
+        return *resp;
     }
+    let session = match crate::appauth::require_session(&headers, &st).await {
+        Ok(s) => s,
+        Err(resp) => return *resp,
+    };
 
     match identity::load_current_user(&st.pool, &session.user_id).await {
         Ok(Some(mut cu)) => {
