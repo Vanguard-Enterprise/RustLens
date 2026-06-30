@@ -52,6 +52,18 @@ pub const BOT_ROUTES_WRITE: &str = "bot_routes.write";
 /// The superadmin role key — implies every permission.
 pub const ROLE_SUPERADMIN: &str = "superadmin";
 
+/// Keys of the seeded system roles (Go `rbac.SystemRoles()`). `roles.create`
+/// rejects any of these as a collision.
+pub const SYSTEM_ROLE_KEYS: &[&str] = &[
+    "superadmin",
+    "moderator",
+    "infra_admin",
+    "guild_ops",
+    "user_support",
+    "user_admin",
+    "user_auditor",
+];
+
 /// The full permission catalog, in Go `permissions` slice order.
 pub const ALL_PERMISSIONS: &[Permission] = &[
     Permission { key: USERS_READ, description: "View user profiles and the users list" },

@@ -10,6 +10,7 @@ pub use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 
 pub mod admin;
+pub mod admin_actions;
 pub mod identity;
 pub mod rbac;
 

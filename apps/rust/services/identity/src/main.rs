@@ -7,6 +7,7 @@ mod admin;
 mod appauth;
 mod cookies;
 mod discord;
+mod dispatcher;
 mod events_handler;
 mod handlers;
 mod state;
@@ -14,7 +15,10 @@ mod state;
 use std::sync::Arc;
 
 use anyhow::Context;
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 use rustlens_config::IdentityConfig;
 
 use state::AppState;
@@ -54,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/app/admin/users", get(admin::list_users))
         .route("/api/app/admin/administrators", get(admin::list_administrators))
         .route("/api/app/admin/audit", get(admin::list_audit))
+        .route("/api/app/admin/actions/{type}", post(dispatcher::dispatch))
         .route("/api/events/stream", get(events_handler::stream))
         .with_state(state.clone());
 
