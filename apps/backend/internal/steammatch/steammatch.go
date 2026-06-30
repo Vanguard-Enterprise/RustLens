@@ -12,7 +12,14 @@ import (
 	"context"
 	"errors"
 	"log"
+	"time"
 )
+
+// fallbackResolverTimeout bounds a fallback resolver attempt that runs after a
+// prior resolver returned ErrPending. The caller's original deadline may be
+// exhausted by then, so fallbacks get a fresh budget instead of an already-spent
+// context (which would make them fail instantly with context deadline exceeded).
+const fallbackResolverTimeout = 4 * time.Second
 
 var (
 	// ErrNotFound means no source could resolve the identity.
@@ -53,25 +60,38 @@ func NewChain(resolvers ...Resolver) *Chain {
 }
 
 func (c *Chain) SteamToBM(ctx context.Context, steamID string) (string, error) {
-	return c.run(ctx, steamID, "SteamToBM", func(r Resolver, id string) (string, error) {
-		return r.SteamToBM(ctx, id)
+	return c.run(ctx, steamID, "SteamToBM", func(cctx context.Context, r Resolver, id string) (string, error) {
+		return r.SteamToBM(cctx, id)
 	})
 }
 
 func (c *Chain) BMToSteam(ctx context.Context, bmID string) (string, error) {
-	return c.run(ctx, bmID, "BMToSteam", func(r Resolver, id string) (string, error) {
-		return r.BMToSteam(ctx, id)
+	return c.run(ctx, bmID, "BMToSteam", func(cctx context.Context, r Resolver, id string) (string, error) {
+		return r.BMToSteam(cctx, id)
 	})
 }
 
-func (c *Chain) run(ctx context.Context, id, op string, call func(Resolver, string) (string, error)) (string, error) {
+func (c *Chain) run(ctx context.Context, id, op string, call func(context.Context, Resolver, string) (string, error)) (string, error) {
 	var (
 		pending    bool
 		configured bool
 	)
 	for _, r := range c.resolvers {
-		val, err := call(r, id)
+		callCtx := ctx
+		if pending {
+			// A prior resolver accepted the lookup but did not resolve it within
+			// the caller's deadline, which may now be exhausted. Give the
+			// fallback resolver a fresh bounded budget (detached from the spent
+			// parent deadline but preserving its values) so it isn't skipped with
+			// an instant "context deadline exceeded".
+			var cancel context.CancelFunc
+			callCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), fallbackResolverTimeout)
+			defer cancel()
+		}
+		val, err := call(callCtx, r, id)
 		if err == nil && val != "" {
+			// A fallback resolving after an ErrPending wins over the pending
+			// result — return it instead of ErrPending.
 			return val, nil
 		}
 		switch {
@@ -87,9 +107,15 @@ func (c *Chain) run(ctx context.Context, id, op string, call func(Resolver, stri
 			configured = true
 			continue
 		default:
-			// Hard error (network, upstream 5xx). Log and fall through to the
-			// next source rather than failing the whole lookup.
+			// Hard error (network, upstream 5xx). Fall through to the next source
+			// rather than failing the whole lookup.
 			configured = true
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				// Expected timeout/cancellation (e.g. the caller's deadline
+				// elapsed). Don't log it as a hard resolver error — it's not
+				// actionable and spams logs on every slow/pending lookup.
+				continue
+			}
 			log.Printf("[backend] steammatch %s resolver error: %v", op, err)
 			continue
 		}

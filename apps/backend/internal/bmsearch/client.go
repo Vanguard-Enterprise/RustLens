@@ -237,6 +237,12 @@ func (c *Client) pollLookup(ctx context.Context, queueID string) (string, error)
 			switch {
 			case lookupErr != "":
 				return "", steammatch.ErrNotFound
+			case isTerminalFailureStatus(status):
+				// A terminal failure status (failed/no_match/not_found/error) can
+				// arrive with a null error field; treat it as a definitive miss so
+				// the lookup converges instead of polling to the deadline and
+				// returning ErrPending forever.
+				return "", steammatch.ErrNotFound
 			case status == "done":
 				if profileID == "" {
 					return "", steammatch.ErrNotFound
@@ -275,6 +281,19 @@ func (c *Client) lookupStatus(ctx context.Context, queueID string) (status, prof
 		lookupErr = strings.TrimSpace(*resp.Error)
 	}
 	return strings.TrimSpace(resp.Status), numToString(resp.ProfileID), lookupErr, nil
+}
+
+// isTerminalFailureStatus reports whether a lookup_status status string means
+// the resolve is finished and failed. bmsearch.io may report these without
+// populating the error field, so they must be recognized explicitly to avoid
+// polling until the deadline.
+func isTerminalFailureStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "failed", "no_match", "not_found", "error":
+		return true
+	default:
+		return false
+	}
 }
 
 func numToString(n *json.Number) string {

@@ -195,13 +195,33 @@ func scanSteamDiscordLink(scanner rowScanner) (SteamDiscordLink, error) {
 	return record, nil
 }
 
+// upsertSteamAccountSQL upserts a steam_accounts row by steam_id while tolerating
+// a bm_id that is already bound to a DIFFERENT steam_id. Because steam_accounts.bm_id
+// is declared UNIQUE, naively inserting/updating a bm_id owned by another row raises a
+// 23505 unique_violation, which (inside a transaction) aborts the whole tx and discards
+// every other row in a bulk batch. To avoid that entirely at the query level, the
+// proposed bm_id is resolved to NULL whenever another steam_id already owns it, so the
+// statement never trips the unique index. EXCLUDED.bm_id reflects this evaluated VALUES
+// expression, so the DO UPDATE branch inherits the same guard.
+const upsertSteamAccountSQL = `
+		INSERT INTO steam_accounts (steam_id, bm_id)
+		VALUES ($1, (
+			SELECT CASE
+				WHEN $2::text IS NULL THEN NULL
+				WHEN EXISTS (
+					SELECT 1 FROM steam_accounts other
+					WHERE other.bm_id = $2 AND other.steam_id <> $1
+				) THEN NULL
+				ELSE $2
+			END
+		))
+		ON CONFLICT (steam_id) DO UPDATE
+		SET bm_id = COALESCE(EXCLUDED.bm_id, steam_accounts.bm_id)`
+
 func (p *PostgresStore) UpsertSteamAccount(ctx context.Context, steamID string, bmID *string) (SteamAccount, error) {
 	var record SteamAccount
-	err := p.pool.QueryRow(ctx, `
-		INSERT INTO steam_accounts (steam_id, bm_id)
-		VALUES ($1, $2)
-		ON CONFLICT (steam_id) DO UPDATE
-		SET bm_id = COALESCE(EXCLUDED.bm_id, steam_accounts.bm_id)
+	err := p.pool.QueryRow(ctx,
+		upsertSteamAccountSQL+`
 		RETURNING steam_id, bm_id, created_at
 	`, steamID, bmID).Scan(&record.SteamID, &record.BmID, &record.CreatedAt)
 	if err != nil {
@@ -793,12 +813,11 @@ func (p *PostgresStore) BulkUpsertHardLinks(ctx context.Context, links []BulkHar
 	defer tx.Rollback(ctx)
 
 	for _, link := range links {
-		_, err := tx.Exec(ctx, `
-			INSERT INTO steam_accounts (steam_id, bm_id)
-			VALUES ($1, $2)
-			ON CONFLICT (steam_id) DO UPDATE
-			SET bm_id = COALESCE(EXCLUDED.bm_id, steam_accounts.bm_id)
-		`, link.SteamID, link.BmID)
+		// Use the same bm_id-conflict-tolerant upsert as UpsertSteamAccount so a single
+		// stale/reassigned bm_id cannot raise 23505, abort the transaction, and discard the
+		// entire bulk batch. The conflicting bm_id is silently dropped to NULL for that row
+		// while every other valid link still persists.
+		_, err := tx.Exec(ctx, upsertSteamAccountSQL, link.SteamID, link.BmID)
 		if err != nil {
 			return err
 		}

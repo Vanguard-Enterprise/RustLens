@@ -2381,6 +2381,15 @@ func (h *Handler) resolveSteamAccountBySteamIDWithin(ctx context.Context, steamI
 		return h.postgres.GetSteamAccountBySteamID(ctx, steamID)
 	}
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			// The Steam->BM resolve and this BM profile fetch share one inline
+			// budget. If the resolve consumed most of it, the profile fetch can
+			// time out even though the linkage WAS resolved. Treat that as
+			// pending so the caller returns a degraded response now and the
+			// background backfill (with a generous deadline) warms the profile,
+			// rather than surfacing a spurious 500 for a resolvable player.
+			return store.SteamAccount{}, steammatch.ErrPending
+		}
 		return store.SteamAccount{}, err
 	}
 	if fullProfile.SteamID == "" {

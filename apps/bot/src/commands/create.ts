@@ -303,6 +303,12 @@ function memberHasRole(member: GuildMember | null, roleId: string) {
 }
 
 async function handleRequestInviteButton(interaction: ButtonInteraction) {
+  // Defer before any network work so the initial-response window can't lapse
+  // (un-deferred ci_req: buttons would otherwise hit 10062 and never ping the role).
+  // Ephemeral so the validation error paths below stay private; the success path
+  // posts its public clan-invite message via followUp and clears this placeholder.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   if (!interaction.inGuild() || !interaction.guild) {
     await replyEphemeral(interaction, "This action can only be used in a server.");
     return;
@@ -376,17 +382,22 @@ async function handleRequestInviteButton(interaction: ButtonInteraction) {
 
   let replyMessage;
   try {
-    replyMessage = await interaction.reply({
+    replyMessage = await interaction.followUp({
       content: `<@&${pingRoleId}> <@${interaction.user.id}>`,
       embeds: [buildClanInviteEmbed(steamId, requesterDisplayName, requesterAvatarURL)],
       components: [buildAcceptButton(interaction.user.id)],
       allowedMentions: { roles: [pingRoleId], users: [interaction.user.id] },
-      fetchReply: true,
     });
   } catch (error) {
     pendingInvites.delete(pendingKey);
     throw error;
   }
+
+  // Remove the ephemeral defer placeholder so only the public clan-invite message remains.
+  await interaction.deleteReply().catch(logDiscordCatch("delete create invite request defer placeholder", undefined, {
+    guildId: interaction.guildId,
+    discordId: interaction.user.id,
+  }));
 
   const existing = pendingInvites.get(pendingKey);
   if (existing) {
@@ -399,6 +410,11 @@ async function handleRequestInviteButton(interaction: ButtonInteraction) {
 }
 
 async function handleAcceptInviteButton(interaction: ButtonInteraction): Promise<CommandUsageTarget[] | undefined> {
+  // Defer before any network work (admin check, user fetch, DM, message delete) so the
+  // initial-response window can't lapse on un-deferred ci_acc: buttons (10062). This handler
+  // only ever sends an ephemeral confirmation, so an ephemeral defer preserves behavior.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   if (!interaction.inGuild() || !interaction.guild) {
     await replyEphemeral(interaction, "This action can only be used in a server.");
     return;
@@ -450,11 +466,10 @@ async function handleAcceptInviteButton(interaction: ButtonInteraction): Promise
 
   pendingInvites.delete(pendingInviteKey(interaction.guildId, requesterId));
 
-  await interaction.reply({
+  await interaction.editReply({
     content: dmFailed
       ? "Invite accepted, but I could not DM the requester."
       : "Invite accepted. The requester has been notified via DM.",
-    flags: MessageFlags.Ephemeral,
   });
 
   const targets: CommandUsageTarget[] = [
