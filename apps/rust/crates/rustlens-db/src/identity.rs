@@ -45,22 +45,81 @@ pub struct AppUser {
     pub session_epoch: i64,
 }
 
-/// Mirrors the Go `CurrentUser` JSON shape for `GET /api/app/me`.
-///
-/// NOTE: `steam_accounts` and `guilds` are currently returned empty by the
-/// identity service — those joins still live in the Go backend and are not part
-/// of the login milestone. The JSON shape stays compatible (arrays present).
-/// Do not route `/api/app/me` to the identity service until these are filled.
+/// One Steam account linked to the acting user, mirroring the frontend
+/// `LinkedSteamAccount` TS type (and the Go `appauth.LinkedSteamAccount`).
+#[derive(Debug, Clone, Serialize)]
+pub struct LinkedSteamAccount {
+    #[serde(rename = "steamId")]
+    pub steam_id: String,
+    #[serde(rename = "bmId")]
+    pub bm_id: String,
+    #[serde(rename = "bmName")]
+    pub bm_name: String,
+    #[serde(rename = "avatarImage")]
+    pub avatar_image: String,
+    /// Link type: `soft` or `hard`. Serialized as `type` to match the frontend.
+    #[serde(rename = "type")]
+    pub link_type: String,
+    pub source: String,
+}
+
+/// One guild-membership record for the acting user, mirroring the frontend
+/// `UserGuildMembership` TS type. `left_at` serializes as `null` when absent.
+#[derive(Debug, Clone, Serialize)]
+pub struct UserGuildMembership {
+    #[serde(rename = "guildId")]
+    pub guild_id: String,
+    #[serde(rename = "isActive")]
+    pub is_active: bool,
+    #[serde(rename = "firstSeenAt")]
+    pub first_seen_at: DateTime<Utc>,
+    #[serde(rename = "lastSeenAt")]
+    pub last_seen_at: DateTime<Utc>,
+    #[serde(rename = "leftAt")]
+    pub left_at: Option<DateTime<Utc>>,
+}
+
+/// Safe dashboard summary of the Discord linked-roles connection, mirroring the
+/// frontend `DiscordRoleConnectionSummary` type. Populated by the role-connection
+/// work (spec Item 4); `None` until then, in which case the whole
+/// `discordRoleConnection` field is omitted (matching Go's `omitempty`). The
+/// inner nullable fields serialize as `null`, never omitted, to match the TS
+/// `string | null` shape.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscordRoleConnectionSummary {
+    pub linked: bool,
+    #[serde(rename = "discordId")]
+    pub discord_id: Option<String>,
+    #[serde(rename = "linkedAt")]
+    pub linked_at: Option<DateTime<Utc>>,
+    #[serde(rename = "lastPushedAt")]
+    pub last_pushed_at: Option<DateTime<Utc>>,
+    #[serde(rename = "lastPushError")]
+    pub last_push_error: Option<String>,
+    pub revoked: bool,
+}
+
+/// Mirrors the Go `CurrentUser` JSON shape for `GET /api/app/me`
+/// (`appauth.CurrentUser`). `steam_accounts` and `guilds` are populated from the
+/// shared identity tables (see `load_linked_steam_accounts` / `load_user_guilds`);
+/// the live Go `/me` handler leaves them empty, so this Rust implementation is a
+/// strict superset that stays JSON-compatible (the frontend types declare the
+/// arrays present).
 #[derive(Debug, Clone, Serialize)]
 pub struct CurrentUser {
     pub user: AppUser,
     #[serde(rename = "steamAccounts")]
-    pub steam_accounts: Vec<serde_json::Value>,
-    pub guilds: Vec<serde_json::Value>,
+    pub steam_accounts: Vec<LinkedSteamAccount>,
+    pub guilds: Vec<UserGuildMembership>,
     #[serde(rename = "adminRoles")]
     pub admin_roles: Vec<String>,
     pub permissions: Vec<String>,
     pub entitlements: Vec<String>,
+    #[serde(
+        rename = "discordRoleConnection",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub discord_role_connection: Option<DiscordRoleConnectionSummary>,
 }
 
 /// Outcome of the session revocation check.
@@ -286,8 +345,79 @@ pub async fn load_entitlements(
     rows.into_iter().map(|r| r.try_get::<String, _>("key")).collect()
 }
 
-/// Load the full `CurrentUser` aggregate for `/api/app/me` (steam/guilds are
-/// empty for now — see the struct doc).
+/// Linked Steam accounts for the acting user, keyed on the user's `discord_id`.
+/// Mirrors the Go `steam_discord_links → steam_accounts → bm_profile_cache
+/// (bmName) → steam_account_cache (avatarImage)` join, deduped and ordered by
+/// `steam_id`. Does not filter `hidden_discord_link_identities` (neither does
+/// the Go `/me` path).
+pub async fn load_linked_steam_accounts(
+    pool: &PgPool,
+    discord_id: &str,
+) -> Result<Vec<LinkedSteamAccount>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"SELECT DISTINCT sa.steam_id,
+                  COALESCE(sa.bm_id, ''),
+                  COALESCE(bpc.bm_name, ''),
+                  COALESCE(sac.avatar_image, ''),
+                  sdl.type,
+                  sdl.source
+           FROM steam_discord_links sdl
+           INNER JOIN steam_accounts sa ON sa.steam_id = sdl.steam_id
+           LEFT JOIN bm_profile_cache bpc ON bpc.bm_id = sa.bm_id
+           LEFT JOIN steam_account_cache sac ON sac.steam_id = sa.steam_id
+           WHERE sdl.discord_id = $1
+           ORDER BY sa.steam_id"#,
+    )
+    .bind(discord_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|r| {
+            Ok(LinkedSteamAccount {
+                steam_id: r.try_get(0)?,
+                bm_id: r.try_get(1)?,
+                bm_name: r.try_get(2)?,
+                avatar_image: r.try_get(3)?,
+                link_type: r.try_get(4)?,
+                source: r.try_get(5)?,
+            })
+        })
+        .collect()
+}
+
+/// Guild memberships for the acting user, keyed on the user's `discord_id`.
+/// Mirrors the Go `user_guilds` read: both active and inactive rows, ordered
+/// active-first then most-recently-seen.
+pub async fn load_user_guilds(
+    pool: &PgPool,
+    discord_id: &str,
+) -> Result<Vec<UserGuildMembership>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"SELECT guild_id, is_active, first_seen_at, last_seen_at, left_at
+           FROM user_guilds
+           WHERE discord_id = $1
+           ORDER BY is_active DESC, last_seen_at DESC"#,
+    )
+    .bind(discord_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|r| {
+            Ok(UserGuildMembership {
+                guild_id: r.try_get("guild_id")?,
+                is_active: r.try_get("is_active")?,
+                first_seen_at: r.try_get("first_seen_at")?,
+                last_seen_at: r.try_get("last_seen_at")?,
+                left_at: r.try_get("left_at")?,
+            })
+        })
+        .collect()
+}
+
+/// Load the full `CurrentUser` aggregate for `/api/app/me`. Steam accounts and
+/// guilds are loaded from the shared identity tables keyed on the user's
+/// `discord_id`; an empty `discord_id` short-circuits to empty vecs (matching
+/// the Go aggregate's behavior for users with no Discord connection).
 pub async fn load_current_user(
     pool: &PgPool,
     user_id: &str,
@@ -298,13 +428,25 @@ pub async fn load_current_user(
     let admin_roles = load_admin_role_keys(pool, user_id).await?;
     let permissions = load_permissions(pool, user_id, &admin_roles).await?;
     let entitlements = load_entitlements(pool, user_id).await?;
+
+    let (steam_accounts, guilds) = if user.discord_id.is_empty() {
+        (Vec::new(), Vec::new())
+    } else {
+        (
+            load_linked_steam_accounts(pool, &user.discord_id).await?,
+            load_user_guilds(pool, &user.discord_id).await?,
+        )
+    };
+
     Ok(Some(CurrentUser {
         user,
-        steam_accounts: Vec::new(),
-        guilds: Vec::new(),
+        steam_accounts,
+        guilds,
         admin_roles,
         permissions,
         entitlements,
+        // Populated by the role-connection work (spec Item 4).
+        discord_role_connection: None,
     }))
 }
 
@@ -317,4 +459,95 @@ fn json_string_array(value: &serde_json::Value) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_user() -> AppUser {
+        let t: DateTime<Utc> = "2026-01-02T03:04:05Z".parse().unwrap();
+        AppUser {
+            id: "usr_x".into(),
+            discord_id: "987".into(),
+            discord_username: "frank".into(),
+            discord_global_name: Some("Frank".into()),
+            discord_avatar: Some("avh".into()),
+            display_name: "Frank".into(),
+            avatar_url: "https://cdn/a.png".into(),
+            roles: vec!["user".into()],
+            created_at: t,
+            updated_at: t,
+            last_login_at: t,
+            session_epoch: 0,
+        }
+    }
+
+    /// The `LinkedSteamAccount.link_type` field must serialize as `type` and
+    /// `UserGuildMembership.left_at` as `leftAt: null` when absent — both are
+    /// part of the frontend contract.
+    #[test]
+    fn linked_steam_and_guild_field_renames() {
+        let acct = LinkedSteamAccount {
+            steam_id: "76561190000000001".into(),
+            bm_id: "bm-1".into(),
+            bm_name: "Name".into(),
+            avatar_image: "https://av/1.png".into(),
+            link_type: "hard".into(),
+            source: "battlemetrics".into(),
+        };
+        let v = serde_json::to_value(&acct).unwrap();
+        assert_eq!(v["type"], "hard");
+        assert!(v.get("link_type").is_none());
+        assert_eq!(v["steamId"], "76561190000000001");
+
+        let g = UserGuildMembership {
+            guild_id: "g1".into(),
+            is_active: true,
+            first_seen_at: "2026-01-02T03:04:05Z".parse().unwrap(),
+            last_seen_at: "2026-01-02T03:04:05Z".parse().unwrap(),
+            left_at: None,
+        };
+        let gv = serde_json::to_value(&g).unwrap();
+        assert!(gv.get("leftAt").is_some(), "leftAt must be present");
+        assert!(gv["leftAt"].is_null(), "leftAt must serialize as null, not omitted");
+        assert_eq!(gv["isActive"], true);
+    }
+
+    /// `discordRoleConnection` is omitted entirely when `None` (matches Go
+    /// `omitempty`) and present when populated.
+    #[test]
+    fn current_user_omits_role_connection_when_none() {
+        let cu = CurrentUser {
+            user: sample_user(),
+            steam_accounts: vec![],
+            guilds: vec![],
+            admin_roles: vec![],
+            permissions: vec![],
+            entitlements: vec![],
+            discord_role_connection: None,
+        };
+        let v = serde_json::to_value(&cu).unwrap();
+        assert!(v.get("discordRoleConnection").is_none());
+        // Required arrays are always present (frontend declares them non-optional).
+        assert!(v["steamAccounts"].is_array());
+        assert!(v["guilds"].is_array());
+
+        let cu2 = CurrentUser {
+            discord_role_connection: Some(DiscordRoleConnectionSummary {
+                linked: true,
+                discord_id: Some("987".into()),
+                linked_at: None,
+                last_pushed_at: None,
+                last_push_error: None,
+                revoked: false,
+            }),
+            ..cu
+        };
+        let v2 = serde_json::to_value(&cu2).unwrap();
+        assert_eq!(v2["discordRoleConnection"]["linked"], true);
+        // Inner nullable fields serialize as null, not omitted.
+        assert!(v2["discordRoleConnection"].get("linkedAt").is_some());
+        assert!(v2["discordRoleConnection"]["linkedAt"].is_null());
+    }
 }
