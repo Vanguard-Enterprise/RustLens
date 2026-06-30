@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rustlens-session",
+    "crates/rustlens-config",
+    "crates/rustlens-db",
+    "services/identity",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.96"
+
+[workspace.dependencies]
+# shared crates
+rustlens-session = { path = "crates/rustlens-session" }
+rustlens-config = { path = "crates/rustlens-config" }
+rustlens-db = { path = "crates/rustlens-db" }
+
+# third-party
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+subtle = "2.6"
+thiserror = "2"
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+axum = "0.8"
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "chrono",
+    "uuid",
+    "json",
+] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+rand = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
