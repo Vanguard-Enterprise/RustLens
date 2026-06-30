@@ -70,6 +70,12 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Spawn the linked-roles reconciler (Phase 4b): re-push metadata on startup
+    // and every 6h, advisory-locked so only one pod runs at a time.
+    if state.config.role_connection_enabled() {
+        tokio::spawn(role_connection::reconcile_loop(state.clone()));
+    }
+
     let app = Router::new()
         .route("/api/healthz", get(healthz))
         .route("/api/auth/discord", get(handlers::initiate))

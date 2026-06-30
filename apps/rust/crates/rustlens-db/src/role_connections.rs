@@ -164,6 +164,30 @@ pub async fn record_push_error(pool: &PgPool, user_id: &str, err: &str) -> Resul
     Ok(())
 }
 
+/// Mark a connection revoked (e.g. after a rejected refresh token), recording
+/// the reason. Mirrors the Go `MarkDiscordRoleConnectionRevoked`.
+pub async fn mark_revoked(pool: &PgPool, user_id: &str, err_msg: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE discord_role_connections SET revoked_at = now(), last_push_error = $2 WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .bind(err_msg)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// User IDs of all non-revoked connections (the reconciler's work-list).
+pub async fn list_active_role_connections(pool: &PgPool) -> Result<Vec<String>, sqlx::Error> {
+    let rows =
+        sqlx::query("SELECT user_id FROM discord_role_connections WHERE revoked_at IS NULL")
+            .fetch_all(pool)
+            .await?;
+    rows.into_iter()
+        .map(|r| r.try_get::<String, _>("user_id"))
+        .collect()
+}
+
 /// The `granted_at` of the user's active `pro` entitlement, if any. Drives the
 /// `is_pro` / `pro_since` metadata.
 pub async fn get_user_pro_granted_at(

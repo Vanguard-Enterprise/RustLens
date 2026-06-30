@@ -181,6 +181,20 @@ pub async fn dispatch(
     // 8. Execute (+ publish events).
     let exec = execute(&st, &action_type, &session.user_id, &body.params).await;
 
+    // 8a. On-grant hook: fire-and-forget linked-roles push after a pro change.
+    if let Ok(ok) = &exec {
+        if let Some(uid) = ok.pro_push.clone() {
+            if st.config.role_connection_enabled() {
+                let st2 = st.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = crate::role_connection::push(&st2, &uid).await {
+                        tracing::warn!("pro-role linked-roles push failed for {uid}: {e:#}");
+                    }
+                });
+            }
+        }
+    }
+
     // 9. Audit + respond.
     let ua = headers
         .get(header::USER_AGENT)
@@ -194,6 +208,9 @@ struct ExecOk {
     payload: Value,
     resource_id: String,
     target: Option<String>,
+    /// When set, fire a fire-and-forget linked-roles metadata push for this user
+    /// after responding (a `pro` grant/revoke). Mirrors Go's `OnProRoleChanged`.
+    pro_push: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -441,6 +458,7 @@ async fn execute(
                 payload: json!({ "id": new_id, "key": key }),
                 resource_id: new_id,
                 target: None,
+                pro_push: None,
             })
         }
         "roles.update" => {
@@ -448,12 +466,12 @@ async fn execute(
             let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
             let description = params.get("description").and_then(Value::as_str).unwrap_or_default();
             acts::roles_update(pool, id, name, description).await?;
-            Ok(ExecOk { payload: json!({ "id": id }), resource_id: id.into(), target: None })
+            Ok(ExecOk { payload: json!({ "id": id }), resource_id: id.into(), target: None, pro_push: None })
         }
         "roles.delete" => {
             let id = params.get("id").and_then(Value::as_str).unwrap_or_default();
             acts::roles_delete(pool, id).await?;
-            Ok(ExecOk { payload: json!({ "id": id }), resource_id: id.into(), target: None })
+            Ok(ExecOk { payload: json!({ "id": id }), resource_id: id.into(), target: None, pro_push: None })
         }
         "roles.permissions.set" => {
             let id = params.get("id").and_then(Value::as_str).unwrap_or_default();
@@ -467,43 +485,46 @@ async fn execute(
                 payload: json!({ "id": id, "count": perms.len() }),
                 resource_id: id.into(),
                 target: None,
+                pro_push: None,
             })
         }
         "users.roles.grant" => {
             let (user_id, role_key) = user_role(params);
             acts::users_grant_role(pool, &user_id, &role_key, actor_id).await?;
             st.events.publish_with_fanout(&user_id, Event::roles_changed(ev::REASON_GRANT));
-            Ok(user_payload(user_id, json!({ "userId": params_user(params), "roleKey": role_key })))
+            let payload = json!({ "userId": &user_id, "roleKey": &role_key });
+            Ok(user_payload(user_id, role_key == "pro", payload))
         }
         "users.roles.revoke" => {
             let (user_id, role_key) = user_role(params);
             acts::users_revoke_role(pool, &user_id, &role_key, actor_id).await?;
             st.events.publish_with_fanout(&user_id, Event::roles_changed(ev::REASON_REVOKE));
-            Ok(user_payload(user_id, json!({ "userId": params_user(params), "roleKey": role_key })))
+            let payload = json!({ "userId": &user_id, "roleKey": &role_key });
+            Ok(user_payload(user_id, role_key == "pro", payload))
         }
         "users.suspend" => {
             let user_id = params_user(params);
             let reason = params.get("reason").and_then(Value::as_str).unwrap_or_default();
             acts::users_suspend(pool, &user_id, actor_id, reason).await?;
             st.events.publish_with_fanout(&user_id, Event::session_revoked(ev::REASON_SUSPENDED));
-            Ok(user_payload(user_id.clone(), json!({ "userId": user_id })))
+            Ok(user_payload(user_id.clone(), false, json!({ "userId": user_id })))
         }
         "users.unsuspend" => {
             let user_id = params_user(params);
             acts::users_unsuspend(pool, &user_id).await?;
-            Ok(user_payload(user_id.clone(), json!({ "userId": user_id })))
+            Ok(user_payload(user_id.clone(), false, json!({ "userId": user_id })))
         }
         "users.force_logout" => {
             let user_id = params_user(params);
             acts::users_force_logout(pool, &user_id, actor_id).await?;
             st.events.publish_with_fanout(&user_id, Event::session_revoked(ev::REASON_FORCE_LOGOUT));
-            Ok(user_payload(user_id.clone(), json!({ "userId": user_id })))
+            Ok(user_payload(user_id.clone(), false, json!({ "userId": user_id })))
         }
         "users.delete" => {
             let user_id = params_user(params);
             acts::users_delete(pool, &user_id, actor_id).await?;
             st.events.publish_with_fanout(&user_id, Event::session_revoked(ev::REASON_DELETED));
-            Ok(user_payload(user_id.clone(), json!({ "userId": user_id, "deleted": true })))
+            Ok(user_payload(user_id.clone(), false, json!({ "userId": user_id, "deleted": true })))
         }
         _ => Err(ActionError::Validation("unknown action".into())),
     }
@@ -528,6 +549,11 @@ fn user_role(params: &Value) -> (String, String) {
     )
 }
 
-fn user_payload(user_id: String, payload: Value) -> ExecOk {
-    ExecOk { payload, resource_id: user_id.clone(), target: Some(user_id) }
+fn user_payload(user_id: String, pro: bool, payload: Value) -> ExecOk {
+    ExecOk {
+        payload,
+        resource_id: user_id.clone(),
+        pro_push: if pro { Some(user_id.clone()) } else { None },
+        target: Some(user_id),
+    }
 }
