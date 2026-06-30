@@ -1,0 +1,9 @@
+[package]
+name = "rustlens-config"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Shared env-based configuration loader for the RustLens Rust services."
+
+[dependencies]
+thiserror = { workspace = true }
