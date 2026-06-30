@@ -135,7 +135,8 @@ type requestPreparer interface {
 
 // NewClient returns an unauthenticated BattleMetrics client. All requests go
 // through the provided HTTP provider (typically the proxy pool). Authenticated
-// Steam ↔ BM matching now lives in the bmmatch package.
+// Steam ↔ BM matching now lives in the steammatch resolver chain
+// (bmsearch primary, bmmatch fallback).
 func NewClient(provider requestPreparer) *Client {
 	if provider == nil {
 		fallbackProvider, _ := outboundhttp.NewProvider(false, nil, 20*time.Second)

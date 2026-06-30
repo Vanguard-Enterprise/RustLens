@@ -2363,7 +2363,7 @@ func (h *Handler) resolveSteamAccountBySteamIDWithin(ctx context.Context, steamI
 
 	fullProfile, err := h.battleMetricsClient.FetchPlayerProfile(ctx, bmID)
 	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
-		// bmmatch resolved the linkage but BM doesn't see the player yet.
+		// the resolver resolved the linkage but BM doesn't see the player yet.
 		// Record the bare steam↔bm linkage and warm the Steam-only cache so
 		// the immediately-following GetSteamProfile call doesn't have to do a
 		// cold Steam fetch under interaction latency. The BM cache stays empty
@@ -2398,8 +2398,8 @@ func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (s
 	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
 		// BM doesn't see this player at all (e.g. brand-new BM ID not yet
 		// indexed by the public /players/{id} endpoint). Fall back to the
-		// matching service so we can still record the Steam linkage.
-		return h.resolveSteamAccountFromBmMatch(ctx, bmID)
+		// steammatch resolver chain so we can still record the Steam linkage.
+		return h.resolveSteamAccountFromResolver(ctx, bmID)
 	}
 	if err != nil {
 		return store.SteamAccount{}, err
@@ -2408,7 +2408,7 @@ func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (s
 	steamID := strings.TrimSpace(profile.SteamID)
 	if steamID == "" {
 		// The unauthenticated BM /players/{id} response may omit identifiers,
-		// so fall back to the matching service for the Steam ID.
+		// so fall back to the steammatch resolver chain for the Steam ID.
 		resolved, lookupErr := h.bmMatch.BMToSteam(ctx, bmID)
 		if lookupErr != nil {
 			if errors.Is(lookupErr, steammatch.ErrNotFound) || errors.Is(lookupErr, steammatch.ErrNotConfigured) {
@@ -2426,11 +2426,11 @@ func (h *Handler) resolveSteamAccountByBmID(ctx context.Context, bmID string) (s
 	return h.upsertResolvedSteamAccount(ctx, profile.SteamID, profile)
 }
 
-// resolveSteamAccountFromBmMatch resolves a Steam ID for a BM ID via the
-// bmmatch service when BattleMetrics itself can't see the player, then records
-// the bare linkage in steam_accounts. Profile/cache rows are left empty — a
-// later refresh will warm them once BM does see the player.
-func (h *Handler) resolveSteamAccountFromBmMatch(ctx context.Context, bmID string) (store.SteamAccount, error) {
+// resolveSteamAccountFromResolver resolves a Steam ID for a BM ID via the
+// steammatch resolver chain when BattleMetrics itself can't see the player,
+// then records the bare linkage in steam_accounts. Profile/cache rows are left
+// empty — a later refresh will warm them once BM does see the player.
+func (h *Handler) resolveSteamAccountFromResolver(ctx context.Context, bmID string) (store.SteamAccount, error) {
 	resolved, err := h.bmMatch.BMToSteam(ctx, bmID)
 	if err != nil {
 		if errors.Is(err, steammatch.ErrNotFound) || errors.Is(err, steammatch.ErrNotConfigured) {
@@ -2862,20 +2862,20 @@ func (h *Handler) GetBmPlayerProfile(w http.ResponseWriter, r *http.Request) {
 	profile, err := h.battleMetricsClient.FetchPlayerProfile(r.Context(), bmID)
 	if errors.Is(err, battlemetrics.ErrPlayerNotFound) {
 		// BM doesn't see this player. If we have a stale BM cache, prefer it.
-		// Otherwise try bmmatch to recover a Steam linkage so we can still
-		// serve Steam-side enrichment instead of 404'ing the bot.
+		// Otherwise try the resolver chain to recover a Steam linkage so we can
+		// still serve Steam-side enrichment instead of 404'ing the bot.
 		if bmCacheErr == nil {
 			writeJSON(w, http.StatusOK, h.steamProfileResponseWithStatus(r.Context(), account, steamCache, cachedBm))
 			return
 		}
 		if account.SteamID == "" {
-			if linked, lookupErr := h.resolveSteamAccountFromBmMatch(r.Context(), bmID); lookupErr == nil {
+			if linked, lookupErr := h.resolveSteamAccountFromResolver(r.Context(), bmID); lookupErr == nil {
 				account = linked
 				if cache, cacheErr := h.postgres.GetSteamAccountCache(r.Context(), linked.SteamID); cacheErr == nil {
 					steamCache = cache
 				}
 			} else if !errors.Is(lookupErr, store.ErrSteamAccountNotFound) {
-				log.Printf("[backend] GetBmPlayerProfile bmmatch lookup error for %s: %v", bmID, lookupErr)
+				log.Printf("[backend] GetBmPlayerProfile resolver lookup error for %s: %v", bmID, lookupErr)
 			}
 		}
 		if account.SteamID != "" {
