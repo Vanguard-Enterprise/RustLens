@@ -20,6 +20,9 @@ type Config struct {
 	BattleMetricsPoll    time.Duration
 	BMMatchURL           string
 	BMMatchToken         string
+	BMSearchEnabled      bool
+	BMSearchURL          string
+	BMSearchInlineWait   time.Duration
 	PlatformSyncToken    string
 	AllowedJWTIssuer     string
 	AllowedJWTAudience   string
@@ -66,6 +69,9 @@ func Load() Config {
 		BattleMetricsPoll:    time.Duration(battleMetricsPoll) * time.Second,
 		BMMatchURL:           strings.TrimSpace(getEnv("BM_MATCH_URL", "")),
 		BMMatchToken:         strings.TrimSpace(getEnv("BM_MATCH_TOKEN", "")),
+		BMSearchEnabled:      getEnvBool("BM_SEARCH_ENABLED", true),
+		BMSearchURL:          strings.TrimSpace(getEnv("BM_SEARCH_URL", "https://bmsearch.io/api")),
+		BMSearchInlineWait:   time.Duration(getEnvInt("BM_SEARCH_INLINE_TIMEOUT_MS", 4000)) * time.Millisecond,
 		PlatformSyncToken:    strings.TrimSpace(getEnv("PLATFORMSYNC_TOKEN", "")),
 		AllowedJWTIssuer:     getEnv("BOT_JWT_ISSUER", "rustlens-bot"),
 		AllowedJWTAudience:   getEnv("BOT_JWT_AUDIENCE", "rustlens-backend"),

@@ -14,6 +14,7 @@ import (
 
 	"rustlens/backend/internal/battlemetrics"
 	"rustlens/backend/internal/bmmatch"
+	"rustlens/backend/internal/bmsearch"
 	"rustlens/backend/internal/cleanup"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/events"
@@ -26,6 +27,7 @@ import (
 	"rustlens/backend/internal/serveranalytics"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
+	"rustlens/backend/internal/steammatch"
 	"rustlens/backend/internal/store"
 	"rustlens/backend/internal/wipereactscheduler"
 
@@ -155,7 +157,20 @@ func main() {
 
 	shardService := shards.NewService(redisStore, cfg.BotTargetShards, cfg.BotHeartbeatTTL)
 	shards.RegisterObservableGauges(shardService)
+	// Steam <-> BM resolution: bmsearch.io (public, no-auth) is the primary
+	// source; the legacy bmmatch service is kept only as an optional fallback
+	// so RustLens is never single-sourced again.
 	bmMatchClient := bmmatch.NewClient(cfg.BMMatchURL, cfg.BMMatchToken, 10*time.Second)
+	var resolvers []steammatch.Resolver
+	if cfg.BMSearchEnabled {
+		resolvers = append(resolvers, bmsearch.NewClient(cfg.BMSearchURL, cfg.BMSearchInlineWait))
+	}
+	resolvers = append(resolvers, steammatch.Translating{
+		Inner:         bmMatchClient,
+		NotFound:      bmmatch.ErrNotFound,
+		NotConfigured: bmmatch.ErrNotConfigured,
+	})
+	steamMatcher := steammatch.NewChain(resolvers...)
 	platformSyncClient := platformsync.NewClient(cfg.PlatformSyncToken, 10*time.Second)
 	eventsHub := events.NewHub()
 	eventsBridge := events.NewRedisBridge(redisStore.Client(), eventsHub)
@@ -170,7 +185,7 @@ func main() {
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
 		steamapi.NewClient(cfg.SteamAPIKey, directProvider),
 		battlemetrics.NewClient(outboundProvider),
-		bmMatchClient,
+		steamMatcher,
 		platformSyncClient,
 		outboundProvider,
 		proxyCrypto,

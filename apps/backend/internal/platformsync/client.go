@@ -67,8 +67,8 @@ type Lookup struct {
 
 // NewClient returns a client. If token is empty, the returned client is
 // non-nil but every call returns ErrNotConfigured — this matches the
-// bmmatch client convention so the server still boots when the env var
-// is missing.
+// not-configured client convention so the server still boots when the
+// env var is missing.
 func NewClient(token string, timeout time.Duration) *Client {
 	if timeout <= 0 {
 		timeout = 10 * time.Second

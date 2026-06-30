@@ -12,7 +12,6 @@ import (
 	"rustlens/backend/internal/appauth"
 	"rustlens/backend/internal/auth"
 	"rustlens/backend/internal/battlemetrics"
-	"rustlens/backend/internal/bmmatch"
 	"rustlens/backend/internal/clientip"
 	"rustlens/backend/internal/config"
 	"rustlens/backend/internal/events"
@@ -23,6 +22,7 @@ import (
 	"rustlens/backend/internal/roleconnection"
 	"rustlens/backend/internal/shards"
 	"rustlens/backend/internal/steamapi"
+	"rustlens/backend/internal/steammatch"
 	"rustlens/backend/internal/store"
 )
 
@@ -46,7 +46,7 @@ func NewRouter(
 	steamClient *steamapi.Client,
 	steamSummaryClient *steamapi.Client,
 	battleMetricsClient *battlemetrics.Client,
-	bmMatch *bmmatch.Client,
+	bmMatch steammatch.Resolver,
 	platformSync *platformsync.Client,
 	outboundProvider *outboundhttp.Provider,
 	proxyCrypto *proxycrypto.Crypto,

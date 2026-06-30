@@ -15,8 +15,8 @@ type SteamResolver interface {
 	ResolveSteamID(ctx context.Context, input string) (string, error)
 }
 
-// BmMatcher is the optional Steam<->BM resolver. May be nil when bmmatch
-// is unconfigured. Implemented by *bmmatch.Client.
+// BmMatcher is the optional Steam<->BM resolver. May be nil when no resolver
+// source is configured. Implemented by *steammatch.Chain (bmsearch + bmmatch).
 type BmMatcher interface {
 	BMToSteam(ctx context.Context, bmID string) (string, error)
 	SteamToBM(ctx context.Context, steamID string) (string, error)
@@ -45,8 +45,8 @@ func NewService(s Store, steam SteamResolver, bmMatch BmMatcher) *Service {
 }
 
 // ResolveToSteamID takes any identifier the navbar/search box may receive
-// and returns the underlying Steam64 ID. Falls back to bmmatch when the
-// identifier is a BM ID with no local steam_accounts row.
+// and returns the underlying Steam64 ID. Falls back to the Steam<->BM resolver
+// when the identifier is a BM ID with no local steam_accounts row.
 func (svc *Service) ResolveToSteamID(ctx context.Context, input string) (string, error) {
 	q := strings.TrimSpace(input)
 	switch ClassifyQuery(q) {
@@ -95,8 +95,9 @@ func (svc *Service) ResolveToSteamID(ctx context.Context, input string) (string,
 			return "", ErrNotFound
 		}
 		steamID, err := svc.bmMatch.BMToSteam(ctx, bmID)
-		if err != nil {
-			return "", err
+		if err != nil || strings.TrimSpace(steamID) == "" {
+			// Any resolver miss/error for the search box is a not-found.
+			return "", ErrNotFound
 		}
 		return steamID, nil
 	default:
