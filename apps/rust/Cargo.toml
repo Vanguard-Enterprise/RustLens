@@ -6,6 +6,7 @@ members = [
     "crates/rustlens-db",
     "crates/rustlens-events",
     "crates/rustlens-crypto",
+    "crates/rustlens-botjwt",
     "services/identity",
 ]
 
@@ -20,6 +21,7 @@ rustlens-config = { path = "crates/rustlens-config" }
 rustlens-db = { path = "crates/rustlens-db" }
 rustlens-events = { path = "crates/rustlens-events" }
 rustlens-crypto = { path = "crates/rustlens-crypto" }
+rustlens-botjwt = { path = "crates/rustlens-botjwt" }
 
 # third-party
 serde = { version = "1", features = ["derive"] }
@@ -54,3 +56,4 @@ redis = { version = "0.27", default-features = false, features = ["tokio-comp"] 
 futures-util = "0.3"
 tokio-stream = "0.1"
 aes-gcm = "0.10"
+jsonwebtoken = "9"

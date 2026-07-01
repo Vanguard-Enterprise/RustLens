@@ -45,6 +45,13 @@ pub struct IdentityConfig {
     /// Discord bot token, used to register the linked-roles metadata schema at
     /// startup (`DISCORD_BOT_TOKEN`).
     pub discord_bot_token: Option<String>,
+    /// HMAC secret for the bot service JWT gating `/api/internal/bot/*`. Shared
+    /// with the Go backend + bot (`BOT_SERVICE_JWT_SECRET`).
+    pub bot_service_jwt_secret: String,
+    /// Bot JWT issuer claim (`BOT_JWT_ISSUER`, default `rustlens-bot`).
+    pub bot_jwt_issuer: String,
+    /// Bot JWT audience claim (`BOT_JWT_AUDIENCE`, default `rustlens-backend`).
+    pub bot_jwt_audience: String,
 }
 
 impl IdentityConfig {
@@ -66,6 +73,10 @@ impl IdentityConfig {
                 .unwrap_or_else(|| "http://localhost:3000".to_string()),
             proxy_encryption_key: opt("PROXY_ENCRYPTION_KEY"),
             discord_bot_token: opt("DISCORD_BOT_TOKEN"),
+            bot_service_jwt_secret: req("BOT_SERVICE_JWT_SECRET")?,
+            bot_jwt_issuer: opt("BOT_JWT_ISSUER").unwrap_or_else(|| "rustlens-bot".to_string()),
+            bot_jwt_audience: opt("BOT_JWT_AUDIENCE")
+                .unwrap_or_else(|| "rustlens-backend".to_string()),
         })
     }
 
