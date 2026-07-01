@@ -19,4 +19,8 @@ pub struct AppState {
     /// AES-GCM cipher for Discord role-connection tokens. `None` disables the
     /// linked-roles feature (no `PROXY_ENCRYPTION_KEY`).
     pub cipher: Option<rustlens_crypto::Cipher>,
+    /// Per-actor/action token-bucket limiter for the admin dispatcher.
+    pub rate_limiter: crate::ratelimit::RateLimiter,
+    /// Idempotency-key replay cache for the admin dispatcher.
+    pub idempotency: crate::ratelimit::IdempotencyCache,
 }
