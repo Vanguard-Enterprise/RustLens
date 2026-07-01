@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use axum::Json;
+use axum::body::Bytes;
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -209,6 +210,86 @@ pub async fn me(State(st): Shared, headers: HeaderMap) -> Response {
             error_json(StatusCode::INTERNAL_SERVER_ERROR, "failed to load current user")
         }
     }
+}
+
+/// `GET /api/app/me/preferences` — the user's notification toggles, lazily
+/// defaulted. Header-authed like the rest of `/api/app/*`.
+pub async fn get_preferences(State(st): Shared, headers: HeaderMap) -> Response {
+    if let Err(resp) =
+        crate::appauth::require_app_secret(&headers, &st.config.app_api_internal_secret)
+    {
+        return *resp;
+    }
+    let session = match crate::appauth::require_session(&headers, &st).await {
+        Ok(s) => s,
+        Err(resp) => return *resp,
+    };
+    match rustlens_db::preferences::load_notification_preferences(&st.pool, &session.user_id).await {
+        Ok(p) => (StatusCode::OK, Json(p)).into_response(),
+        Err(e) => {
+            tracing::error!("/api/app/me/preferences GET: {e:#}");
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
+        }
+    }
+}
+
+/// Strict-decoded PATCH body: unknown fields or non-boolean values are rejected
+/// (matches Go's `DisallowUnknownFields`); absent fields are left unchanged.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrefsPatch {
+    #[serde(rename = "notifyInApp")]
+    notify_in_app: Option<bool>,
+    #[serde(rename = "notifyDiscordAnnouncements")]
+    notify_discord_announcements: Option<bool>,
+}
+
+/// `PATCH /api/app/me/preferences` — partial update; empty body is a no-op that
+/// returns current values.
+pub async fn patch_preferences(State(st): Shared, headers: HeaderMap, raw: Bytes) -> Response {
+    if let Err(resp) =
+        crate::appauth::require_app_secret(&headers, &st.config.app_api_internal_secret)
+    {
+        return *resp;
+    }
+    let session = match crate::appauth::require_session(&headers, &st).await {
+        Ok(s) => s,
+        Err(resp) => return *resp,
+    };
+    let patch: PrefsPatch = if raw.is_empty() {
+        PrefsPatch::default()
+    } else {
+        match serde_json::from_slice(&raw) {
+            Ok(p) => p,
+            Err(_) => return error_json(StatusCode::BAD_REQUEST, "bad_request"),
+        }
+    };
+    match rustlens_db::preferences::upsert_notification_preferences(
+        &st.pool,
+        &session.user_id,
+        patch.notify_in_app,
+        patch.notify_discord_announcements,
+    )
+    .await
+    {
+        Ok(p) => (StatusCode::OK, Json(p)).into_response(),
+        Err(e) => {
+            tracing::error!("/api/app/me/preferences PATCH: {e:#}");
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
+        }
+    }
+}
+
+/// `POST /api/app/auth/logout` — app-secret-gated no-op. Sessions live in the
+/// signed cookie the frontend holds and clears itself; this named route exists
+/// for the frontend to call. Mirrors the Go `Logout`.
+pub async fn logout(State(st): Shared, headers: HeaderMap) -> Response {
+    if let Err(resp) =
+        crate::appauth::require_app_secret(&headers, &st.config.app_api_internal_secret)
+    {
+        return *resp;
+    }
+    (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response()
 }
 
 fn build_session(cu: &CurrentUser) -> SessionUser {
