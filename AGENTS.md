@@ -14,15 +14,16 @@ Symlinked as `CLAUDE.md` so it is automatically picked up by Claude Code, Codex,
 
 ## Repository Overview
 
-RustLens is a monorepo with three services:
+RustLens is a monorepo with four services:
 
 | App | Stack | Description |
 |---|---|---|
 | `apps/backend` | Go 1.24 (chi, pgx, go-redis) | API server and shard coordinator for bot workers |
 | `apps/frontend` | Next.js 16 (React 19, TypeScript, App Router, Tailwind v4, shadcn/ui) | Marketing site plus browser-authenticated user dashboard at `/dashboard` and internal ops dashboard at `/admin` |
 | `apps/bot` | Discord.js (TypeScript, ESM) | Sharded worker runtime |
+| `apps/rust` | Rust (axum, sqlx, tokio) | Cargo workspace — the `identity` service, a drop-in Rust reimplementation of the Go auth surface (see [Rust services](#rust-services-cargo-workspace)) |
 
-Orchestrated with **pnpm 10 workspaces** + **Turborepo** for the frontend and bot packages. The Go backend is outside the pnpm workspace graph but integrated via root pnpm scripts (`dev`, `dev:backend`, `lint:all`, `test:all`, `build:all`).
+Orchestrated with **pnpm 10 workspaces** + **Turborepo** for the frontend and bot packages. The Go backend is outside the pnpm workspace graph but integrated via root pnpm scripts (`dev`, `dev:backend`, `lint:all`, `test:all`, `build:all`). The **Rust workspace (`apps/rust`) is outside both the pnpm graph and the root scripts** — it is built/tested with `cargo` directly (see Common Commands) and is not yet wired into `pnpm dev`, Traefik, Docker, or CI (the migration is not deploying yet; the Go backend remains authoritative for auth).
 
 ## Common Commands
 
@@ -56,6 +57,16 @@ pnpm test:all        # pnpm test (frontend + bot) + go test
 pnpm build:all       # pnpm build (frontend + bot) + go build
 ```
 
+> The `:all` scripts do **not** cover the Rust workspace — run `cargo` directly (below).
+
+### Rust workspace (`apps/rust`)
+
+```bash
+cd apps/rust && cargo build                  # Build all crates + the identity binary
+cd apps/rust && cargo clippy --all-targets   # Lint (must be warning-clean)
+cd apps/rust && cargo test                   # Run all crate tests
+```
+
 ### Running a single app's tests
 
 ```bash
@@ -64,12 +75,16 @@ cd apps/backend && go test ./internal/shards/...
 
 # TypeScript (vitest)
 pnpm --filter @rustlens/bot test
+
+# Rust (per-crate)
+cd apps/rust && cargo test -p rustlens-db
 ```
 
 ### Lint details
 
 - **Bot**: `tsc --noEmit` (type-check only, no ESLint).
 - **Backend**: `go vet ./...`
+- **Rust**: `cargo clippy --all-targets` (kept warning-clean).
 
 ## Architecture
 
@@ -375,6 +390,47 @@ Command flow: shard `0` registers `/settings`, `/setsteam`, `/player`, `/checkga
 `/analyze offline {identifier}` is a public global command registered by shard `0`; it accepts Steam IDs, supported Steam profile URLs, or BattleMetrics IDs and posts the same offline timing chart style as `/track` analytics without website-admin gating.
 
 `/analyze server {server} {timeframe}` is a public global command registered by shard `0`; `server` autocompletes from bot-global tracked servers, `timeframe` supports `7d`, `14d`, `30d`, `60d`, and `90d`, and the chart renders BattleMetrics daily max/value/min player-count history with weekday distribution computed from the backend's cached 90-day window.
+
+### Rust services (Cargo workspace)
+
+`apps/rust/` is a Cargo workspace (resolver 2, edition 2021) that reimplements the Go backend's **authentication surface** in Rust as the first of a planned Rust fleet, to move off the monolith. It talks to the **same Postgres** as the Go backend and does **not** own the schema — `store.EnsureSchema()` in the Go backend creates/migrates every table; the Rust code only reads/writes existing tables (no migrations here). Stack: **axum 0.8 + sqlx 0.8** (runtime queries, **no** compile-time DB checks) + tokio + reqwest + redis + aes-gcm.
+
+> **Status:** the identity service is a feature-complete drop-in for the Go auth surface but is **not deployed or routed yet** — Traefik still sends `/api/*` to the Go backend, which remains authoritative. The completeness spec + per-item history live in `docs/rust-identity-completeness-spec.md`.
+
+```
+apps/rust/
+  Cargo.toml                     # Workspace manifest (members + shared dep versions)
+  crates/
+    rustlens-session/            # rustlens_session token mint/verify (cross-language contract)
+    rustlens-config/             # Env-based IdentityConfig (mirrors Go defaults)
+    rustlens-db/                 # sqlx pool + query modules (identity, admin, admin_actions, rbac, role_connections)
+    rustlens-events/             # In-process Hub + Redis pub/sub bridge for SSE fan-out
+    rustlens-crypto/             # AES-256-GCM token encryption (byte-compatible with Go proxycrypto)
+  services/
+    identity/                    # The identity service binary (axum). Default PORT 8090.
+      src/{main,state,cookies,appauth,discord,handlers,admin,dispatcher,events_handler,role_connection}.rs
+```
+
+**Endpoints served by `services/identity`** (all mirror the Go handler shape byte-for-byte so responses match `apps/frontend/lib/rustlens-api.ts`):
+
+- `GET /api/healthz`
+- `GET /api/auth/discord` (+ `/callback`) — Discord OAuth login (PKCE S256, scope `identify guilds`); the callback upserts `app_users`, syncs `user_guilds`, mints the `rustlens_session` cookie, and 302s to `/dashboard`.
+- `GET /api/app/me` — current-user aggregate (`user`, `steamAccounts`, `guilds`, `adminRoles`, `permissions`, `entitlements`, optional `discordRoleConnection`).
+- `GET /api/app/admin/{permissions,roles,users,administrators,audit}` — admin read routes.
+- `POST /api/app/admin/actions/{type}` — admin action dispatcher (`roles.create|update|delete|permissions.set`, `users.roles.grant|revoke`, `users.suspend|unsuspend|force_logout|delete`); writes `audit_events` and publishes SSE events.
+- `GET /api/auth/discord/role-connection` (+ `/callback`) and `DELETE /api/app/me/discord-role-connection` — Discord linked-roles (`pro`) OAuth + unlink.
+- `GET /api/events/stream` — SSE (`roles.changed`, `session.revoked`, `session.expiring`, 25s `ping`).
+
+**Auth model (matches the Go backend):**
+
+- The signed **`rustlens_session` cookie** is a **cross-language contract** minted/verified byte-for-byte identically by Go (`apps/backend/internal/appauth/session.go`), the frontend (`apps/frontend/lib/session.ts`), and `crates/rustlens-session`: `base64url(json) "." base64url(HMAC_SHA256(base64url(json)))`, url-safe no-pad, key `APP_SESSION_SECRET`, times in **ms**, `epoch` = revocation counter. Revocation is DB-epoch based (`app_users.session_epoch`, plus `suspended_at`/`deleted_at`) so it works cross-service via the shared DB.
+- `/api/app/*` routes (incl. `/me`, admin) are gated by the internal **`X-RustLens-App-Secret`** header (`APP_API_INTERNAL_SECRET`) and read the acting session from the **`X-RustLens-Session`** header the Next.js server forwards — the browser never calls them directly.
+- OAuth login/callback, the role-connection flow, and `/api/events/stream` (SSE) authenticate via the **cookie** (top-level browser navigation / EventSource).
+- Discord linked-roles tokens are stored AES-GCM-encrypted (`PROXY_ENCRYPTION_KEY`) in `discord_role_connections`; a 6h reconciler (advisory-locked via `pg_try_advisory_lock`) re-pushes `is_pro`/`pro_since` metadata, and pro grant/revoke fires an immediate push.
+
+**Env (identity, `crates/rustlens-config`):** `PORT` (default `8090`), `POSTGRES_URL`, `REDIS_URL`, `APP_SESSION_SECRET`, `APP_API_INTERNAL_SECRET`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `APP_ORIGIN`, `APP_BASE_URL`, and (optional, enable linked-roles) `PROXY_ENCRYPTION_KEY` + `DISCORD_BOT_TOKEN`. All are shared with / mirror the Go backend's variables.
+
+**Conventions:** parameterized queries only; no schema migrations (Go owns them); keep `cargo clippy --all-targets` warning-clean; response JSON must match the frontend TS types exactly (mirror the Go handler when in doubt). **Deferred / not yet ported** (see the spec's follow-ups): admin API-key auth, dispatcher rate-limiting + idempotency, the remaining admin routes (guilds/user-detail/user-installs/servers/bm-servers/proxies/command-usage), and infra wiring (Dockerfile, CI, Traefik).
 
 ## Infrastructure
 
