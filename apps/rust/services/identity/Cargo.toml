@@ -15,6 +15,7 @@ rustlens-config = { workspace = true }
 rustlens-db = { workspace = true }
 rustlens-events = { workspace = true }
 rustlens-crypto = { workspace = true }
+rustlens-botjwt = { workspace = true }
 
 axum = { workspace = true }
 tokio = { workspace = true }

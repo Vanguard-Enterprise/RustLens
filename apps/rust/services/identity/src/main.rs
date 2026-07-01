@@ -5,6 +5,7 @@
 
 mod admin;
 mod appauth;
+mod bot;
 mod cookies;
 mod discord;
 mod dispatcher;
@@ -122,6 +123,23 @@ async fn main() -> anyhow::Result<()> {
             delete(role_connection::disconnect),
         )
         .route("/api/events/stream", get(events_handler::stream))
+        // Bot-internal (JWT-authed) identity routes.
+        .route(
+            "/api/internal/bot/setup/command-usage",
+            post(bot::record_command_usage),
+        )
+        .route(
+            "/api/internal/bot/setup/bans/{discordID}",
+            get(bot::get_user_ban).put(bot::update_user_ban),
+        )
+        .route(
+            "/api/internal/bot/setup/discord/{discordID}/is-website-admin",
+            get(bot::is_website_admin),
+        )
+        .route(
+            "/api/internal/bot/setup/discord/{discordID}/has-pro-role",
+            get(bot::has_pro_role),
+        )
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", state.config.port);

@@ -11,6 +11,7 @@ use sqlx::postgres::PgPoolOptions;
 
 pub mod admin;
 pub mod admin_actions;
+pub mod bot;
 pub mod command_usage;
 pub mod identity;
 pub mod preferences;
