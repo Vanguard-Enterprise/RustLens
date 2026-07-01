@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{RawQuery, State};
+use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 
@@ -92,6 +92,94 @@ pub async fn list_audit(State(st): Shared, headers: HeaderMap, RawQuery(raw): Ra
             error_json(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
         }
     }
+}
+
+/// `GET /api/app/admin/users/{id}` — user-detail aggregate (requires `users.read`).
+pub async fn get_user(State(st): Shared, headers: HeaderMap, Path(id): Path<String>) -> Response {
+    if let Err(resp) = appauth::require_admin(&headers, &st, rbac::USERS_READ).await {
+        return *resp;
+    }
+    if id.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "missing id");
+    }
+    match admin::get_admin_user(&st.pool, &id).await {
+        Ok(Some(detail)) => Json(detail).into_response(),
+        Ok(None) => error_json(StatusCode::NOT_FOUND, "not found"),
+        Err(e) => {
+            tracing::error!("admin get_user: {e:#}");
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        }
+    }
+}
+
+/// `GET /api/app/admin/users/{id}/audit` — per-user audit (requires
+/// `users.audit.read`). `limit` default 50 (cap 500), `before` RFC3339 cursor.
+pub async fn get_user_audit(
+    State(st): Shared,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    RawQuery(raw): RawQuery,
+) -> Response {
+    if let Err(resp) = appauth::require_admin(&headers, &st, rbac::USERS_AUDIT_READ).await {
+        return *resp;
+    }
+    if id.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "missing id");
+    }
+    let (limit, before) = parse_user_audit_query(raw.as_deref());
+    let items = admin::fetch_user_audit(&st.pool, &id, limit, before.as_deref()).await;
+    Json(serde_json::json!({ "items": items })).into_response()
+}
+
+/// `GET /api/app/admin/audit/{id}` — single hydrated audit event (requires
+/// `audit.read`).
+pub async fn get_audit_event(
+    State(st): Shared,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    if let Err(resp) = appauth::require_admin(&headers, &st, rbac::AUDIT_READ).await {
+        return *resp;
+    }
+    if id.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "missing id");
+    }
+    match admin::get_admin_audit_event(&st.pool, &id).await {
+        Ok(Some(item)) => Json(item).into_response(),
+        Ok(None) => error_json(StatusCode::NOT_FOUND, "not found"),
+        Err(e) => {
+            tracing::error!("admin get_audit_event: {e:#}");
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        }
+    }
+}
+
+/// `GET /api/app/admin/audit/event-types` — distinct audit types (requires
+/// `audit.read`).
+pub async fn list_audit_event_types(State(st): Shared, headers: HeaderMap) -> Response {
+    if let Err(resp) = appauth::require_admin(&headers, &st, rbac::AUDIT_READ).await {
+        return *resp;
+    }
+    match admin::list_audit_event_types(&st.pool).await {
+        Ok(types) => Json(serde_json::json!({ "types": types })).into_response(),
+        Err(e) => {
+            tracing::error!("admin list_audit_event_types: {e:#}");
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        }
+    }
+}
+
+fn parse_user_audit_query(raw: Option<&str>) -> (i32, Option<String>) {
+    let p = pairs(raw);
+    let mut limit = 50;
+    if let Some(v) = first(&p, "limit").filter(|s| !s.is_empty()) {
+        parse_limit(v, &mut limit);
+    }
+    if !(1..=500).contains(&limit) {
+        limit = 50;
+    }
+    let before = first(&p, "before").map(str::to_string);
+    (limit, before)
 }
 
 fn users_error(e: AdminQueryError, ctx: &str) -> Response {

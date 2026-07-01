@@ -773,3 +773,316 @@ async fn hydrate_audit_actors(pool: &PgPool, items: &mut [AuditEventItem], ids: 
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// User detail + per-user / single audit
+// ---------------------------------------------------------------------------
+
+/// One guild a user belongs to, for the admin user-detail view. Nullable fields
+/// serialize as `null` (Go `*string`/`*int32`, no omitempty).
+#[derive(Debug, Clone, Serialize)]
+pub struct AdminUserGuild {
+    #[serde(rename = "guildId")]
+    pub guild_id: String,
+    pub name: String,
+    #[serde(rename = "iconHash")]
+    pub icon_hash: Option<String>,
+    #[serde(rename = "ownerDiscordId")]
+    pub owner_discord_id: Option<String>,
+    #[serde(rename = "ownerUsername")]
+    pub owner_username: Option<String>,
+    #[serde(rename = "ownerGlobalName")]
+    pub owner_global_name: Option<String>,
+    #[serde(rename = "ownerAvatarHash")]
+    pub owner_avatar_hash: Option<String>,
+    #[serde(rename = "approximateMemberCount")]
+    pub approximate_member_count: Option<i32>,
+    #[serde(rename = "isInstalled")]
+    pub is_installed: bool,
+    #[serde(rename = "leftAt")]
+    pub left_at: Option<String>,
+}
+
+/// The admin user-detail aggregate (frontend `AdminUserDetail`).
+#[derive(Debug, Clone, Serialize)]
+pub struct AdminUserDetail {
+    pub user: AdminAppUser,
+    #[serde(rename = "discordId")]
+    pub discord_id: String,
+    #[serde(rename = "discordUsername")]
+    pub discord_username: String,
+    #[serde(rename = "discordGlobalName", skip_serializing_if = "String::is_empty")]
+    pub discord_global_name: String,
+    #[serde(rename = "discordAvatar", skip_serializing_if = "String::is_empty")]
+    pub discord_avatar: String,
+    pub guilds: Vec<AdminUserGuild>,
+    #[serde(rename = "adminRoles")]
+    pub admin_roles: Vec<String>,
+    pub entitlements: Vec<String>,
+    #[serde(rename = "banCategories")]
+    pub ban_categories: Vec<String>,
+    #[serde(rename = "suspendedAt", skip_serializing_if = "Option::is_none")]
+    pub suspended_at: Option<String>,
+    #[serde(rename = "suspendReason", skip_serializing_if = "String::is_empty")]
+    pub suspend_reason: String,
+    #[serde(rename = "deletedAt", skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<String>,
+    #[serde(rename = "recentAudit")]
+    pub recent_audit: Vec<AuditEventItem>,
+}
+
+/// Load the admin user-detail aggregate, or `None` (404) if the user is missing.
+/// Mirrors the Go `GetAdminUser` (raw `display_name`/`avatar_url`, no CDN
+/// fallback; guilds prefer `bot_guilds` over `user_guilds`; 5 most-recent audit
+/// rows, unhydrated).
+pub async fn get_admin_user(
+    pool: &PgPool,
+    id: &str,
+) -> Result<Option<AdminUserDetail>, sqlx::Error> {
+    let row = sqlx::query(
+        r#"SELECT id, display_name, avatar_url, roles::text,
+                  created_at, updated_at, last_login_at,
+                  suspended_at, COALESCE(suspend_reason,''), deleted_at,
+                  COALESCE(discord_id, ''), COALESCE(discord_username, ''),
+                  COALESCE(discord_global_name, ''), COALESCE(discord_avatar, ''),
+                  COALESCE((SELECT ub.categories FROM user_bans ub WHERE ub.discord_id = app_users.discord_id), ARRAY[]::text[])
+           FROM app_users WHERE id = $1"#,
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let fmt = |t: DateTime<Utc>| t.to_rfc3339_opts(SecondsFormat::Secs, true);
+    let roles_json: String = row.try_get(3)?;
+    let roles: Vec<String> = if roles_json.is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str(&roles_json).unwrap_or_default()
+    };
+    let suspended_at: Option<DateTime<Utc>> = row.try_get(7)?;
+    let deleted_at: Option<DateTime<Utc>> = row.try_get(9)?;
+    let discord_id: String = row.try_get(10)?;
+    let ban_categories: Vec<String> = row.try_get(14)?;
+
+    let user = AdminAppUser {
+        id: row.try_get(0)?,
+        display_name: row.try_get(1)?,
+        avatar_url: row.try_get(2)?,
+        roles,
+        created_at: row.try_get(4)?,
+        updated_at: row.try_get(5)?,
+        last_login_at: row.try_get(6)?,
+    };
+
+    let admin_roles: Vec<String> = sqlx::query(
+        r#"SELECT r.key FROM admin_roles r
+           JOIN admin_user_roles aur ON aur.role_id = r.id
+           WHERE aur.user_id = $1 ORDER BY r.key"#,
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .filter_map(|r| r.try_get::<String, _>("key").ok())
+    .collect();
+
+    let entitlements: Vec<String> = sqlx::query(
+        r#"SELECT key FROM user_entitlements
+           WHERE user_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
+           ORDER BY key"#,
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .filter_map(|r| r.try_get::<String, _>("key").ok())
+    .collect();
+
+    let mut guilds = Vec::new();
+    if !discord_id.is_empty() {
+        let grows = sqlx::query(
+            r#"SELECT
+                   ug.guild_id,
+                   COALESCE(NULLIF(bg.name, ''), ug.name, ''),
+                   COALESCE(bg.icon_hash, ug.icon_hash),
+                   COALESCE(bg.owner_discord_id, CASE WHEN ug.is_owner THEN owner_app.discord_id END),
+                   COALESCE(bg.owner_username, CASE WHEN ug.is_owner THEN owner_app.discord_username END),
+                   COALESCE(bg.owner_global_name, CASE WHEN ug.is_owner THEN owner_app.discord_global_name END),
+                   COALESCE(bg.owner_avatar_hash, CASE WHEN ug.is_owner THEN owner_app.discord_avatar END),
+                   COALESCE(bg.approximate_member_count, ug.approximate_member_count),
+                   COALESCE(bg.is_installed, FALSE),
+                   bg.left_at
+               FROM user_guilds ug
+               LEFT JOIN bot_guilds bg ON bg.guild_id = ug.guild_id
+               LEFT JOIN app_users owner_app ON owner_app.discord_id = ug.discord_id
+               WHERE ug.discord_id = $1 AND ug.left_at IS NULL
+               ORDER BY COALESCE(NULLIF(bg.name, ''), NULLIF(ug.name, ''), ug.guild_id)"#,
+        )
+        .bind(&discord_id)
+        .fetch_all(pool)
+        .await?;
+        for r in grows {
+            let left_at: Option<DateTime<Utc>> = r.try_get(9)?;
+            guilds.push(AdminUserGuild {
+                guild_id: r.try_get(0)?,
+                name: r.try_get(1)?,
+                icon_hash: r.try_get(2)?,
+                owner_discord_id: r.try_get(3)?,
+                owner_username: r.try_get(4)?,
+                owner_global_name: r.try_get(5)?,
+                owner_avatar_hash: r.try_get(6)?,
+                approximate_member_count: r.try_get(7)?,
+                is_installed: r.try_get(8)?,
+                left_at: left_at.map(fmt),
+            });
+        }
+    }
+
+    let recent_audit = fetch_user_audit(pool, id, 5, None).await;
+
+    Ok(Some(AdminUserDetail {
+        user,
+        discord_id,
+        discord_username: row.try_get(11)?,
+        discord_global_name: row.try_get(12)?,
+        discord_avatar: row.try_get(13)?,
+        guilds,
+        admin_roles,
+        entitlements,
+        ban_categories,
+        suspended_at: suspended_at.map(fmt),
+        suspend_reason: row.try_get(8)?,
+        deleted_at: deleted_at.map(fmt),
+        recent_audit,
+    }))
+}
+
+/// Audit rows targeting `user_id`, newest first, cursor-paginated by `before`
+/// (RFC3339). NOT hydrated (matches Go `fetchUserAudit`). Errors yield an empty
+/// list (best-effort, like Go).
+pub async fn fetch_user_audit(
+    pool: &PgPool,
+    user_id: &str,
+    limit: i32,
+    before: Option<&str>,
+) -> Vec<AuditEventItem> {
+    let before_ts = before
+        .and_then(|b| DateTime::parse_from_rfc3339(b).ok())
+        .map(|t| t.with_timezone(&Utc));
+    let has_legacy = table_exists(pool, "app_audit_events").await;
+
+    let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(
+        "SELECT id::text, COALESCE(actor_user_id::text,''), COALESCE(target_user_id::text,''), action_type, COALESCE(params,'{}'::jsonb), created_at FROM audit_events WHERE target_user_id::text = ",
+    );
+    qb.push_bind(user_id.to_string());
+    if let Some(b) = before_ts {
+        qb.push(" AND created_at < ");
+        qb.push_bind(b);
+    }
+    if has_legacy {
+        qb.push(" UNION ALL SELECT id::text, COALESCE(actor_user_id,''), COALESCE(target_user_id,''), event_type, COALESCE(payload,'{}'::jsonb), created_at FROM app_audit_events WHERE target_user_id = ");
+        qb.push_bind(user_id.to_string());
+        if let Some(b) = before_ts {
+            qb.push(" AND created_at < ");
+            qb.push_bind(b);
+        }
+    }
+    qb.push(" ORDER BY created_at DESC LIMIT ");
+    qb.push_bind(limit as i64);
+
+    let rows = match qb.build().fetch_all(pool).await {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    rows.into_iter()
+        .filter_map(|r| {
+            Some(AuditEventItem {
+                id: r.try_get(0).ok()?,
+                actor_user_id: r.try_get(1).ok()?,
+                target_user_id: r.try_get(2).ok()?,
+                event_type: r.try_get(3).ok()?,
+                payload: r.try_get::<serde_json::Value, _>(4).unwrap_or_else(|_| serde_json::json!({})),
+                created_at: r.try_get(5).ok()?,
+                actor_display_name: None,
+                actor_avatar_url: None,
+                target_display_name: None,
+                target_avatar_url: None,
+                result: None,
+                reason: None,
+            })
+        })
+        .collect()
+}
+
+/// A single hydrated audit event by id, or `None` (404). Mirrors
+/// `GetAdminAuditEvent`.
+pub async fn get_admin_audit_event(
+    pool: &PgPool,
+    id: &str,
+) -> Result<Option<AuditEventItem>, sqlx::Error> {
+    let has_legacy = table_exists(pool, "app_audit_events").await;
+    let new_q = r#"SELECT id::text, COALESCE(actor_user_id::text,'') AS actor_user_id,
+                          COALESCE(target_user_id::text,'') AS target_user_id,
+                          action_type AS event_type, COALESCE(params,'{}'::jsonb) AS payload,
+                          NULLIF(result,'') AS result, reason, created_at
+                   FROM audit_events WHERE id::text = $1"#;
+    let legacy_q = r#"SELECT id::text, COALESCE(actor_user_id,'') AS actor_user_id,
+                             COALESCE(target_user_id,'') AS target_user_id,
+                             event_type, COALESCE(payload,'{}'::jsonb) AS payload,
+                             NULL::text AS result, NULL::text AS reason, created_at
+                      FROM app_audit_events WHERE id::text = $1"#;
+    let sql = if has_legacy {
+        format!("({new_q}) UNION ALL ({legacy_q}) LIMIT 1")
+    } else {
+        new_q.to_string()
+    };
+
+    let row = sqlx::query(&sql).bind(id).fetch_optional(pool).await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let mut item = AuditEventItem {
+        id: row.try_get("id")?,
+        actor_user_id: row.try_get("actor_user_id")?,
+        target_user_id: row.try_get("target_user_id")?,
+        event_type: row.try_get("event_type")?,
+        payload: row.try_get::<serde_json::Value, _>("payload").unwrap_or_else(|_| serde_json::json!({})),
+        created_at: row.try_get("created_at")?,
+        actor_display_name: None,
+        actor_avatar_url: None,
+        target_display_name: None,
+        target_avatar_url: None,
+        result: row.try_get("result")?,
+        reason: row.try_get("reason")?,
+    };
+    let mut ids = Vec::new();
+    if !item.actor_user_id.is_empty() {
+        ids.push(item.actor_user_id.clone());
+    }
+    if !item.target_user_id.is_empty() {
+        ids.push(item.target_user_id.clone());
+    }
+    hydrate_audit_actors(pool, std::slice::from_mut(&mut item), &ids).await;
+    Ok(Some(item))
+}
+
+/// Distinct audit action/event types, sorted. Mirrors `loadAuditEventTypes`
+/// (the Go 60s in-process cache is not replicated — the query is fast + admin-only).
+pub async fn list_audit_event_types(pool: &PgPool) -> Result<Vec<String>, sqlx::Error> {
+    let has_legacy = table_exists(pool, "app_audit_events").await;
+    let mut sql = "SELECT DISTINCT action_type AS t FROM audit_events WHERE action_type IS NOT NULL AND action_type <> ''".to_string();
+    if has_legacy {
+        sql.push_str(" UNION SELECT DISTINCT event_type AS t FROM app_audit_events WHERE event_type IS NOT NULL AND event_type <> ''");
+    }
+    let mut out: Vec<String> = sqlx::query(&sql)
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .filter_map(|r| r.try_get::<String, _>("t").ok())
+        .collect();
+    out.sort();
+    Ok(out)
+}
