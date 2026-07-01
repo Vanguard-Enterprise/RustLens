@@ -11,6 +11,7 @@ mod discord;
 mod dispatcher;
 mod events_handler;
 mod handlers;
+mod ratelimit;
 mod role_connection;
 mod state;
 
@@ -61,6 +62,8 @@ async fn main() -> anyhow::Result<()> {
         hub,
         events,
         cipher,
+        rate_limiter: ratelimit::RateLimiter::new(),
+        idempotency: ratelimit::IdempotencyCache::new(),
     });
 
     // Register the linked-roles metadata schema once at startup (best-effort).

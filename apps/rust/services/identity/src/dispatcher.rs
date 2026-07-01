@@ -118,6 +118,34 @@ pub async fn dispatch(
         Err(resp) => return *resp,
     };
 
+    // 2a. Rate limit (per actor+action token bucket).
+    if let Err(retry) = st.rate_limiter.allow(
+        &session.user_id,
+        &action_type,
+        crate::ratelimit::DEFAULT_MUTATING_CAPACITY,
+        crate::ratelimit::DEFAULT_MUTATING_REFILL,
+    ) {
+        let secs = (retry.as_secs_f64() as u64).max(1);
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(header::RETRY_AFTER, secs.to_string())],
+            Json(json!({ "error": "rate_limited" })),
+        )
+            .into_response();
+    }
+
+    // 2b. Idempotency: replay a cached success when the key matches.
+    let idem_key = headers
+        .get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .filter(|s| !s.is_empty())
+        .map(|k| crate::ratelimit::IdempotencyCache::key(&session.user_id, &action_type, k));
+    if let Some(key) = idem_key.as_ref() {
+        if let Some((status, body)) = st.idempotency.get(key) {
+            return replay_response(status, body);
+        }
+    }
+
     // 3. Permission.
     match rustlens_db::admin::has_permission(&st.pool, &session.user_id, spec.permission).await {
         Ok(true) => {}
@@ -195,11 +223,32 @@ pub async fn dispatch(
         }
     }
 
-    // 9. Audit + respond.
+    // 9. Audit + respond (cache the success body for idempotency replay).
     let ua = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok());
-    finalize(&st, &session, &spec, &action_type, &validated, &body, exec, ua).await
+    let is_success = exec.is_ok();
+    let (status, resp_body) =
+        finalize(&st, &session, &spec, &action_type, &validated, &body, exec, ua).await;
+    if let Some(key) = idem_key {
+        if is_success && status == StatusCode::OK {
+            st.idempotency
+                .put(key, status.as_u16(), serde_json::to_vec(&resp_body).unwrap_or_default());
+        }
+    }
+    (status, Json(resp_body)).into_response()
+}
+
+/// Build a replayed idempotent response with the `Idempotent-Replay` marker.
+fn replay_response(status: u16, body: Vec<u8>) -> Response {
+    axum::http::Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("Idempotent-Replay", "true")
+        .body(axum::body::Body::from(body))
+        .unwrap_or_else(|_| {
+            (StatusCode::INTERNAL_SERVER_ERROR, "replay failed").into_response()
+        })
 }
 
 /// Result of a successful execute: the response payload plus the (possibly
@@ -223,7 +272,7 @@ async fn finalize(
     body: &Body,
     exec: Result<ExecOk, ActionError>,
     user_agent: Option<&str>,
-) -> Response {
+) -> (StatusCode, Value) {
     let reason = if body.reason.is_empty() { None } else { Some(body.reason.as_str()) };
     match exec {
         Ok(ok) => {
@@ -241,7 +290,7 @@ async fn finalize(
                 user_agent,
             };
             let _ = acts::record_audit(&st.pool, &entry).await;
-            err(StatusCode::OK, json!({ "ok": true, "result": ok.payload }))
+            (StatusCode::OK, json!({ "ok": true, "result": ok.payload }))
         }
         Err(ae) => {
             let (status, code, msg) = ae.parts();
@@ -259,7 +308,7 @@ async fn finalize(
                 user_agent,
             };
             let _ = acts::record_audit(&st.pool, &entry).await;
-            err(
+            (
                 StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
                 json!({ "error": code, "message": msg }),
             )
