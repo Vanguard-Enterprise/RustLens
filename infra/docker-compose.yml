@@ -9,16 +9,50 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rustlens"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   redis:
     image: redis:8-alpine
     ports:
       - "6379:6379"
 
+  # Rust identity service — serves the auth/OAuth, /me, events, role-connection,
+  # and bot-internal identity routes (see infra/traefik/dynamic/identity.yml for
+  # exactly which paths Traefik routes here). Shares the Go backend's secrets via
+  # apps/backend/.env; the explicit environment below points it at the compose
+  # network's Postgres/Redis. Requires apps/backend/.env for the shared secrets
+  # (APP_SESSION_SECRET, APP_API_INTERNAL_SECRET, DISCORD_CLIENT_ID/SECRET,
+  # BOT_SERVICE_JWT_SECRET); the container exits without them.
+  identity:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+    env_file:
+      - path: ../apps/backend/.env
+        required: false
+    environment:
+      PORT: "8090"
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      APP_ORIGIN: "http://localhost"
+      APP_BASE_URL: "http://localhost:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   traefik:
     image: traefik:v3.7
     command:
-      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --api.dashboard=true
@@ -27,7 +61,7 @@ services:
       - "80:80"
       - "8081:8080"
     volumes:
-      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
