@@ -1,0 +1,23 @@
+# Identity-service cutover (Rust). Routes ONLY the paths the identity service
+# fully owns to it (higher priority than the `/api` catch-all in base.yml);
+# everything else still falls through to the Go backend.
+#
+# Deliberately NOT routed here: `/api/app/admin/*` — the admin surface is split
+# across future Rust services (guilds/servers/proxies/bm-servers are still on Go)
+# and the action dispatcher has deferred actions, so it stays on the Go backend
+# until the whole admin surface is ported.
+http:
+  routers:
+    identity:
+      entryPoints:
+        - web
+      priority: 200
+      service: identity
+      # Single line: Traefik's rule parser rejects embedded newlines.
+      rule: "Host(`localhost`) && (PathPrefix(`/api/auth/discord`) || PathPrefix(`/api/events`) || Path(`/api/app/me`) || Path(`/api/app/me/preferences`) || Path(`/api/app/auth/logout`) || Path(`/api/app/me/discord-role-connection`) || Path(`/api/internal/bot/setup/command-usage`) || PathPrefix(`/api/internal/bot/setup/bans/`) || PathRegexp(`^/api/internal/bot/setup/discord/[^/]+/(is-website-admin|has-pro-role)$`))"
+
+  services:
+    identity:
+      loadBalancer:
+        servers:
+          - url: "http://identity:8090"
