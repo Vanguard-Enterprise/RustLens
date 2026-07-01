@@ -81,6 +81,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/discord", get(handlers::initiate))
         .route("/api/auth/discord/callback", get(handlers::callback))
         .route("/api/app/me", get(handlers::me))
+        .route(
+            "/api/app/me/preferences",
+            get(handlers::get_preferences).patch(handlers::patch_preferences),
+        )
+        .route("/api/app/auth/logout", post(handlers::logout))
         .route("/api/app/admin/permissions", get(admin::list_permissions))
         .route("/api/app/admin/roles", get(admin::list_roles))
         .route("/api/app/admin/users", get(admin::list_users))

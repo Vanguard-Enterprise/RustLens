@@ -12,6 +12,7 @@ use sqlx::postgres::PgPoolOptions;
 pub mod admin;
 pub mod admin_actions;
 pub mod identity;
+pub mod preferences;
 pub mod rbac;
 pub mod role_connections;
 
