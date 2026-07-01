@@ -12,6 +12,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 
 use rustlens_db::admin::{self, AdminQueryError, AuditQuery, UsersQuery};
+use rustlens_db::command_usage::{self as cu, CommandUsageListFilters};
 use rustlens_db::rbac;
 
 use crate::appauth;
@@ -167,6 +168,143 @@ pub async fn list_audit_event_types(State(st): Shared, headers: HeaderMap) -> Re
             error_json(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
         }
     }
+}
+
+/// `GET /api/app/admin/users/{id}/command-usage` (requires `users.read`).
+pub async fn get_user_command_usage(
+    State(st): Shared,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    RawQuery(raw): RawQuery,
+) -> Response {
+    if let Err(resp) = appauth::require_admin(&headers, &st, rbac::USERS_READ).await {
+        return *resp;
+    }
+    if id.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "missing id");
+    }
+    let p = pairs(raw.as_deref());
+    let mut page = 1;
+    if let Some(n) = first(&p, "page").and_then(|v| v.parse::<i32>().ok()) {
+        if n > 0 {
+            page = n;
+        }
+    }
+    let mut page_size = 25;
+    if let Some(n) = first(&p, "pageSize").and_then(|v| v.parse::<i32>().ok()) {
+        if n > 0 && n <= 100 {
+            page_size = n;
+        }
+    }
+    let filters = CommandUsageListFilters {
+        q: first(&p, "q").map(str::to_string),
+        command: first(&p, "command").map(str::to_string),
+        guild_id: first(&p, "guildId").map(str::to_string),
+        outcomes: csv_validate(
+            first(&p, "outcome"),
+            &["success", "error", "banned", "denied"],
+        ),
+        interaction_types: csv_validate(
+            first(&p, "interactionType"),
+            &["command", "button", "modal", "string_select"],
+        ),
+        window_days: parse_window_days(first(&p, "windowDays")),
+    };
+    match cu::list_user_command_usage(&st.pool, &id, &filters, page, page_size).await {
+        Ok(page) => Json(page).into_response(),
+        Err(e) => {
+            tracing::error!("admin command-usage list: {e:#}");
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, "failed to list command usage")
+        }
+    }
+}
+
+/// `GET /api/app/admin/users/{id}/command-usage/filter-options` (requires `users.read`).
+pub async fn get_user_command_usage_filter_options(
+    State(st): Shared,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    RawQuery(raw): RawQuery,
+) -> Response {
+    if let Err(resp) = appauth::require_admin(&headers, &st, rbac::USERS_READ).await {
+        return *resp;
+    }
+    if id.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "missing id");
+    }
+    let window_days = parse_window_days(first(&pairs(raw.as_deref()), "windowDays")).unwrap_or(90);
+    match cu::command_usage_filter_options(&st.pool, &id, window_days).await {
+        Ok(opts) => Json(opts).into_response(),
+        Err(e) => {
+            tracing::error!("admin command-usage filter-options: {e:#}");
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, "failed to load filter options")
+        }
+    }
+}
+
+/// `GET /api/app/admin/users/{id}/command-usage/{usageId}/targets` (requires `users.read`).
+pub async fn get_command_usage_targets(
+    State(st): Shared,
+    headers: HeaderMap,
+    Path((id, usage_id)): Path<(String, String)>,
+) -> Response {
+    if let Err(resp) = appauth::require_admin(&headers, &st, rbac::USERS_READ).await {
+        return *resp;
+    }
+    if id.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "missing id");
+    }
+    let Some(usage_id) = usage_id.parse::<i64>().ok().filter(|n| *n > 0) else {
+        return error_json(StatusCode::BAD_REQUEST, "invalid usageId");
+    };
+    match cu::list_command_usage_targets_for_user(&st.pool, &id, usage_id).await {
+        Ok(targets) => Json(serde_json::json!({ "targets": targets })).into_response(),
+        Err(e) => {
+            tracing::error!("admin command-usage targets: {e:#}");
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, "failed to load targets")
+        }
+    }
+}
+
+/// `GET /api/app/admin/users/{id}/command-usage/{usageId}/children` (requires `users.read`).
+pub async fn get_command_usage_children(
+    State(st): Shared,
+    headers: HeaderMap,
+    Path((id, usage_id)): Path<(String, String)>,
+) -> Response {
+    if let Err(resp) = appauth::require_admin(&headers, &st, rbac::USERS_READ).await {
+        return *resp;
+    }
+    if id.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "missing id");
+    }
+    let Some(usage_id) = usage_id.parse::<i64>().ok().filter(|n| *n > 0) else {
+        return error_json(StatusCode::BAD_REQUEST, "invalid usageId");
+    };
+    match cu::list_user_command_usage_children(&st.pool, &id, usage_id).await {
+        Ok(items) => Json(serde_json::json!({ "items": items })).into_response(),
+        Err(e) => {
+            tracing::error!("admin command-usage children: {e:#}");
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, "failed to load children")
+        }
+    }
+}
+
+/// Split a CSV param and keep only allowed values (mirrors Go `splitAndValidate`).
+fn csv_validate(v: Option<&str>, allowed: &[&str]) -> Vec<String> {
+    let Some(v) = v.filter(|s| !s.is_empty()) else {
+        return Vec::new();
+    };
+    v.split(',')
+        .filter(|s| allowed.contains(s))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Only `1|7|30|90` are accepted; anything else yields `None`.
+fn parse_window_days(v: Option<&str>) -> Option<i64> {
+    v.and_then(|s| s.parse::<i64>().ok())
+        .filter(|n| matches!(n, 1 | 7 | 30 | 90))
 }
 
 fn parse_user_audit_query(raw: Option<&str>) -> (i32, Option<String>) {
