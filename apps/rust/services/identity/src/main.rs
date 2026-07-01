@@ -95,6 +95,22 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/app/admin/audit/{id}", get(admin::get_audit_event))
         .route("/api/app/admin/users/{id}", get(admin::get_user))
         .route("/api/app/admin/users/{id}/audit", get(admin::get_user_audit))
+        .route(
+            "/api/app/admin/users/{id}/command-usage",
+            get(admin::get_user_command_usage),
+        )
+        .route(
+            "/api/app/admin/users/{id}/command-usage/filter-options",
+            get(admin::get_user_command_usage_filter_options),
+        )
+        .route(
+            "/api/app/admin/users/{id}/command-usage/{usageId}/targets",
+            get(admin::get_command_usage_targets),
+        )
+        .route(
+            "/api/app/admin/users/{id}/command-usage/{usageId}/children",
+            get(admin::get_command_usage_children),
+        )
         .route("/api/app/admin/actions/{type}", post(dispatcher::dispatch))
         .route("/api/auth/discord/role-connection", get(role_connection::initiate))
         .route(
