@@ -6,10 +6,13 @@
 
 mod auth;
 mod player_states;
+mod poller;
+mod redis_lock;
 mod state;
 mod tracked;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use axum::{
@@ -19,6 +22,9 @@ use axum::{
 use rustlens_config::ServersConfig;
 
 use state::AppState;
+
+/// BattleMetrics HTTP client timeout (Go's outbound fallback).
+const BM_HTTP_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -34,7 +40,46 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("connecting to Postgres")?;
 
-    let state = Arc::new(AppState { config, pool });
+    // Outbound proxy provider (BattleMetrics only) + BM client.
+    let cipher = match config.proxy_encryption_key.as_deref() {
+        Some(key) => Some(
+            rustlens_crypto::Cipher::from_base64_key(key).context("PROXY_ENCRYPTION_KEY")?,
+        ),
+        None => None,
+    };
+    let endpoints = rustlens_outbound::load_initial_endpoints(
+        &pool,
+        cipher.as_ref(),
+        config.proxy_enabled,
+        &config.proxy_endpoints,
+    )
+    .await
+    .context("loading outbound proxies")?;
+    let provider = rustlens_outbound::Provider::new(!endpoints.is_empty(), &endpoints, BM_HTTP_TIMEOUT)
+        .context("building outbound provider")?;
+    let bm = rustlens_battlemetrics::Client::new(
+        Arc::new(provider) as Arc<dyn rustlens_outbound::OutboundSender>,
+    );
+
+    // Redis for the worker locks (fails to single-pod mode when unavailable).
+    let redis = match redis::Client::open(config.redis_url.as_str()) {
+        Ok(client) => match client.get_multiplexed_async_connection().await {
+            Ok(conn) => Some(conn),
+            Err(e) => {
+                tracing::warn!("redis unavailable, workers run single-pod: {e}");
+                None
+            }
+        },
+        Err(e) => {
+            tracing::warn!("invalid REDIS_URL, workers run single-pod: {e}");
+            None
+        }
+    };
+
+    let state = Arc::new(AppState { config, pool, bm, redis });
+
+    // Spawn the BattleMetrics rolling poller.
+    tokio::spawn(poller::run(state.clone()));
 
     let app = Router::new()
         .route("/api/healthz", get(healthz))

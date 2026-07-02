@@ -9,6 +9,10 @@ description = "RustLens servers service — tracked BattleMetrics servers, live 
 rustlens-config = { workspace = true }
 rustlens-db = { workspace = true }
 rustlens-botjwt = { workspace = true }
+rustlens-battlemetrics = { workspace = true }
+rustlens-outbound = { workspace = true }
+rustlens-crypto = { workspace = true }
+redis = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -17,3 +21,7 @@ chrono = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+wiremock = "0.6"
+sqlx = { workspace = true }

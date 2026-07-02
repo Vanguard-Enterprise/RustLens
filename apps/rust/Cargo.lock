@@ -2016,14 +2016,20 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "redis",
+ "rustlens-battlemetrics",
  "rustlens-botjwt",
  "rustlens-config",
+ "rustlens-crypto",
  "rustlens-db",
+ "rustlens-outbound",
  "serde",
  "serde_json",
+ "sqlx",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "wiremock",
 ]
 
 [[package]]
