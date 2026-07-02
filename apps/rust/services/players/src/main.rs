@@ -6,9 +6,12 @@
 
 mod auth;
 mod links;
+mod resolve;
 mod state;
+mod steam;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use axum::{
@@ -16,8 +19,16 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use rustlens_config::PlayersConfig;
+use rustlens_steam::Resolver;
 
 use state::AppState;
+
+/// bmsearch cold-lookup polling ceiling. Inline calls bound this tighter with an
+/// outer timeout (`BM_SEARCH_INLINE_TIMEOUT_MS`); the detached backfill uses the
+/// full 90s. See `resolve.rs`.
+const BMSEARCH_MAX_WAIT: Duration = Duration::from_secs(90);
+/// BattleMetrics HTTP client timeout (Go's outbound fallback).
+const BM_HTTP_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -33,10 +44,74 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("connecting to Postgres")?;
 
-    let state = Arc::new(AppState { config, pool });
+    // Steam Web API client (direct).
+    let steam = rustlens_steam::steamapi::Client::new(config.steam_api_key.clone())
+        .context("building steam client")?;
+
+    // Steam↔BM resolver chain: bmsearch primary (if enabled) → bmmatch fallback.
+    let mut resolvers: Vec<Box<dyn Resolver>> = Vec::new();
+    if config.bm_search_enabled {
+        resolvers.push(Box::new(
+            rustlens_steam::bmsearch::Client::new(&config.bm_search_url, BMSEARCH_MAX_WAIT)
+                .context("building bmsearch client")?,
+        ));
+    }
+    resolvers.push(Box::new(
+        rustlens_steam::bmmatch::Client::new(&config.bm_match_url, &config.bm_match_token)
+            .context("building bmmatch client")?,
+    ));
+    let resolver = Arc::new(rustlens_steam::Chain::new(resolvers));
+
+    // Outbound proxy provider (BattleMetrics only). DB proxies decrypted with the
+    // cipher take precedence over the PROXY_ENDPOINTS fallback.
+    let cipher = match config.proxy_encryption_key.as_deref() {
+        Some(key) => Some(
+            rustlens_crypto::Cipher::from_base64_key(key).context("PROXY_ENCRYPTION_KEY")?,
+        ),
+        None => None,
+    };
+    let endpoints = rustlens_outbound::load_initial_endpoints(
+        &pool,
+        cipher.as_ref(),
+        config.proxy_enabled,
+        &config.proxy_endpoints,
+    )
+    .await
+    .context("loading outbound proxies")?;
+    let provider = rustlens_outbound::Provider::new(!endpoints.is_empty(), &endpoints, BM_HTTP_TIMEOUT)
+        .context("building outbound provider")?;
+    let bm = rustlens_battlemetrics::Client::new(
+        Arc::new(provider) as Arc<dyn rustlens_outbound::OutboundSender>,
+    );
+
+    let state = Arc::new(AppState {
+        config,
+        pool,
+        steam,
+        resolver,
+        bm,
+        backfill: state::Backfill::default(),
+    });
 
     let app = Router::new()
         .route("/api/healthz", get(healthz))
+        // ---- resolve / profile / analytics ----
+        .route(
+            "/api/internal/bot/setup/steam/{steamID}",
+            get(steam::get_steam_account),
+        )
+        .route(
+            "/api/internal/bot/setup/steam/by-bm/{bmID}",
+            get(steam::get_steam_account_by_bm),
+        )
+        .route(
+            "/api/internal/bot/setup/steam/{steamID}/profile",
+            get(steam::get_steam_profile),
+        )
+        .route(
+            "/api/internal/bot/setup/steam/{steamID}/analytics",
+            get(steam::get_steam_analytics),
+        )
         // ---- global links ----
         .route("/api/internal/bot/setup/steam/links", post(links::create_soft_link))
         .route(
