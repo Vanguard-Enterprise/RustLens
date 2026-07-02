@@ -1,0 +1,21 @@
+[package]
+name = "rustlens-battlemetrics"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Unauthenticated BattleMetrics JSON:API client (servers, players, sessions, player-count-history) for RustLens Rust services, routed through rustlens-outbound. Mirrors the Go internal/battlemetrics client."
+
+[dependencies]
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+url = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+rustlens-outbound = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+async-trait = { workspace = true }
+http = "1"
