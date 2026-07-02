@@ -5,6 +5,7 @@
 //! Talks to the same Postgres as the Go backend (schema owned by Go). PORT 8092.
 
 mod auth;
+mod player_states;
 mod state;
 mod tracked;
 
@@ -54,6 +55,31 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/internal/bot/setup/guilds/{guildID}/tracked-servers/{bmID}",
             post(tracked::add_guild_tracked_server).delete(tracked::remove_guild_tracked_server),
+        )
+        // ---- player presence ----
+        .route(
+            "/api/internal/bot/setup/player-states/servers/{serverID}",
+            get(player_states::list_online_by_server),
+        )
+        .route(
+            "/api/internal/bot/setup/player-states/servers/{serverID}/search",
+            get(player_states::search_states_on_server),
+        )
+        .route(
+            "/api/internal/bot/setup/player-states/servers/{serverID}/players/{playerID}",
+            get(player_states::get_state),
+        )
+        .route(
+            "/api/internal/bot/setup/player-states/players/{playerID}",
+            get(player_states::list_states_by_player),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/online-summary",
+            get(player_states::list_online_summary),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/tracked-server-log-events",
+            get(player_states::list_tracked_server_log_events),
         )
         .with_state(state.clone());
 

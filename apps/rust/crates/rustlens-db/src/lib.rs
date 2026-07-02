@@ -17,6 +17,7 @@ pub mod game_bans;
 pub mod identity;
 pub mod outbound_proxies;
 pub mod platform_sync;
+pub mod player_states;
 pub mod players_links;
 pub mod players_search;
 pub mod players_steam;
