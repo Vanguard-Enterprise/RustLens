@@ -23,6 +23,7 @@ pub mod players_steam;
 pub mod preferences;
 pub mod rbac;
 pub mod track_analytics;
+pub mod tracked_servers;
 pub mod role_connections;
 
 /// Connect to Postgres and return a pooled handle.

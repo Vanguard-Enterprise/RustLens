@@ -186,6 +186,59 @@ impl PlayersConfig {
     }
 }
 
+/// Configuration for the servers service (Phase 3): tracked servers, presence,
+/// analytics, and the outbound-proxy infra + the poller/refresher workers.
+#[derive(Debug, Clone)]
+pub struct ServersConfig {
+    pub port: u16,
+    pub postgres_url: String,
+    pub redis_url: String,
+    pub app_session_secret: String,
+    pub app_api_internal_secret: String,
+    pub bot_service_jwt_secret: String,
+    pub bot_jwt_issuer: String,
+    pub bot_jwt_audience: String,
+    /// BattleMetrics poll interval (seconds; `0` disables the poller).
+    pub battlemetrics_poll_interval_seconds: u64,
+    pub proxy_enabled: bool,
+    pub proxy_endpoints: Vec<String>,
+    pub proxy_encryption_key: Option<String>,
+}
+
+impl ServersConfig {
+    /// Load from the process environment with the Go backend's defaults.
+    pub fn from_env() -> Result<Self, ConfigError> {
+        Ok(Self {
+            port: parse_port("PORT", 8092)?,
+            postgres_url: opt("POSTGRES_URL").unwrap_or_else(|| {
+                "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable".to_string()
+            }),
+            redis_url: opt("REDIS_URL").unwrap_or_else(|| "redis://localhost:6379/0".to_string()),
+            app_session_secret: req("APP_SESSION_SECRET")?,
+            app_api_internal_secret: req("APP_API_INTERNAL_SECRET")?,
+            bot_service_jwt_secret: req("BOT_SERVICE_JWT_SECRET")?,
+            bot_jwt_issuer: opt("BOT_JWT_ISSUER").unwrap_or_else(|| "rustlens-bot".to_string()),
+            bot_jwt_audience: opt("BOT_JWT_AUDIENCE")
+                .unwrap_or_else(|| "rustlens-backend".to_string()),
+            battlemetrics_poll_interval_seconds: parse_u64(
+                "BATTLEMETRICS_SERVER_POLL_INTERVAL_SECONDS",
+                30,
+            )?,
+            proxy_enabled: parse_bool("PROXY_ENABLED", false)?,
+            proxy_endpoints: opt("PROXY_ENDPOINTS")
+                .map(|v| {
+                    v.split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            proxy_encryption_key: opt("PROXY_ENCRYPTION_KEY"),
+        })
+    }
+}
+
 fn req(key: &'static str) -> Result<String, ConfigError> {
     match env::var(key) {
         Ok(v) if !v.is_empty() => Ok(v),
