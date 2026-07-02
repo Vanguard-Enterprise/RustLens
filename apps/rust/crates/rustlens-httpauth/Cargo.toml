@@ -1,0 +1,13 @@
+[package]
+name = "rustlens-httpauth"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Shared /api/app/* auth gate (app-secret + session header) and cookie-session extractor for RustLens Rust services, mirroring the Go appauth middleware."
+
+[dependencies]
+axum = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+rustlens-session = { workspace = true }
+rustlens-db = { workspace = true }
