@@ -14,6 +14,7 @@ pub mod admin_actions;
 pub mod bot;
 pub mod command_usage;
 pub mod identity;
+pub mod outbound_proxies;
 pub mod preferences;
 pub mod rbac;
 pub mod role_connections;

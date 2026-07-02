@@ -1679,6 +1679,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlens-outbound"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "rustlens-crypto",
+ "rustlens-db",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "rustlens-session"
 version = "0.1.0"
 dependencies = [

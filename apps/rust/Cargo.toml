@@ -8,6 +8,7 @@ members = [
     "crates/rustlens-crypto",
     "crates/rustlens-botjwt",
     "crates/rustlens-httpauth",
+    "crates/rustlens-outbound",
     "services/identity",
 ]
 
@@ -24,6 +25,7 @@ rustlens-events = { path = "crates/rustlens-events" }
 rustlens-crypto = { path = "crates/rustlens-crypto" }
 rustlens-botjwt = { path = "crates/rustlens-botjwt" }
 rustlens-httpauth = { path = "crates/rustlens-httpauth" }
+rustlens-outbound = { path = "crates/rustlens-outbound" }
 
 # third-party
 serde = { version = "1", features = ["derive"] }
@@ -59,3 +61,4 @@ futures-util = "0.3"
 tokio-stream = "0.1"
 aes-gcm = "0.10"
 jsonwebtoken = "9"
+async-trait = "0.1"
