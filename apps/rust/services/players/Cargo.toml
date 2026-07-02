@@ -13,7 +13,9 @@ rustlens-steam = { workspace = true }
 rustlens-battlemetrics = { workspace = true }
 rustlens-outbound = { workspace = true }
 rustlens-crypto = { workspace = true }
+rustlens-httpauth = { workspace = true }
 sqlx = { workspace = true }
+redis = { workspace = true }
 url = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }

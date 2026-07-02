@@ -38,6 +38,8 @@ pub struct AppState {
     pub bm: rustlens_battlemetrics::Client,
     /// platformsync.io client (direct).
     pub platform_sync: rustlens_steam::platformsync::Client,
+    /// Redis connection for app-route rate limiting (`None` → fails open).
+    pub redis: Option<redis::aio::MultiplexedConnection>,
     /// Detached backfill in-flight guard.
     pub backfill: Backfill,
 }

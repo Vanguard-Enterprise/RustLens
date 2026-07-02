@@ -4,10 +4,13 @@
 //! Steam↔Discord linking. Talks to the same Postgres as the Go backend
 //! (schema owned by Go's `EnsureSchema` — read/write only). Default PORT 8091.
 
+mod app_players;
 mod auth;
+mod classifier;
 mod gamebans;
 mod links;
 mod platformsync;
+mod ratelimit;
 mod resolve;
 mod state;
 mod steam;
@@ -90,6 +93,21 @@ async fn main() -> anyhow::Result<()> {
     let platform_sync = rustlens_steam::platformsync::Client::new(config.platformsync_token.clone())
         .context("building platformsync client")?;
 
+    // Redis for app-route rate limiting (fails open when unavailable).
+    let redis = match redis::Client::open(config.redis_url.as_str()) {
+        Ok(client) => match client.get_multiplexed_async_connection().await {
+            Ok(conn) => Some(conn),
+            Err(e) => {
+                tracing::warn!("redis unavailable, rate limiting fails open: {e}");
+                None
+            }
+        },
+        Err(e) => {
+            tracing::warn!("invalid REDIS_URL, rate limiting fails open: {e}");
+            None
+        }
+    };
+
     let state = Arc::new(AppState {
         config,
         pool,
@@ -97,11 +115,18 @@ async fn main() -> anyhow::Result<()> {
         resolver,
         bm,
         platform_sync,
+        redis,
         backfill: state::Backfill::default(),
     });
 
     let app = Router::new()
         .route("/api/healthz", get(healthz))
+        // ---- app-facing (session-authed) ----
+        .route("/api/app/players/search", get(app_players::search_players))
+        .route(
+            "/api/app/players/{identifier}/profile",
+            get(app_players::get_player_profile_app),
+        )
         // ---- resolve / profile / analytics ----
         .route(
             "/api/internal/bot/setup/steam/{steamID}",

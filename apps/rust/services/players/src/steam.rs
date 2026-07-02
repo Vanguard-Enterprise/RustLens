@@ -320,11 +320,17 @@ pub async fn get_steam_profile(
     if !is_steam64(&steam_id) {
         return err_json(StatusCode::BAD_REQUEST, "steamID must be a 17-digit number");
     }
-    let (account, bm_id) = match require_linked_account(&st, &steam_id).await {
+    profile_for(&st, &steam_id).await
+}
+
+/// The shared profile pipeline (24h gate → refresh → stale/404/500), reused by
+/// the bot-internal route and the app `/api/app/players/{id}/profile` route.
+pub async fn profile_for(st: &AppState, steam_id: &str) -> Response {
+    let (account, bm_id) = match require_linked_account(st, steam_id).await {
         Ok(v) => v,
         Err(resp) => return resp,
     };
-    let cached_steam = match store::get_steam_account_cache(&st.pool, &steam_id).await {
+    let cached_steam = match store::get_steam_account_cache(&st.pool, steam_id).await {
         Ok(v) => v,
         Err(e) => return internal("profile steam cache", e, "internal error"),
     };
@@ -335,13 +341,13 @@ pub async fn get_steam_profile(
     let both_fresh = cached_steam.as_ref().is_some_and(|c| fresh(c.updated_at))
         && cached_bm.as_ref().is_some_and(|c| fresh(c.updated_at));
     if both_fresh {
-        let resp = profile_response(&st, &account, cached_steam.as_ref().unwrap(), cached_bm.as_ref().unwrap()).await;
+        let resp = profile_response(st, &account, cached_steam.as_ref().unwrap(), cached_bm.as_ref().unwrap()).await;
         return Json(resp).into_response();
     }
 
     let can_use_cached = cached_steam.is_some() && cached_bm.is_some();
     let stale = || async {
-        let resp = profile_response(&st, &account, cached_steam.as_ref().unwrap(), cached_bm.as_ref().unwrap()).await;
+        let resp = profile_response(st, &account, cached_steam.as_ref().unwrap(), cached_bm.as_ref().unwrap()).await;
         Json(resp).into_response()
     };
 
@@ -359,7 +365,7 @@ pub async fn get_steam_profile(
             };
         }
     };
-    let (sc, bc) = match resolve::build_cache_from_profile(&st, &account, &bm_id, &profile).await {
+    let (sc, bc) = match resolve::build_cache_from_profile(st, &account, &bm_id, &profile).await {
         Ok(v) => v,
         Err(_) => {
             return if can_use_cached {
@@ -369,12 +375,12 @@ pub async fn get_steam_profile(
             };
         }
     };
-    if let Err(e) = resolve::persist_name_history(&st, &profile).await {
+    if let Err(e) = resolve::persist_name_history(st, &profile).await {
         tracing::warn!("players/steam profile name history {bm_id}: {e}");
     }
     let updated_steam = store::upsert_steam_account_cache(&st.pool, &sc).await.unwrap_or(sc);
     let updated_bm = store::upsert_bm_profile_cache(&st.pool, &bc).await.unwrap_or(bc);
-    let resp = profile_response(&st, &account, &updated_steam, &updated_bm).await;
+    let resp = profile_response(st, &account, &updated_steam, &updated_bm).await;
     Json(resp).into_response()
 }
 
