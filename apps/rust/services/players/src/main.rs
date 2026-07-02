@@ -14,6 +14,7 @@ mod ratelimit;
 mod resolve;
 mod state;
 mod steam;
+mod track_analytics;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -143,6 +144,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/internal/bot/setup/steam/{steamID}/analytics",
             get(steam::get_steam_analytics),
+        )
+        .route(
+            "/api/internal/bot/setup/players/{bmID}/offline-analytics",
+            get(track_analytics::get_player_offline_analytics),
         )
         // ---- game-bans + platform-sync ----
         .route(
