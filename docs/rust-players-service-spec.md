@@ -1,8 +1,26 @@
 # RustLens Rust Migration — Phase 2: `players` Service Spec
 
-Status: **DRAFT — awaiting review before implementation.**
+Status: **✅ ROUTE-COMPLETE** — all app + bot-internal routes built, tested, and
+merged to `rework/rust-backend`. Only **P2-F infra cutover** remains (held for
+sign-off).
 Author: migration work, 2026-07-01
 Branch base: `rework/rust-backend`
+
+## Completion summary
+
+| Slice | Scope | PR | Status |
+|---|---|---|---|
+| skeleton + links | service skeleton + Steam↔Discord link CRUD + visibility + guild links | #189 | ✅ merged |
+| resolve + profile | resolve/backfill hybrid + profile/analytics (24h cache) | #190 | ✅ merged |
+| game-bans + platform-sync | light/deep game-bans + platformsync identity sync | #191 | ✅ merged |
+| app routes | `/api/app/players/{search,profile}` (session-authed + rate-limited) | #192 | ✅ merged |
+| offline-analytics | `/players/{bmID}/offline-analytics` (Europe/London weekday/hour) | #193 | ✅ merged |
+| **P2-F infra cutover** | Dockerfile, CI matrix, compose, Traefik routing, bot-path reorg, delete Go handlers | — | ⏳ **held for sign-off** |
+
+`services/players` has 12 modules; the whole workspace is `cargo clippy
+--all-targets` clean and `cargo test` green. `user_guilds` write routes were
+excluded (guilds domain; identity already writes it) — players only reads it for
+deep game-bans (D-P3). Decisions D-P2/D-P4/D-P5 taken as recommended.
 
 Phase 2 (roadmap §4) builds the **`players` service** — the player-identity
 domain: Steam↔BM resolution, profiles/analytics, and all Steam↔Discord linking.
