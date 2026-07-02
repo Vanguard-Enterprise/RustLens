@@ -10,6 +10,7 @@ members = [
     "crates/rustlens-httpauth",
     "crates/rustlens-outbound",
     "crates/rustlens-battlemetrics",
+    "crates/rustlens-steam",
     "services/identity",
 ]
 
@@ -28,6 +29,7 @@ rustlens-botjwt = { path = "crates/rustlens-botjwt" }
 rustlens-httpauth = { path = "crates/rustlens-httpauth" }
 rustlens-outbound = { path = "crates/rustlens-outbound" }
 rustlens-battlemetrics = { path = "crates/rustlens-battlemetrics" }
+rustlens-steam = { path = "crates/rustlens-steam" }
 
 # third-party
 serde = { version = "1", features = ["derive"] }
