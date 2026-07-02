@@ -115,6 +115,77 @@ impl IdentityConfig {
     }
 }
 
+/// Configuration for the players service (Phase 2). Shares the identity env set
+/// plus the Steam/BattleMetrics/proxy/platformsync variables. Names + defaults
+/// mirror the Go backend.
+#[derive(Debug, Clone)]
+pub struct PlayersConfig {
+    pub port: u16,
+    pub postgres_url: String,
+    pub redis_url: String,
+    /// HMAC secret for the `rustlens_session` token (app routes).
+    pub app_session_secret: String,
+    /// `X-RustLens-App-Secret` gate for `/api/app/*`.
+    pub app_api_internal_secret: String,
+    /// Bot service JWT secret + issuer/audience for `/api/internal/bot/*`.
+    pub bot_service_jwt_secret: String,
+    pub bot_jwt_issuer: String,
+    pub bot_jwt_audience: String,
+    /// Steam Web API key (`STEAM_API_KEY`); empty disables Steam calls.
+    pub steam_api_key: String,
+    /// bmsearch.io primary resolver toggle + URL + inline cold-lookup budget.
+    pub bm_search_enabled: bool,
+    pub bm_search_url: String,
+    pub bm_search_inline_timeout_ms: u64,
+    /// Legacy bmmatch fallback (empty disables).
+    pub bm_match_url: String,
+    pub bm_match_token: String,
+    /// platformsync.io bearer token (empty disables).
+    pub platformsync_token: String,
+    /// Outbound proxy provider (BattleMetrics only).
+    pub proxy_enabled: bool,
+    pub proxy_endpoints: Vec<String>,
+    pub proxy_encryption_key: Option<String>,
+}
+
+impl PlayersConfig {
+    /// Load from the process environment with the Go backend's defaults.
+    pub fn from_env() -> Result<Self, ConfigError> {
+        Ok(Self {
+            port: parse_port("PORT", 8091)?,
+            postgres_url: opt("POSTGRES_URL").unwrap_or_else(|| {
+                "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable".to_string()
+            }),
+            redis_url: opt("REDIS_URL").unwrap_or_else(|| "redis://localhost:6379/0".to_string()),
+            app_session_secret: req("APP_SESSION_SECRET")?,
+            app_api_internal_secret: req("APP_API_INTERNAL_SECRET")?,
+            bot_service_jwt_secret: req("BOT_SERVICE_JWT_SECRET")?,
+            bot_jwt_issuer: opt("BOT_JWT_ISSUER").unwrap_or_else(|| "rustlens-bot".to_string()),
+            bot_jwt_audience: opt("BOT_JWT_AUDIENCE")
+                .unwrap_or_else(|| "rustlens-backend".to_string()),
+            steam_api_key: opt("STEAM_API_KEY").unwrap_or_default(),
+            bm_search_enabled: parse_bool("BM_SEARCH_ENABLED", true)?,
+            bm_search_url: opt("BM_SEARCH_URL")
+                .unwrap_or_else(|| "https://bmsearch.io/api".to_string()),
+            bm_search_inline_timeout_ms: parse_u64("BM_SEARCH_INLINE_TIMEOUT_MS", 4000)?,
+            bm_match_url: opt("BM_MATCH_URL").unwrap_or_default(),
+            bm_match_token: opt("BM_MATCH_TOKEN").unwrap_or_default(),
+            platformsync_token: opt("PLATFORMSYNC_TOKEN").unwrap_or_default(),
+            proxy_enabled: parse_bool("PROXY_ENABLED", false)?,
+            proxy_endpoints: opt("PROXY_ENDPOINTS")
+                .map(|v| {
+                    v.split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            proxy_encryption_key: opt("PROXY_ENCRYPTION_KEY"),
+        })
+    }
+}
+
 fn req(key: &'static str) -> Result<String, ConfigError> {
     match env::var(key) {
         Ok(v) if !v.is_empty() => Ok(v),
@@ -132,5 +203,25 @@ fn parse_port(key: &'static str, default: u16) -> Result<u16, ConfigError> {
         Some(v) => v
             .parse::<u16>()
             .map_err(|e| ConfigError::Invalid(key, e.to_string())),
+    }
+}
+
+fn parse_u64(key: &'static str, default: u64) -> Result<u64, ConfigError> {
+    match opt(key) {
+        None => Ok(default),
+        Some(v) => v
+            .parse::<u64>()
+            .map_err(|e| ConfigError::Invalid(key, e.to_string())),
+    }
+}
+
+fn parse_bool(key: &'static str, default: bool) -> Result<bool, ConfigError> {
+    match opt(key) {
+        None => Ok(default),
+        Some(v) => match v.to_ascii_lowercase().as_str() {
+            "1" | "true" | "t" | "yes" | "y" => Ok(true),
+            "0" | "false" | "f" | "no" | "n" => Ok(false),
+            _ => Err(ConfigError::Invalid(key, v)),
+        },
     }
 }

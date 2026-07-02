@@ -12,6 +12,7 @@ members = [
     "crates/rustlens-battlemetrics",
     "crates/rustlens-steam",
     "services/identity",
+    "services/players",
 ]
 
 [workspace.package]
