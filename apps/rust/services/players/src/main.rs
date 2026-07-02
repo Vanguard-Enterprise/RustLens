@@ -5,7 +5,9 @@
 //! (schema owned by Go's `EnsureSchema` — read/write only). Default PORT 8091.
 
 mod auth;
+mod gamebans;
 mod links;
+mod platformsync;
 mod resolve;
 mod state;
 mod steam;
@@ -84,12 +86,17 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(provider) as Arc<dyn rustlens_outbound::OutboundSender>,
     );
 
+    // platformsync.io client (direct).
+    let platform_sync = rustlens_steam::platformsync::Client::new(config.platformsync_token.clone())
+        .context("building platformsync client")?;
+
     let state = Arc::new(AppState {
         config,
         pool,
         steam,
         resolver,
         bm,
+        platform_sync,
         backfill: state::Backfill::default(),
     });
 
@@ -111,6 +118,15 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/internal/bot/setup/steam/{steamID}/analytics",
             get(steam::get_steam_analytics),
+        )
+        // ---- game-bans + platform-sync ----
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/game-bans",
+            get(gamebans::check_guild_game_bans),
+        )
+        .route(
+            "/api/internal/bot/setup/platform-sync/{platform}/{id}",
+            post(platformsync::sync_platform),
         )
         // ---- global links ----
         .route("/api/internal/bot/setup/steam/links", post(links::create_soft_link))
