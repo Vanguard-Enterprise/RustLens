@@ -36,6 +36,8 @@ pub struct AppState {
     pub resolver: Arc<rustlens_steam::Chain>,
     /// BattleMetrics client (proxied via the outbound provider).
     pub bm: rustlens_battlemetrics::Client,
+    /// platformsync.io client (direct).
+    pub platform_sync: rustlens_steam::platformsync::Client,
     /// Detached backfill in-flight guard.
     pub backfill: Backfill,
 }
