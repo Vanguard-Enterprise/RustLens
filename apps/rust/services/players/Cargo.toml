@@ -9,6 +9,11 @@ description = "RustLens players service — Steam↔BattleMetrics identity, prof
 rustlens-config = { workspace = true }
 rustlens-db = { workspace = true }
 rustlens-botjwt = { workspace = true }
+rustlens-steam = { workspace = true }
+rustlens-battlemetrics = { workspace = true }
+rustlens-outbound = { workspace = true }
+rustlens-crypto = { workspace = true }
+sqlx = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
