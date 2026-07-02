@@ -905,6 +905,7 @@ dependencies = [
  "rustlens-crypto",
  "rustlens-db",
  "rustlens-events",
+ "rustlens-httpauth",
  "rustlens-session",
  "serde",
  "serde_json",
@@ -1664,6 +1665,17 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rustlens-httpauth"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "rustlens-db",
+ "rustlens-session",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

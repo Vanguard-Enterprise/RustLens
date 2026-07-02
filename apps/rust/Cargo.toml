@@ -7,6 +7,7 @@ members = [
     "crates/rustlens-events",
     "crates/rustlens-crypto",
     "crates/rustlens-botjwt",
+    "crates/rustlens-httpauth",
     "services/identity",
 ]
 
@@ -22,6 +23,7 @@ rustlens-db = { path = "crates/rustlens-db" }
 rustlens-events = { path = "crates/rustlens-events" }
 rustlens-crypto = { path = "crates/rustlens-crypto" }
 rustlens-botjwt = { path = "crates/rustlens-botjwt" }
+rustlens-httpauth = { path = "crates/rustlens-httpauth" }
 
 # third-party
 serde = { version = "1", features = ["derive"] }
