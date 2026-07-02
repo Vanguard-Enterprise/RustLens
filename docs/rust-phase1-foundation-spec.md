@@ -1,8 +1,25 @@
 # RustLens Rust Migration — Phase 1 Foundation Crates Spec
 
-Status: **DRAFT — awaiting review before implementation.**
+Status: **✅ COMPLETE** — all four crates built, tested, and merged to
+`rework/rust-backend`.
 Author: migration work, 2026-07-01
 Branch base: `rework/rust-backend`
+
+## Completion summary
+
+| Crate | PR | Status |
+|---|---|---|
+| `rustlens-httpauth` | #185 | ✅ merged — factored the `/api/app/*` gate out of identity; identity re-runs its auth smokes 10/10 |
+| `rustlens-outbound` | #186 | ✅ merged — proxy provider (rotation, health window, auto-disable); 10 unit + DB-gated integ test |
+| `rustlens-battlemetrics` | #187 | ✅ merged — unauth JSON:API client via `OutboundSender`; 12 tests (mock sender) |
+| `rustlens-steam` | #188 | ✅ merged — steamapi + steammatch Chain + bmsearch hybrid + bmmatch + platformsync; 26 tests (wiremock) |
+
+The four design decisions (D1–D4) were taken as recommended. `Cargo.toml`
+workspace now has 10 crates + `services/identity`; the whole workspace is
+`cargo clippy --all-targets` clean and `cargo test` green. Next: roadmap Phase 2
+(`players` service), which consumes `rustlens-steam` + `rustlens-battlemetrics`
+and adds the hybrid inline-timeout + singleflight backfill + `steam_accounts`
+persist orchestration (spec D4).
 
 Phase 1 of the Go→Rust migration (roadmap §4) builds the shared library crates
 every later domain service (`players`, `servers`, `guilds`) depends on. This spec
