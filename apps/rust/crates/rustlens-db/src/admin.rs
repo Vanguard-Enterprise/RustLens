@@ -49,6 +49,29 @@ pub async fn has_permission(
     Ok(exists)
 }
 
+/// Whether the user holds **any** admin permission (Go's
+/// `len(PermissionsForUser) > 0`). Used by the players name-search admin gate.
+pub async fn has_any_permission(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {
+    let roles = identity::load_admin_role_keys(pool, user_id).await?;
+    if roles.iter().any(|r| r == rbac::ROLE_SUPERADMIN) {
+        return Ok(true);
+    }
+    if roles.is_empty() {
+        return Ok(false);
+    }
+    let exists: bool = sqlx::query_scalar(
+        r#"SELECT EXISTS(
+               SELECT 1 FROM admin_user_roles ur
+               JOIN admin_role_permissions rp ON rp.role_id = ur.role_id
+               WHERE ur.user_id = $1
+           )"#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(exists)
+}
+
 async fn table_exists(pool: &PgPool, name: &str) -> bool {
     sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = $1)",
