@@ -11,6 +11,7 @@ mod schedules;
 mod settings;
 mod state;
 mod sync;
+mod track_groups;
 mod wipe_reacts;
 
 use std::sync::Arc;
@@ -127,6 +128,33 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/release",
             post(schedules::release_schedule_post),
+        )
+        // ---- track groups ----
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/track-groups",
+            get(track_groups::list_track_groups).post(track_groups::create_track_group),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}",
+            get(track_groups::get_track_group)
+                .put(track_groups::update_track_group)
+                .delete(track_groups::delete_track_group),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/members",
+            get(track_groups::list_track_group_members).post(track_groups::add_track_group_members),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/members/remove",
+            post(track_groups::remove_track_group_members),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/online-state",
+            get(track_groups::list_track_group_online_state),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/notifications/claim",
+            post(track_groups::claim_track_group_notification),
         )
         .with_state(state.clone());
 

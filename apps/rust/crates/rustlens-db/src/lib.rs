@@ -28,6 +28,7 @@ pub mod preferences;
 pub mod rbac;
 pub mod server_analytics;
 pub mod track_analytics;
+pub mod track_groups;
 pub mod tracked_servers;
 pub mod user_guilds;
 pub mod wipe_react_schedule_posts;
