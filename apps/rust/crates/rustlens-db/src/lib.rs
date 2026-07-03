@@ -30,6 +30,7 @@ pub mod server_analytics;
 pub mod track_analytics;
 pub mod tracked_servers;
 pub mod user_guilds;
+pub mod wipe_reacts;
 pub mod role_connections;
 
 /// Connect to Postgres and return a pooled handle.

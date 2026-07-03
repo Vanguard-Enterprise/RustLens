@@ -8,13 +8,14 @@ mod auth;
 mod settings;
 mod state;
 mod sync;
+mod wipe_reacts;
 
 use std::sync::Arc;
 
 use anyhow::Context;
 use axum::{
     Router,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use rustlens_config::GuildsConfig;
 
@@ -58,6 +59,29 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/internal/bot/setup/bot-user-installs/seen",
             post(sync::touch_bot_user_install_seen),
+        )
+        // ---- wipe-reacts ----
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/active",
+            get(wipe_reacts::list_active_wipe_reacts),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts",
+            get(wipe_reacts::list_wipe_reacts).post(wipe_reacts::create_wipe_react),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/{messageID}",
+            get(wipe_reacts::get_wipe_react)
+                .put(wipe_reacts::update_wipe_react)
+                .delete(wipe_reacts::delete_wipe_react),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/{messageID}/reactions",
+            post(wipe_reacts::set_wipe_react_reaction),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/{messageID}/reactions/{userID}",
+            delete(wipe_reacts::remove_wipe_react_reaction),
         )
         .with_state(state.clone());
 
