@@ -288,13 +288,22 @@ mod tests {
             .unwrap();
 
         // Direct (non-proxied) BM client pointed at the mock.
-        let provider = rustlens_outbound::Provider::new(false, &[], Duration::from_secs(5)).unwrap();
+        let provider = std::sync::Arc::new(
+            rustlens_outbound::Provider::new(false, &[], Duration::from_secs(5)).unwrap(),
+        );
         let bm = rustlens_battlemetrics::Client::new(
-            std::sync::Arc::new(provider) as std::sync::Arc<dyn rustlens_outbound::OutboundSender>,
+            provider.clone() as std::sync::Arc<dyn rustlens_outbound::OutboundSender>,
         )
         .with_base_url(bm_server.uri());
 
-        let state = Arc::new(AppState { config: dummy_config(), pool: pool.clone(), bm, redis: None });
+        let state = Arc::new(AppState {
+            config: dummy_config(),
+            pool: pool.clone(),
+            bm,
+            outbound: provider,
+            cipher: None,
+            redis: None,
+        });
         do_cycle(&state).await;
 
         // Both players synced online; last_polled_at advanced, no error.
