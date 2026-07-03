@@ -114,6 +114,26 @@ pub async fn list_all(pool: &PgPool, guild_id: &str) -> Result<Vec<WipeReact>, s
     rows.iter().map(row_to_wipe_react).collect()
 }
 
+/// `ListPastWipeReacts`: `scheduled_unix <= now`, newest first, capped at `limit`
+/// (backs the admin guild-detail `recentWipeReacts`).
+pub async fn list_past(
+    pool: &PgPool,
+    guild_id: &str,
+    now_unix: i64,
+    limit: i64,
+) -> Result<Vec<WipeReact>, sqlx::Error> {
+    let rows = sqlx::query(&format!(
+        "SELECT {COLS} FROM wipe_reacts WHERE guild_id = $1 AND scheduled_unix <= $2 \
+         ORDER BY scheduled_unix DESC, message_id DESC LIMIT $3"
+    ))
+    .bind(guild_id)
+    .bind(now_unix)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_wipe_react).collect()
+}
+
 /// `GetWipeReact`: `NotFound` when absent.
 pub async fn get(pool: &PgPool, guild_id: &str, message_id: &str) -> Result<WipeReact, WipeReactError> {
     let row = sqlx::query(&format!(

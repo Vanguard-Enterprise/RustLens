@@ -686,6 +686,7 @@ dependencies = [
  "rustlens-botjwt",
  "rustlens-config",
  "rustlens-db",
+ "rustlens-httpauth",
  "serde",
  "serde_json",
  "sqlx",

@@ -4,6 +4,7 @@
 //! track-groups, guild/user/install sync, and the admin guild list/detail.
 //! Talks to the same Postgres as the Go backend (schema owned by Go). PORT 8093.
 
+mod admin_guilds;
 mod auth;
 mod redis_lock;
 mod scheduler;
@@ -156,6 +157,9 @@ async fn main() -> anyhow::Result<()> {
             "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/notifications/claim",
             post(track_groups::claim_track_group_notification),
         )
+        // ---- admin guild list + detail (app-secret + session + guilds.read) ----
+        .route("/api/app/admin/guilds", get(admin_guilds::list_admin_guilds))
+        .route("/api/app/admin/guilds/{guildID}", get(admin_guilds::get_admin_guild))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", state.config.port);
