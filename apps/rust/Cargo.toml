@@ -14,6 +14,7 @@ members = [
     "services/identity",
     "services/players",
     "services/servers",
+    "services/guilds",
 ]
 
 [workspace.package]

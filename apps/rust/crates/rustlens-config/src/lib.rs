@@ -239,6 +239,45 @@ impl ServersConfig {
     }
 }
 
+/// Configuration for the guilds service (Phase 4): guild settings, wipe-reacts +
+/// schedules + the schedule-post scheduler, track-groups, guild/user/install
+/// sync, and the admin guild list/detail. Shares the identity env set; needs
+/// Redis for the scheduler worker lock and the admin auth secrets.
+#[derive(Debug, Clone)]
+pub struct GuildsConfig {
+    pub port: u16,
+    pub postgres_url: String,
+    pub redis_url: String,
+    pub app_session_secret: String,
+    pub app_api_internal_secret: String,
+    pub bot_service_jwt_secret: String,
+    pub bot_jwt_issuer: String,
+    pub bot_jwt_audience: String,
+    /// Wipe-react scheduler tick interval (seconds; `0` disables the poller).
+    /// Mirrors the Go `schedulerInterval` of 60s.
+    pub wipe_scheduler_interval_seconds: u64,
+}
+
+impl GuildsConfig {
+    /// Load from the process environment with the Go backend's defaults.
+    pub fn from_env() -> Result<Self, ConfigError> {
+        Ok(Self {
+            port: parse_port("PORT", 8093)?,
+            postgres_url: opt("POSTGRES_URL").unwrap_or_else(|| {
+                "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable".to_string()
+            }),
+            redis_url: opt("REDIS_URL").unwrap_or_else(|| "redis://localhost:6379/0".to_string()),
+            app_session_secret: req("APP_SESSION_SECRET")?,
+            app_api_internal_secret: req("APP_API_INTERNAL_SECRET")?,
+            bot_service_jwt_secret: req("BOT_SERVICE_JWT_SECRET")?,
+            bot_jwt_issuer: opt("BOT_JWT_ISSUER").unwrap_or_else(|| "rustlens-bot".to_string()),
+            bot_jwt_audience: opt("BOT_JWT_AUDIENCE")
+                .unwrap_or_else(|| "rustlens-backend".to_string()),
+            wipe_scheduler_interval_seconds: parse_u64("WIPE_SCHEDULER_INTERVAL_SECONDS", 60)?,
+        })
+    }
+}
+
 fn req(key: &'static str) -> Result<String, ConfigError> {
     match env::var(key) {
         Ok(v) if !v.is_empty() => Ok(v),

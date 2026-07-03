@@ -12,8 +12,11 @@ use sqlx::postgres::PgPoolOptions;
 pub mod admin;
 pub mod admin_actions;
 pub mod bot;
+pub mod bot_guilds;
+pub mod bot_user_installs;
 pub mod command_usage;
 pub mod game_bans;
+pub mod guild_settings;
 pub mod identity;
 pub mod outbound_proxies;
 pub mod platform_sync;
@@ -26,6 +29,7 @@ pub mod rbac;
 pub mod server_analytics;
 pub mod track_analytics;
 pub mod tracked_servers;
+pub mod user_guilds;
 pub mod role_connections;
 
 /// Connect to Postgres and return a pooled handle.
