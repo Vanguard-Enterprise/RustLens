@@ -4,6 +4,15 @@
 
 use redis::aio::MultiplexedConnection;
 
+/// The owner id for the worker locks (`{host}:{pid}`).
+pub fn worker_owner() -> String {
+    let host = std::env::var("HOSTNAME")
+        .ok()
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "unknown-host".to_string());
+    format!("{host}:{}", std::process::id())
+}
+
 /// The Lua compare-and-del release script (only deletes when `owner` matches).
 const RELEASE: &str = r#"
 if redis.call("get", KEYS[1]) == ARGV[1] then

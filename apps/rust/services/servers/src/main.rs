@@ -8,6 +8,7 @@ mod auth;
 mod player_states;
 mod poller;
 mod redis_lock;
+mod server_analytics;
 mod state;
 mod tracked;
 
@@ -78,8 +79,9 @@ async fn main() -> anyhow::Result<()> {
 
     let state = Arc::new(AppState { config, pool, bm, redis });
 
-    // Spawn the BattleMetrics rolling poller.
+    // Spawn the background workers: the poller + the daily analytics refresher.
     tokio::spawn(poller::run(state.clone()));
+    tokio::spawn(server_analytics::run_refresher(state.clone()));
 
     let app = Router::new()
         .route("/api/healthz", get(healthz))
@@ -125,6 +127,11 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/internal/bot/setup/guilds/{guildID}/tracked-server-log-events",
             get(player_states::list_tracked_server_log_events),
+        )
+        // ---- server analytics ----
+        .route(
+            "/api/internal/bot/setup/tracked-servers/{bmID}/player-count-history",
+            get(server_analytics::get_player_count_analytics),
         )
         .with_state(state.clone());
 
