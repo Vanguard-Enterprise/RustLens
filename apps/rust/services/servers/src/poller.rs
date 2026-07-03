@@ -22,15 +22,6 @@ const HIGH_BATCH: usize = 2;
 const LOW_BATCH: usize = 1;
 const TOTAL_BATCH: usize = HIGH_BATCH + LOW_BATCH; // 3
 
-/// The owner id for the Redis locks (`{host}:{pid}`).
-fn worker_owner() -> String {
-    let host = std::env::var("HOSTNAME")
-        .ok()
-        .filter(|h| !h.is_empty())
-        .unwrap_or_else(|| "unknown-host".to_string());
-    format!("{host}:{}", std::process::id())
-}
-
 /// Run the poller loop until the process exits. Disabled when the interval is 0.
 pub async fn run(state: Arc<AppState>) {
     let secs = state.config.battlemetrics_poll_interval_seconds;
@@ -38,7 +29,7 @@ pub async fn run(state: Arc<AppState>) {
         tracing::info!("battlemetrics poller disabled (interval 0)");
         return;
     }
-    let owner = worker_owner();
+    let owner = redis_lock::worker_owner();
     let mut ticker = tokio::time::interval(Duration::from_secs(secs));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     tracing::info!("battlemetrics poller started (interval {secs}s)");

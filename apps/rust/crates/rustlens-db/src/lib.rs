@@ -23,6 +23,7 @@ pub mod players_search;
 pub mod players_steam;
 pub mod preferences;
 pub mod rbac;
+pub mod server_analytics;
 pub mod track_analytics;
 pub mod tracked_servers;
 pub mod role_connections;
