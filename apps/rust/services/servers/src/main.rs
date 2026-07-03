@@ -5,6 +5,7 @@
 //! Talks to the same Postgres as the Go backend (schema owned by Go). PORT 8092.
 
 mod auth;
+mod bmservers;
 mod player_states;
 mod poller;
 mod proxies;
@@ -154,6 +155,16 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/app/admin/proxies/{proxyID}",
             axum::routing::patch(proxies::update_admin_proxy).delete(proxies::delete_admin_proxy),
+        )
+        // ---- admin bm-servers routes (app-secret + session + permission) ----
+        .route(
+            "/api/app/admin/bm-servers",
+            get(bmservers::list_admin_bm_servers).post(bmservers::create_admin_bm_server),
+        )
+        .route("/api/app/admin/bm-servers/bulk", post(bmservers::bulk_admin_bm_servers))
+        .route(
+            "/api/app/admin/bm-servers/{bmID}",
+            put(bmservers::update_admin_bm_server).delete(bmservers::delete_admin_bm_server),
         )
         .with_state(state.clone());
 
