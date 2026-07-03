@@ -7,6 +7,7 @@
 mod auth;
 mod player_states;
 mod poller;
+mod proxies;
 mod redis_lock;
 mod server_analytics;
 mod state;
@@ -56,10 +57,12 @@ async fn main() -> anyhow::Result<()> {
     )
     .await
     .context("loading outbound proxies")?;
-    let provider = rustlens_outbound::Provider::new(!endpoints.is_empty(), &endpoints, BM_HTTP_TIMEOUT)
-        .context("building outbound provider")?;
+    let provider = Arc::new(
+        rustlens_outbound::Provider::new(!endpoints.is_empty(), &endpoints, BM_HTTP_TIMEOUT)
+            .context("building outbound provider")?,
+    );
     let bm = rustlens_battlemetrics::Client::new(
-        Arc::new(provider) as Arc<dyn rustlens_outbound::OutboundSender>,
+        provider.clone() as Arc<dyn rustlens_outbound::OutboundSender>,
     );
 
     // Redis for the worker locks (fails to single-pod mode when unavailable).
@@ -77,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let state = Arc::new(AppState { config, pool, bm, redis });
+    let state = Arc::new(AppState { config, pool, bm, outbound: provider, cipher, redis });
 
     // Spawn the background workers: the poller + the daily analytics refresher.
     tokio::spawn(poller::run(state.clone()));
@@ -132,6 +135,25 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/internal/bot/setup/tracked-servers/{bmID}/player-count-history",
             get(server_analytics::get_player_count_analytics),
+        )
+        // ---- owner proxy routes (bot JWT) ----
+        .route(
+            "/api/internal/bot/owner/proxies",
+            get(proxies::list_owner_proxies).post(proxies::create_owner_proxy),
+        )
+        .route(
+            "/api/internal/bot/owner/proxies/{proxyID}",
+            axum::routing::patch(proxies::update_owner_proxy).delete(proxies::delete_owner_proxy),
+        )
+        // ---- admin proxy routes (app-secret + session + permission) ----
+        .route(
+            "/api/app/admin/proxies",
+            get(proxies::list_admin_proxies).post(proxies::create_admin_proxy),
+        )
+        .route("/api/app/admin/proxies/bulk", post(proxies::bulk_admin_proxies))
+        .route(
+            "/api/app/admin/proxies/{proxyID}",
+            axum::routing::patch(proxies::update_admin_proxy).delete(proxies::delete_admin_proxy),
         )
         .with_state(state.clone());
 
