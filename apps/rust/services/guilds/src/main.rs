@@ -5,6 +5,9 @@
 //! Talks to the same Postgres as the Go backend (schema owned by Go). PORT 8093.
 
 mod auth;
+mod redis_lock;
+mod scheduler;
+mod schedules;
 mod settings;
 mod state;
 mod sync;
@@ -35,7 +38,25 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("connecting to Postgres")?;
 
-    let state = Arc::new(AppState { config, pool });
+    // Redis for the scheduler worker lock (falls back to single-pod when absent).
+    let redis = match redis::Client::open(config.redis_url.as_str()) {
+        Ok(client) => match client.get_multiplexed_async_connection().await {
+            Ok(conn) => Some(conn),
+            Err(e) => {
+                tracing::warn!("redis unavailable, scheduler runs single-pod: {e}");
+                None
+            }
+        },
+        Err(e) => {
+            tracing::warn!("invalid REDIS_URL, scheduler runs single-pod: {e}");
+            None
+        }
+    };
+
+    let state = Arc::new(AppState { config, pool, redis });
+
+    // Spawn the background wipe-react scheduler.
+    tokio::spawn(scheduler::run(state.clone()));
 
     let app = Router::new()
         .route("/api/healthz", get(healthz))
@@ -82,6 +103,30 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/{messageID}/reactions/{userID}",
             delete(wipe_reacts::remove_wipe_react_reaction),
+        )
+        // ---- wipe-react schedules ----
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedules",
+            get(schedules::list_wipe_react_schedules).post(schedules::create_wipe_react_schedule),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedules/{scheduleID}",
+            get(schedules::get_wipe_react_schedule)
+                .put(schedules::update_wipe_react_schedule)
+                .delete(schedules::delete_wipe_react_schedule),
+        )
+        // ---- wipe-react schedule-post queue ----
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/claim",
+            post(schedules::claim_next_schedule_post),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/complete",
+            post(schedules::complete_schedule_post),
+        )
+        .route(
+            "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/release",
+            post(schedules::release_schedule_post),
         )
         .with_state(state.clone());
 

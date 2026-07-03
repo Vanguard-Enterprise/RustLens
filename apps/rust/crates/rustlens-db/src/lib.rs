@@ -30,6 +30,8 @@ pub mod server_analytics;
 pub mod track_analytics;
 pub mod tracked_servers;
 pub mod user_guilds;
+pub mod wipe_react_schedule_posts;
+pub mod wipe_react_schedules;
 pub mod wipe_reacts;
 pub mod role_connections;
 
