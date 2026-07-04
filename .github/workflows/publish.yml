@@ -23,6 +23,10 @@ jobs:
           - { service: frontend, context: ., file: apps/frontend/Dockerfile }
           - { service: bot, context: ., file: apps/bot/Dockerfile }
           - { service: identity, context: apps/rust, file: apps/rust/Dockerfile }
+          - { service: players, context: apps/rust, file: apps/rust/Dockerfile }
+          - { service: servers, context: apps/rust, file: apps/rust/Dockerfile }
+          - { service: guilds, context: apps/rust, file: apps/rust/Dockerfile }
+          - { service: coordinator, context: apps/rust, file: apps/rust/Dockerfile }
     steps:
       - uses: actions/checkout@v7
 
@@ -48,6 +52,7 @@ jobs:
           push: true
           build-args: |
             DEPLOYMENT_VERSION=sha-${{ github.sha }}
+            SERVICE=${{ matrix.service }}
           secrets: |
             next_server_actions_encryption_key=${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
           tags: |
