@@ -14,6 +14,7 @@ pub mod admin_actions;
 pub mod admin_guilds;
 pub mod bot;
 pub mod bot_guilds;
+pub mod cleanup;
 pub mod bot_user_installs;
 pub mod command_usage;
 pub mod game_bans;
