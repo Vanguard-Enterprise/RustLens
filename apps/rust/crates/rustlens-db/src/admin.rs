@@ -49,6 +49,30 @@ pub async fn has_permission(
     Ok(exists)
 }
 
+/// Whether the Discord user (resolved via `app_users.discord_id`) has `perm`,
+/// with superadmin implying everything. Single EXISTS query (Go's
+/// `DiscordHasPermission`, used by the rate-limit bypass checks).
+pub async fn discord_has_permission(
+    pool: &PgPool,
+    discord_id: &str,
+    perm: &str,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"SELECT EXISTS(
+               SELECT 1 FROM app_users u
+               JOIN admin_user_roles aur ON aur.user_id = u.id
+               JOIN admin_roles r ON r.id = aur.role_id
+               LEFT JOIN admin_role_permissions rp
+                   ON rp.role_id = r.id AND rp.permission_key = $2
+               WHERE u.discord_id = $1 AND (r.key = 'superadmin' OR rp.permission_key IS NOT NULL)
+           )"#,
+    )
+    .bind(discord_id)
+    .bind(perm)
+    .fetch_one(pool)
+    .await
+}
+
 /// Whether the user holds **any** admin permission (Go's
 /// `len(PermissionsForUser) > 0`). Used by the players name-search admin gate.
 pub async fn has_any_permission(pool: &PgPool, user_id: &str) -> Result<bool, sqlx::Error> {

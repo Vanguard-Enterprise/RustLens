@@ -7,6 +7,8 @@
 
 mod auth;
 mod leases;
+mod owner_stats;
+mod ratelimit;
 mod shards;
 mod state;
 
@@ -31,6 +33,9 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = CoordinatorConfig::from_env().context("loading configuration")?;
+    let pool = rustlens_db::connect(&config.postgres_url, 10)
+        .await
+        .context("connecting to Postgres")?;
 
     // Redis holds the shard lease state + rate-limit counters (required for the
     // shard routes; falls back to single-pod for the cleanup worker).
@@ -48,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let state = Arc::new(AppState { config, redis });
+    let state = Arc::new(AppState { config, pool, redis });
 
     let app = Router::new()
         .route("/api/healthz", get(healthz))
@@ -57,6 +62,13 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/internal/bot/shards/heartbeat", post(shards::heartbeat_shard_worker))
         .route("/api/internal/bot/shards/release", post(shards::release_shard_worker))
         .route("/api/internal/bot/shards/assignments", get(shards::get_shard_assignments))
+        // ---- owner stats (bot JWT) ----
+        .route("/api/internal/bot/owner/stats", get(owner_stats::get_owner_stats))
+        // ---- rate-limit consume (bot JWT) ----
+        .route(
+            "/api/internal/bot/setup/rate-limit/consume",
+            post(ratelimit::consume_rate_limit),
+        )
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", state.config.port);
