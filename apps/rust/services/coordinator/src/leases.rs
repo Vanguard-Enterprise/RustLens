@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use redis::aio::MultiplexedConnection;
+use serde::{Deserialize, Serialize};
 
 pub const WORKERS_KEY: &str = "rustlens:bot:workers";
 pub const HEARTBEAT_PREFIX: &str = "rustlens:bot:worker:heartbeat:";
@@ -100,6 +101,60 @@ pub async fn remove_worker(conn: &mut MultiplexedConnection, worker_id: &str) ->
         .ignore()
         .query_async(conn)
         .await
+}
+
+/// One shard's live stats (`ShardStatSnapshot`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShardStatSnapshot {
+    #[serde(rename = "shardId")]
+    pub shard_id: i64,
+    pub status: String,
+    #[serde(rename = "pingMs")]
+    pub ping_ms: i64,
+    pub guilds: i64,
+    pub members: i64,
+}
+
+/// A worker's live stats snapshot (`WorkerStatSnapshot`), parsed from the stored
+/// heartbeat JSON.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkerStatSnapshot {
+    #[serde(default, rename = "uptimeSec")]
+    pub uptime_sec: i64,
+    #[serde(default, rename = "rssBytes")]
+    pub rss_bytes: i64,
+    #[serde(default)]
+    pub shards: Vec<ShardStatSnapshot>,
+}
+
+/// `GetWorkerStats`: `MGET stats:<id1> ...` (nil entries → `None`).
+pub async fn get_worker_stats(
+    conn: &mut MultiplexedConnection,
+    worker_ids: &[String],
+) -> redis::RedisResult<Vec<Option<String>>> {
+    if worker_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let keys: Vec<String> = worker_ids.iter().map(|w| stats_key(w)).collect();
+    redis::cmd("MGET").arg(keys).query_async(conn).await
+}
+
+/// `ActiveWorkerStats`: active workers paired with their parsed stats snapshot.
+/// Workers with no stats key (or unparseable stats) are skipped. Sorted by id.
+pub async fn active_worker_stats(
+    conn: &mut MultiplexedConnection,
+) -> redis::RedisResult<Vec<(String, WorkerStatSnapshot)>> {
+    let workers = active_workers(conn).await?;
+    let raw = get_worker_stats(conn, &workers).await?;
+    let mut out = Vec::new();
+    for (w, r) in workers.into_iter().zip(raw) {
+        if let Some(json) = r {
+            if let Ok(snap) = serde_json::from_str::<WorkerStatSnapshot>(&json) {
+                out.push((w, snap));
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// `ActiveWorkers`: members of the workers set whose heartbeat key still exists;

@@ -41,3 +41,13 @@ pub fn parse_json<T: DeserializeOwned>(body: &Bytes) -> Result<T, Box<Response>>
     serde_json::from_slice(body)
         .map_err(|_| Box::new(err_json(StatusCode::BAD_REQUEST, "invalid request body")))
 }
+
+/// `^\d{17,20}$` (Discord snowflake).
+pub fn is_snowflake(s: &str) -> bool {
+    (17..=20).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// `validateSnowflakeValue`: non-empty AND a valid snowflake.
+pub fn is_snowflake_value(v: &str) -> bool {
+    !v.is_empty() && is_snowflake(v)
+}
