@@ -278,6 +278,65 @@ impl GuildsConfig {
     }
 }
 
+/// Configuration for the coordinator service (Phase 5): shard coordination,
+/// owner stats, rate-limit consume, Discord webhook events, and the cleanup
+/// retention sweep. Shard/rate-limit state lives in Redis (shared with the bot).
+#[derive(Debug, Clone)]
+pub struct CoordinatorConfig {
+    pub port: u16,
+    pub postgres_url: String,
+    pub redis_url: String,
+    pub bot_service_jwt_secret: String,
+    pub bot_jwt_issuer: String,
+    pub bot_jwt_audience: String,
+    /// Target shard count (`BOT_TARGET_SHARDS`, default 4).
+    pub bot_target_shards: i64,
+    /// Worker heartbeat / lease TTL in seconds (`BOT_HEARTBEAT_TTL_SECONDS`, 45).
+    pub bot_heartbeat_ttl_seconds: u64,
+    /// Discord application public key (hex Ed25519) for webhook-event signature
+    /// verification (`DISCORD_APP_PUBLIC_KEY`); empty disables the webhook route.
+    pub discord_app_public_key: String,
+    /// Cleanup sweep cadence + retention windows (seconds). Defaults mirror Go's
+    /// 1h / 7d / 48h / 90d.
+    pub cleanup_interval_seconds: u64,
+    pub cleanup_wipe_react_retention_seconds: i64,
+    pub cleanup_analytics_cache_retention_seconds: i64,
+    pub cleanup_command_usage_retention_seconds: i64,
+}
+
+impl CoordinatorConfig {
+    /// Load from the process environment with the Go backend's defaults.
+    pub fn from_env() -> Result<Self, ConfigError> {
+        Ok(Self {
+            port: parse_port("PORT", 8094)?,
+            postgres_url: opt("POSTGRES_URL").unwrap_or_else(|| {
+                "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable".to_string()
+            }),
+            redis_url: opt("REDIS_URL").unwrap_or_else(|| "redis://localhost:6379/0".to_string()),
+            bot_service_jwt_secret: req("BOT_SERVICE_JWT_SECRET")?,
+            bot_jwt_issuer: opt("BOT_JWT_ISSUER").unwrap_or_else(|| "rustlens-bot".to_string()),
+            bot_jwt_audience: opt("BOT_JWT_AUDIENCE")
+                .unwrap_or_else(|| "rustlens-backend".to_string()),
+            bot_target_shards: parse_i64("BOT_TARGET_SHARDS", 4)?,
+            bot_heartbeat_ttl_seconds: parse_u64("BOT_HEARTBEAT_TTL_SECONDS", 45)?,
+            discord_app_public_key: opt("DISCORD_APP_PUBLIC_KEY").unwrap_or_default(),
+            cleanup_interval_seconds: parse_u64("CLEANUP_INTERVAL_SECONDS", 3600)?,
+            cleanup_wipe_react_retention_seconds: parse_i64(
+                "CLEANUP_WIPE_REACT_RETENTION_SECONDS",
+                7 * 24 * 3600,
+            )?,
+            cleanup_analytics_cache_retention_seconds: parse_i64(
+                "CLEANUP_ANALYTICS_CACHE_RETENTION_SECONDS",
+                48 * 3600,
+            )?,
+            cleanup_command_usage_retention_seconds: parse_i64(
+                "CLEANUP_COMMAND_USAGE_RETENTION_SECONDS",
+                90 * 24 * 3600,
+            )?,
+        })
+    }
+}
+
 fn req(key: &'static str) -> Result<String, ConfigError> {
     match env::var(key) {
         Ok(v) if !v.is_empty() => Ok(v),
@@ -303,6 +362,15 @@ fn parse_u64(key: &'static str, default: u64) -> Result<u64, ConfigError> {
         None => Ok(default),
         Some(v) => v
             .parse::<u64>()
+            .map_err(|e| ConfigError::Invalid(key, e.to_string())),
+    }
+}
+
+fn parse_i64(key: &'static str, default: i64) -> Result<i64, ConfigError> {
+    match opt(key) {
+        None => Ok(default),
+        Some(v) => v
+            .parse::<i64>()
             .map_err(|e| ConfigError::Invalid(key, e.to_string())),
     }
 }
