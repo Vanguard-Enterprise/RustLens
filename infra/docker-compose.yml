@@ -31,6 +31,8 @@ services:
     build:
       context: ../apps/rust
       dockerfile: Dockerfile
+      args:
+        SERVICE: identity
     env_file:
       - path: ../apps/backend/.env
         required: false
@@ -40,6 +42,104 @@ services:
       REDIS_URL: "redis://redis:6379/0"
       APP_ORIGIN: "http://localhost"
       APP_BASE_URL: "http://localhost:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Rust players service (Phase 2). No Traefik dynamic file yet, so nothing is
+  # routed here until cutover; runs against the compose Postgres/Redis. Shared
+  # secrets + Steam/BM/platformsync/proxy vars come from apps/backend/.env.
+  players:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: players
+    env_file:
+      - path: ../apps/backend/.env
+        required: false
+    environment:
+      PORT: "8091"
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Rust servers service (Phase 3) — tracked servers, presence, analytics,
+  # outbound proxies + the BM poller/refresher (Redis-locked, shares Go's keys).
+  servers:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: servers
+    env_file:
+      - path: ../apps/backend/.env
+        required: false
+    environment:
+      PORT: "8092"
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Rust guilds service (Phase 4) — settings, wipe-reacts, schedules + scheduler,
+  # track-groups, guild/user/install sync, admin guild aggregate.
+  guilds:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: guilds
+    env_file:
+      - path: ../apps/backend/.env
+        required: false
+    environment:
+      PORT: "8093"
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Rust coordinator service (Phase 5) — shard coordination (Redis leases), owner
+  # stats, rate-limit + fraud, Discord webhook (needs DISCORD_APP_PUBLIC_KEY), and
+  # the cleanup retention sweep.
+  coordinator:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: coordinator
+    env_file:
+      - path: ../apps/backend/.env
+        required: false
+    environment:
+      PORT: "8094"
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
     depends_on:
       postgres:
         condition: service_healthy
