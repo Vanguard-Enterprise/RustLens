@@ -48,3 +48,51 @@ pub async fn touch_seen(pool: &PgPool, input: &SeenInput) -> Result<(), sqlx::Er
     .await?;
     Ok(())
 }
+
+/// Full install upsert from a Discord `APPLICATION_AUTHORIZED` webhook event.
+/// Unlike `touch_seen`, this overwrites metadata + forces `is_installed=TRUE` and
+/// clears `left_at` (re-authorization). A nil `scopes` is stored as `{}`.
+#[derive(Debug, Clone, Default)]
+pub struct UpsertInput {
+    pub discord_id: String,
+    pub username: String,
+    pub global_name: Option<String>,
+    pub avatar_hash: Option<String>,
+    pub scopes: Vec<String>,
+}
+
+/// `UpsertBotUserInstall`.
+pub async fn upsert_install(pool: &PgPool, input: &UpsertInput) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"INSERT INTO bot_user_installs (
+               discord_id, username, global_name, avatar_hash, scopes,
+               is_installed, installed_at, left_at, metadata_updated_at
+           )
+           VALUES ($1, $2, $3, $4, $5, TRUE, NOW(), NULL, NOW())
+           ON CONFLICT (discord_id) DO UPDATE SET
+               username            = EXCLUDED.username,
+               global_name         = EXCLUDED.global_name,
+               avatar_hash         = EXCLUDED.avatar_hash,
+               scopes              = EXCLUDED.scopes,
+               is_installed        = TRUE,
+               left_at             = NULL,
+               metadata_updated_at = NOW()"#,
+    )
+    .bind(&input.discord_id)
+    .bind(&input.username)
+    .bind(&input.global_name)
+    .bind(&input.avatar_hash)
+    .bind(&input.scopes)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// `MarkBotUserInstallRemoved`: no-op (0 rows) when the user was never recorded.
+pub async fn mark_removed(pool: &PgPool, discord_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE bot_user_installs SET is_installed = FALSE, left_at = NOW() WHERE discord_id = $1")
+        .bind(discord_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}

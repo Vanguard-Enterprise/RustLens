@@ -13,6 +13,7 @@ mod ratelimit;
 mod redis_lock;
 mod shards;
 mod state;
+mod webhook;
 
 use std::sync::Arc;
 
@@ -62,6 +63,8 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/api/healthz", get(healthz))
+        // ---- Discord webhook events (Ed25519 signature in-handler) ----
+        .route("/api/discord/webhook-events", post(webhook::discord_webhook_events))
         // ---- shard coordination (bot JWT) ----
         .route("/api/internal/bot/shards/register", post(shards::register_shard_worker))
         .route("/api/internal/bot/shards/heartbeat", post(shards::heartbeat_shard_worker))
