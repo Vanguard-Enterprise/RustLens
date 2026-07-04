@@ -6,9 +6,11 @@
 //! PORT 8094.
 
 mod auth;
+mod cleanup;
 mod leases;
 mod owner_stats;
 mod ratelimit;
+mod redis_lock;
 mod shards;
 mod state;
 
@@ -54,6 +56,9 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let state = Arc::new(AppState { config, pool, redis });
+
+    // Spawn the background retention-sweep worker.
+    tokio::spawn(cleanup::run(state.clone()));
 
     let app = Router::new()
         .route("/api/healthz", get(healthz))
