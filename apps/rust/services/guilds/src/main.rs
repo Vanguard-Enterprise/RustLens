@@ -5,6 +5,7 @@
 //! Talks to the same Postgres as the Go backend (schema owned by Go). PORT 8093.
 
 mod admin_guilds;
+mod admin_user_installs;
 mod auth;
 mod redis_lock;
 mod scheduler;
@@ -160,6 +161,11 @@ async fn main() -> anyhow::Result<()> {
         // ---- admin guild list + detail (app-secret + session + guilds.read) ----
         .route("/api/app/admin/guilds", get(admin_guilds::list_admin_guilds))
         .route("/api/app/admin/guilds/{guildID}", get(admin_guilds::get_admin_guild))
+        // ---- admin user-installs list (app-secret + session + users.read) ----
+        .route(
+            "/api/app/admin/user-installs",
+            get(admin_user_installs::list_admin_user_installs),
+        )
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", state.config.port);
