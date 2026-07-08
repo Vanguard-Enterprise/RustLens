@@ -12,10 +12,14 @@ const nextConfig: NextConfig = {
 	// HTML/JS cached by the browser.
 	deploymentId: process.env.DEPLOYMENT_VERSION,
 	async rewrites() {
+		// BACKEND_ORIGIN lets dev/CI point /api/* at either Traefik (the default,
+		// matching production routing) or directly at a single backend service
+		// (e.g. http://localhost:8080 for the Go backend) when Traefik isn't running.
+		const backendOrigin = process.env.BACKEND_ORIGIN || "http://localhost";
 		return [
 			{
 				source: "/api/:path*",
-				destination: "http://localhost:8080/api/:path*",
+				destination: `${backendOrigin}/api/:path*`,
 			},
 		];
 	},

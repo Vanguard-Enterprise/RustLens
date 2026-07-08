@@ -1960,6 +1960,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlens-migrate"
+version = "0.1.0"
+dependencies = [
+ "rustlens-db",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rustlens-outbound"
 version = "0.1.0"
 dependencies = [

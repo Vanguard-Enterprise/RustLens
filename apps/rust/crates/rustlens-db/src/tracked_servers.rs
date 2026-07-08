@@ -482,3 +482,56 @@ pub async fn reset_empty_polls(pool: &PgPool, bm_id: &str) -> Result<(), sqlx::E
         .await?;
     Ok(())
 }
+
+// ---- admin servers list (GET /api/app/admin/servers) ----
+
+/// One row returned by the lightweight admin `servers` list. Distinct from the
+/// `bm-servers` admin CRUD shape (`TrackedServer`/`bmserver_map`); this
+/// mirrors Go's `adminServerItem` exactly: `serverBmId`/`name`/`lastPolledAt`
+/// (nullable RFC3339 seconds string)/`lastPollError`/`guildCount`.
+#[derive(Debug, Clone, Serialize)]
+pub struct AdminServerItem {
+    #[serde(rename = "serverBmId")]
+    pub server_bm_id: String,
+    pub name: String,
+    #[serde(rename = "lastPolledAt")]
+    pub last_polled_at: Option<String>,
+    #[serde(rename = "lastPollError")]
+    pub last_poll_error: String,
+    #[serde(rename = "guildCount")]
+    pub guild_count: i64,
+}
+
+fn rfc3339_secs(dt: DateTime<Utc>) -> String {
+    dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+/// `ListAdminServers`: every tracked server (`bm_id` ASC, capped at 500) with a
+/// per-server count of guilds that selected it. No pagination in the Go
+/// response; just `{"items": [...]}`.
+pub async fn list_admin(pool: &PgPool) -> Result<Vec<AdminServerItem>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"SELECT t.bm_id,
+                  COALESCE(t.name, '') AS name,
+                  t.last_polled_at,
+                  COALESCE(t.last_poll_error, '') AS last_poll_error,
+                  (SELECT COUNT(*) FROM guild_tracked_servers g WHERE g.server_bm_id = t.bm_id) AS guild_count
+           FROM tracked_servers t
+           ORDER BY t.bm_id
+           LIMIT 500"#,
+    )
+    .fetch_all(pool)
+    .await?;
+    rows.iter()
+        .map(|row| {
+            let last_polled_at: Option<DateTime<Utc>> = row.try_get("last_polled_at")?;
+            Ok(AdminServerItem {
+                server_bm_id: row.try_get("bm_id")?,
+                name: row.try_get("name")?,
+                last_polled_at: last_polled_at.map(rfc3339_secs),
+                last_poll_error: row.try_get("last_poll_error")?,
+                guild_count: row.try_get("guild_count")?,
+            })
+        })
+        .collect()
+}

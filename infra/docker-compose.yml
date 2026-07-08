@@ -1,3 +1,7 @@
+# The Rust services below read shared secrets from ./rustlens.env (not
+# committed; see infra/rustlens.env.example). Local dev: cp
+# apps/backend/.env infra/rustlens.env once, then edit as needed. The Go
+# backend keeps reading its own apps/backend/.env until that file is deleted.
 services:
   postgres:
     image: postgres:18-alpine
@@ -20,11 +24,11 @@ services:
     ports:
       - "6379:6379"
 
-  # Rust identity service — serves the auth/OAuth, /me, events, role-connection,
+  # Rust identity service: serves the auth/OAuth, /me, events, role-connection,
   # and bot-internal identity routes (see infra/traefik/dynamic/identity.yml for
-  # exactly which paths Traefik routes here). Shares the Go backend's secrets via
-  # apps/backend/.env; the explicit environment below points it at the compose
-  # network's Postgres/Redis. Requires apps/backend/.env for the shared secrets
+  # exactly which paths Traefik routes here). Shared secrets come from
+  # ./rustlens.env; the explicit environment below points it at the compose
+  # network's Postgres/Redis. Requires rustlens.env for the shared secrets
   # (APP_SESSION_SECRET, APP_API_INTERNAL_SECRET, DISCORD_CLIENT_ID/SECRET,
   # BOT_SERVICE_JWT_SECRET); the container exits without them.
   identity:
@@ -34,8 +38,8 @@ services:
       args:
         SERVICE: identity
     env_file:
-      - path: ../apps/backend/.env
-        required: false
+      - path: ./rustlens.env
+        required: true
     environment:
       PORT: "8090"
       POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
@@ -53,7 +57,7 @@ services:
 
   # Rust players service (Phase 2). No Traefik dynamic file yet, so nothing is
   # routed here until cutover; runs against the compose Postgres/Redis. Shared
-  # secrets + Steam/BM/platformsync/proxy vars come from apps/backend/.env.
+  # secrets + Steam/BM/platformsync/proxy vars come from ./rustlens.env.
   players:
     build:
       context: ../apps/rust
@@ -61,8 +65,8 @@ services:
       args:
         SERVICE: players
     env_file:
-      - path: ../apps/backend/.env
-        required: false
+      - path: ./rustlens.env
+        required: true
     environment:
       PORT: "8091"
       POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
@@ -76,7 +80,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # Rust servers service (Phase 3) — tracked servers, presence, analytics,
+  # Rust servers service (Phase 3): tracked servers, presence, analytics,
   # outbound proxies + the BM poller/refresher (Redis-locked, shares Go's keys).
   servers:
     build:
@@ -85,8 +89,8 @@ services:
       args:
         SERVICE: servers
     env_file:
-      - path: ../apps/backend/.env
-        required: false
+      - path: ./rustlens.env
+        required: true
     environment:
       PORT: "8092"
       POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
@@ -100,7 +104,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # Rust guilds service (Phase 4) — settings, wipe-reacts, schedules + scheduler,
+  # Rust guilds service (Phase 4): settings, wipe-reacts, schedules + scheduler,
   # track-groups, guild/user/install sync, admin guild aggregate.
   guilds:
     build:
@@ -109,8 +113,8 @@ services:
       args:
         SERVICE: guilds
     env_file:
-      - path: ../apps/backend/.env
-        required: false
+      - path: ./rustlens.env
+        required: true
     environment:
       PORT: "8093"
       POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
@@ -124,7 +128,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # Rust coordinator service (Phase 5) — shard coordination (Redis leases), owner
+  # Rust coordinator service (Phase 5): shard coordination (Redis leases), owner
   # stats, rate-limit + fraud, Discord webhook (needs DISCORD_APP_PUBLIC_KEY), and
   # the cleanup retention sweep.
   coordinator:
@@ -134,8 +138,8 @@ services:
       args:
         SERVICE: coordinator
     env_file:
-      - path: ../apps/backend/.env
-        required: false
+      - path: ./rustlens.env
+        required: true
     environment:
       PORT: "8094"
       POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"

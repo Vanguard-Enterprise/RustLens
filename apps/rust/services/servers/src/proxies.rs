@@ -95,7 +95,9 @@ fn validate_proxy_endpoint(raw: &str) -> Result<(String, String), String> {
 
 /// Rebuild the in-process provider from the enabled DB proxies (decrypted), or
 /// fall back to the legacy env config when there are no enabled DB rows.
-async fn reload(st: &AppState) -> Result<(), String> {
+/// `pub(crate)` so `main.rs` can reuse it when wiring the outbound provider's
+/// auto-disable callback (Go `initialProxyEndpoints` + `Provider.Replace`).
+pub(crate) async fn reload(st: &AppState) -> Result<(), String> {
     let enabled = op::list_enabled(&st.pool).await.map_err(|e| e.to_string())?;
     if enabled.is_empty() {
         return st

@@ -11,6 +11,7 @@ mod discord;
 mod dispatcher;
 mod events_handler;
 mod handlers;
+mod me;
 mod ratelimit;
 mod role_connection;
 mod state;
@@ -89,6 +90,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/app/me/preferences",
             get(handlers::get_preferences).patch(handlers::patch_preferences),
         )
+        .route("/api/app/me/connections", get(me::connections))
+        .route("/api/app/me/guilds", get(me::guilds))
+        .route("/api/app/me/guilds/installed", get(me::guilds_installed))
+        .route("/api/app/me/guilds/{guildID}/links", get(me::guild_links))
         .route("/api/app/auth/logout", post(handlers::logout))
         .route("/api/app/admin/permissions", get(admin::list_permissions))
         .route("/api/app/admin/roles", get(admin::list_roles))
@@ -143,6 +148,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/internal/bot/setup/discord/{discordID}/has-pro-role",
             get(bot::has_pro_role),
+        )
+        .route(
+            "/api/internal/bot/setup/users/ensure",
+            post(bot::ensure_app_user),
         )
         .with_state(state.clone());
 

@@ -4,6 +4,7 @@
 //! the outbound-proxy infra (with the BM poller + daily analytics refresher).
 //! Talks to the same Postgres as the Go backend (schema owned by Go). PORT 8092.
 
+mod admin_servers;
 mod auth;
 mod bmservers;
 mod player_states;
@@ -82,6 +83,44 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let state = Arc::new(AppState { config, pool, bm, outbound: provider, cipher, redis });
+
+    // Wire the outbound provider's auto-disable callback (Go
+    // `cmd/server/main.go` ~line 129, `SetAutoDisableCallback`): persist the
+    // disable, then reload the provider from the DB (falling back to the
+    // legacy env proxies when no DB rows are enabled) via the same `reload`
+    // helper the proxy admin/owner routes use. A failed persist or reload is
+    // logged and left for the next auto-disable/admin reload to retry, same
+    // as Go.
+    {
+        let cb_state = state.clone();
+        state.outbound.set_auto_disable_callback(Arc::new(move |redacted: String| {
+            let state = cb_state.clone();
+            Box::pin(async move {
+                let disabled = match rustlens_db::outbound_proxies::disable_by_redacted_endpoint(
+                    &state.pool,
+                    &redacted,
+                )
+                .await
+                {
+                    Ok(disabled) => disabled,
+                    Err(e) => {
+                        tracing::error!("servers: auto-disable proxy {redacted:?} persist failed: {e}");
+                        return;
+                    }
+                };
+                if !disabled {
+                    return;
+                }
+                if let Err(e) = proxies::reload(&state).await {
+                    tracing::error!("servers: reload proxies after auto-disable {redacted:?} failed: {e}");
+                    return;
+                }
+                tracing::warn!(
+                    "servers: auto-disabled outbound proxy {redacted:?} after >=50% errors in 10m"
+                );
+            })
+        }));
+    }
 
     // Spawn the background workers: the poller + the daily analytics refresher.
     tokio::spawn(poller::run(state.clone()));
@@ -166,6 +205,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/app/admin/bm-servers/{bmID}",
             put(bmservers::update_admin_bm_server).delete(bmservers::delete_admin_bm_server),
         )
+        // ---- admin servers list (app-secret + session + bm_servers.read) ----
+        .route("/api/app/admin/servers", get(admin_servers::list_admin_servers))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", state.config.port);

@@ -13,6 +13,7 @@ use serde_json::json;
 
 use rustlens_config::IdentityConfig;
 use rustlens_db::bot::{self, CommandUsageInsert, CommandUsageTargetInsert};
+use rustlens_db::identity;
 
 use crate::state::AppState;
 
@@ -59,7 +60,7 @@ fn require_bot_jwt(headers: &HeaderMap, config: &IdentityConfig) -> Option<Respo
     }
 }
 
-fn is_snowflake(s: &str) -> bool {
+pub(crate) fn is_snowflake(s: &str) -> bool {
     (17..=20).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit())
 }
 
@@ -84,6 +85,56 @@ fn cap_chars(s: String, max: usize) -> String {
         s.chars().take(max).collect()
     } else {
         s
+    }
+}
+
+// ---------------------------------------------------------------------------
+// POST /users/ensure
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct EnsureAppUserRequest {
+    #[serde(rename = "discordId", default)]
+    discord_id: String,
+    #[serde(default)]
+    username: String,
+    #[serde(rename = "globalName", default)]
+    global_name: String,
+    #[serde(rename = "avatarHash", default)]
+    avatar_hash: String,
+}
+
+/// `POST /api/internal/bot/setup/users/ensure`, idempotent. Inserts an
+/// `app_users` row keyed on Discord ID if one does not exist, otherwise
+/// refreshes cached profile fields and returns the existing row. Called by the
+/// bot at the top of every interaction. Mirrors Go's `EnsureAppUser`.
+pub async fn ensure_app_user(State(st): Shared, headers: HeaderMap, raw: Bytes) -> Response {
+    if let Some(resp) = require_bot_jwt(&headers, &st.config) {
+        return resp;
+    }
+    let req: EnsureAppUserRequest = match serde_json::from_slice(&raw) {
+        Ok(r) => r,
+        Err(_) => return err_json(StatusCode::BAD_REQUEST, "invalid request body"),
+    };
+    if !is_snowflake(&req.discord_id) {
+        return err_json(StatusCode::BAD_REQUEST, "discordId must be a valid Discord snowflake");
+    }
+
+    let new_id = crate::discord::new_user_id();
+    let profile = identity::DiscordProfile {
+        id: req.discord_id.clone(),
+        username: req.username,
+        global_name: req.global_name,
+        avatar_hash: req.avatar_hash,
+    };
+    match identity::find_or_create_by_discord_id_ensure(&st.pool, &new_id, &profile).await {
+        Ok((user_id, created)) => {
+            Json(json!({ "userId": user_id, "created": created })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("ensure_app_user: FindOrCreateByDiscordID error for {}: {e:#}", req.discord_id);
+            err_json(StatusCode::INTERNAL_SERVER_ERROR, "failed to ensure user")
+        }
     }
 }
 

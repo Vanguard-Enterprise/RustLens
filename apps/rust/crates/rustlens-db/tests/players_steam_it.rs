@@ -4,23 +4,6 @@
 
 use rustlens_db::players_steam as ps;
 
-const SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS steam_accounts (steam_id TEXT PRIMARY KEY, bm_id TEXT UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS steam_account_cache (
-    steam_id TEXT PRIMARY KEY, persona_name TEXT NOT NULL DEFAULT '', avatar_image TEXT NOT NULL DEFAULT '',
-    rust_hours BIGINT, total_games INTEGER, top_games JSONB NOT NULL DEFAULT '[]',
-    game_banned BOOLEAN NOT NULL DEFAULT FALSE, game_banned_at TIMESTAMPTZ, game_ban_checked_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS bm_profile_cache (
-    bm_id TEXT PRIMARY KEY, bm_name TEXT NOT NULL DEFAULT '', first_seen_at TIMESTAMPTZ,
-    vitality_hours BIGINT NOT NULL DEFAULT 0, atlas_hours BIGINT NOT NULL DEFAULT 0, vital_hours BIGINT NOT NULL DEFAULT 0,
-    modded_hours BIGINT NOT NULL DEFAULT 0, official_hours BIGINT NOT NULL DEFAULT 0, build_hours BIGINT NOT NULL DEFAULT 0,
-    bm_hours BIGINT NOT NULL DEFAULT 0, bm_servers_played INTEGER NOT NULL DEFAULT 0,
-    top_servers JSONB NOT NULL DEFAULT '[]', updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS bm_name_history (bm_id TEXT NOT NULL, name TEXT NOT NULL, last_seen_at TIMESTAMPTZ NOT NULL,
-    observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (bm_id, name, last_seen_at));
-"#;
-
 const S: &str = "76561190000000055";
 const B: &str = "556677";
 
@@ -37,9 +20,8 @@ async fn steam_account_and_cache_round_trips() {
         return;
     };
     let pool = rustlens_db::connect(&url, 5).await.expect("connect");
-    for stmt in SCHEMA.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-        sqlx::query(stmt).execute(&pool).await.unwrap();
-    }
+    // The distilled 0001 baseline is the tested schema contract.
+    rustlens_db::migrate(&pool).await.expect("migrate");
     clean(&pool).await;
 
     // upsert account + link, then read back the joined shape.

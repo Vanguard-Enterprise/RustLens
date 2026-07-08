@@ -1,8 +1,12 @@
 //! Shared Postgres access for the RustLens Rust services.
 //!
-//! The Rust identity service connects to the SAME database as the Go backend.
-//! Schema is owned/migrated by the Go backend's `EnsureSchema`; this crate only
-//! reads/writes existing tables. No schema migration happens here.
+//! The Rust fleet connects to a single Postgres database whose schema is owned
+//! by this crate's embedded migrations in `migrations/`. The one-shot
+//! `rustlens-migrate` binary (`apps/rust/tools/migrate`) runs [`migrate`] to
+//! apply them; the long-running services never migrate, they only read/write
+//! existing tables. `0001_baseline.sql` is the distilled end-state schema
+//! (previously produced by the Go backend's `EnsureSchema`); subsequent changes
+//! land as new `000N` migrations.
 //!
 //! Query modules are added per-domain (see `identity`).
 
@@ -46,4 +50,16 @@ pub async fn connect(database_url: &str, max_connections: u32) -> Result<PgPool,
         .max_connections(max_connections)
         .connect(database_url)
         .await
+}
+
+/// Apply all embedded schema migrations from `crates/rustlens-db/migrations/`.
+///
+/// Wraps `sqlx::migrate!`, which validates each already-applied migration's
+/// checksum against `_sqlx_migrations` and runs any that are pending. Applying
+/// against a database already migrated by the Go backend's `EnsureSchema` is a
+/// safe no-op-plus-journal: every statement in `0001_baseline.sql` is
+/// idempotent (`CREATE ... IF NOT EXISTS`, `INSERT ... ON CONFLICT DO NOTHING`),
+/// so it records the baseline in `_sqlx_migrations` without altering the schema.
+pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
+    sqlx::migrate!("./migrations").run(pool).await
 }
