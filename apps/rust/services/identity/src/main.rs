@@ -21,7 +21,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use axum::{
     Router,
-    routing::{delete, get, post},
+    routing::{MethodRouter, delete, get, post},
 };
 use rustlens_config::IdentityConfig;
 
@@ -89,7 +89,47 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(role_connection::reconcile_loop(state.clone()));
     }
 
-    let app = Router::new()
+    let app = build_router().with_state(state.clone());
+
+    let addr = format!("0.0.0.0:{}", state.config.port);
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .with_context(|| format!("binding {addr}"))?;
+    tracing::info!("identity service listening on {addr}");
+    axum::serve(listener, app).await.context("serving")?;
+    Ok(())
+}
+
+async fn healthz() -> &'static str {
+    "ok"
+}
+
+/// Registers a bot-internal route under BOTH the legacy flat `setup/` path and
+/// the new `identity/` domain-prefix path (D1 domain-prefix reorg). The flat
+/// paths are dropped wholesale in Phase E once every domain's bot deploy has
+/// cut over; until then Rust serves both so the bot deploy is the only cutover
+/// moment and reverting the bot is a full rollback.
+///
+/// `MethodRouter` is `Clone`, so the same handler(s) back both paths. Callers
+/// pass `old` and `new` explicitly rather than deriving one from the other, so
+/// the reorg stays auditable (mirrors the players service's C1 pattern).
+fn dual_route(
+    router: Router<Arc<AppState>>,
+    old_path: &str,
+    new_path: &str,
+    method: MethodRouter<Arc<AppState>>,
+) -> Router<Arc<AppState>> {
+    router
+        .route(old_path, method.clone())
+        .route(new_path, method)
+}
+
+/// Builds the full identity router (state left unresolved so tests can
+/// construct it without a live pool). Adding the routes is what triggers any
+/// matchit conflict panic, so `router_builds` below constructs this at test
+/// time and fails `cargo test` instead of failing at service boot.
+fn build_router() -> Router<Arc<AppState>> {
+    let router = Router::new()
         .route("/api/healthz", get(healthz))
         .route("/api/auth/discord", get(handlers::initiate))
         .route("/api/auth/discord/callback", get(handlers::callback))
@@ -139,39 +179,51 @@ async fn main() -> anyhow::Result<()> {
             "/api/app/me/discord-role-connection",
             delete(role_connection::disconnect),
         )
-        .route("/api/events/stream", get(events_handler::stream))
-        // Bot-internal (JWT-authed) identity routes.
-        .route(
-            "/api/internal/bot/setup/command-usage",
-            post(bot::record_command_usage),
-        )
-        .route(
-            "/api/internal/bot/setup/bans/{discordID}",
-            get(bot::get_user_ban).put(bot::update_user_ban),
-        )
-        .route(
-            "/api/internal/bot/setup/discord/{discordID}/is-website-admin",
-            get(bot::is_website_admin),
-        )
-        .route(
-            "/api/internal/bot/setup/discord/{discordID}/has-pro-role",
-            get(bot::has_pro_role),
-        )
-        .route(
-            "/api/internal/bot/setup/users/ensure",
-            post(bot::ensure_app_user),
-        )
-        .with_state(state.clone());
+        .route("/api/events/stream", get(events_handler::stream));
 
-    let addr = format!("0.0.0.0:{}", state.config.port);
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .with_context(|| format!("binding {addr}"))?;
-    tracing::info!("identity service listening on {addr}");
-    axum::serve(listener, app).await.context("serving")?;
-    Ok(())
+    // ---- Bot-internal (JWT-authed) identity routes, dual-registered under
+    // the legacy flat `setup/` path and the new `identity/` domain prefix. ----
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/command-usage",
+        "/api/internal/bot/identity/command-usage",
+        post(bot::record_command_usage),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/bans/{discordID}",
+        "/api/internal/bot/identity/bans/{discordID}",
+        get(bot::get_user_ban).put(bot::update_user_ban),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/discord/{discordID}/is-website-admin",
+        "/api/internal/bot/identity/discord/{discordID}/is-website-admin",
+        get(bot::is_website_admin),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/discord/{discordID}/has-pro-role",
+        "/api/internal/bot/identity/discord/{discordID}/has-pro-role",
+        get(bot::has_pro_role),
+    );
+    dual_route(
+        router,
+        "/api/internal/bot/setup/users/ensure",
+        "/api/internal/bot/identity/users/ensure",
+        post(bot::ensure_app_user),
+    )
 }
 
-async fn healthz() -> &'static str {
-    "ok"
+#[cfg(test)]
+mod tests {
+    use super::build_router;
+
+    /// Constructing the router adds every route to matchit, so a bare-param /
+    /// literal-segment conflict panics here in `cargo test` rather than at
+    /// service boot. This guards the dual-registration reorg.
+    #[test]
+    fn router_builds() {
+        let _ = build_router();
+    }
 }

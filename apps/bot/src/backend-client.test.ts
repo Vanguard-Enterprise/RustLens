@@ -615,7 +615,7 @@ describe("BackendClient", () => {
     expect(result).toEqual({ userId: "usr_abcdef0123456789abcdef01", created: true });
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/users/ensure");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/identity/users/ensure");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(init?.body as string)).toEqual({
       discordId:  "111222333444555666",
@@ -652,7 +652,7 @@ describe("BackendClient", () => {
     expect(result).toBeUndefined();
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/command-usage");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/identity/command-usage");
     expect(init?.method).toBe("POST");
     const body = JSON.parse(init?.body as string);
     expect(body.command).toBe("track");

@@ -1,5 +1,8 @@
-//! Bot-internal identity routes under `/api/internal/bot/setup/*`, authenticated
-//! with the bot service JWT. Mirrors the Go bot-facing handlers.
+//! Bot-internal identity routes, authenticated with the bot service JWT and
+//! dual-registered (D1 domain-prefix reorg) under both the legacy flat
+//! `/api/internal/bot/setup/*` path and the new `/api/internal/bot/identity/*`
+//! domain prefix (see `main::build_router`). Mirrors the Go bot-facing
+//! handlers.
 
 use std::sync::Arc;
 
@@ -104,7 +107,7 @@ struct EnsureAppUserRequest {
     avatar_hash: String,
 }
 
-/// `POST /api/internal/bot/setup/users/ensure`, idempotent. Inserts an
+/// `POST /users/ensure`, idempotent. Inserts an
 /// `app_users` row keyed on Discord ID if one does not exist, otherwise
 /// refreshes cached profile fields and returns the existing row. Called by the
 /// bot at the top of every interaction. Mirrors Go's `EnsureAppUser`.
@@ -192,7 +195,7 @@ struct RecordRequest {
     targets: Vec<RecordTarget>,
 }
 
-/// `POST /api/internal/bot/setup/command-usage` — fire-and-forget interaction
+/// `POST /command-usage` — fire-and-forget interaction
 /// logging. Returns 204 on success and on a missing app-user (dropped silently).
 pub async fn record_command_usage(State(st): Shared, headers: HeaderMap, raw: Bytes) -> Response {
     if let Some(resp) = require_bot_jwt(&headers, &st.config) {
@@ -305,7 +308,7 @@ pub async fn record_command_usage(State(st): Shared, headers: HeaderMap, raw: By
 // bans / is-website-admin / has-pro-role
 // ---------------------------------------------------------------------------
 
-/// `GET /api/internal/bot/setup/bans/{discordID}`.
+/// `GET /bans/{discordID}`.
 pub async fn get_user_ban(State(st): Shared, headers: HeaderMap, Path(discord_id): Path<String>) -> Response {
     if let Some(resp) = require_bot_jwt(&headers, &st.config) {
         return resp;
@@ -333,7 +336,7 @@ struct UpdateBanRequest {
     updated_by: String,
 }
 
-/// `PUT /api/internal/bot/setup/bans/{discordID}`.
+/// `PUT /bans/{discordID}`.
 pub async fn update_user_ban(
     State(st): Shared,
     headers: HeaderMap,
@@ -375,7 +378,7 @@ pub async fn update_user_ban(
     }
 }
 
-/// `GET /api/internal/bot/setup/discord/{discordID}/is-website-admin`.
+/// `GET /discord/{discordID}/is-website-admin`.
 pub async fn is_website_admin(State(st): Shared, headers: HeaderMap, Path(discord_id): Path<String>) -> Response {
     if let Some(resp) = require_bot_jwt(&headers, &st.config) {
         return resp;
@@ -392,7 +395,7 @@ pub async fn is_website_admin(State(st): Shared, headers: HeaderMap, Path(discor
     }
 }
 
-/// `GET /api/internal/bot/setup/discord/{discordID}/has-pro-role`.
+/// `GET /discord/{discordID}/has-pro-role`.
 pub async fn has_pro_role(State(st): Shared, headers: HeaderMap, Path(discord_id): Path<String>) -> Response {
     if let Some(resp) = require_bot_jwt(&headers, &st.config) {
         return resp;
