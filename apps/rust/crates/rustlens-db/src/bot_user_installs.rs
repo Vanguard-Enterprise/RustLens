@@ -2,7 +2,13 @@
 //! `TouchBotUserInstallSeen` in `internal/store/bot_user_installs.go`. Schema
 //! owned by Go.
 
-use sqlx::PgPool;
+use chrono::{DateTime, SecondsFormat, Utc};
+use serde::Serialize;
+use sqlx::{PgPool, Row};
+
+fn rfc3339_secs(dt: DateTime<Utc>) -> String {
+    dt.to_rfc3339_opts(SecondsFormat::Secs, true)
+}
 
 /// Input for `bot-user-installs/seen`. `username == ""` preserves the stored
 /// username; `None` global_name/avatar_hash preserve theirs.
@@ -95,4 +101,97 @@ pub async fn mark_removed(pool: &PgPool, discord_id: &str) -> Result<(), sqlx::E
         .execute(pool)
         .await?;
     Ok(())
+}
+
+// ---- admin list (GET /api/app/admin/user-installs) ----
+
+/// One row returned by the admin `user-installs` list. Mirrors Go's
+/// `adminUserInstallItem`: nullable fields emit explicit `null`, `installedAt`
+/// is a pre-formatted RFC3339 **seconds** string (matching Go's pre-formatting).
+#[derive(Debug, Clone, Serialize)]
+pub struct AdminUserInstallItem {
+    #[serde(rename = "discordId")]
+    pub discord_id: String,
+    pub username: String,
+    #[serde(rename = "globalName")]
+    pub global_name: Option<String>,
+    #[serde(rename = "avatarHash")]
+    pub avatar_hash: Option<String>,
+    pub scopes: Vec<String>,
+    #[serde(rename = "isInstalled")]
+    pub is_installed: bool,
+    #[serde(rename = "installedAt")]
+    pub installed_at: String,
+    #[serde(rename = "leftAt")]
+    pub left_at: Option<String>,
+    #[serde(rename = "lastSeenAt")]
+    pub last_seen_at: Option<String>,
+}
+
+/// Filter for the admin list. `q` is a free-text search applied to username
+/// (substring), global_name (substring), and discord_id (prefix), all
+/// case-insensitive. Empty disables the WHERE clause. Mirrors Go's
+/// `ListAdminUserInstallsOpts`.
+#[derive(Debug, Clone, Default)]
+pub struct AdminListFilter {
+    pub q: String,
+}
+
+const ADMIN_LIST_WHERE: &str = r#"
+    WHERE ($1 = ''
+           OR username ILIKE '%' || $1 || '%'
+           OR global_name ILIKE '%' || $1 || '%'
+           OR discord_id ILIKE $1 || '%')
+"#;
+
+/// `ListAdminUserInstalls`: one paginated page of `bot_user_installs` rows.
+/// Total is computed with a separate `COUNT(*)` query against the same WHERE
+/// clause so off-the-end pages still report the correct total.
+pub async fn list_admin(
+    pool: &PgPool,
+    filter: &AdminListFilter,
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<AdminUserInstallItem>, i64), sqlx::Error> {
+    let total: i64 = sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM bot_user_installs {ADMIN_LIST_WHERE}"
+    ))
+    .bind(&filter.q)
+    .fetch_one(pool)
+    .await?;
+
+    let rows = sqlx::query(&format!(
+        r#"SELECT discord_id, username, global_name, avatar_hash, scopes,
+                  is_installed, installed_at, left_at, last_seen_at
+           FROM bot_user_installs
+           {ADMIN_LIST_WHERE}
+           ORDER BY installed_at DESC, discord_id ASC
+           LIMIT $2 OFFSET $3"#
+    ))
+    .bind(&filter.q)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+
+    let items = rows
+        .iter()
+        .map(|row| {
+            let installed_at: DateTime<Utc> = row.try_get("installed_at")?;
+            let left_at: Option<DateTime<Utc>> = row.try_get("left_at")?;
+            let last_seen_at: Option<DateTime<Utc>> = row.try_get("last_seen_at")?;
+            Ok(AdminUserInstallItem {
+                discord_id: row.try_get("discord_id")?,
+                username: row.try_get("username")?,
+                global_name: row.try_get("global_name")?,
+                avatar_hash: row.try_get("avatar_hash")?,
+                scopes: row.try_get("scopes")?,
+                is_installed: row.try_get("is_installed")?,
+                installed_at: rfc3339_secs(installed_at),
+                left_at: left_at.map(rfc3339_secs),
+                last_seen_at: last_seen_at.map(rfc3339_secs),
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+    Ok((items, total))
 }

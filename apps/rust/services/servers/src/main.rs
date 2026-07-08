@@ -4,6 +4,7 @@
 //! the outbound-proxy infra (with the BM poller + daily analytics refresher).
 //! Talks to the same Postgres as the Go backend (schema owned by Go). PORT 8092.
 
+mod admin_servers;
 mod auth;
 mod bmservers;
 mod player_states;
@@ -166,6 +167,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/app/admin/bm-servers/{bmID}",
             put(bmservers::update_admin_bm_server).delete(bmservers::delete_admin_bm_server),
         )
+        // ---- admin servers list (app-secret + session + bm_servers.read) ----
+        .route("/api/app/admin/servers", get(admin_servers::list_admin_servers))
         .with_state(state.clone());
 
     let addr = format!("0.0.0.0:{}", state.config.port);
