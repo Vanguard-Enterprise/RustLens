@@ -72,6 +72,20 @@ jobs:
     defaults:
       run:
         working-directory: apps/rust
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: rustlens
+          POSTGRES_USER: rustlens
+          POSTGRES_PASSWORD: rustlens
+        ports:
+          - 5432
+        options: >-
+          --health-cmd="pg_isready -U rustlens"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
     steps:
       - uses: actions/checkout@v7
 
@@ -85,5 +99,126 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Run migrations
+        run: cargo run --bin migrate
+        env:
+          POSTGRES_URL: postgres://rustlens:rustlens@172.18.0.1:${{ job.services.postgres.ports['5432'] }}/rustlens?sslmode=disable
+
       - name: Test
         run: cargo test
+        env:
+          RUSTLENS_TEST_PG_URL: postgres://rustlens:rustlens@172.18.0.1:${{ job.services.postgres.ports['5432'] }}/rustlens?sslmode=disable
+
+  schema-parity:
+    # Dual-run guard: asserts the Go backend's EnsureSchema() and the Rust
+    # migrate binary produce byte-identical schemas. Temporary, deleted with
+    # Go once the fleet is fully cut over (Go-removal Phase E).
+    runs-on: self-hosted
+    services:
+      postgres-go:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: rustlens
+          POSTGRES_USER: rustlens
+          POSTGRES_PASSWORD: rustlens
+        ports:
+          - 5432
+        options: >-
+          --health-cmd="pg_isready -U rustlens"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+      postgres-rust:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: rustlens
+          POSTGRES_USER: rustlens
+          POSTGRES_PASSWORD: rustlens
+        ports:
+          - 5432
+        options: >-
+          --health-cmd="pg_isready -U rustlens"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.4'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Rust migrate against the Rust-side database
+        working-directory: apps/rust
+        run: cargo run --bin migrate
+        env:
+          POSTGRES_URL: postgres://rustlens:rustlens@172.18.0.1:${{ job.services['postgres-rust'].ports['5432'] }}/rustlens?sslmode=disable
+
+      - name: Build Go backend
+        working-directory: apps/backend
+        run: go build -o /tmp/rustlens-backend-parity ./cmd/server
+
+      - name: Run Go EnsureSchema against the Go-side database
+        run: |
+          set -euo pipefail
+          PORT=8095 \
+          POSTGRES_URL="postgres://rustlens:rustlens@172.18.0.1:${{ job.services['postgres-go'].ports['5432'] }}/rustlens?sslmode=disable" \
+          REDIS_URL="redis://172.18.0.1:${{ job.services.redis.ports['6379'] }}/0" \
+          BOT_SERVICE_JWT_SECRET="schema-parity-dummy-secret" \
+          APP_API_INTERNAL_SECRET="schema-parity-dummy-secret" \
+          APP_SESSION_SECRET="schema-parity-dummy-secret" \
+          /tmp/rustlens-backend-parity &
+          echo $! > /tmp/rustlens-backend-parity.pid
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:8095/api/healthz > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            echo "Go backend did not become healthy in time" >&2
+            kill "$(cat /tmp/rustlens-backend-parity.pid)" 2>/dev/null || true
+            exit 1
+          fi
+
+          kill "$(cat /tmp/rustlens-backend-parity.pid)"
+          wait "$(cat /tmp/rustlens-backend-parity.pid)" 2>/dev/null || true
+
+      - name: Dump both schemas
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -e PGPASSWORD=rustlens postgres:16-alpine \
+            pg_dump -h localhost -p ${{ job.services['postgres-go'].ports['5432'] }} -U rustlens -d rustlens --schema-only --no-owner --no-privileges \
+            --exclude-table=schema_migrations \
+            > /tmp/go-schema.sql
+          docker run --rm --network host -e PGPASSWORD=rustlens postgres:16-alpine \
+            pg_dump -h localhost -p ${{ job.services['postgres-rust'].ports['5432'] }} -U rustlens -d rustlens --schema-only --no-owner --no-privileges \
+            --exclude-table=_sqlx_migrations \
+            > /tmp/rust-schema.sql
+
+      - name: Normalize and diff
+        run: |
+          set -euo pipefail
+          normalize() {
+            grep -v '^\\restrict' "$1" \
+              | grep -v '^\\unrestrict' \
+              | grep -v '^-- Dumped from database version' \
+              | grep -v '^-- Dumped by pg_dump version'
+          }
+          normalize /tmp/go-schema.sql > /tmp/go-schema.normalized.sql
+          normalize /tmp/rust-schema.sql > /tmp/rust-schema.normalized.sql
+          if ! diff -u /tmp/go-schema.normalized.sql /tmp/rust-schema.normalized.sql; then
+            echo "Schema parity check FAILED: Go EnsureSchema and Rust migrate produced different schemas." >&2
+            exit 1
+          fi
+          echo "Schema parity check passed: no differences (ignoring the schema_migrations vs _sqlx_migrations journal tables)."

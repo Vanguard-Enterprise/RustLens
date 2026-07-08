@@ -27,6 +27,7 @@ jobs:
           - { service: servers, context: apps/rust, file: apps/rust/Dockerfile }
           - { service: guilds, context: apps/rust, file: apps/rust/Dockerfile }
           - { service: coordinator, context: apps/rust, file: apps/rust/Dockerfile }
+          - { service: migrate, context: apps/rust, file: apps/rust/Dockerfile }
     steps:
       - uses: actions/checkout@v7
 
