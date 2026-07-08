@@ -21,7 +21,7 @@ use std::time::Duration;
 use anyhow::Context;
 use axum::{
     Router,
-    routing::{get, post, put},
+    routing::{MethodRouter, get, post, put},
 };
 use rustlens_config::ServersConfig;
 
@@ -126,66 +126,139 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(poller::run(state.clone()));
     tokio::spawn(server_analytics::run_refresher(state.clone()));
 
-    let app = Router::new()
-        .route("/api/healthz", get(healthz))
-        // ---- global tracked servers ----
-        .route(
-            "/api/internal/bot/setup/tracked-servers",
-            get(tracked::list_tracked_servers).post(tracked::create_tracked_server),
-        )
-        .route(
-            "/api/internal/bot/setup/tracked-servers/{bmID}",
-            put(tracked::update_tracked_server).delete(tracked::delete_tracked_server),
-        )
-        // ---- guild tracked servers ----
-        .route(
-            "/api/internal/bot/setup/guilds/{guildID}/tracked-servers",
-            get(tracked::list_guild_tracked_servers).put(tracked::replace_guild_tracked_servers),
-        )
-        .route(
-            "/api/internal/bot/setup/guilds/{guildID}/tracked-servers/{bmID}",
-            post(tracked::add_guild_tracked_server).delete(tracked::remove_guild_tracked_server),
-        )
-        // ---- player presence ----
-        .route(
-            "/api/internal/bot/setup/player-states/servers/{serverID}",
-            get(player_states::list_online_by_server),
-        )
-        .route(
-            "/api/internal/bot/setup/player-states/servers/{serverID}/search",
-            get(player_states::search_states_on_server),
-        )
-        .route(
-            "/api/internal/bot/setup/player-states/servers/{serverID}/players/{playerID}",
-            get(player_states::get_state),
-        )
-        .route(
-            "/api/internal/bot/setup/player-states/players/{playerID}",
-            get(player_states::list_states_by_player),
-        )
-        .route(
-            "/api/internal/bot/setup/guilds/{guildID}/online-summary",
-            get(player_states::list_online_summary),
-        )
-        .route(
-            "/api/internal/bot/setup/guilds/{guildID}/tracked-server-log-events",
-            get(player_states::list_tracked_server_log_events),
-        )
-        // ---- server analytics ----
-        .route(
-            "/api/internal/bot/setup/tracked-servers/{bmID}/player-count-history",
-            get(server_analytics::get_player_count_analytics),
-        )
-        // ---- owner proxy routes (bot JWT) ----
-        .route(
-            "/api/internal/bot/owner/proxies",
-            get(proxies::list_owner_proxies).post(proxies::create_owner_proxy),
-        )
-        .route(
-            "/api/internal/bot/owner/proxies/{proxyID}",
-            axum::routing::patch(proxies::update_owner_proxy).delete(proxies::delete_owner_proxy),
-        )
-        // ---- admin proxy routes (app-secret + session + permission) ----
+    let app = build_router().with_state(state.clone());
+
+    let addr = format!("0.0.0.0:{}", state.config.port);
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .with_context(|| format!("binding {addr}"))?;
+    tracing::info!("servers service listening on {addr}");
+    axum::serve(listener, app).await.context("serving")?;
+    Ok(())
+}
+
+async fn healthz() -> &'static str {
+    "ok"
+}
+
+/// Registers a bot-internal route under BOTH the legacy flat `setup`/`owner`
+/// path and the new `servers/` domain-prefix path (D1 domain-prefix reorg, see
+/// `apps/rust/services/players/src/main.rs` for the pattern this copies). The
+/// flat paths are dropped wholesale in Phase E once every domain's bot deploy
+/// has cut over; until then Rust serves both so the bot deploy is the only
+/// cutover moment and reverting the bot is a full rollback.
+///
+/// `MethodRouter` is `Clone`, so the same handler(s) back both paths. Callers
+/// pass `old` and `new` explicitly rather than deriving one from the other,
+/// keeping the reorg auditable.
+fn dual_route(
+    router: Router<Arc<AppState>>,
+    old_path: &str,
+    new_path: &str,
+    method: MethodRouter<Arc<AppState>>,
+) -> Router<Arc<AppState>> {
+    router
+        .route(old_path, method.clone())
+        .route(new_path, method)
+}
+
+/// Builds the full servers router (state left unresolved so tests can
+/// construct it without a live pool). Adding the routes is what triggers any
+/// matchit conflict panic, so `router_builds` below constructs this at test
+/// time and fails `cargo test` instead of failing at service boot.
+fn build_router() -> Router<Arc<AppState>> {
+    let router = Router::new().route("/api/healthz", get(healthz));
+
+    // ---- global tracked servers ----
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/tracked-servers",
+        "/api/internal/bot/servers/tracked-servers",
+        get(tracked::list_tracked_servers).post(tracked::create_tracked_server),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/tracked-servers/{bmID}",
+        "/api/internal/bot/servers/tracked-servers/{bmID}",
+        put(tracked::update_tracked_server).delete(tracked::delete_tracked_server),
+    );
+    // ---- server analytics ----
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/tracked-servers/{bmID}/player-count-history",
+        "/api/internal/bot/servers/tracked-servers/{bmID}/player-count-history",
+        get(server_analytics::get_player_count_analytics),
+    );
+
+    // ---- guild tracked servers ----
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/guilds/{guildID}/tracked-servers",
+        "/api/internal/bot/servers/guilds/{guildID}/tracked-servers",
+        get(tracked::list_guild_tracked_servers).put(tracked::replace_guild_tracked_servers),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/guilds/{guildID}/tracked-servers/{bmID}",
+        "/api/internal/bot/servers/guilds/{guildID}/tracked-servers/{bmID}",
+        post(tracked::add_guild_tracked_server).delete(tracked::remove_guild_tracked_server),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/guilds/{guildID}/online-summary",
+        "/api/internal/bot/servers/guilds/{guildID}/online-summary",
+        get(player_states::list_online_summary),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/guilds/{guildID}/tracked-server-log-events",
+        "/api/internal/bot/servers/guilds/{guildID}/tracked-server-log-events",
+        get(player_states::list_tracked_server_log_events),
+    );
+
+    // ---- player presence ----
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/player-states/servers/{serverID}",
+        "/api/internal/bot/servers/player-states/servers/{serverID}",
+        get(player_states::list_online_by_server),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/player-states/servers/{serverID}/search",
+        "/api/internal/bot/servers/player-states/servers/{serverID}/search",
+        get(player_states::search_states_on_server),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/player-states/servers/{serverID}/players/{playerID}",
+        "/api/internal/bot/servers/player-states/servers/{serverID}/players/{playerID}",
+        get(player_states::get_state),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/setup/player-states/players/{playerID}",
+        "/api/internal/bot/servers/player-states/players/{playerID}",
+        get(player_states::list_states_by_player),
+    );
+
+    // ---- owner proxy routes (bot JWT) ----
+    let router = dual_route(
+        router,
+        "/api/internal/bot/owner/proxies",
+        "/api/internal/bot/servers/owner/proxies",
+        get(proxies::list_owner_proxies).post(proxies::create_owner_proxy),
+    );
+    let router = dual_route(
+        router,
+        "/api/internal/bot/owner/proxies/{proxyID}",
+        "/api/internal/bot/servers/owner/proxies/{proxyID}",
+        axum::routing::patch(proxies::update_owner_proxy).delete(proxies::delete_owner_proxy),
+    );
+
+    // ---- admin proxy routes (app-secret + session + permission); not part of
+    // the bot-internal reorg ----
+    router
         .route(
             "/api/app/admin/proxies",
             get(proxies::list_admin_proxies).post(proxies::create_admin_proxy),
@@ -207,17 +280,17 @@ async fn main() -> anyhow::Result<()> {
         )
         // ---- admin servers list (app-secret + session + bm_servers.read) ----
         .route("/api/app/admin/servers", get(admin_servers::list_admin_servers))
-        .with_state(state.clone());
-
-    let addr = format!("0.0.0.0:{}", state.config.port);
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .with_context(|| format!("binding {addr}"))?;
-    tracing::info!("servers service listening on {addr}");
-    axum::serve(listener, app).await.context("serving")?;
-    Ok(())
 }
 
-async fn healthz() -> &'static str {
-    "ok"
+#[cfg(test)]
+mod tests {
+    use super::build_router;
+
+    /// Constructing the router adds every route to matchit, so a bare-param /
+    /// literal-segment conflict panics here in `cargo test` rather than at
+    /// service boot. This guards the dual-registration reorg.
+    #[test]
+    fn router_builds() {
+        let _ = build_router();
+    }
 }

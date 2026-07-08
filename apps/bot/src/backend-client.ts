@@ -634,19 +634,19 @@ export class BackendClient {
   }
 
   listOwnerProxies(workerId: string) {
-    return this.call<OwnerProxyListResponse>(workerId, "/api/internal/bot/owner/proxies", "GET");
+    return this.call<OwnerProxyListResponse>(workerId, "/api/internal/bot/servers/owner/proxies", "GET");
   }
 
   createOwnerProxy(workerId: string, endpoint: string) {
-    return this.call<OwnerProxy>(workerId, "/api/internal/bot/owner/proxies", "POST", { endpoint });
+    return this.call<OwnerProxy>(workerId, "/api/internal/bot/servers/owner/proxies", "POST", { endpoint });
   }
 
   updateOwnerProxy(workerId: string, proxyId: number, enabled: boolean) {
-    return this.call<OwnerProxy>(workerId, `/api/internal/bot/owner/proxies/${proxyId}`, "PATCH", { enabled });
+    return this.call<OwnerProxy>(workerId, `/api/internal/bot/servers/owner/proxies/${proxyId}`, "PATCH", { enabled });
   }
 
   deleteOwnerProxy(workerId: string, proxyId: number) {
-    return this.call<{ status: string }>(workerId, `/api/internal/bot/owner/proxies/${proxyId}`, "DELETE");
+    return this.call<{ status: string }>(workerId, `/api/internal/bot/servers/owner/proxies/${proxyId}`, "DELETE");
   }
 
   release(workerId: string) {
@@ -826,7 +826,7 @@ export class BackendClient {
   listTrackedServers(workerId: string) {
     return this.call<TrackedServerListResponse>(
       workerId,
-      `/api/internal/bot/setup/tracked-servers`,
+      `/api/internal/bot/servers/tracked-servers`,
       "GET",
     );
   }
@@ -835,7 +835,7 @@ export class BackendClient {
     const query = new URLSearchParams({ timeframe }).toString();
     return this.call<ServerAnalyticsResponse>(
       workerId,
-      `/api/internal/bot/setup/tracked-servers/${bmId}/player-count-history?${query}`,
+      `/api/internal/bot/servers/tracked-servers/${bmId}/player-count-history?${query}`,
       "GET",
       undefined,
       30_000,
@@ -848,7 +848,7 @@ export class BackendClient {
   ) {
     return this.call<TrackedServer>(
       workerId,
-      `/api/internal/bot/setup/tracked-servers`,
+      `/api/internal/bot/servers/tracked-servers`,
       "POST",
       payload,
     );
@@ -861,7 +861,7 @@ export class BackendClient {
   ) {
     return this.call<TrackedServer>(
       workerId,
-      `/api/internal/bot/setup/tracked-servers/${currentBmId}`,
+      `/api/internal/bot/servers/tracked-servers/${currentBmId}`,
       "PUT",
       payload,
     );
@@ -870,7 +870,7 @@ export class BackendClient {
   deleteTrackedServer(workerId: string, bmId: string) {
     return this.call<{ status: string }>(
       workerId,
-      `/api/internal/bot/setup/tracked-servers/${bmId}`,
+      `/api/internal/bot/servers/tracked-servers/${bmId}`,
       "DELETE",
     );
   }
@@ -878,7 +878,7 @@ export class BackendClient {
   listGuildTrackedServers(workerId: string, guildId: string) {
     return this.call<GuildTrackedServerListResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/tracked-servers`,
+      `/api/internal/bot/servers/guilds/${guildId}/tracked-servers`,
       "GET",
     );
   }
@@ -886,7 +886,7 @@ export class BackendClient {
   replaceGuildTrackedServers(workerId: string, guildId: string, bmIds: string[]) {
     return this.call<GuildTrackedServerListResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/tracked-servers`,
+      `/api/internal/bot/servers/guilds/${guildId}/tracked-servers`,
       "PUT",
       { bmIds },
     );
@@ -895,7 +895,7 @@ export class BackendClient {
   addGuildTrackedServer(workerId: string, guildId: string, bmId: string) {
     return this.call<{ status: string }>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/tracked-servers/${bmId}`,
+      `/api/internal/bot/servers/guilds/${guildId}/tracked-servers/${bmId}`,
       "POST",
     );
   }
@@ -903,7 +903,7 @@ export class BackendClient {
   removeGuildTrackedServer(workerId: string, guildId: string, bmId: string) {
     return this.call<{ status: string }>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/tracked-servers/${bmId}`,
+      `/api/internal/bot/servers/guilds/${guildId}/tracked-servers/${bmId}`,
       "DELETE",
     );
   }
@@ -911,7 +911,7 @@ export class BackendClient {
   listOnlinePlayerStatesByServer(workerId: string, serverId: string) {
     return this.call<PlayerStateListResponse>(
       workerId,
-      `/api/internal/bot/setup/player-states/servers/${serverId}`,
+      `/api/internal/bot/servers/player-states/servers/${serverId}`,
       "GET",
     );
   }
@@ -929,7 +929,7 @@ export class BackendClient {
     }
     return this.call<PlayerSearchListResponse>(
       workerId,
-      `/api/internal/bot/setup/player-states/servers/${serverId}/search?${params.toString()}`,
+      `/api/internal/bot/servers/player-states/servers/${serverId}/search?${params.toString()}`,
       "GET",
     );
   }
@@ -937,7 +937,7 @@ export class BackendClient {
   getPlayerState(workerId: string, serverId: string, playerId: string) {
     return this.call<PlayerState>(
       workerId,
-      `/api/internal/bot/setup/player-states/servers/${serverId}/players/${playerId}`,
+      `/api/internal/bot/servers/player-states/servers/${serverId}/players/${playerId}`,
       "GET",
     );
   }
@@ -945,7 +945,7 @@ export class BackendClient {
   listPlayerStatesByPlayer(workerId: string, playerId: string) {
     return this.call<PlayerStateListResponse>(
       workerId,
-      `/api/internal/bot/setup/player-states/players/${playerId}`,
+      `/api/internal/bot/servers/player-states/players/${playerId}`,
       "GET",
     );
   }
@@ -1238,7 +1238,7 @@ export class BackendClient {
   listGuildOnlineSummary(workerId: string, guildId: string) {
     return this.call<GuildOnlineSummaryListResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/online-summary`,
+      `/api/internal/bot/servers/guilds/${guildId}/online-summary`,
       "GET",
     );
   }
@@ -1266,7 +1266,7 @@ export class BackendClient {
   listGuildTrackedServerLogEvents(workerId: string, guildId: string) {
     return this.call<TrackedServerLogEventsResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/tracked-server-log-events`,
+      `/api/internal/bot/servers/guilds/${guildId}/tracked-server-log-events`,
       "GET",
     );
   }

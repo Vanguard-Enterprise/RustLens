@@ -169,7 +169,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/servers/tracked-servers");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({
       bmId: "12345",
@@ -244,7 +244,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/servers/tracked-servers");
     expect(init?.method).toBe("GET");
   });
 
@@ -281,7 +281,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers/12345");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/servers/tracked-servers/12345");
     expect(init?.method).toBe("PUT");
     expect(init?.body).toBe(JSON.stringify({
       bmId: "98765",
@@ -314,7 +314,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/tracked-servers");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/servers/guilds/123/tracked-servers");
     expect(init?.method).toBe("PUT");
     expect(init?.body).toBe(JSON.stringify({ bmIds: ["111", "222"] }));
   });
@@ -345,7 +345,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/online-summary");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/servers/guilds/123/online-summary");
     expect(init?.method).toBe("GET");
   });
 
