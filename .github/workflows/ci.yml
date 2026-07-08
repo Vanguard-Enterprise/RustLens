@@ -177,7 +177,7 @@ jobs:
           echo $! > /tmp/rustlens-backend-parity.pid
 
           ready=0
-          for _ in $(seq 1 30); do
+          for _ in $(seq 1 90); do
             if curl -sf http://localhost:8095/api/healthz > /dev/null; then
               ready=1
               break
