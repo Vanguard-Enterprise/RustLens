@@ -1,0 +1,31 @@
+# Servers-service cutover (Rust, D1 domain-prefix reorg). Routes the path
+# families the servers service owns to it at a higher priority than the `/api`
+# catch-all in base.yml; everything else still falls through to the Go backend.
+#
+# One PathPrefix per family:
+#   - /api/internal/bot/servers: the bot-internal server domain (global +
+#     guild tracked servers, player presence, server analytics, owner-guild
+#     proxy management).
+#   - /api/app/admin/bm-servers, /api/app/admin/proxies, /api/app/admin/servers:
+#     the app-facing admin routes the servers service owns.
+#
+# The servers service dual-registers the new `/api/internal/bot/servers/...`
+# prefix alongside the legacy flat `/api/internal/bot/setup/...` and
+# `/api/internal/bot/owner/...` paths, so the bot deploy (which flips to these
+# new paths) is the cutover moment for this domain. The legacy flat paths
+# still route to Go via the base.yml catch-all until Phase E drops them.
+http:
+  routers:
+    servers:
+      entryPoints:
+        - web
+      priority: 200
+      service: servers
+      # Single line: Traefik's rule parser rejects embedded newlines.
+      rule: "Host(`localhost`) && (PathPrefix(`/api/internal/bot/servers`) || PathPrefix(`/api/app/admin/bm-servers`) || PathPrefix(`/api/app/admin/proxies`) || PathPrefix(`/api/app/admin/servers`))"
+
+  services:
+    servers:
+      loadBalancer:
+        servers:
+          - url: "http://servers:8092"
