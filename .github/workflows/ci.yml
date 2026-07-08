@@ -80,7 +80,7 @@ jobs:
           POSTGRES_USER: rustlens
           POSTGRES_PASSWORD: rustlens
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd="pg_isready -U rustlens"
           --health-interval=5s
@@ -102,12 +102,12 @@ jobs:
       - name: Run migrations
         run: cargo run --bin migrate
         env:
-          POSTGRES_URL: postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable
+          POSTGRES_URL: postgres://rustlens:rustlens@172.18.0.1:${{ job.services.postgres.ports['5432'] }}/rustlens?sslmode=disable
 
       - name: Test
         run: cargo test
         env:
-          RUSTLENS_TEST_PG_URL: postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable
+          RUSTLENS_TEST_PG_URL: postgres://rustlens:rustlens@172.18.0.1:${{ job.services.postgres.ports['5432'] }}/rustlens?sslmode=disable
 
   schema-parity:
     # Dual-run guard: asserts the Go backend's EnsureSchema() and the Rust
@@ -122,7 +122,7 @@ jobs:
           POSTGRES_USER: rustlens
           POSTGRES_PASSWORD: rustlens
         ports:
-          - 5440:5432
+          - 5432
         options: >-
           --health-cmd="pg_isready -U rustlens"
           --health-interval=5s
@@ -135,7 +135,7 @@ jobs:
           POSTGRES_USER: rustlens
           POSTGRES_PASSWORD: rustlens
         ports:
-          - 5441:5432
+          - 5432
         options: >-
           --health-cmd="pg_isready -U rustlens"
           --health-interval=5s
@@ -144,7 +144,7 @@ jobs:
       redis:
         image: redis:8-alpine
         ports:
-          - 6389:6379
+          - 6379
     steps:
       - uses: actions/checkout@v7
 
@@ -158,7 +158,7 @@ jobs:
         working-directory: apps/rust
         run: cargo run --bin migrate
         env:
-          POSTGRES_URL: postgres://rustlens:rustlens@postgres-rust:5432/rustlens?sslmode=disable
+          POSTGRES_URL: postgres://rustlens:rustlens@172.18.0.1:${{ job.services['postgres-rust'].ports['5432'] }}/rustlens?sslmode=disable
 
       - name: Build Go backend
         working-directory: apps/backend
@@ -168,8 +168,8 @@ jobs:
         run: |
           set -euo pipefail
           PORT=8095 \
-          POSTGRES_URL="postgres://rustlens:rustlens@postgres-go:5432/rustlens?sslmode=disable" \
-          REDIS_URL="redis://redis:6379/0" \
+          POSTGRES_URL="postgres://rustlens:rustlens@172.18.0.1:${{ job.services['postgres-go'].ports['5432'] }}/rustlens?sslmode=disable" \
+          REDIS_URL="redis://172.18.0.1:${{ job.services.redis.ports['6379'] }}/0" \
           BOT_SERVICE_JWT_SECRET="schema-parity-dummy-secret" \
           APP_API_INTERNAL_SECRET="schema-parity-dummy-secret" \
           APP_SESSION_SECRET="schema-parity-dummy-secret" \
@@ -198,11 +198,11 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --network host -e PGPASSWORD=rustlens postgres:16-alpine \
-            pg_dump -h localhost -p 5440 -U rustlens -d rustlens --schema-only --no-owner --no-privileges \
+            pg_dump -h localhost -p ${{ job.services['postgres-go'].ports['5432'] }} -U rustlens -d rustlens --schema-only --no-owner --no-privileges \
             --exclude-table=schema_migrations \
             > /tmp/go-schema.sql
           docker run --rm --network host -e PGPASSWORD=rustlens postgres:16-alpine \
-            pg_dump -h localhost -p 5441 -U rustlens -d rustlens --schema-only --no-owner --no-privileges \
+            pg_dump -h localhost -p ${{ job.services['postgres-rust'].ports['5432'] }} -U rustlens -d rustlens --schema-only --no-owner --no-privileges \
             --exclude-table=_sqlx_migrations \
             > /tmp/rust-schema.sql
 
