@@ -10,8 +10,10 @@ use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
+use chrono::{DateTime, Utc};
 
 use rustlens_db::admin::{self, AdminQueryError, AuditQuery, UsersQuery};
+use rustlens_db::api_keys;
 use rustlens_db::command_usage::{self as cu, CommandUsageListFilters};
 use rustlens_db::rbac;
 
@@ -287,6 +289,78 @@ pub async fn get_command_usage_children(
             tracing::error!("admin command-usage children: {e:#}");
             error_json(StatusCode::INTERNAL_SERVER_ERROR, "failed to load children")
         }
+    }
+}
+
+/// `GET /api/app/admin/api-keys` returns the paginated admin API-key list
+/// (requires `api_keys.manage`). Accepts an admin API key or a session. Query:
+/// `q`, `includeRevoked` (`true`), `page` (default 1), `pageSize` (default 20).
+pub async fn list_api_keys(
+    State(st): Shared,
+    headers: HeaderMap,
+    RawQuery(raw): RawQuery,
+) -> Response {
+    if let Err(resp) = appauth::require_admin(&headers, &st, rbac::API_KEYS_MANAGE).await {
+        return *resp;
+    }
+    let p = pairs(raw.as_deref());
+    let page = parse_int_or(first(&p, "page"), 1);
+    let page_size = parse_int_or(first(&p, "pageSize"), 20);
+    let query = api_keys::ListQuery {
+        q: first(&p, "q").unwrap_or_default().to_string(),
+        include_revoked: first(&p, "includeRevoked") == Some("true"),
+        page,
+        page_size,
+    };
+    match api_keys::list(&st.pool, &query).await {
+        Ok((items, total)) => {
+            let out: Vec<serde_json::Value> = items
+                .iter()
+                .map(|it| {
+                    let k = &it.key;
+                    serde_json::json!({
+                        "id": k.id,
+                        "name": k.name,
+                        "prefix": k.prefix,
+                        "last4": k.last4,
+                        "permissions": k.permissions,
+                        "createdByUserId": k.created_by_user_id,
+                        "createdByDisplayName": it.created_by_display_name,
+                        "expiresAt": k.expires_at.map(fmt_secs_z),
+                        "revokedAt": k.revoked_at.map(fmt_secs_z),
+                        "revokedReason": k.revoked_reason,
+                        "lastUsedAt": k.last_used_at.map(fmt_secs_z),
+                        "lastUsedIp": k.last_used_ip,
+                        "createdAt": fmt_secs_z(k.created_at),
+                    })
+                })
+                .collect();
+            Json(serde_json::json!({
+                "items": out,
+                "total": total,
+                "page": page,
+                "pageSize": page_size,
+            }))
+            .into_response()
+        }
+        Err(e) => {
+            tracing::error!("admin list_api_keys: {e:#}");
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, "internal")
+        }
+    }
+}
+
+/// Format a timestamp as Go's `time.Format("2006-01-02T15:04:05Z")`: UTC,
+/// seconds precision, literal `Z` (used by the API-key list handler).
+fn fmt_secs_z(dt: DateTime<Utc>) -> String {
+    dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+/// Mirror Go's `parseIntOr`: empty / non-numeric / `<= 0` falls back.
+fn parse_int_or(v: Option<&str>, fallback: i64) -> i64 {
+    match v.filter(|s| !s.is_empty()).and_then(|s| s.parse::<i64>().ok()) {
+        Some(n) if n > 0 => n,
+        _ => fallback,
     }
 }
 

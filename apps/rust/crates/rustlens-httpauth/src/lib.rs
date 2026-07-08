@@ -21,6 +21,9 @@ use rustlens_db::PgPool;
 use rustlens_db::identity::{self, Revocation};
 use rustlens_session::{SessionError, SessionUser, parse_session};
 
+pub mod api_key;
+pub use api_key::ApiKeyActor;
+
 /// The shared-secret header gating `/api/app/*` (Go `appSecretHeader`).
 pub const APP_SECRET_HEADER: &str = "x-rustlens-app-secret";
 /// The forwarded session-token header (Go `sessionHeader`).
@@ -47,7 +50,7 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 /// `Result` (clippy `result_large_err`).
 pub type AuthError = Box<Response>;
 
-fn err_json(status: StatusCode, code: &str) -> AuthError {
+pub(crate) fn err_json(status: StatusCode, code: &str) -> AuthError {
     Box::new((status, Json(serde_json::json!({ "error": code }))).into_response())
 }
 
@@ -175,6 +178,85 @@ pub async fn require_admin(
     let session = require_session(headers, pool, session_secret).await?;
     require_permission(pool, &session.user_id, perm).await?;
     Ok(session)
+}
+
+/// The resolved actor on an admin route: either a session user (app-secret +
+/// session header) or an admin API key (`Authorization: Bearer rl_admin_...`).
+/// Mirrors the Go actor resolution where the global API-key middleware wins over
+/// the session gate when a key header is present.
+pub struct AdminActor {
+    pub user_id: String,
+    /// Role snapshot for the audit `actor_role_snapshot`. Empty for API-key
+    /// actors, matching Go's `actorResolver` returning nil roles for keys.
+    pub admin_roles: Vec<String>,
+    /// Present when authenticated via an admin API key. The key's snapshot
+    /// permissions are intersected with the creator's *current* role
+    /// permissions on every permission check (Go `WithAPIKeyPermissions`).
+    pub api_key: Option<ApiKeyActor>,
+}
+
+/// Authenticate an admin route as EITHER an API key OR app-secret + session.
+///
+/// - When an `Authorization: Bearer rl_admin_...` header is present, it is
+///   validated as an API key and the app-secret / session gate is bypassed
+///   (exactly like the Go global middleware short-circuit). An invalid key is a
+///   hard 401 (it does not fall through to the session path).
+/// - Otherwise the standard app-secret + session gate runs.
+///
+/// This does NOT check a permission; call [`require_admin_permission`] next.
+pub async fn authenticate_admin(
+    headers: &HeaderMap,
+    pool: &PgPool,
+    app_secret: &str,
+    session_secret: &str,
+) -> Result<AdminActor, AuthError> {
+    if api_key::has_api_key_header(headers) {
+        let key = api_key::authenticate_api_key(headers, pool).await?;
+        return Ok(AdminActor {
+            user_id: key.user_id.clone(),
+            admin_roles: Vec::new(),
+            api_key: Some(key),
+        });
+    }
+    require_app_secret(headers, app_secret)?;
+    let session = require_session(headers, pool, session_secret).await?;
+    Ok(AdminActor {
+        user_id: session.user_id,
+        admin_roles: session.admin_roles,
+        api_key: None,
+    })
+}
+
+/// Require that `actor` holds `perm`, applying the API-key intersection: an
+/// API-key actor must have `perm` in its snapshot AND the creator must still
+/// hold it via roles. Mirrors the Go resolver's floor-of-the-two semantics, so
+/// revoking a permission from the creator immediately constrains every key.
+pub async fn require_admin_permission(
+    pool: &PgPool,
+    actor: &AdminActor,
+    perm: &str,
+) -> Result<(), AuthError> {
+    if let Some(k) = &actor.api_key {
+        if !k.permissions.iter().any(|p| p == perm) {
+            return Err(err_json(StatusCode::FORBIDDEN, "forbidden"));
+        }
+    }
+    require_permission(pool, &actor.user_id, perm).await
+}
+
+/// Full admin gate accepting an API key or a session: authenticate then check a
+/// single permission. Returns the resolved actor. Used by identity's admin read
+/// routes.
+pub async fn require_admin_or_key(
+    headers: &HeaderMap,
+    pool: &PgPool,
+    app_secret: &str,
+    session_secret: &str,
+    perm: &str,
+) -> Result<AdminActor, AuthError> {
+    let actor = authenticate_admin(headers, pool, app_secret, session_secret).await?;
+    require_admin_permission(pool, &actor, perm).await?;
+    Ok(actor)
 }
 
 #[cfg(test)]

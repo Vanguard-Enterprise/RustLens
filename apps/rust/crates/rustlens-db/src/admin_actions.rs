@@ -433,7 +433,8 @@ pub async fn users_delete(
 // ---------------------------------------------------------------------------
 
 /// An audit row to write (mirrors the Go `AuditEntryInput` fields this service
-/// populates; API-key fields are always NULL here).
+/// populates). `via_api_key_*` are set when the actor authenticated with an
+/// admin API key rather than a session (Go `APIKeyAuthFromContext`).
 pub struct AuditEntry<'a> {
     pub action_type: &'a str,
     pub actor_user_id: &'a str,
@@ -446,6 +447,8 @@ pub struct AuditEntry<'a> {
     pub result: &'a str,
     pub error_message: Option<&'a str>,
     pub user_agent: Option<&'a str>,
+    pub via_api_key_id: Option<&'a str>,
+    pub via_api_key_name: Option<&'a str>,
 }
 
 fn null_if_empty(s: &str) -> Option<&str> {
@@ -464,7 +467,7 @@ pub async fn record_audit(pool: &PgPool, e: &AuditEntry<'_>) -> Result<(), sqlx:
                resource_type, resource_id, target_user_id,
                params, reason, result, error_message, ip_address, user_agent,
                via_api_key_id, via_api_key_name
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,$11,NULL,NULL)"#,
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,$11,$12::uuid,$13)"#,
     )
     .bind(e.action_type)
     .bind(e.actor_user_id)
@@ -477,6 +480,8 @@ pub async fn record_audit(pool: &PgPool, e: &AuditEntry<'_>) -> Result<(), sqlx:
     .bind(e.result)
     .bind(e.error_message)
     .bind(e.user_agent)
+    .bind(e.via_api_key_id)
+    .bind(e.via_api_key_name)
     .execute(pool)
     .await?;
     Ok(())
