@@ -421,6 +421,8 @@ apps/rust/
 - `GET /api/auth/discord/role-connection` (+ `/callback`) and `DELETE /api/app/me/discord-role-connection` — Discord linked-roles (`pro`) OAuth + unlink.
 - `GET /api/events/stream` — SSE (`roles.changed`, `session.revoked`, `session.expiring`, 25s `ping`).
 
+- `services/identity` seeds the admin RBAC catalog once at process startup, before it starts serving: `rustlens_db::rbac::seed_permissions_and_roles` idempotently upserts the 27-permission catalog into `admin_permissions` and the 7 system roles (`superadmin`, `moderator`, `infra_admin`, `guild_ops`, `user_support`, `user_admin`, `user_auditor`) plus their `admin_role_permissions` mappings, mirroring the Go `rbac.Store.SeedPermissionsAndRoles` byte-for-byte (same upsert/conflict semantics, same `is_system` flags, no advisory locking, since Go does not guard it either). Without this seed a fresh deployment has an empty RBAC catalog and no way to administrate it.
+
 **Auth model (matches the Go backend):**
 
 - The signed **`rustlens_session` cookie** is a **cross-language contract** minted/verified byte-for-byte identically by Go (`apps/backend/internal/appauth/session.go`), the frontend (`apps/frontend/lib/session.ts`), and `crates/rustlens-session`: `base64url(json) "." base64url(HMAC_SHA256(base64url(json)))`, url-safe no-pad, key `APP_SESSION_SECRET`, times in **ms**, `epoch` = revocation counter. Revocation is DB-epoch based (`app_users.session_epoch`, plus `suspended_at`/`deleted_at`) so it works cross-service via the shared DB.

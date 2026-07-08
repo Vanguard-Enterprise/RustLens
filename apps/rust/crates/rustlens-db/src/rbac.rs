@@ -12,6 +12,7 @@
 //! UI's permission grid and the superadmin role display.
 
 use serde::Serialize;
+use sqlx::PgPool;
 
 /// A single permission entry (key + human description).
 #[derive(Debug, Clone, Serialize)]
@@ -100,6 +101,167 @@ pub fn is_valid_permission(key: &str) -> bool {
     ALL_PERMISSIONS.iter().any(|p| p.key == key)
 }
 
+/// A seeded system role: key/name/description/is_system plus the permission
+/// keys granted to it. `permissions` is empty for `superadmin`, which implies
+/// every permission at query time instead of holding explicit
+/// `admin_role_permissions` rows. Mirrors the Go `rbac.RoleSeed` /
+/// `rbac.SystemRoles()` exactly, including which roles are `is_system` (only
+/// `superadmin`, `user_support`, `user_admin`, and `user_auditor`; `moderator`,
+/// `infra_admin`, and `guild_ops` are seeded as ordinary, deletable roles).
+pub struct RoleSeed {
+    pub key: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub is_system: bool,
+    pub permissions: &'static [&'static str],
+}
+
+/// The system role catalog seeded at startup, in Go `SystemRoles()` slice
+/// order. Keys match [`SYSTEM_ROLE_KEYS`] exactly (checked by
+/// `system_roles_keys_match_system_role_keys` below).
+pub const SYSTEM_ROLES: &[RoleSeed] = &[
+    RoleSeed {
+        key: ROLE_SUPERADMIN,
+        name: "Super Admin",
+        description: "Implicit all permissions; only a superadmin can grant this role.",
+        is_system: true,
+        permissions: &[],
+    },
+    RoleSeed {
+        key: "moderator",
+        name: "Moderator",
+        description: "User moderation and link review.",
+        is_system: false,
+        permissions: &[USERS_SUSPEND, USERS_FORCE_UNLINK, LINKS_REVIEW, LINKS_APPROVE, AUDIT_READ, ROLES_READ],
+    },
+    RoleSeed {
+        key: "infra_admin",
+        name: "Infrastructure Admin",
+        description: "Manage outbound proxies and infrastructure configuration.",
+        is_system: false,
+        permissions: &[
+            PROXIES_READ,
+            PROXIES_EDIT,
+            PROXIES_ROTATE_CREDS,
+            BM_SERVERS_READ,
+            BM_SERVERS_EDIT,
+            AUDIT_READ,
+            API_KEYS_MANAGE,
+            ROLES_READ,
+        ],
+    },
+    RoleSeed {
+        key: "guild_ops",
+        name: "Guild Operations",
+        description: "Intervene in guild configuration.",
+        is_system: false,
+        permissions: &[GUILDS_UNTRACK_SERVER, AUDIT_READ, GUILDS_READ, ROLES_READ],
+    },
+    RoleSeed {
+        key: "user_support",
+        name: "User Support",
+        description: "Read users + audit + invalidate sessions",
+        is_system: true,
+        permissions: &[USERS_READ, USERS_AUDIT_READ, USERS_SECURITY_RESET, USERS_EDIT, ROLES_READ],
+    },
+    RoleSeed {
+        key: "user_admin",
+        name: "User Admin",
+        description: "Full user lifecycle management (non-destructive)",
+        is_system: true,
+        permissions: &[
+            USERS_READ,
+            USERS_AUDIT_READ,
+            USERS_EDIT,
+            USERS_ROLES_ASSIGN,
+            USERS_SUSPEND,
+            USERS_SECURITY_RESET,
+            USERS_CREATE,
+            USERS_CONNECTIONS_MANAGE,
+            USERS_DELETE,
+            ROLES_READ,
+        ],
+    },
+    RoleSeed {
+        key: "user_auditor",
+        name: "User Auditor",
+        description: "Read-only users view with audit trail",
+        is_system: true,
+        permissions: &[USERS_READ, USERS_AUDIT_READ, ROLES_READ],
+    },
+];
+
+/// Idempotently seed the `admin_permissions` catalog and system roles
+/// (`admin_roles` + `admin_role_permissions`). Mirrors the Go
+/// `rbac.Store.SeedPermissionsAndRoles` exactly:
+///
+/// - Each permission is upserted with `ON CONFLICT (key) DO UPDATE SET
+///   description = EXCLUDED.description` (so a renamed description is
+///   overwritten on every boot; nothing is ever deleted from the catalog).
+/// - Each system role is upserted with `ON CONFLICT (key) DO UPDATE` on
+///   `name`/`description`/`is_system` (`updated_at` bumped to `NOW()`).
+/// - `superadmin` never gets explicit `admin_role_permissions` rows (it
+///   implies every permission at query time); every other system role has its
+///   existing `admin_role_permissions` rows deleted and re-inserted from the
+///   static catalog above, so hand-edited permissions on a system role are
+///   reset back to the seed on every boot.
+/// - Runs once at process startup; not called on any hot path. Like the Go
+///   version, this performs no advisory locking: the statements are
+///   idempotent so concurrent replicas seeding at the same time converge to
+///   the same end state (Postgres serializes the per-row upserts).
+pub async fn seed_permissions_and_roles(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    for p in ALL_PERMISSIONS {
+        sqlx::query(
+            "INSERT INTO admin_permissions (key, description) VALUES ($1, $2)
+             ON CONFLICT (key) DO UPDATE SET description = EXCLUDED.description",
+        )
+        .bind(p.key)
+        .bind(p.description)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    for r in SYSTEM_ROLES {
+        let role_id: uuid::Uuid = sqlx::query_scalar(
+            "INSERT INTO admin_roles (key, name, description, is_system)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (key) DO UPDATE
+               SET name = EXCLUDED.name,
+                   description = EXCLUDED.description,
+                   is_system = EXCLUDED.is_system,
+                   updated_at = NOW()
+             RETURNING id",
+        )
+        .bind(r.key)
+        .bind(r.name)
+        .bind(r.description)
+        .bind(r.is_system)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if r.key == ROLE_SUPERADMIN {
+            continue; // no explicit perms
+        }
+
+        sqlx::query("DELETE FROM admin_role_permissions WHERE role_id = $1")
+            .bind(role_id)
+            .execute(&mut *tx)
+            .await?;
+
+        for perm in r.permissions {
+            sqlx::query("INSERT INTO admin_role_permissions (role_id, permission_key) VALUES ($1, $2)")
+                .bind(role_id)
+                .bind(*perm)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+
+    tx.commit().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +276,28 @@ mod tests {
         let grant = ALL_PERMISSIONS.iter().position(|p| p.key == "admins.grant").unwrap();
         let roles = ALL_PERMISSIONS.iter().position(|p| p.key == "roles.read").unwrap();
         assert!(grant > roles, "catalog order must match the Go slice");
+    }
+
+    #[test]
+    fn system_roles_keys_match_system_role_keys() {
+        let seed_keys: Vec<&str> = SYSTEM_ROLES.iter().map(|r| r.key).collect();
+        assert_eq!(seed_keys, SYSTEM_ROLE_KEYS);
+    }
+
+    #[test]
+    fn superadmin_seed_has_no_explicit_permissions() {
+        let superadmin = SYSTEM_ROLES.iter().find(|r| r.key == ROLE_SUPERADMIN).unwrap();
+        assert!(superadmin.is_system);
+        assert!(superadmin.permissions.is_empty());
+    }
+
+    #[test]
+    fn every_seeded_permission_key_is_in_the_catalog() {
+        for r in SYSTEM_ROLES {
+            for perm in r.permissions {
+                assert!(is_valid_permission(perm), "role {} grants unknown permission {}", r.key, perm);
+            }
+        }
     }
 
     #[test]

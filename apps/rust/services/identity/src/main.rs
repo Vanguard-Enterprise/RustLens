@@ -41,6 +41,14 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("connecting to Postgres")?;
 
+    // Seed the RBAC catalog (admin_permissions + system admin_roles +
+    // admin_role_permissions) before serving. Idempotent; mirrors the Go
+    // backend's rbac.Store.SeedPermissionsAndRoles, which the Go server also
+    // runs unconditionally at construction time.
+    rustlens_db::rbac::seed_permissions_and_roles(&pool)
+        .await
+        .context("seeding RBAC catalog")?;
+
     let hub = Arc::new(rustlens_events::Hub::new());
     let events = rustlens_events::RedisBridge::start(hub.clone(), &config.redis_url);
 
