@@ -40,6 +40,14 @@ type Config struct {
 	TrustProxyIPHeader   string
 	TrustProxyGeoHeader  string
 
+	// Go-removal dual-run kill switches. These two background workers run
+	// lock-free in Go, so during the Rust cutover window each must be
+	// disabled once its Rust replacement takes over, to avoid double-running
+	// the same work. Defaults are false (workers run), preserving today's
+	// behavior until flipped per docs/rust-go-removal-plan.md (C6).
+	DisableWipeReactScheduler bool
+	DisableCleanupWorker      bool
+
 	// Observability.
 	ObservabilityEnabled bool
 	OTLPEndpoint         string
@@ -88,6 +96,10 @@ func Load() Config {
 		TrustProxyHeaders:    getEnvBool("TRUST_PROXY_HEADERS", false),
 		TrustProxyIPHeader:   strings.TrimSpace(getEnv("TRUST_PROXY_IP_HEADER", "CF-Connecting-IP")),
 		TrustProxyGeoHeader:  strings.TrimSpace(getEnv("TRUST_PROXY_GEO_HEADER", "CF-IPCountry")),
+
+		DisableWipeReactScheduler: getEnvBool("DISABLE_WIPE_REACT_SCHEDULER", false),
+		DisableCleanupWorker:      getEnvBool("DISABLE_CLEANUP_WORKER", false),
+
 		ObservabilityEnabled: getEnvBool("OBSERVABILITY_ENABLED", false),
 		OTLPEndpoint:         strings.TrimSpace(getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "")),
 		PyroscopeAddress:     strings.TrimSpace(getEnv("PYROSCOPE_SERVER_ADDRESS", "")),

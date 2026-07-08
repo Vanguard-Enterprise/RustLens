@@ -361,8 +361,10 @@ Lazily upserted on first `GET /api/app/me/preferences` so handlers never see a m
 `cmd/server/main.go` starts three long-running goroutines, each cancelled by the root `ctx` on SIGINT/SIGTERM:
 
 - `battlemetrics.Poller` — refreshes `player_states` from BattleMetrics on a rolling interval.
-- `wipereactscheduler.Poller` — enqueues due wipe-react schedule posts into `wipe_react_schedule_posts` for the bot to claim.
-- `cleanup.Service` — periodic retention sweep (see below).
+- `wipereactscheduler.Poller` — enqueues due wipe-react schedule posts into `wipe_react_schedule_posts` for the bot to claim. Skipped when `DISABLE_WIPE_REACT_SCHEDULER=true`.
+- `cleanup.Service` — periodic retention sweep (see below). Skipped when `DISABLE_CLEANUP_WORKER=true`.
+
+The wipe-react scheduler and cleanup worker are lock-free (no Redis/advisory coordination), so during the Go-removal dual-run window with their Rust replacements, `DISABLE_WIPE_REACT_SCHEDULER` / `DISABLE_CLEANUP_WORKER` let an operator turn off the Go side once the Rust side owns that work, avoiding double-processing. Both default to `false` (Go workers run), preserving today's behavior. The BattleMetrics poller, server-analytics refresher, and role-connection reconciler are not gated this way because they already coordinate with Rust via Redis/advisory locks.
 
 ### `cleanup.Service`
 
