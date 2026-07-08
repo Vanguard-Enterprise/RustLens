@@ -84,11 +84,77 @@ async fn main() -> anyhow::Result<()> {
     )
     .await
     .context("loading outbound proxies")?;
-    let provider = rustlens_outbound::Provider::new(!endpoints.is_empty(), &endpoints, BM_HTTP_TIMEOUT)
-        .context("building outbound provider")?;
-    let bm = rustlens_battlemetrics::Client::new(
-        Arc::new(provider) as Arc<dyn rustlens_outbound::OutboundSender>,
+    let provider = Arc::new(
+        rustlens_outbound::Provider::new(!endpoints.is_empty(), &endpoints, BM_HTTP_TIMEOUT)
+            .context("building outbound provider")?,
     );
+    let bm = rustlens_battlemetrics::Client::new(
+        provider.clone() as Arc<dyn rustlens_outbound::OutboundSender>,
+    );
+
+    // Wire the outbound provider's auto-disable callback (Go
+    // `cmd/server/main.go` ~line 129, `SetAutoDisableCallback`): persist the
+    // disable, then reload the provider from the DB (falling back to the
+    // legacy env proxies when no DB rows are enabled). The players service has
+    // no proxy-admin routes of its own (unlike `servers`, which reuses its
+    // `proxies::reload` for this), so this mirrors
+    // `rustlens_outbound::load_initial_endpoints` + `Provider::replace`
+    // directly. A failed persist or reload is logged and left for the next
+    // auto-disable to retry, same as Go.
+    {
+        let cb_provider = provider.clone();
+        let cb_pool = pool.clone();
+        let cb_cipher = cipher.clone();
+        let cb_proxy_enabled = config.proxy_enabled;
+        let cb_proxy_endpoints = config.proxy_endpoints.clone();
+        provider.set_auto_disable_callback(Arc::new(move |redacted: String| {
+            let provider = cb_provider.clone();
+            let pool = cb_pool.clone();
+            let cipher = cb_cipher.clone();
+            let proxy_endpoints = cb_proxy_endpoints.clone();
+            Box::pin(async move {
+                let disabled = match rustlens_db::outbound_proxies::disable_by_redacted_endpoint(
+                    &pool, &redacted,
+                )
+                .await
+                {
+                    Ok(disabled) => disabled,
+                    Err(e) => {
+                        tracing::error!("players: auto-disable proxy {redacted:?} persist failed: {e}");
+                        return;
+                    }
+                };
+                if !disabled {
+                    return;
+                }
+                let endpoints = match rustlens_outbound::load_initial_endpoints(
+                    &pool,
+                    cipher.as_ref(),
+                    cb_proxy_enabled,
+                    &proxy_endpoints,
+                )
+                .await
+                {
+                    Ok(endpoints) => endpoints,
+                    Err(e) => {
+                        tracing::error!(
+                            "players: reload proxies after auto-disable {redacted:?} failed: {e}"
+                        );
+                        return;
+                    }
+                };
+                if let Err(e) = provider.replace(!endpoints.is_empty(), &endpoints) {
+                    tracing::error!(
+                        "players: apply proxies after auto-disable {redacted:?} failed: {e}"
+                    );
+                    return;
+                }
+                tracing::warn!(
+                    "players: auto-disabled outbound proxy {redacted:?} after >=50% errors in 10m"
+                );
+            })
+        }));
+    }
 
     // platformsync.io client (direct).
     let platform_sync = rustlens_steam::platformsync::Client::new(config.platformsync_token.clone())
