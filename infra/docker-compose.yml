@@ -24,6 +24,27 @@ services:
     ports:
       - "6379:6379"
 
+  # One-shot schema migrator. Runs rustlens_db::migrate() (embedded ordered SQL
+  # from crates/rustlens-db/migrations/) against the compose Postgres, then
+  # exits. Every Rust service below depends on this completing successfully
+  # before it starts, so the schema is always applied first. Go's own
+  # EnsureSchema() remains untouched and still runs on its own boot path.
+  migrate:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: migrate
+    env_file:
+      - path: ./rustlens.env
+        required: true
+    environment:
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # Rust identity service: serves the auth/OAuth, /me, events, role-connection,
   # and bot-internal identity routes (see infra/traefik/dynamic/identity.yml for
   # exactly which paths Traefik routes here). Shared secrets come from
@@ -51,6 +72,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -76,6 +99,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -100,6 +125,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -124,6 +151,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -149,6 +178,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
