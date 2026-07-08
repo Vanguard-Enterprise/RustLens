@@ -9,12 +9,7 @@ use std::process::ExitCode;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "migrate=info,sqlx=warn".into()),
-        )
-        .init();
+    let _otel_guard = rustlens_otel::init("rustlens-migrate", "migrate=info,sqlx=warn");
 
     let database_url = std::env::var("POSTGRES_URL").unwrap_or_else(|_| {
         "postgres://rustlens:rustlens@localhost:5432/rustlens?sslmode=disable".to_string()

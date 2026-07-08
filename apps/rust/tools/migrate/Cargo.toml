@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 rustlens-db = { workspace = true }
+rustlens-otel = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

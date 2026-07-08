@@ -39,12 +39,7 @@ const BM_HTTP_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "players=info,tower_http=info".into()),
-        )
-        .init();
+    let _otel_guard = rustlens_otel::init("rustlens-players", "players=info,tower_http=info");
 
     let config = PlayersConfig::from_env().context("loading configuration")?;
     let pool = rustlens_db::connect(&config.postgres_url, 10)

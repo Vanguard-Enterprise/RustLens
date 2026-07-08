@@ -11,6 +11,7 @@ members = [
     "crates/rustlens-outbound",
     "crates/rustlens-battlemetrics",
     "crates/rustlens-steam",
+    "crates/rustlens-otel",
     "services/identity",
     "services/players",
     "services/servers",
@@ -35,6 +36,7 @@ rustlens-httpauth = { path = "crates/rustlens-httpauth" }
 rustlens-outbound = { path = "crates/rustlens-outbound" }
 rustlens-battlemetrics = { path = "crates/rustlens-battlemetrics" }
 rustlens-steam = { path = "crates/rustlens-steam" }
+rustlens-otel = { path = "crates/rustlens-otel" }
 
 # third-party
 serde = { version = "1", features = ["derive"] }
@@ -74,3 +76,15 @@ jsonwebtoken = "9"
 async-trait = "0.1"
 ed25519-dalek = "2"
 hex = "0.4"
+
+# OpenTelemetry (rustlens-otel). All aligned on the opentelemetry 0.32 line;
+# tracing-opentelemetry 0.33 targets that same core version.
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = [
+    "grpc-tonic",
+    "trace",
+    "metrics",
+] }
+opentelemetry-semantic-conventions = "0.32"
+tracing-opentelemetry = "0.33"
