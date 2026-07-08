@@ -133,8 +133,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # Rust guilds service (Phase 4): settings, wipe-reacts, schedules + scheduler,
-  # track-groups, guild/user/install sync, admin guild aggregate.
+  # Rust guilds service: serves the bot-internal guild domain (settings,
+  # wipe-reacts + schedules + scheduler, track-groups, guild/user/install
+  # sync) and the admin guilds/user-installs routes (see
+  # infra/traefik/dynamic/guilds.yml for exactly which paths Traefik routes
+  # here). Runs against the compose Postgres/Redis; shared secrets come from
+  # ./rustlens.env.
   guilds:
     build:
       context: ../apps/rust
