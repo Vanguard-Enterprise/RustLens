@@ -129,6 +129,8 @@ async fn audit(
         result,
         error_message,
         user_agent: ua,
+        via_api_key_id: None,
+        via_api_key_name: None,
     };
     if let Err(e) = record_audit(&st.pool, &entry).await {
         tracing::warn!("servers/bm-servers audit: {e}");
