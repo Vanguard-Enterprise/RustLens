@@ -17,24 +17,9 @@ async fn sync_user_guilds_upserts_active_and_deactivates_absent() {
     };
     let pool = rustlens_db::connect(&url, 5).await.expect("connect");
 
-    // Self-contained schema + clean slate for this test's discord_id.
-    sqlx::query(
-        r#"CREATE TABLE IF NOT EXISTS user_guilds (
-            discord_id TEXT NOT NULL, guild_id TEXT NOT NULL,
-            is_active BOOLEAN NOT NULL DEFAULT TRUE,
-            first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            left_at TIMESTAMPTZ NULL,
-            name TEXT NOT NULL DEFAULT '',
-            icon_hash TEXT NULL,
-            approximate_member_count INTEGER NULL,
-            is_owner BOOLEAN NOT NULL DEFAULT FALSE,
-            PRIMARY KEY (discord_id, guild_id)
-        )"#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    // The distilled 0001 baseline is the tested schema contract; apply the
+    // embedded migrations rather than hand-writing DDL here.
+    rustlens_db::migrate(&pool).await.expect("migrate");
     sqlx::query("DELETE FROM user_guilds WHERE discord_id = $1")
         .bind(DISCORD_ID)
         .execute(&pool)

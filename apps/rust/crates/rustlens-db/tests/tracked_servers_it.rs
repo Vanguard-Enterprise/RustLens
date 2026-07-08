@@ -3,27 +3,6 @@
 
 use rustlens_db::tracked_servers::{self as ts, ServerFlags, TrackedServerError};
 
-const SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS tracked_servers (bm_id TEXT PRIMARY KEY, name TEXT NOT NULL,
-    is_vitality BOOL NOT NULL DEFAULT FALSE, is_atlas BOOL NOT NULL DEFAULT FALSE, is_vital BOOL NOT NULL DEFAULT FALSE,
-    is_modded BOOL NOT NULL DEFAULT FALSE, is_official BOOL NOT NULL DEFAULT FALSE, is_build BOOL NOT NULL DEFAULT FALSE,
-    high_frequency BOOL NOT NULL DEFAULT FALSE, last_polled_at TIMESTAMPTZ, last_poll_error TEXT NOT NULL DEFAULT '',
-    empty_player_poll_count INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS guild_tracked_servers (guild_id TEXT NOT NULL,
-    server_bm_id TEXT NOT NULL REFERENCES tracked_servers(bm_id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (guild_id, server_bm_id));
-CREATE TABLE IF NOT EXISTS player_states (server_bm_id TEXT NOT NULL REFERENCES tracked_servers(bm_id) ON DELETE CASCADE,
-    player_bm_id TEXT NOT NULL, is_online BOOL NOT NULL DEFAULT FALSE, online_since TIMESTAMPTZ, offline_since TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (server_bm_id, player_bm_id));
-CREATE TABLE IF NOT EXISTS track_groups (id BIGSERIAL PRIMARY KEY, server_bm_id TEXT);
-CREATE TABLE IF NOT EXISTS server_player_count_history (server_bm_id TEXT NOT NULL, timestamp_unix BIGINT NOT NULL,
-    min INTEGER NOT NULL, value DOUBLE PRECISION NOT NULL, max INTEGER NOT NULL, observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (server_bm_id, timestamp_unix));
-CREATE TABLE IF NOT EXISTS server_player_count_history_fetches (server_bm_id TEXT PRIMARY KEY, fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS track_analytics_sessions_cache (player_bm_id TEXT NOT NULL, server_bm_id TEXT NOT NULL,
-    sessions JSONB NOT NULL DEFAULT '[]', fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (player_bm_id, server_bm_id));
-"#;
-
 async fn clean(pool: &sqlx::PgPool) {
     for t in [
         "guild_tracked_servers", "player_states", "track_groups", "server_player_count_history",
@@ -44,9 +23,8 @@ async fn tracked_server_crud_rename_and_guild() {
         return;
     };
     let pool = rustlens_db::connect(&url, 5).await.expect("connect");
-    for stmt in SCHEMA.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-        sqlx::query(stmt).execute(&pool).await.unwrap();
-    }
+    // The distilled 0001 baseline is the tested schema contract.
+    rustlens_db::migrate(&pool).await.expect("migrate");
     clean(&pool).await;
 
     // create + dup + get + list.

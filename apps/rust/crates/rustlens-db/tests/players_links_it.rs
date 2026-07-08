@@ -3,27 +3,6 @@
 
 use rustlens_db::players_links as pl;
 
-const SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS steam_accounts (
-    steam_id TEXT PRIMARY KEY, bm_id TEXT UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS steam_account_cache (
-    steam_id TEXT PRIMARY KEY, persona_name TEXT NOT NULL DEFAULT '');
-CREATE TABLE IF NOT EXISTS bm_profile_cache (bm_id TEXT PRIMARY KEY, bm_name TEXT NOT NULL DEFAULT '');
-CREATE TABLE IF NOT EXISTS steam_discord_links (
-    steam_id TEXT NOT NULL, discord_id TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('soft','hard')),
-    source TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (steam_id, discord_id, type));
-CREATE TABLE IF NOT EXISTS hidden_discord_link_identities (
-    discord_id TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '',
-    created_by TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS guild_steam_discord_links (
-    guild_id TEXT NOT NULL, discord_id TEXT NOT NULL, steam_id TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (guild_id, discord_id, steam_id));
-"#;
-
 const S1: &str = "76561190000000001";
 const S2: &str = "76561190000000002";
 const D1: &str = "111111111111111111";
@@ -50,9 +29,8 @@ async fn link_crud_and_suppression() {
         return;
     };
     let pool = rustlens_db::connect(&url, 5).await.expect("connect");
-    for stmt in SCHEMA.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-        sqlx::query(stmt).execute(&pool).await.unwrap();
-    }
+    // The distilled 0001 baseline is the tested schema contract.
+    rustlens_db::migrate(&pool).await.expect("migrate");
     clean(&pool).await;
 
     // create soft link (ensures the steam_accounts parent), duplicate -> AlreadyExists.

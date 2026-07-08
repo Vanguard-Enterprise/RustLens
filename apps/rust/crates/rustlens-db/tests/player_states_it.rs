@@ -4,19 +4,6 @@
 use rustlens_db::player_states as ps;
 use rustlens_db::player_states::PresenceInput;
 
-const SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS tracked_servers (bm_id TEXT PRIMARY KEY, name TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS player_states (server_bm_id TEXT NOT NULL, player_bm_id TEXT NOT NULL,
-    is_online BOOL NOT NULL DEFAULT FALSE, online_since TIMESTAMPTZ, offline_since TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (server_bm_id, player_bm_id));
-CREATE TABLE IF NOT EXISTS steam_accounts (steam_id TEXT PRIMARY KEY, bm_id TEXT UNIQUE);
-CREATE TABLE IF NOT EXISTS bm_profile_cache (bm_id TEXT PRIMARY KEY, bm_name TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ);
-CREATE TABLE IF NOT EXISTS steam_account_cache (steam_id TEXT PRIMARY KEY, avatar_image TEXT NOT NULL DEFAULT '');
-CREATE TABLE IF NOT EXISTS guild_steam_discord_links (guild_id TEXT NOT NULL, discord_id TEXT NOT NULL, steam_id TEXT NOT NULL,
-    PRIMARY KEY (guild_id, discord_id, steam_id));
-CREATE TABLE IF NOT EXISTS guild_tracked_servers (guild_id TEXT NOT NULL, server_bm_id TEXT NOT NULL, PRIMARY KEY (guild_id, server_bm_id));
-"#;
-
 fn inputs(v: &[(&str, &str)]) -> Vec<PresenceInput> {
     v.iter().map(|(p, n)| PresenceInput { player_bm_id: p.to_string(), bm_name: n.to_string() }).collect()
 }
@@ -37,9 +24,8 @@ async fn presence_sync_transitions_and_reads() {
         return;
     };
     let pool = rustlens_db::connect(&url, 5).await.expect("connect");
-    for stmt in SCHEMA.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-        sqlx::query(stmt).execute(&pool).await.unwrap();
-    }
+    // The distilled 0001 baseline is the tested schema contract.
+    rustlens_db::migrate(&pool).await.expect("migrate");
     for t in ["player_states", "tracked_servers", "steam_accounts", "bm_profile_cache", "steam_account_cache", "guild_steam_discord_links", "guild_tracked_servers"] {
         sqlx::query(&format!("DELETE FROM {t}")).execute(&pool).await.unwrap();
     }

@@ -16,6 +16,7 @@ members = [
     "services/servers",
     "services/guilds",
     "services/coordinator",
+    "tools/migrate",
 ]
 
 [workspace.package]
