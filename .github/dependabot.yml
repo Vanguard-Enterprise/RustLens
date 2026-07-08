@@ -7,16 +7,6 @@ updates:
     schedule:
       interval: "weekly"
 
-  - package-ecosystem: "gomod"
-    directory: "/apps/backend"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "docker"
-    directory: "/apps/backend"
-    schedule:
-      interval: "weekly"
-
   - package-ecosystem: "docker"
     directory: "/apps/bot"
     schedule:
@@ -29,6 +19,16 @@ updates:
 
   - package-ecosystem: "docker-compose"
     directory: "/infra"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "cargo"
+    directory: "/apps/rust"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/apps/rust"
     schedule:
       interval: "weekly"
 
