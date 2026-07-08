@@ -476,6 +476,8 @@ Each app has a `.env.example` — copy and fill before running.
 | `TRUST_PROXY_HEADERS` | `false` (set `true` only behind a trusted edge that strips client-supplied copies of the headers below) |
 | `TRUST_PROXY_IP_HEADER` | `CF-Connecting-IP` (canonical client-IP header injected by Cloudflare) |
 | `TRUST_PROXY_GEO_HEADER` | `CF-IPCountry` (ISO-3166 alpha-2 country code injected by Cloudflare) |
+| `DISABLE_WIPE_REACT_SCHEDULER` | `false` (Go-removal kill switch: skips starting `wipereactscheduler.Poller` in `cmd/server/main.go`, for use once the Rust replacement takes over) |
+| `DISABLE_CLEANUP_WORKER` | `false` (Go-removal kill switch: skips starting `cleanup.Service` in `cmd/server/main.go`, for use once the Rust replacement takes over) |
 
 The BattleMetrics public API client is unauthenticated; there is no `BATTLEMETRICS_API_KEY` env var. Steam<->BM resolution is delegated to the `steammatch` resolver chain: the **bmsearch.io** public no-auth API (`BM_SEARCH_*`) as the primary source, with the legacy external `bmmatch` service (`BM_MATCH_URL` + `BM_MATCH_TOKEN`) as an optional fallback.
 

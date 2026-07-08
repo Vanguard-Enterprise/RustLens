@@ -85,3 +85,35 @@ func TestLoadParsesProxyEncryptionKey(t *testing.T) {
 		t.Fatalf("ProxyEncryptionKey = %q, want test-key", cfg.ProxyEncryptionKey)
 	}
 }
+
+func TestLoadDefaultsWorkerKillSwitchesToFalse(t *testing.T) {
+	t.Setenv("APP_API_INTERNAL_SECRET", "test-app-secret")
+	t.Setenv("APP_SESSION_SECRET", "test-session-secret")
+	t.Setenv("BOT_SERVICE_JWT_SECRET", "test-bot-secret")
+
+	cfg := Load()
+
+	if cfg.DisableWipeReactScheduler {
+		t.Error("expected DisableWipeReactScheduler to default to false")
+	}
+	if cfg.DisableCleanupWorker {
+		t.Error("expected DisableCleanupWorker to default to false")
+	}
+}
+
+func TestLoadParsesWorkerKillSwitches(t *testing.T) {
+	t.Setenv("APP_API_INTERNAL_SECRET", "test-app-secret")
+	t.Setenv("APP_SESSION_SECRET", "test-session-secret")
+	t.Setenv("BOT_SERVICE_JWT_SECRET", "test-bot-secret")
+	t.Setenv("DISABLE_WIPE_REACT_SCHEDULER", "true")
+	t.Setenv("DISABLE_CLEANUP_WORKER", "true")
+
+	cfg := Load()
+
+	if !cfg.DisableWipeReactScheduler {
+		t.Error("expected DisableWipeReactScheduler to be true")
+	}
+	if !cfg.DisableCleanupWorker {
+		t.Error("expected DisableCleanupWorker to be true")
+	}
+}

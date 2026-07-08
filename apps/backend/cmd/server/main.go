@@ -197,11 +197,19 @@ func main() {
 	battleMetricsPoller.Start(ctx)
 	serverAnalyticsRefresher := serveranalytics.NewRefresher(battlemetrics.NewClient(outboundProvider), postgresStore, redisStore)
 	serverAnalyticsRefresher.Start(ctx)
-	wipeReactSchedulePoller := wipereactscheduler.NewPoller(postgresStore)
-	wipeReactSchedulePoller.Start(ctx)
+	if cfg.DisableWipeReactScheduler {
+		log.Printf("wipe-react scheduler disabled via DISABLE_WIPE_REACT_SCHEDULER")
+	} else {
+		wipeReactSchedulePoller := wipereactscheduler.NewPoller(postgresStore)
+		wipeReactSchedulePoller.Start(ctx)
+	}
 
-	cleanupService := cleanup.NewService(postgresStore, cleanup.Config{})
-	cleanupService.Start(ctx)
+	if cfg.DisableCleanupWorker {
+		log.Printf("cleanup worker disabled via DISABLE_CLEANUP_WORKER")
+	} else {
+		cleanupService := cleanup.NewService(postgresStore, cleanup.Config{})
+		cleanupService.Start(ctx)
+	}
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
