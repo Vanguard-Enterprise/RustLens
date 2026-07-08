@@ -191,6 +191,44 @@ pub async fn delete(pool: &PgPool, guild_id: &str, id: i64) -> Result<(), TrackG
     Ok(())
 }
 
+// ---- track analytics ----
+
+/// One tracked group member with a resolvable BattleMetrics ID, used by the
+/// players track-group-analytics route. Mirrors Go's `TrackAnalyticsMember`.
+#[derive(Debug, Clone)]
+pub struct TrackAnalyticsMember {
+    pub steam_id: String,
+    pub bm_id: String,
+}
+
+/// `ListTrackAnalyticsMembers`: members of the group that have a resolvable
+/// BattleMetrics ID (either on the member row or the linked steam account).
+/// Members without one are skipped.
+pub async fn list_track_analytics_members(
+    pool: &PgPool,
+    group_id: i64,
+) -> Result<Vec<TrackAnalyticsMember>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"SELECT tgm.steam_id, COALESCE(NULLIF(tgm.bm_id, ''), COALESCE(sa.bm_id, '')) AS bm_id
+           FROM track_group_members tgm
+           LEFT JOIN steam_accounts sa ON sa.steam_id = tgm.steam_id
+           WHERE tgm.track_group_id = $1"#,
+    )
+    .bind(group_id)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let steam_id: String = row.try_get("steam_id")?;
+        let bm_id: String = row.try_get("bm_id")?;
+        if bm_id.is_empty() {
+            continue;
+        }
+        out.push(TrackAnalyticsMember { steam_id, bm_id });
+    }
+    Ok(out)
+}
+
 // ---- members ----
 
 #[derive(Debug, Clone, Serialize)]

@@ -1521,6 +1521,7 @@ dependencies = [
  "axum",
  "chrono",
  "chrono-tz",
+ "futures-util",
  "redis",
  "rustlens-battlemetrics",
  "rustlens-botjwt",
