@@ -618,7 +618,9 @@ export class BackendClient {
   }
 
   register(workerId: string) {
-    return this.call<RegisterResponse>(workerId, "/api/internal/bot/shards/register", "POST", { workerId });
+    return this.call<RegisterResponse>(workerId, "/api/internal/bot/coordinator/shards/register", "POST", {
+      workerId,
+    });
   }
 
   heartbeat(workerId: string, shardIds: number[], stats?: WorkerStatSnapshot) {
@@ -626,11 +628,16 @@ export class BackendClient {
     if (stats) {
       body.stats = stats;
     }
-    return this.call<{ status: string }>(workerId, "/api/internal/bot/shards/heartbeat", "POST", body);
+    return this.call<{ status: string }>(
+      workerId,
+      "/api/internal/bot/coordinator/shards/heartbeat",
+      "POST",
+      body,
+    );
   }
 
   ownerStats(workerId: string) {
-    return this.call<OwnerStatsResponse>(workerId, "/api/internal/bot/owner/stats", "GET");
+    return this.call<OwnerStatsResponse>(workerId, "/api/internal/bot/coordinator/stats", "GET");
   }
 
   listOwnerProxies(workerId: string) {
@@ -650,12 +657,18 @@ export class BackendClient {
   }
 
   release(workerId: string) {
-    return this.call<{ status: string }>(workerId, "/api/internal/bot/shards/release", "POST", { workerId });
+    return this.call<{ status: string }>(workerId, "/api/internal/bot/coordinator/shards/release", "POST", {
+      workerId,
+    });
   }
 
   assignments(workerId: string) {
     const query = new URLSearchParams({ workerId }).toString();
-    return this.call<AssignmentsResponse>(workerId, `/api/internal/bot/shards/assignments?${query}`, "GET");
+    return this.call<AssignmentsResponse>(
+      workerId,
+      `/api/internal/bot/coordinator/shards/assignments?${query}`,
+      "GET",
+    );
   }
 
   steamAccountCount(workerId: string) {
@@ -1462,7 +1475,7 @@ export class BackendClient {
   ) {
     return this.call<RateLimitConsumeResponse>(
       workerId,
-      "/api/internal/bot/setup/rate-limit/consume",
+      "/api/internal/bot/coordinator/rate-limit/consume",
       "POST",
       payload,
       2_000,

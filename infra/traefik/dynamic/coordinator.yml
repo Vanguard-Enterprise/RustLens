@@ -1,0 +1,34 @@
+# Coordinator-service cutover (Rust, D1 domain-prefix reorg). Routes the two
+# path families the coordinator service owns to it at a higher priority than
+# the `/api` catch-all in base.yml; everything else still falls through to
+# the Go backend.
+#
+# One PathPrefix/Path per family:
+#   - /api/internal/bot/coordinator: the bot-internal coordinator domain
+#     (shard register/heartbeat/release/assignments, owner stats, rate-limit
+#     consume).
+#   - /api/discord/webhook-events: Discord's Ed25519-signed webhook callback,
+#     already coordinator-only and not part of the bot-internal reorg.
+#
+# The coordinator service dual-registers the new
+# `/api/internal/bot/coordinator/...` prefix alongside the legacy flat
+# `/api/internal/bot/shards/...`, `/api/internal/bot/owner/stats`, and
+# `/api/internal/bot/setup/rate-limit/consume` paths, so the bot deploy (which
+# flips to these new paths) is the cutover moment for this domain. The legacy
+# flat paths still route to Go via the base.yml catch-all until Phase E drops
+# them.
+http:
+  routers:
+    coordinator:
+      entryPoints:
+        - web
+      priority: 200
+      service: coordinator
+      # Single line: Traefik's rule parser rejects embedded newlines.
+      rule: "Host(`localhost`) && (PathPrefix(`/api/internal/bot/coordinator`) || Path(`/api/discord/webhook-events`))"
+
+  services:
+    coordinator:
+      loadBalancer:
+        servers:
+          - url: "http://coordinator:8094"
