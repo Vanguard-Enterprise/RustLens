@@ -215,6 +215,23 @@ async fn main() -> anyhow::Result<()> {
             "/api/internal/bot/setup/players/{bmID}/offline-analytics",
             get(track_analytics::get_player_offline_analytics),
         )
+        .route(
+            "/api/internal/bot/setup/players/{bmID}/bm-profile",
+            get(steam::get_bm_player_profile),
+        )
+        .route(
+            "/api/internal/bot/setup/players/{bmID}/bm-analytics",
+            get(steam::get_bm_player_analytics),
+        )
+        .route(
+            "/api/internal/bot/setup/steam/{steamID}/friends",
+            get(steam::get_steam_friends),
+        )
+        .route("/api/internal/bot/setup/steam/resolve", post(steam::resolve_steam_id))
+        .route(
+            "/api/internal/bot/setup/steam-accounts/count",
+            get(steam::get_steam_account_count),
+        )
         // ---- game-bans + platform-sync ----
         .route(
             "/api/internal/bot/setup/guilds/{guildID}/game-bans",

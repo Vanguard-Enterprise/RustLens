@@ -272,9 +272,59 @@ pub async fn build_cache_from_profile(
     Ok((steam_cache, bm_cache))
 }
 
+/// Build a BM-only cache row from a fresh BattleMetrics profile, with no Steam
+/// side effects (no Steam API calls, no `steam_account_cache` write). Mirrors
+/// the `freshBm := store.BmProfileCache{...}; applyBmProfileToCache(...)` steps
+/// shared by Go's `GetBmPlayerProfile`/`GetBmPlayerAnalytics`.
+pub(crate) async fn build_bm_only_cache(
+    st: &AppState,
+    bm_id: &str,
+    profile: &PlayerProfile,
+) -> Result<BmProfileCache, sqlx::Error> {
+    let tracked = store::list_tracked_servers(&st.pool).await?;
+    let tracked_by_id: HashMap<&str, &TrackedServer> =
+        tracked.iter().map(|t| (t.bm_id.as_str(), t)).collect();
+    let mut bm_cache = BmProfileCache {
+        bm_id: bm_id.to_string(),
+        bm_name: profile.bm_name.clone(),
+        first_seen_at: profile.created_at,
+        ..Default::default()
+    };
+    apply_bm_profile_to_cache(&mut bm_cache, profile, &tracked_by_id);
+    Ok(bm_cache)
+}
+
+/// Resolve a bare Steam↔BM linkage via the resolver chain only (no
+/// BattleMetrics profile fetch) and persist it. Mirrors
+/// `resolveSteamAccountFromResolver`, used by `GetBmPlayerProfile`'s 404
+/// fallback when BattleMetrics itself doesn't see the player and there's no
+/// cache to fall back to.
+pub(crate) async fn resolve_bare_linkage_from_resolver(
+    st: &AppState,
+    bm_id: &str,
+) -> Result<SteamAccount, ResolveError> {
+    match st.resolver.bm_to_steam(bm_id).await {
+        Ok(steam_id) if !steam_id.trim().is_empty() => {
+            let steam_id = steam_id.trim().to_string();
+            store::upsert_steam_account(&st.pool, &steam_id, Some(bm_id))
+                .await
+                .map_err(db_err)?;
+            store::get_steam_account_by_steam_id(&st.pool, &steam_id)
+                .await
+                .map_err(db_err)?
+                .ok_or(ResolveError::NotFound)
+        }
+        Ok(_) => Err(ResolveError::NotFound),
+        Err(MatchError::NotFound) | Err(MatchError::NotConfigured) | Err(MatchError::Pending) => {
+            Err(ResolveError::NotFound)
+        }
+        Err(MatchError::Other(e)) => Err(ResolveError::Other(e)),
+    }
+}
+
 /// Fill the BM hour buckets, top servers, and counts from the profile's Rust
 /// servers. Mirrors `applyBmProfileToCache`.
-fn apply_bm_profile_to_cache(
+pub(crate) fn apply_bm_profile_to_cache(
     bm_cache: &mut BmProfileCache,
     profile: &PlayerProfile,
     tracked_by_id: &HashMap<&str, &TrackedServer>,

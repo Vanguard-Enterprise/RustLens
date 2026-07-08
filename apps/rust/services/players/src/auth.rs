@@ -52,3 +52,8 @@ pub fn is_snowflake(s: &str) -> bool {
 pub fn is_steam64(s: &str) -> bool {
     s.len() == 17 && s.bytes().all(|b| b.is_ascii_digit())
 }
+
+/// `^\d{1,16}$` (Go `bmIDPattern`; BattleMetrics player ID).
+pub fn is_bm_id(s: &str) -> bool {
+    (1..=16).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit())
+}
