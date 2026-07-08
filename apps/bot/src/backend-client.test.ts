@@ -62,7 +62,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/steam-accounts/count");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/steam-accounts/count");
     expect(init?.method).toBe("GET");
   });
 
@@ -213,7 +213,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/steam/76561198000000000/profile");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/steam/76561198000000000/profile");
     expect(init?.method).toBe("GET");
   });
 
@@ -371,7 +371,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/discord/456/setsteam-candidates");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/discord/456/setsteam-candidates");
     expect(init?.method).toBe("GET");
     expect(result.items[0].displayName).toBe("Sem");
   });
@@ -394,7 +394,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/links");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/guilds/123/links");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ discordId: "456", steamId: "76561198000000000" }));
   });
@@ -496,7 +496,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/nickname-targets");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/guilds/123/nickname-targets");
     expect(init?.method).toBe("GET");
   });
 
@@ -513,7 +513,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/discord/456/steam/76561198000000000");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/guilds/123/discord/456/steam/76561198000000000");
     expect(init?.method).toBe("DELETE");
   });
 
@@ -530,7 +530,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/steam/resolve");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/steam/resolve");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ input: "https://steamcommunity.com/id/rustlens" }));
   });
@@ -668,7 +668,7 @@ describe("BackendClient", () => {
 
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe(
-      "http://localhost:8080/api/internal/bot/setup/guilds/1478118029018792076/game-bans?method=deep&timeframe=180d&scopeDiscordId=10&scopeDiscordId=11",
+      "http://localhost:8080/api/internal/bot/players/guilds/1478118029018792076/game-bans?method=deep&timeframe=180d&scopeDiscordId=10&scopeDiscordId=11",
     );
     expect(init?.method).toBe("GET");
   });

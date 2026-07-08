@@ -55,9 +55,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # Rust players service (Phase 2). No Traefik dynamic file yet, so nothing is
-  # routed here until cutover; runs against the compose Postgres/Redis. Shared
-  # secrets + Steam/BM/platformsync/proxy vars come from ./rustlens.env.
+  # Rust players service: serves the bot-internal player domain and the
+  # app-facing player search/profile routes (see infra/traefik/dynamic/players.yml
+  # for exactly which paths Traefik routes here). Runs against the compose
+  # Postgres/Redis. Shared secrets + Steam/BM/platformsync/proxy vars come from
+  # ./rustlens.env.
   players:
     build:
       context: ../apps/rust

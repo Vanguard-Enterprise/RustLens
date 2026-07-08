@@ -659,7 +659,7 @@ export class BackendClient {
   }
 
   steamAccountCount(workerId: string) {
-    return this.call<CountResponse>(workerId, "/api/internal/bot/setup/steam-accounts/count", "GET");
+    return this.call<CountResponse>(workerId, "/api/internal/bot/players/steam-accounts/count", "GET");
   }
 
   guildSettings(workerId: string, guildId: string) {
@@ -953,7 +953,7 @@ export class BackendClient {
   getSteamAccount(workerId: string, steamId: string) {
     return this.call<SteamAccount>(
       workerId,
-      `/api/internal/bot/setup/steam/${steamId}`,
+      `/api/internal/bot/players/steam/${steamId}`,
       "GET",
     );
   }
@@ -961,7 +961,7 @@ export class BackendClient {
   getSteamAccountByBmID(workerId: string, bmId: string) {
     return this.call<SteamAccount>(
       workerId,
-      `/api/internal/bot/setup/steam/by-bm/${bmId}`,
+      `/api/internal/bot/players/steam/by-bm/${bmId}`,
       "GET",
     );
   }
@@ -969,7 +969,7 @@ export class BackendClient {
   getBmPlayerProfile(workerId: string, bmId: string) {
     return this.call<SteamProfile>(
       workerId,
-      `/api/internal/bot/setup/players/${bmId}/bm-profile`,
+      `/api/internal/bot/players/bm/${bmId}/bm-profile`,
       "GET",
     );
   }
@@ -977,7 +977,7 @@ export class BackendClient {
   getBmPlayerAnalytics(workerId: string, bmId: string) {
     return this.call<SteamAnalytics>(
       workerId,
-      `/api/internal/bot/setup/players/${bmId}/bm-analytics`,
+      `/api/internal/bot/players/bm/${bmId}/bm-analytics`,
       "GET",
     );
   }
@@ -985,7 +985,7 @@ export class BackendClient {
   getSteamProfile(workerId: string, steamId: string) {
     return this.call<SteamProfile>(
       workerId,
-      `/api/internal/bot/setup/steam/${steamId}/profile`,
+      `/api/internal/bot/players/steam/${steamId}/profile`,
       "GET",
     );
   }
@@ -993,7 +993,7 @@ export class BackendClient {
   getSteamAnalytics(workerId: string, steamId: string) {
     return this.call<SteamAnalytics>(
       workerId,
-      `/api/internal/bot/setup/steam/${steamId}/analytics`,
+      `/api/internal/bot/players/steam/${steamId}/analytics`,
       "GET",
     );
   }
@@ -1001,7 +1001,7 @@ export class BackendClient {
   getSteamFriends(workerId: string, steamId: string) {
     return this.call<SteamFriendListResponse>(
       workerId,
-      `/api/internal/bot/setup/steam/${steamId}/friends`,
+      `/api/internal/bot/players/steam/${steamId}/friends`,
       "GET",
       undefined,
       30_000,
@@ -1011,7 +1011,7 @@ export class BackendClient {
   getLinksBySteamID(workerId: string, steamId: string) {
     return this.call<SteamDiscordLinkListResponse>(
       workerId,
-      `/api/internal/bot/setup/steam/${steamId}/links`,
+      `/api/internal/bot/players/steam/${steamId}/links`,
       "GET",
     );
   }
@@ -1019,7 +1019,7 @@ export class BackendClient {
   getLinksByDiscordID(workerId: string, discordId: string) {
     return this.call<SteamDiscordLinkListResponse>(
       workerId,
-      `/api/internal/bot/setup/discord/${discordId}/links`,
+      `/api/internal/bot/players/discord/${discordId}/links`,
       "GET",
     );
   }
@@ -1043,7 +1043,7 @@ export class BackendClient {
   resolveSteamID(workerId: string, input: string) {
     return this.call<ResolveSteamIDResponse>(
       workerId,
-      `/api/internal/bot/setup/steam/resolve`,
+      `/api/internal/bot/players/steam/resolve`,
       "POST",
       { input },
     );
@@ -1052,7 +1052,7 @@ export class BackendClient {
   createSoftLink(workerId: string, steamId: string, discordId: string, source: string) {
     return this.call<SteamDiscordLink>(
       workerId,
-      `/api/internal/bot/setup/steam/links`,
+      `/api/internal/bot/players/steam/links`,
       "POST",
       { steamId, discordId, source },
     );
@@ -1170,7 +1170,7 @@ export class BackendClient {
   createGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
     return this.call<GuildSteamDiscordLink>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/links`,
+      `/api/internal/bot/players/guilds/${guildId}/links`,
       "POST",
       { discordId, steamId },
     );
@@ -1179,7 +1179,7 @@ export class BackendClient {
   deleteGuildLink(workerId: string, guildId: string, discordId: string, steamId: string) {
     return this.call<{ status: string }>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/discord/${discordId}/steam/${steamId}`,
+      `/api/internal/bot/players/guilds/${guildId}/discord/${discordId}/steam/${steamId}`,
       "DELETE",
     );
   }
@@ -1187,7 +1187,7 @@ export class BackendClient {
   bulkUpsertHardLinks(workerId: string, links: BulkHardLinkEntry[]) {
     return this.call<{ status: string; count: number }>(
       workerId,
-      `/api/internal/bot/setup/steam/bulk-hard-links`,
+      `/api/internal/bot/players/steam/bulk-hard-links`,
       "POST",
       { links },
     );
@@ -1196,7 +1196,7 @@ export class BackendClient {
   syncPlatformIdentity(workerId: string, platform: "steam" | "discord", id: string) {
     return this.call<PlatformSyncResult>(
       workerId,
-      `/api/internal/bot/setup/platform-sync/${platform}/${id}`,
+      `/api/internal/bot/players/platform-sync/${platform}/${id}`,
       "POST",
       undefined,
       30_000,
@@ -1206,7 +1206,7 @@ export class BackendClient {
   deleteSoftLink(workerId: string, steamId: string, discordId: string) {
     return this.call<{ status: string }>(
       workerId,
-      `/api/internal/bot/setup/steam/${steamId}/links/${discordId}/soft`,
+      `/api/internal/bot/players/steam/${steamId}/links/${discordId}/soft`,
       "DELETE",
     );
   }
@@ -1214,7 +1214,7 @@ export class BackendClient {
   listGuildLinks(workerId: string, guildId: string) {
     return this.call<GuildSteamDiscordLinkListResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/links`,
+      `/api/internal/bot/players/guilds/${guildId}/links`,
       "GET",
     );
   }
@@ -1222,7 +1222,7 @@ export class BackendClient {
   listGuildNicknameTargets(workerId: string, guildId: string) {
     return this.call<GuildNicknameTargetListResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/nickname-targets`,
+      `/api/internal/bot/players/guilds/${guildId}/nickname-targets`,
       "GET",
     );
   }
@@ -1256,7 +1256,7 @@ export class BackendClient {
     }
     return this.call<GuildRecentGameBanListResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/game-bans?${query}`,
+      `/api/internal/bot/players/guilds/${guildId}/game-bans?${query}`,
       "GET",
       undefined,
       method === "deep" ? 120_000 : 30_000,
@@ -1274,7 +1274,7 @@ export class BackendClient {
   listGuildLinksByDiscord(workerId: string, guildId: string, discordId: string) {
     return this.call<GuildSteamDiscordLinkListResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/discord/${discordId}/links`,
+      `/api/internal/bot/players/guilds/${guildId}/discord/${discordId}/links`,
       "GET",
     );
   }
@@ -1282,7 +1282,7 @@ export class BackendClient {
   listSetSteamCandidates(workerId: string, discordId: string) {
     return this.call<SetSteamCandidateListResponse>(
       workerId,
-      `/api/internal/bot/setup/discord/${discordId}/setsteam-candidates`,
+      `/api/internal/bot/players/discord/${discordId}/setsteam-candidates`,
       "GET",
     );
   }
@@ -1290,7 +1290,7 @@ export class BackendClient {
   listGuildLinksBySteam(workerId: string, guildId: string, steamId: string) {
     return this.call<GuildSteamDiscordLinkListResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/steam/${steamId}/links`,
+      `/api/internal/bot/players/guilds/${guildId}/steam/${steamId}/links`,
       "GET",
     );
   }
@@ -1434,7 +1434,7 @@ export class BackendClient {
   getTrackGroupAnalytics(workerId: string, guildId: string, groupId: number) {
     return this.call<TrackGroupAnalyticsResponse>(
       workerId,
-      `/api/internal/bot/setup/guilds/${guildId}/track-groups/${groupId}/analytics`,
+      `/api/internal/bot/players/guilds/${guildId}/track-groups/${groupId}/analytics`,
       "GET",
       undefined,
       60_000,
@@ -1444,7 +1444,7 @@ export class BackendClient {
   getPlayerOfflineAnalytics(workerId: string, bmId: string) {
     return this.call<TrackGroupAnalyticsResponse>(
       workerId,
-      `/api/internal/bot/setup/players/${bmId}/offline-analytics`,
+      `/api/internal/bot/players/bm/${bmId}/offline-analytics`,
       "GET",
       undefined,
       60_000,
