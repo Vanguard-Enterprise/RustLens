@@ -8,6 +8,7 @@ description = "RustLens coordinator service — bot shard coordination (Redis le
 [dependencies]
 rustlens-config = { workspace = true }
 rustlens-db = { workspace = true }
+rustlens-otel = { workspace = true }
 rustlens-botjwt = { workspace = true }
 redis = { workspace = true }
 ed25519-dalek = { workspace = true }

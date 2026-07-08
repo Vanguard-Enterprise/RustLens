@@ -29,12 +29,7 @@ use state::AppState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "guilds=info,tower_http=info".into()),
-        )
-        .init();
+    let _otel_guard = rustlens_otel::init("rustlens-guilds", "guilds=info,tower_http=info");
 
     let config = GuildsConfig::from_env().context("loading configuration")?;
     let pool = rustlens_db::connect(&config.postgres_url, 10)

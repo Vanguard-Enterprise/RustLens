@@ -1,0 +1,18 @@
+[package]
+name = "rustlens-otel"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Shared OpenTelemetry (OTLP/gRPC) + stdout tracing init for the RustLens Rust fleet."
+
+[dependencies]
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry-semantic-conventions = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

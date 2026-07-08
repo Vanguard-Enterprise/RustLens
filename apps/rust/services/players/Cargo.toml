@@ -8,6 +8,7 @@ description = "RustLens players service — Steam↔BattleMetrics identity, prof
 [dependencies]
 rustlens-config = { workspace = true }
 rustlens-db = { workspace = true }
+rustlens-otel = { workspace = true }
 rustlens-botjwt = { workspace = true }
 rustlens-steam = { workspace = true }
 rustlens-battlemetrics = { workspace = true }

@@ -8,6 +8,7 @@ description = "RustLens servers service — tracked BattleMetrics servers, live 
 [dependencies]
 rustlens-config = { workspace = true }
 rustlens-db = { workspace = true }
+rustlens-otel = { workspace = true }
 rustlens-botjwt = { workspace = true }
 rustlens-battlemetrics = { workspace = true }
 rustlens-outbound = { workspace = true }

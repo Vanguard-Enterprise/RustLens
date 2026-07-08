@@ -8,6 +8,7 @@ description = "RustLens guilds service — guild settings, wipe-reacts + schedul
 [dependencies]
 rustlens-config = { workspace = true }
 rustlens-db = { workspace = true }
+rustlens-otel = { workspace = true }
 rustlens-botjwt = { workspace = true }
 rustlens-httpauth = { workspace = true }
 redis = { workspace = true }
