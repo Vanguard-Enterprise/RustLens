@@ -1040,7 +1040,7 @@ export class BackendClient {
   isDiscordWebsiteAdmin(workerId: string, discordId: string) {
     return this.call<{ isAdmin: boolean }>(
       workerId,
-      `/api/internal/bot/setup/discord/${discordId}/is-website-admin`,
+      `/api/internal/bot/identity/discord/${discordId}/is-website-admin`,
       "GET",
     );
   }
@@ -1048,7 +1048,7 @@ export class BackendClient {
   hasDiscordProRole(workerId: string, discordId: string) {
     return this.call<{ hasRole: boolean }>(
       workerId,
-      `/api/internal/bot/setup/discord/${discordId}/has-pro-role`,
+      `/api/internal/bot/identity/discord/${discordId}/has-pro-role`,
       "GET",
     );
   }
@@ -1151,7 +1151,7 @@ export class BackendClient {
   ): Promise<{ userId: string; created: boolean }> {
     return this.call<{ userId: string; created: boolean }>(
       workerId,
-      `/api/internal/bot/setup/users/ensure`,
+      `/api/internal/bot/identity/users/ensure`,
       "POST",
       {
         discordId:  payload.discordId,
@@ -1163,7 +1163,7 @@ export class BackendClient {
   }
 
   async recordCommandUsage(workerId: string, payload: CommandUsagePayload): Promise<void> {
-    const response = await fetch(`${this.backendUrl}/api/internal/bot/setup/command-usage`, {
+    const response = await fetch(`${this.backendUrl}/api/internal/bot/identity/command-usage`, {
       method:  "POST",
       headers: {
         "content-type": "application/json",
@@ -1311,7 +1311,7 @@ export class BackendClient {
   getUserBan(workerId: string, discordId: string) {
     return this.call<UserBan>(
       workerId,
-      `/api/internal/bot/setup/bans/${discordId}`,
+      `/api/internal/bot/identity/bans/${discordId}`,
       "GET",
     );
   }
@@ -1319,7 +1319,7 @@ export class BackendClient {
   setUserBan(workerId: string, discordId: string, categories: string[], updatedBy: string) {
     return this.call<UserBan>(
       workerId,
-      `/api/internal/bot/setup/bans/${discordId}`,
+      `/api/internal/bot/identity/bans/${discordId}`,
       "PUT",
       { categories, updatedBy },
     );

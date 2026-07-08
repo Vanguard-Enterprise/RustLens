@@ -1,11 +1,25 @@
-# Identity-service cutover (Rust). Routes ONLY the paths the identity service
-# fully owns to it (higher priority than the `/api` catch-all in base.yml);
-# everything else still falls through to the Go backend.
+# Identity-service cutover (Rust, D1 domain-prefix reorg). Routes the path
+# families the identity service owns to it at a higher priority than the
+# `/api` catch-all in base.yml; everything else still falls through to the Go
+# backend.
 #
-# Deliberately NOT routed here: `/api/app/admin/*` — the admin surface is split
-# across future Rust services (guilds/servers/proxies/bm-servers are still on Go)
-# and the action dispatcher has deferred actions, so it stays on the Go backend
-# until the whole admin surface is ported.
+# Families routed here:
+#   - app-facing auth/session: /api/auth/discord*, /api/events*, /api/app/me,
+#     /api/app/me/preferences, /api/app/auth/logout,
+#     /api/app/me/discord-role-connection.
+#   - /api/internal/bot/identity: the bot-internal identity domain
+#     (command-usage, bans, is-website-admin, has-pro-role, users/ensure). The
+#     identity service dual-registers this prefix alongside the legacy flat
+#     `/api/internal/bot/setup/...` paths, so the bot deploy (which flips to
+#     the new paths) is the cutover moment for this domain; the legacy flat
+#     paths still route to Go via the base.yml catch-all until Phase E drops
+#     them.
+#   - identity-owned admin surface: /api/app/admin/{permissions,roles,users,
+#     administrators,audit,actions,api-keys}. The admin surface is split
+#     across services by the ownership map — guilds owns
+#     /api/app/admin/guilds + /user-installs, servers owns
+#     /api/app/admin/{bm-servers,proxies,servers} (their own dynamic files);
+#     everything else on the admin surface belongs to identity.
 http:
   routers:
     identity:
@@ -14,7 +28,7 @@ http:
       priority: 200
       service: identity
       # Single line: Traefik's rule parser rejects embedded newlines.
-      rule: "Host(`localhost`) && (PathPrefix(`/api/auth/discord`) || PathPrefix(`/api/events`) || Path(`/api/app/me`) || Path(`/api/app/me/preferences`) || Path(`/api/app/auth/logout`) || Path(`/api/app/me/discord-role-connection`) || Path(`/api/internal/bot/setup/command-usage`) || PathPrefix(`/api/internal/bot/setup/bans/`) || PathRegexp(`^/api/internal/bot/setup/discord/[^/]+/(is-website-admin|has-pro-role)$`))"
+      rule: "Host(`localhost`) && (PathPrefix(`/api/auth/discord`) || PathPrefix(`/api/events`) || Path(`/api/app/me`) || Path(`/api/app/me/preferences`) || Path(`/api/app/auth/logout`) || Path(`/api/app/me/discord-role-connection`) || PathPrefix(`/api/internal/bot/identity`) || PathPrefix(`/api/app/admin/permissions`) || PathPrefix(`/api/app/admin/roles`) || PathPrefix(`/api/app/admin/users`) || PathPrefix(`/api/app/admin/administrators`) || PathPrefix(`/api/app/admin/audit`) || PathPrefix(`/api/app/admin/actions`) || PathPrefix(`/api/app/admin/api-keys`))"
 
   services:
     identity:
