@@ -106,10 +106,18 @@ hard-to-reverse step.
 
 ## Open decisions
 
-1. **Bot-internal routing:** domain-prefix **reorg** (recommended) vs. flat
-   `PathRegexp` rules.
-2. **Schema ownership after Go is gone:** keep a migrations-only Go binary vs.
-   move to a migration tool.
+Both DECIDED 2026-07-08 (Frank). Go is being deleted from the repo entirely;
+execution is broken down in `docs/rust-go-removal-plan.md`, which supersedes
+the per-domain Go-handler-deletion steps above (Go is now deleted wholesale at
+the end instead).
+
+1. **Bot-internal routing: DECIDED, domain-prefix reorg.** One prefix per
+   service (`/api/internal/bot/{identity,players,servers,guilds,coordinator}/...`),
+   one Traefik `PathPrefix` rule each, single bot base URL and JWT audience
+   preserved.
+2. **Schema ownership after Go is gone: DECIDED, single one-shot `migrate`
+   binary** (`apps/rust/tools/migrate`) using `sqlx::migrate!` with a distilled
+   `0001_baseline.sql`; a migrations-only Go binary is off the table.
 
 ## Status of the plumbing (this repo)
 
