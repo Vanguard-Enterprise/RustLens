@@ -44,7 +44,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/settings");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/123/settings");
     expect(init?.method).toBe("PUT");
     expect(init?.body).toBe(JSON.stringify({ wipeReactLogChannelId: "456" }));
   });
@@ -97,7 +97,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/wipe-reacts/789/reactions");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/123/wipe-reacts/789/reactions");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ userId: "222", type: "accepted" }));
   });
@@ -132,7 +132,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/wipe-reacts");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/123/wipe-reacts");
     expect(init?.method).toBe("GET");
   });
 
@@ -419,7 +419,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/user-guilds");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/user-guilds");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ discordId: "456", guildId: "123" }));
   });
@@ -444,7 +444,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/user-guilds/leave");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/user-guilds/leave");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ discordId: "456", guildId: "123" }));
   });
@@ -471,7 +471,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/discord/456/guilds");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/discord/456/guilds");
     expect(init?.method).toBe("GET");
   });
 
@@ -558,7 +558,7 @@ describe("BackendClient", () => {
     });
 
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/bot-guilds/upsert");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/bot-guilds/upsert");
     expect(init?.method).toBe("POST");
     const body = JSON.parse(init?.body as string);
     expect(body.guildId).toBe("1");
@@ -574,7 +574,7 @@ describe("BackendClient", () => {
     await client.markBotGuildLeft("worker-a", "1");
 
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/bot-guilds/leave");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/bot-guilds/leave");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(init?.body as string)).toEqual({ guildId: "1" });
   });
@@ -587,7 +587,7 @@ describe("BackendClient", () => {
     await client.reconcileBotGuilds("worker-a", { shardId: 1, shardCount: 4, guildIds: ["1", "2"] });
 
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/bot-guilds/reconcile");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/bot-guilds/reconcile");
     expect(JSON.parse(init?.body as string)).toEqual({ shardId: 1, shardCount: 4, guildIds: ["1", "2"] });
   });
 
