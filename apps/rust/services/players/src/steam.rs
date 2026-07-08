@@ -5,19 +5,22 @@
 use std::sync::Arc;
 
 use axum::Json;
+use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Duration, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use rustlens_battlemetrics::BmError;
 use rustlens_db::players_steam::{
     self as store, AnalyticsGame, AnalyticsServer, BmProfileCache, NameHistory, PlayerState,
     SteamAccount, SteamAccountCache,
 };
+use rustlens_steam::steamapi::SteamError;
 
-use crate::auth::{err_json, is_steam64, require_bot_jwt};
+use crate::auth::{err_json, is_bm_id, is_steam64, require_bot_jwt};
 use crate::resolve::{self, ResolveError};
 use crate::state::AppState;
 
@@ -450,6 +453,345 @@ pub async fn get_steam_analytics(
     Json(resp).into_response()
 }
 
+// ---- BM-keyed profile / analytics (no required Steam linkage) ----
+
+/// A placeholder account for a BM ID with no discovered Steam linkage.
+/// `created_at`/`updated_at` are never read by `profile_response`/
+/// `analytics_response` — only `steam_id`/`bm_id`/`bm_name`/`avatar_image`/
+/// `first_seen_at` are.
+fn unlinked_account() -> SteamAccount {
+    SteamAccount {
+        steam_id: String::new(),
+        bm_id: None,
+        bm_name: String::new(),
+        avatar_image: String::new(),
+        first_seen_at: None,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    }
+}
+
+/// Shared lookup prologue for `GetBmPlayerProfile`/`GetBmPlayerAnalytics`: find
+/// an existing Steam linkage for enrichment (ignoring a "not found" lookup,
+/// logging any other DB error), then force `bm_id` to the input BM ID when
+/// unlinked. Mirrors the Go handlers' shared preamble.
+async fn account_for_bm_id(st: &AppState, bm_id: &str) -> (SteamAccount, SteamAccountCache) {
+    let mut account = match store::get_steam_account_by_bm_id(&st.pool, bm_id).await {
+        Ok(Some(a)) => a,
+        Ok(None) => unlinked_account(),
+        Err(e) => {
+            tracing::error!("players/steam bm lookup {bm_id}: {e}");
+            unlinked_account()
+        }
+    };
+    let mut steam_cache = SteamAccountCache::default();
+    if !account.steam_id.is_empty() {
+        if let Ok(Some(c)) = store::get_steam_account_cache(&st.pool, &account.steam_id).await {
+            steam_cache = c;
+        }
+    }
+    if account.steam_id.is_empty() {
+        account.bm_id = Some(bm_id.to_string());
+    }
+    (account, steam_cache)
+}
+
+/// `GET /players/{bmID}/bm-profile`: the BM-keyed twin of `get_steam_profile`,
+/// gated on the `bm_profile_cache` TTL alone (no Steam-side refresh). Mirrors
+/// Go's `GetBmPlayerProfile`.
+pub async fn get_bm_player_profile(
+    State(st): Shared,
+    headers: HeaderMap,
+    Path(bm_id): Path<String>,
+) -> Response {
+    jwt_guard!(headers, st);
+    let bm_id = bm_id.trim().to_string();
+    if !is_bm_id(&bm_id) {
+        return err_json(StatusCode::BAD_REQUEST, "bmID must be a numeric BattleMetrics player ID");
+    }
+
+    let (mut account, mut steam_cache) = account_for_bm_id(&st, &bm_id).await;
+
+    let cached_bm = match store::get_bm_profile_cache(&st.pool, &bm_id).await {
+        Ok(v) => v,
+        Err(e) => return internal("bm profile cache", e, "failed to fetch bm profile cache"),
+    };
+    if let Some(cached) = &cached_bm {
+        if fresh(cached.updated_at) {
+            let resp = profile_response(&st, &account, &steam_cache, cached).await;
+            return Json(resp).into_response();
+        }
+    }
+
+    let profile = match st.bm.fetch_player_profile(&bm_id).await {
+        Ok(p) => p,
+        Err(BmError::PlayerNotFound) => {
+            // BM doesn't see this player. Prefer a stale cache if we have one;
+            // otherwise try to recover a Steam linkage via the resolver chain so
+            // we can still serve Steam-side enrichment instead of 404'ing.
+            if let Some(cached) = &cached_bm {
+                let resp = profile_response(&st, &account, &steam_cache, cached).await;
+                return Json(resp).into_response();
+            }
+            if account.steam_id.is_empty() {
+                match resolve::resolve_bare_linkage_from_resolver(&st, &bm_id).await {
+                    Ok(linked) => {
+                        account = linked;
+                        if let Ok(Some(c)) =
+                            store::get_steam_account_cache(&st.pool, &account.steam_id).await
+                        {
+                            steam_cache = c;
+                        }
+                    }
+                    Err(ResolveError::NotFound) | Err(ResolveError::Pending) => {}
+                    Err(ResolveError::Other(e)) => {
+                        tracing::warn!("players/steam bm profile resolver lookup {bm_id}: {e}");
+                    }
+                }
+            }
+            if !account.steam_id.is_empty() {
+                let empty_bm = BmProfileCache { bm_id: bm_id.clone(), ..Default::default() };
+                let resp = profile_response(&st, &account, &steam_cache, &empty_bm).await;
+                return Json(resp).into_response();
+            }
+            return err_json(StatusCode::NOT_FOUND, "battlemetrics player not found");
+        }
+        Err(e) => {
+            tracing::warn!("players/steam bm profile fetch {bm_id}: {e}");
+            if let Some(cached) = &cached_bm {
+                let resp = profile_response(&st, &account, &steam_cache, cached).await;
+                return Json(resp).into_response();
+            }
+            return err_json(StatusCode::BAD_GATEWAY, "failed to fetch battlemetrics profile");
+        }
+    };
+    let mut profile = profile;
+    if profile.bm_id.trim().is_empty() {
+        profile.bm_id = bm_id.clone();
+    }
+
+    let fresh_bm = match resolve::build_bm_only_cache(&st, &bm_id, &profile).await {
+        Ok(c) => c,
+        Err(e) => return internal("bm profile tracked servers", e, "failed to load tracked servers"),
+    };
+    let updated_bm = match store::upsert_bm_profile_cache(&st.pool, &fresh_bm).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("players/steam bm profile cache upsert {bm_id}: {e}");
+            let resp = profile_response(&st, &account, &steam_cache, &fresh_bm).await;
+            return Json(resp).into_response();
+        }
+    };
+    if let Err(e) = resolve::persist_name_history(&st, &profile).await {
+        tracing::warn!("players/steam bm profile name history {bm_id}: {e}");
+    }
+    let resp = profile_response(&st, &account, &steam_cache, &updated_bm).await;
+    Json(resp).into_response()
+}
+
+/// `GET /players/{bmID}/bm-analytics`: the BM-keyed twin of `get_steam_analytics`.
+/// Unlike the profile route, a BattleMetrics fetch failure (including "not
+/// found") never tries the resolver fallback — it just falls back to a stale
+/// cache or 502s. Mirrors Go's `GetBmPlayerAnalytics`.
+pub async fn get_bm_player_analytics(
+    State(st): Shared,
+    headers: HeaderMap,
+    Path(bm_id): Path<String>,
+) -> Response {
+    jwt_guard!(headers, st);
+    let bm_id = bm_id.trim().to_string();
+    if !is_bm_id(&bm_id) {
+        return err_json(StatusCode::BAD_REQUEST, "bmID must be a numeric BattleMetrics player ID");
+    }
+
+    let (account, steam_cache) = account_for_bm_id(&st, &bm_id).await;
+
+    let cached_bm = match store::get_bm_profile_cache(&st.pool, &bm_id).await {
+        Ok(v) => v,
+        Err(e) => return internal("bm analytics cache", e, "failed to fetch bm profile cache"),
+    };
+    if let Some(cached) = &cached_bm {
+        if fresh(cached.updated_at) {
+            let resp = analytics_response(&st, &account, &steam_cache, cached).await;
+            return Json(resp).into_response();
+        }
+    }
+
+    let profile = match st.bm.fetch_player_profile(&bm_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("players/steam bm analytics fetch {bm_id}: {e}");
+            if let Some(cached) = &cached_bm {
+                let resp = analytics_response(&st, &account, &steam_cache, cached).await;
+                return Json(resp).into_response();
+            }
+            return err_json(StatusCode::BAD_GATEWAY, "failed to fetch analytics");
+        }
+    };
+    let mut profile = profile;
+    if profile.bm_id.trim().is_empty() {
+        profile.bm_id = bm_id.clone();
+    }
+
+    let fresh_bm = match resolve::build_bm_only_cache(&st, &bm_id, &profile).await {
+        Ok(c) => c,
+        Err(e) => return internal("bm analytics tracked servers", e, "failed to load tracked servers"),
+    };
+    let updated_bm = match store::upsert_bm_profile_cache(&st.pool, &fresh_bm).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("players/steam bm analytics cache upsert {bm_id}: {e}");
+            let resp = analytics_response(&st, &account, &steam_cache, &fresh_bm).await;
+            return Json(resp).into_response();
+        }
+    };
+    if let Err(e) = resolve::persist_name_history(&st, &profile).await {
+        tracing::warn!("players/steam bm analytics name history {bm_id}: {e}");
+    }
+    let resp = analytics_response(&st, &account, &steam_cache, &updated_bm).await;
+    Json(resp).into_response()
+}
+
+// ---- friends ----
+
+/// `GET /steam/{steamID}/friends`. Mirrors Go's `GetSteamFriends`.
+pub async fn get_steam_friends(
+    State(st): Shared,
+    headers: HeaderMap,
+    Path(steam_id): Path<String>,
+) -> Response {
+    jwt_guard!(headers, st);
+    if !is_steam64(&steam_id) {
+        return err_json(StatusCode::BAD_REQUEST, "steamID must be a 17-digit number");
+    }
+    match st.steam.get_friend_list(&steam_id).await {
+        Ok(friends) => Json(json!({ "items": friends, "private": false })).into_response(),
+        Err(SteamError::FriendListPrivate) => {
+            Json(json!({ "items": Vec::<String>::new(), "private": true })).into_response()
+        }
+        Err(SteamError::KeyRequired) => {
+            err_json(StatusCode::SERVICE_UNAVAILABLE, "steam api key is not configured")
+        }
+        Err(e) => {
+            tracing::error!("players/steam friends {steam_id}: {e}");
+            err_json(StatusCode::INTERNAL_SERVER_ERROR, "failed to fetch friend list")
+        }
+    }
+}
+
+// ---- resolve (raw input -> canonical Steam ID) ----
+
+#[derive(Deserialize, Default)]
+struct ResolveSteamIdRequest {
+    #[serde(default)]
+    input: String,
+}
+
+enum ResolveInputError {
+    Unsupported,
+    KeyRequired,
+    VanityNotFound,
+    Other(String),
+}
+
+const UNSUPPORTED_INPUT_MSG: &str =
+    "input must be a 17-digit Steam ID or a supported steamcommunity.com profile URL";
+
+/// Mirrors Go's `steamapi.Client.ResolveSteamID`: accepts a raw 17-digit Steam
+/// ID, a `steamcommunity.com/profiles/{id}` URL, or a `steamcommunity.com/id/{vanity}`
+/// URL (resolved live through the Steam Web API). Anything else is unsupported.
+/// Deliberately narrower than `classifier::classify` (used by the app-facing
+/// search route), which also accepts bare vanity names and BM identifiers —
+/// this mirrors the Go handler's own narrower `ResolveSteamID`.
+async fn resolve_steam_id_input(
+    steam: &rustlens_steam::steamapi::Client,
+    input: &str,
+) -> Result<String, ResolveInputError> {
+    let normalized = input.trim();
+    if normalized.is_empty() {
+        return Err(ResolveInputError::Unsupported);
+    }
+    if is_steam64(normalized) {
+        return Ok(normalized.to_string());
+    }
+    let Ok(url) = url::Url::parse(normalized) else {
+        return Err(ResolveInputError::Unsupported);
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(ResolveInputError::Unsupported);
+    }
+    let host = url.host_str().unwrap_or("").to_ascii_lowercase();
+    if host != "steamcommunity.com" && host != "www.steamcommunity.com" {
+        return Err(ResolveInputError::Unsupported);
+    }
+    let path = url.path().trim_matches('/');
+    let segments: Vec<&str> = if path.is_empty() { Vec::new() } else { path.split('/').collect() };
+    if segments.len() < 2 {
+        return Err(ResolveInputError::Unsupported);
+    }
+    match segments[0].to_ascii_lowercase().as_str() {
+        "profiles" => {
+            if is_steam64(segments[1]) {
+                Ok(segments[1].to_string())
+            } else {
+                Err(ResolveInputError::Unsupported)
+            }
+        }
+        "id" => {
+            let vanity = segments[1].trim();
+            if vanity.is_empty() {
+                return Err(ResolveInputError::Unsupported);
+            }
+            if is_steam64(vanity) {
+                return Ok(vanity.to_string());
+            }
+            match steam.resolve_vanity_url(vanity).await {
+                Ok(Some(id)) => Ok(id),
+                Ok(None) => Err(ResolveInputError::VanityNotFound),
+                Err(SteamError::KeyRequired) => Err(ResolveInputError::KeyRequired),
+                Err(e) => Err(ResolveInputError::Other(e.to_string())),
+            }
+        }
+        _ => Err(ResolveInputError::Unsupported),
+    }
+}
+
+/// `POST /steam/resolve`. Mirrors Go's `ResolveSteamID`. Uses the literal Go
+/// decode-error message here rather than the shared `parse_json` helper
+/// (whose text differs from Go's for this handler).
+pub async fn resolve_steam_id(State(st): Shared, headers: HeaderMap, body: Bytes) -> Response {
+    jwt_guard!(headers, st);
+    let req: ResolveSteamIdRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(_) => return err_json(StatusCode::BAD_REQUEST, "invalid request body"),
+    };
+    match resolve_steam_id_input(&st.steam, &req.input).await {
+        Ok(steam_id) => Json(json!({ "steamId": steam_id })).into_response(),
+        Err(ResolveInputError::KeyRequired) => {
+            err_json(StatusCode::BAD_REQUEST, "vanity URL resolution is not available")
+        }
+        Err(ResolveInputError::Unsupported) => err_json(StatusCode::BAD_REQUEST, UNSUPPORTED_INPUT_MSG),
+        Err(ResolveInputError::VanityNotFound) => {
+            err_json(StatusCode::BAD_REQUEST, "steam vanity URL could not be resolved")
+        }
+        Err(ResolveInputError::Other(e)) => {
+            tracing::error!("players/steam resolve: {e}");
+            err_json(StatusCode::INTERNAL_SERVER_ERROR, "failed to resolve steam id")
+        }
+    }
+}
+
+// ---- steam-accounts/count ----
+
+/// `GET /steam-accounts/count`. Mirrors Go's `GetSteamAccountCount`.
+pub async fn get_steam_account_count(State(st): Shared, headers: HeaderMap) -> Response {
+    jwt_guard!(headers, st);
+    match store::count_steam_accounts(&st.pool).await {
+        Ok(count) => Json(json!({ "count": count })).into_response(),
+        Err(e) => internal("account count", e, "failed to count steam accounts"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,5 +854,75 @@ mod tests {
     #[test]
     fn status_none_when_empty() {
         assert!(pick_status(&[]).is_none());
+    }
+
+    fn no_key_client() -> rustlens_steam::steamapi::Client {
+        rustlens_steam::steamapi::Client::new("").unwrap()
+    }
+
+    #[tokio::test]
+    async fn resolve_input_accepts_bare_steam_id() {
+        let c = no_key_client();
+        let id = resolve_steam_id_input(&c, "76561198000000000").await;
+        assert!(matches!(id, Ok(s) if s == "76561198000000000"));
+    }
+
+    #[tokio::test]
+    async fn resolve_input_accepts_profiles_url() {
+        let c = no_key_client();
+        let id = resolve_steam_id_input(&c, "https://steamcommunity.com/profiles/76561198000000000/")
+            .await;
+        assert!(matches!(id, Ok(s) if s == "76561198000000000"));
+    }
+
+    #[tokio::test]
+    async fn resolve_input_accepts_numeric_id_segment_without_api_call() {
+        // A digit "vanity" under /id/ is returned directly (matches Go), so this
+        // must not require a Steam API key.
+        let c = no_key_client();
+        let id = resolve_steam_id_input(&c, "https://www.steamcommunity.com/id/76561198000000000").await;
+        assert!(matches!(id, Ok(s) if s == "76561198000000000"));
+    }
+
+    #[tokio::test]
+    async fn resolve_input_rejects_bare_vanity_without_url() {
+        let c = no_key_client();
+        assert!(matches!(
+            resolve_steam_id_input(&c, "gaben").await,
+            Err(ResolveInputError::Unsupported)
+        ));
+    }
+
+    #[tokio::test]
+    async fn resolve_input_rejects_other_hosts_and_schemes() {
+        let c = no_key_client();
+        assert!(matches!(
+            resolve_steam_id_input(&c, "https://evil.com/profiles/76561198000000000").await,
+            Err(ResolveInputError::Unsupported)
+        ));
+        assert!(matches!(
+            resolve_steam_id_input(&c, "ftp://steamcommunity.com/profiles/76561198000000000").await,
+            Err(ResolveInputError::Unsupported)
+        ));
+        assert!(matches!(
+            resolve_steam_id_input(&c, "https://steamcommunity.com/profiles/").await,
+            Err(ResolveInputError::Unsupported)
+        ));
+    }
+
+    #[tokio::test]
+    async fn resolve_input_vanity_requires_api_key() {
+        let c = no_key_client();
+        assert!(matches!(
+            resolve_steam_id_input(&c, "https://steamcommunity.com/id/gaben").await,
+            Err(ResolveInputError::KeyRequired)
+        ));
+    }
+
+    #[test]
+    fn unlinked_account_has_empty_steam_side() {
+        let a = unlinked_account();
+        assert!(a.steam_id.is_empty());
+        assert!(a.bm_id.is_none());
     }
 }

@@ -42,4 +42,8 @@ pub struct AppState {
     pub redis: Option<redis::aio::MultiplexedConnection>,
     /// Detached backfill in-flight guard.
     pub backfill: Backfill,
+    /// Outbound proxy provider (BattleMetrics only; same instance the `bm`
+    /// client sends through). Exposes `proxy_count()` for sizing track-group
+    /// analytics fetch concurrency (Go `outboundProvider.ProxyCount()`).
+    pub outbound: Arc<dyn rustlens_outbound::OutboundSender>,
 }

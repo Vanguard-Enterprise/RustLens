@@ -389,6 +389,32 @@ pub async fn list_tracked_servers(pool: &PgPool) -> Result<Vec<TrackedServer>, s
         .collect()
 }
 
+/// `CountSteamAccounts`: the current `steam_accounts` row count, cached for up
+/// to an hour in `cached_counts`. The refresh uses `FOR UPDATE SKIP LOCKED` so
+/// only one instance rescans the table per stale window; others read the
+/// existing cached value.
+pub async fn count_steam_accounts(pool: &PgPool) -> Result<i64, sqlx::Error> {
+    sqlx::query(
+        r#"WITH stale AS (
+               SELECT name FROM cached_counts
+               WHERE name = 'steam_accounts'
+                 AND updated_at < now() - interval '1 hour'
+               FOR UPDATE SKIP LOCKED
+           )
+           UPDATE cached_counts c
+           SET value = (SELECT count(*) FROM steam_accounts),
+               updated_at = now()
+           FROM stale
+           WHERE c.name = stale.name"#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query_scalar("SELECT value FROM cached_counts WHERE name = 'steam_accounts'")
+        .fetch_one(pool)
+        .await
+}
+
 pub async fn list_player_states_by_player(
     pool: &PgPool,
     player_bm_id: &str,

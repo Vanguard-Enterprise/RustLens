@@ -17,7 +17,7 @@ use rustlens_db::players_steam as store;
 use rustlens_db::track_analytics as cache;
 use rustlens_db::track_analytics::TrackAnalyticsSession as Session;
 
-use crate::auth::{err_json, require_bot_jwt};
+use crate::auth::{err_json, is_bm_id, require_bot_jwt};
 use crate::state::AppState;
 
 type Shared = State<Arc<AppState>>;
@@ -34,7 +34,7 @@ const WEEKDAY_NAMES: [&str; 7] = [
 ];
 
 #[derive(Serialize)]
-struct HourValue {
+pub(crate) struct HourValue {
     #[serde(rename = "hourUnix")]
     hour_unix: i64,
     hour: i32,
@@ -43,7 +43,7 @@ struct HourValue {
 }
 
 #[derive(Serialize)]
-struct DayValue {
+pub(crate) struct DayValue {
     weekday: String,
     #[serde(rename = "bestStart")]
     best_start: i64,
@@ -53,20 +53,16 @@ struct DayValue {
 }
 
 #[derive(Serialize)]
-struct AnalyticsResponse {
+pub(crate) struct AnalyticsResponse {
     #[serde(rename = "groupName")]
-    group_name: String,
+    pub(crate) group_name: String,
     #[serde(rename = "serverName")]
-    server_name: String,
+    pub(crate) server_name: String,
     #[serde(rename = "timeZone")]
-    time_zone: String,
-    members: i32,
-    analyzed: i32,
-    days: Vec<DayValue>,
-}
-
-fn is_bm_id(s: &str) -> bool {
-    (1..=16).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit())
+    pub(crate) time_zone: String,
+    pub(crate) members: i32,
+    pub(crate) analyzed: i32,
+    pub(crate) days: Vec<DayValue>,
 }
 
 fn round_to_2(value: f64) -> f64 {
@@ -152,7 +148,7 @@ fn best_offline_window(hours: &[f64; 24], day_base: i64) -> (i64, i64) {
 }
 
 /// Chart-ready per-weekday averages across all players' sessions.
-fn compute_days(players: &[Vec<Session>]) -> Vec<DayValue> {
+pub(crate) fn compute_days(players: &[Vec<Session>]) -> Vec<DayValue> {
     let mut totals = [[0.0f64; 24]; 7];
     let mut counts = [0usize; 7];
     for sessions in players {
@@ -198,7 +194,7 @@ fn compute_days(players: &[Vec<Session>]) -> Vec<DayValue> {
         .collect()
 }
 
-fn convert_sessions(input: &[rustlens_battlemetrics::PlayerSession]) -> Vec<Session> {
+pub(crate) fn convert_sessions(input: &[rustlens_battlemetrics::PlayerSession]) -> Vec<Session> {
     input
         .iter()
         .filter_map(|s| {
