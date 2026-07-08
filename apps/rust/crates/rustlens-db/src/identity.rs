@@ -63,6 +63,28 @@ pub struct LinkedSteamAccount {
     pub source: String,
 }
 
+/// The acting user's Discord connected-account summary, mirroring the Go
+/// `store.ConnectedAccount` / `connectedAccountToMap` shape returned by
+/// `GET /api/app/me/connections`. `profile_email` is always empty (the Go
+/// store never populates it either).
+#[derive(Debug, Clone, Serialize)]
+pub struct ConnectedAccount {
+    pub provider: String,
+    #[serde(rename = "providerAccountId")]
+    pub provider_account_id: String,
+    pub username: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+    #[serde(rename = "avatarUrl")]
+    pub avatar_url: String,
+    #[serde(rename = "profileEmail")]
+    pub profile_email: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: DateTime<Utc>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: DateTime<Utc>,
+}
+
 /// One guild-membership record for the acting user, mirroring the frontend
 /// `UserGuildMembership` TS type. `left_at` serializes as `null` when absent.
 #[derive(Debug, Clone, Serialize)]
@@ -159,6 +181,38 @@ pub async fn find_or_create_by_discord_id(
         .fetch_one(pool)
         .await?;
     Ok(id)
+}
+
+/// Same upsert as `find_or_create_by_discord_id`, but also reports whether the
+/// row was freshly inserted (`xmax = 0`) vs an existing row that was refreshed.
+/// Mirrors `EnsureAppUser`'s use of `appauth.Repo.FindOrCreateByDiscordID`,
+/// which returns `(id, created, err)`. Kept as a separate function (rather than
+/// changing the return type of `find_or_create_by_discord_id`) so the OAuth
+/// callback call site is untouched.
+pub async fn find_or_create_by_discord_id_ensure(
+    pool: &PgPool,
+    new_id: &str,
+    p: &DiscordProfile,
+) -> Result<(String, bool), sqlx::Error> {
+    const SQL: &str = r#"
+        INSERT INTO app_users (id, discord_id, discord_username, discord_global_name, discord_avatar, display_name, roles)
+        VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), COALESCE(NULLIF($4, ''), $3), '["user"]'::jsonb)
+        ON CONFLICT (discord_id) DO UPDATE
+            SET discord_username    = EXCLUDED.discord_username,
+                discord_global_name = EXCLUDED.discord_global_name,
+                discord_avatar      = EXCLUDED.discord_avatar,
+                display_name        = COALESCE(NULLIF(app_users.display_name, ''), NULLIF(EXCLUDED.discord_global_name, ''), EXCLUDED.discord_username),
+                updated_at          = NOW()
+        RETURNING id, (xmax = 0) AS created"#;
+    let row = sqlx::query(SQL)
+        .bind(new_id)
+        .bind(&p.id)
+        .bind(&p.username)
+        .bind(&p.global_name)
+        .bind(&p.avatar_hash)
+        .fetch_one(pool)
+        .await?;
+    Ok((row.try_get("id")?, row.try_get("created")?))
 }
 
 /// One guild membership to sync into `user_guilds` at login. Mirrors the Go
@@ -493,6 +547,110 @@ pub async fn load_user_guilds(
             })
         })
         .collect()
+}
+
+/// One row of `GET /api/app/me/guilds/installed`, mirroring the Go
+/// `store.DashboardGuildRow` returned by `ListInstalledGuildsForUser`.
+#[derive(Debug, Clone)]
+pub struct InstalledGuildRow {
+    pub guild_id: String,
+    pub name: String,
+    pub icon_hash: Option<String>,
+    pub banner_hash: Option<String>,
+    pub owner_discord_id: Option<String>,
+    pub owner_username: Option<String>,
+    pub owner_global_name: Option<String>,
+    pub owner_avatar_hash: Option<String>,
+    pub approximate_member_count: Option<i32>,
+    pub tracked_server_count: i32,
+}
+
+/// Bot-installed guilds the acting Discord user is currently an active member
+/// of. Mirrors `ListInstalledGuildsForUser` exactly (same join, same ordering).
+pub async fn list_installed_guilds_for_user(
+    pool: &PgPool,
+    discord_id: &str,
+) -> Result<Vec<InstalledGuildRow>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"SELECT bg.guild_id,
+                  bg.name,
+                  bg.icon_hash,
+                  bg.banner_hash,
+                  bg.owner_discord_id,
+                  bg.owner_username,
+                  bg.owner_global_name,
+                  bg.owner_avatar_hash,
+                  bg.approximate_member_count,
+                  (SELECT COUNT(*) FROM guild_tracked_servers gts WHERE gts.guild_id = bg.guild_id)::int AS tracked_server_count
+           FROM user_guilds ug
+           JOIN bot_guilds bg ON bg.guild_id = ug.guild_id
+           WHERE ug.discord_id = $1
+             AND ug.is_active = TRUE
+             AND bg.is_installed = TRUE
+           ORDER BY bg.name ASC, bg.guild_id ASC"#,
+    )
+    .bind(discord_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|r| {
+            Ok(InstalledGuildRow {
+                guild_id: r.try_get("guild_id")?,
+                name: r.try_get("name")?,
+                icon_hash: r.try_get("icon_hash")?,
+                banner_hash: r.try_get("banner_hash")?,
+                owner_discord_id: r.try_get("owner_discord_id")?,
+                owner_username: r.try_get("owner_username")?,
+                owner_global_name: r.try_get("owner_global_name")?,
+                owner_avatar_hash: r.try_get("owner_avatar_hash")?,
+                approximate_member_count: r.try_get("approximate_member_count")?,
+                tracked_server_count: r.try_get("tracked_server_count")?,
+            })
+        })
+        .collect()
+}
+
+/// The raw `app_users.avatar_url` column, with **no** CDN-URL fallback
+/// synthesis. Mirrors `store.PostgresStore.GetAppUserByID` /
+/// `GetCurrentUserByID`'s `user.AvatarURL` as consumed by
+/// `store.ConnectedAccount.AvatarURL` (`GET /api/app/me/connections`): unlike
+/// `load_app_user` (used by `GET /api/app/me` via `appauth.Repo.GetByID`'s
+/// session-minting path), the Go store layer never derives a Discord CDN URL
+/// here, so this column is empty in practice (nothing in the Go codebase ever
+/// writes it).
+pub async fn get_raw_avatar_url(pool: &PgPool, user_id: &str) -> Result<String, sqlx::Error> {
+    let v: Option<String> = sqlx::query_scalar("SELECT avatar_url FROM app_users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(v.unwrap_or_default())
+}
+
+/// Whether `discord_id` is recorded as an active member of `guild_id` in
+/// `user_guilds`. Mirrors `store.IsGuildMember` (including its empty-input
+/// short-circuit).
+pub async fn is_guild_member(
+    pool: &PgPool,
+    guild_id: &str,
+    discord_id: &str,
+) -> Result<bool, sqlx::Error> {
+    if guild_id.is_empty() || discord_id.is_empty() {
+        return Ok(false);
+    }
+    let exists: bool = sqlx::query_scalar(
+        r#"SELECT EXISTS(
+             SELECT 1
+             FROM user_guilds
+             WHERE guild_id = $1
+               AND discord_id = $2
+               AND is_active = TRUE
+           )"#,
+    )
+    .bind(guild_id)
+    .bind(discord_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(exists)
 }
 
 /// Load the full `CurrentUser` aggregate for `/api/app/me`. Steam accounts and
