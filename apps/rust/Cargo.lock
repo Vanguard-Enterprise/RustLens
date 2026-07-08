@@ -1949,9 +1949,13 @@ name = "rustlens-httpauth"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono",
+ "rand 0.8.6",
  "rustlens-db",
  "rustlens-session",
  "serde_json",
+ "sha2",
+ "subtle",
  "tracing",
 ]
 

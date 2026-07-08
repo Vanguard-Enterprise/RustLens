@@ -19,8 +19,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use rustlens_db::admin_actions::{self as acts, ActionError, AuditEntry};
-use rustlens_db::rbac;
+use rustlens_db::{api_keys, rbac};
 use rustlens_events::{self as ev, Event, Publisher};
+use rustlens_httpauth::{AdminActor, api_key};
 
 use crate::appauth;
 use crate::state::AppState;
@@ -72,6 +73,12 @@ fn spec(action_type: &str) -> Option<Spec> {
             dangerous: true,
             resource_type: "user",
         },
+        "api_keys.create" | "api_keys.rotate" | "api_keys.revoke" => Spec {
+            permission: rbac::API_KEYS_MANAGE,
+            requires_reason: true,
+            dangerous: false,
+            resource_type: "api_key",
+        },
         _ => return None,
     };
     Some(s)
@@ -109,18 +116,16 @@ pub async fn dispatch(
         return err(StatusCode::NOT_FOUND, json!({ "error": "action_not_found" }));
     };
 
-    // 2. Auth: app-secret + session header.
-    if let Err(resp) = appauth::require_app_secret(&headers, &st.config.app_api_internal_secret) {
-        return *resp;
-    }
-    let session = match appauth::require_session(&headers, &st).await {
-        Ok(s) => s,
+    // 2. Auth: admin API key OR app-secret + session header. An API-key header
+    //    short-circuits the session gate (matching the Go global middleware).
+    let actor = match appauth::authenticate_admin(&headers, &st).await {
+        Ok(a) => a,
         Err(resp) => return *resp,
     };
 
     // 2a. Rate limit (per actor+action token bucket).
     if let Err(retry) = st.rate_limiter.allow(
-        &session.user_id,
+        &actor.user_id,
         &action_type,
         crate::ratelimit::DEFAULT_MUTATING_CAPACITY,
         crate::ratelimit::DEFAULT_MUTATING_REFILL,
@@ -139,15 +144,25 @@ pub async fn dispatch(
         .get("idempotency-key")
         .and_then(|v| v.to_str().ok())
         .filter(|s| !s.is_empty())
-        .map(|k| crate::ratelimit::IdempotencyCache::key(&session.user_id, &action_type, k));
+        .map(|k| crate::ratelimit::IdempotencyCache::key(&actor.user_id, &action_type, k));
     if let Some(key) = idem_key.as_ref() {
         if let Some((status, body)) = st.idempotency.get(key) {
             return replay_response(status, body);
         }
     }
 
-    // 3. Permission.
-    match rustlens_db::admin::has_permission(&st.pool, &session.user_id, spec.permission).await {
+    // 3. Permission. For an API-key actor the effective set is the intersection
+    //    of the key snapshot and the creator's current role permissions, so a
+    //    key missing the permission denies here just like Go's resolver.
+    if let Some(k) = &actor.api_key {
+        if !k.permissions.iter().any(|p| p == spec.permission) {
+            return err(
+                StatusCode::FORBIDDEN,
+                json!({ "error": "permission_denied", "required": spec.permission }),
+            );
+        }
+    }
+    match rustlens_db::admin::has_permission(&st.pool, &actor.user_id, spec.permission).await {
         Ok(true) => {}
         Ok(false) => {
             return err(
@@ -207,7 +222,7 @@ pub async fn dispatch(
     }
 
     // 8. Execute (+ publish events).
-    let exec = execute(&st, &action_type, &session.user_id, &body.params).await;
+    let exec = execute(&st, &action_type, &actor, &body.params).await;
 
     // 8a. On-grant hook: fire-and-forget linked-roles push after a pro change.
     if let Ok(ok) = &exec {
@@ -229,7 +244,7 @@ pub async fn dispatch(
         .and_then(|v| v.to_str().ok());
     let is_success = exec.is_ok();
     let (status, resp_body) =
-        finalize(&st, &session, &spec, &action_type, &validated, &body, exec, ua).await;
+        finalize(&st, &actor, &spec, &action_type, &validated, &body, exec, ua).await;
     if let Some(key) = idem_key {
         if is_success && status == StatusCode::OK {
             st.idempotency
@@ -265,7 +280,7 @@ struct ExecOk {
 #[allow(clippy::too_many_arguments)]
 async fn finalize(
     st: &AppState,
-    session: &rustlens_session::SessionUser,
+    actor: &AdminActor,
     spec: &Spec,
     action_type: &str,
     validated: &Validated,
@@ -274,12 +289,16 @@ async fn finalize(
     user_agent: Option<&str>,
 ) -> (StatusCode, Value) {
     let reason = if body.reason.is_empty() { None } else { Some(body.reason.as_str()) };
+    let (via_key_id, via_key_name) = match &actor.api_key {
+        Some(k) => (Some(k.key_id.as_str()), Some(k.key_name.as_str())),
+        None => (None, None),
+    };
     match exec {
         Ok(ok) => {
             let entry = AuditEntry {
                 action_type,
-                actor_user_id: &session.user_id,
-                actor_role_snapshot: &session.admin_roles,
+                actor_user_id: &actor.user_id,
+                actor_role_snapshot: &actor.admin_roles,
                 resource_type: spec.resource_type,
                 resource_id: &ok.resource_id,
                 target_user_id: ok.target.as_deref(),
@@ -288,6 +307,8 @@ async fn finalize(
                 result: "success",
                 error_message: None,
                 user_agent,
+                via_api_key_id: via_key_id,
+                via_api_key_name: via_key_name,
             };
             let _ = acts::record_audit(&st.pool, &entry).await;
             (StatusCode::OK, json!({ "ok": true, "result": ok.payload }))
@@ -296,8 +317,8 @@ async fn finalize(
             let (status, code, msg) = ae.parts();
             let entry = AuditEntry {
                 action_type,
-                actor_user_id: &session.user_id,
-                actor_role_snapshot: &session.admin_roles,
+                actor_user_id: &actor.user_id,
+                actor_role_snapshot: &actor.admin_roles,
                 resource_type: spec.resource_type,
                 resource_id: &validated.resource_id,
                 target_user_id: validated.target.as_deref(),
@@ -306,6 +327,8 @@ async fn finalize(
                 result: "error",
                 error_message: Some(&msg),
                 user_agent,
+                via_api_key_id: via_key_id,
+                via_api_key_name: via_key_name,
             };
             let _ = acts::record_audit(&st.pool, &entry).await;
             (
@@ -474,6 +497,49 @@ fn validate(action_type: &str, params: &Value) -> Result<Validated, String> {
                 confirmation_expected: String::new(),
             })
         }
+        "api_keys.create" => {
+            #[derive(Deserialize)]
+            struct P {
+                #[serde(default)]
+                name: String,
+                #[serde(default)]
+                permissions: Vec<String>,
+                #[serde(default, rename = "expiresAt")]
+                expires_at: Option<String>,
+            }
+            let p: P = from_params(params)?;
+            if p.name.is_empty() {
+                return Err("name is required".into());
+            }
+            if p.name.len() > 64 {
+                return Err("name must be <= 64 chars".into());
+            }
+            for perm in &p.permissions {
+                if !rbac::is_valid_permission(perm) {
+                    return Err(format!("unknown permission {perm:?}"));
+                }
+            }
+            if let Some(exp) = p.expires_at.as_deref().filter(|s| !s.is_empty()) {
+                if chrono::DateTime::parse_from_rfc3339(exp).is_err() {
+                    return Err(format!("expiresAt must be RFC3339: {exp}"));
+                }
+            }
+            // ResourceID is filled from the created key id at execute time (Go
+            // returns an empty ValidatedParams here).
+            Ok(Validated {
+                resource_id: String::new(),
+                target: None,
+                confirmation_expected: String::new(),
+            })
+        }
+        "api_keys.rotate" | "api_keys.revoke" => {
+            let key_id = require_string(params, "keyId")?;
+            Ok(Validated {
+                resource_id: key_id,
+                target: None,
+                confirmation_expected: String::new(),
+            })
+        }
         _ => Err("unknown action".into()),
     }
 }
@@ -492,10 +558,11 @@ fn require_string(params: &Value, key: &str) -> Result<String, String> {
 async fn execute(
     st: &AppState,
     action_type: &str,
-    actor_id: &str,
+    actor: &AdminActor,
     params: &Value,
 ) -> Result<ExecOk, ActionError> {
     let pool = &st.pool;
+    let actor_id = actor.user_id.as_str();
     match action_type {
         "roles.create" => {
             let key = params.get("key").and_then(Value::as_str).unwrap_or_default();
@@ -575,8 +642,134 @@ async fn execute(
             st.events.publish_with_fanout(&user_id, Event::session_revoked(ev::REASON_DELETED));
             Ok(user_payload(user_id.clone(), false, json!({ "userId": user_id, "deleted": true })))
         }
+        "api_keys.create" => {
+            let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
+            let perms = string_vec(params, "permissions");
+            // Subset guard: an actor cannot mint a key with a permission it does
+            // not currently hold. For an API-key actor the effective set is the
+            // key snapshot intersected with the creator's live role permissions.
+            let mut actor_perms = api_keys::permissions_for_user(pool, actor_id).await?;
+            if let Some(k) = &actor.api_key {
+                let snap: HashSet<&str> = k.permissions.iter().map(String::as_str).collect();
+                actor_perms.retain(|p| snap.contains(p.as_str()));
+            }
+            assert_permissions_subset(&perms, &actor_perms)?;
+
+            let secret = api_key::generate_secret();
+            let hash = api_key::hash_secret(&secret.secret);
+            let created = api_keys::create(
+                pool,
+                api_keys::ApiKeyCreate {
+                    name,
+                    prefix: &secret.prefix,
+                    last4: &secret.last4,
+                    secret_hash: &hash,
+                    created_by_user_id: actor_id,
+                    permissions: &perms,
+                    expires_at: parse_expires(params),
+                },
+            )
+            .await?;
+
+            let payload = json!({
+                "apiKey": {
+                    "id": created.id,
+                    "name": created.name,
+                    "prefix": created.prefix,
+                    "last4": created.last4,
+                    "permissions": created.permissions,
+                    "expiresAt": created.expires_at.map(go_rfc3339nano),
+                    "createdAt": go_rfc3339nano(created.created_at),
+                },
+                "secret": secret.secret,
+            });
+            Ok(ExecOk { payload, resource_id: created.id, target: None, pro_push: None })
+        }
+        "api_keys.rotate" => {
+            let key_id = params.get("keyId").and_then(Value::as_str).unwrap_or_default();
+            let existing = match api_keys::get_by_id(pool, key_id).await {
+                Ok(k) => k,
+                Err(api_keys::ApiKeyError::NotFound) => {
+                    return Err(ActionError::NotFound(format!("api key {key_id}")));
+                }
+                Err(api_keys::ApiKeyError::Db(e)) => return Err(e.into()),
+            };
+            if existing.revoked_at.is_some() {
+                return Err(ActionError::Conflict("cannot rotate a revoked key".into()));
+            }
+            let secret = api_key::generate_secret();
+            let hash = api_key::hash_secret(&secret.secret);
+            match api_keys::rotate(pool, key_id, &secret.prefix, &secret.last4, &hash).await {
+                Ok(()) => {}
+                Err(api_keys::ApiKeyError::NotFound) => {
+                    return Err(ActionError::NotFound(format!("api key {key_id}")));
+                }
+                Err(api_keys::ApiKeyError::Db(e)) => return Err(e.into()),
+            }
+            let payload = json!({
+                "apiKey": { "id": key_id, "prefix": secret.prefix, "last4": secret.last4 },
+                "secret": secret.secret,
+            });
+            Ok(ExecOk { payload, resource_id: key_id.to_string(), target: None, pro_push: None })
+        }
+        "api_keys.revoke" => {
+            let key_id = params.get("keyId").and_then(Value::as_str).unwrap_or_default();
+            api_keys::revoke(pool, key_id, "manual").await?;
+            Ok(ExecOk {
+                payload: json!({ "keyId": key_id }),
+                resource_id: key_id.to_string(),
+                target: None,
+                pro_push: None,
+            })
+        }
         _ => Err(ActionError::Validation("unknown action".into())),
     }
+}
+
+/// Reject minting/granting any permission the actor does not currently hold.
+/// Mirrors Go `AssertPermissionsSubsetOfActor` (empty request is always fine;
+/// `%q`-quoted permission in the error message).
+fn assert_permissions_subset(requested: &[String], actor: &[String]) -> Result<(), ActionError> {
+    if requested.is_empty() {
+        return Ok(());
+    }
+    let have: HashSet<&str> = actor.iter().map(String::as_str).collect();
+    for p in requested {
+        if !have.contains(p.as_str()) {
+            return Err(ActionError::PermissionDenied(format!(
+                "cannot grant permission {p:?} the actor does not hold"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Parse the optional RFC3339 `expiresAt` param into UTC. Validation already
+/// rejected a malformed value, so a parse failure here silently drops it.
+fn parse_expires(params: &Value) -> Option<chrono::DateTime<chrono::Utc>> {
+    params
+        .get("expiresAt")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+}
+
+/// Format a timestamp exactly like Go's `time.Time` JSON (RFC3339Nano): trailing
+/// zeros in the fractional part are trimmed, and the dot is dropped when the
+/// fraction is zero. UTC always renders a literal `Z`.
+fn go_rfc3339nano(dt: chrono::DateTime<chrono::Utc>) -> String {
+    use chrono::Timelike;
+    let base = dt.format("%Y-%m-%dT%H:%M:%S").to_string();
+    let nanos = dt.nanosecond();
+    if nanos == 0 {
+        return format!("{base}Z");
+    }
+    let mut frac = format!("{nanos:09}");
+    while frac.ends_with('0') {
+        frac.pop();
+    }
+    format!("{base}.{frac}Z")
 }
 
 fn string_vec(params: &Value, key: &str) -> Vec<String> {

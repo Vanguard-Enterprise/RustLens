@@ -101,6 +101,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/app/admin/administrators", get(admin::list_administrators))
         .route("/api/app/admin/audit", get(admin::list_audit))
         .route("/api/app/admin/audit/event-types", get(admin::list_audit_event_types))
+        .route("/api/app/admin/api-keys", get(admin::list_api_keys))
         .route("/api/app/admin/audit/{id}", get(admin::get_audit_event))
         .route("/api/app/admin/users/{id}", get(admin::get_user))
         .route("/api/app/admin/users/{id}/audit", get(admin::get_user_audit))
