@@ -6,7 +6,7 @@ rust-version.workspace = true
 description = "Shared Postgres access + identity models for the RustLens Rust services."
 
 [dependencies]
-sqlx = { workspace = true }
+sqlx = { workspace = true, features = ["migrate", "macros"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
