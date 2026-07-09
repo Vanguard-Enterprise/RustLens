@@ -19,7 +19,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - { service: backend, context: ., file: apps/backend/Dockerfile }
           - { service: frontend, context: ., file: apps/frontend/Dockerfile }
           - { service: bot, context: ., file: apps/bot/Dockerfile }
           - { service: identity, context: apps/rust, file: apps/rust/Dockerfile }
