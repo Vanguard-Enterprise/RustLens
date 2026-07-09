@@ -1,7 +1,6 @@
 # The Rust services below read shared secrets from ./rustlens.env (not
-# committed; see infra/rustlens.env.example). Local dev: cp
-# apps/backend/.env infra/rustlens.env once, then edit as needed. The Go
-# backend keeps reading its own apps/backend/.env until that file is deleted.
+# committed; see infra/rustlens.env.example). Local dev: copy
+# infra/rustlens.env.example to infra/rustlens.env once, then edit as needed.
 services:
   postgres:
     image: postgres:18-alpine

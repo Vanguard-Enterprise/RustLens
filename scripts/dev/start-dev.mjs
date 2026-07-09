@@ -3,13 +3,15 @@
 // Replaces the former PowerShell scripts so `pnpm dev` runs on Linux, macOS,
 // and Windows.
 //
-//   node scripts/dev/start-dev.mjs             # backend + frontend + bot (default)
-//   node scripts/dev/start-dev.mjs --mode app  # backend + frontend only
+//   node scripts/dev/start-dev.mjs             # frontend + bot (default)
+//   node scripts/dev/start-dev.mjs --mode app  # frontend only
 //
 // It frees any stale dev listeners, brings up the Docker infra
-// (Postgres/Redis/Traefik + Rust services) from infra/docker-compose.yml, then
-// runs the app processes together with prefixed, colored output. Ctrl+C stops
-// everything (killOthers).
+// (Postgres/Redis/Traefik + the Rust fleet + migrate) from
+// infra/docker-compose.yml, then runs the app processes together with
+// prefixed, colored output. Ctrl+C stops everything (killOthers). The Rust
+// services are not hot-reloaded here; run `cargo build`/`cargo test` directly
+// in apps/rust when iterating on them.
 
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +25,7 @@ const modeIndex = process.argv.indexOf('--mode');
 const mode = modeIndex !== -1 ? process.argv[modeIndex + 1] : 'all';
 
 const composeFile = path.join(repoRoot, 'infra', 'docker-compose.yml');
-const devPorts = [3000, 8080];
+const devPorts = [3000];
 
 function log(message) {
   console.log(`\x1b[36m[dev]\x1b[0m ${message}`);
@@ -69,12 +71,6 @@ if (infra.status !== 0) {
 
 const commands = [
   {
-    name: 'backend',
-    command: 'go run github.com/air-verse/air@latest -c .air.toml',
-    cwd: path.join(repoRoot, 'apps', 'backend'),
-    prefixColor: 'blue',
-  },
-  {
     name: 'frontend',
     command: 'pnpm dev',
     cwd: path.join(repoRoot, 'apps', 'frontend'),
@@ -83,8 +79,9 @@ const commands = [
 ];
 
 if (mode !== 'app') {
-  // The bot waits for the backend to answer /api/healthz before it registers.
-  const waiter = JSON.stringify(path.join(repoRoot, 'scripts', 'dev', 'wait-for-backend.mjs'));
+  // The bot waits for the composed Rust fleet to answer /api/healthz
+  // (through Traefik) before it registers.
+  const waiter = JSON.stringify(path.join(repoRoot, 'scripts', 'dev', 'wait-for-api.mjs'));
   commands.push({
     name: 'bot',
     command: `node ${waiter} && pnpm dev`,

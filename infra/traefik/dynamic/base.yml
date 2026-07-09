@@ -1,11 +1,15 @@
 http:
   routers:
-    api:
+    # Every Rust service exposes an identical GET /api/healthz; none of the
+    # per-domain dynamic files claim the bare path (they only match their own
+    # domain prefixes), so route it here at a higher priority than `frontend`
+    # to the identity service as the fleet's general liveness indicator.
+    healthz:
       entryPoints:
         - web
-      rule: "Host(`localhost`) && PathPrefix(`/api`)"
+      rule: "Host(`localhost`) && Path(`/api/healthz`)"
       priority: 100
-      service: backend
+      service: healthz
     frontend:
       entryPoints:
         - web
@@ -14,10 +18,10 @@ http:
       service: frontend
 
   services:
-    backend:
+    healthz:
       loadBalancer:
         servers:
-          - url: "http://host.docker.internal:8080"
+          - url: "http://identity:8090"
     frontend:
       loadBalancer:
         servers:

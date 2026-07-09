@@ -12,8 +12,8 @@ function Check-Cmd([string]$Name, [string]$Hint) {
 
   $version = ""
   try {
-    if ($Name -eq "go") {
-      $version = & go version 2>$null | Select-Object -First 1
+    if ($Name -eq "cargo") {
+      $version = & cargo version 2>$null | Select-Object -First 1
     }
     else {
       $version = & $Name --version 2>$null | Select-Object -First 1
@@ -27,7 +27,7 @@ function Check-Cmd([string]$Name, [string]$Hint) {
 Check-Cmd "docker" "Install Docker Desktop"
 Check-Cmd "node" "Install Node.js LTS"
 Check-Cmd "pnpm" "Enable corepack and pnpm"
-Check-Cmd "go" "Install Go"
+Check-Cmd "cargo" "Install Rust (rustup)"
 Check-Cmd "git" "Install Git"
 
 if ($missing) {

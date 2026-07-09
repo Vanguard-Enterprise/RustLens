@@ -1,7 +1,7 @@
-# Coordinator-service cutover (Rust, D1 domain-prefix reorg). Routes the two
-# path families the coordinator service owns to it at a higher priority than
-# the `/api` catch-all in base.yml; everything else still falls through to
-# the Go backend.
+# Coordinator-service routing (Rust, D1 domain-prefix reorg). Routes the two
+# path families the coordinator service owns to it. The Go backend has been
+# removed (Phase E), so this is now the only route for these paths; there is
+# no catch-all fallback left in base.yml.
 #
 # One PathPrefix/Path per family:
 #   - /api/internal/bot/coordinator: the bot-internal coordinator domain
@@ -9,14 +9,6 @@
 #     consume).
 #   - /api/discord/webhook-events: Discord's Ed25519-signed webhook callback,
 #     already coordinator-only and not part of the bot-internal reorg.
-#
-# The coordinator service dual-registers the new
-# `/api/internal/bot/coordinator/...` prefix alongside the legacy flat
-# `/api/internal/bot/shards/...`, `/api/internal/bot/owner/stats`, and
-# `/api/internal/bot/setup/rate-limit/consume` paths, so the bot deploy (which
-# flips to these new paths) is the cutover moment for this domain. The legacy
-# flat paths still route to Go via the base.yml catch-all until Phase E drops
-# them.
 http:
   routers:
     coordinator:
