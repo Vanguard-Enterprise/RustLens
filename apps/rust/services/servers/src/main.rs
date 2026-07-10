@@ -35,6 +35,9 @@ async fn main() -> anyhow::Result<()> {
     let _otel_guard = rustlens_otel::init("rustlens-servers", "servers=info,tower_http=info");
 
     let config = ServersConfig::from_env().context("loading configuration")?;
+    // Install the client-IP trust config so api-key last-used + admin audit rows
+    // record the real client IP from the trusted edge header (Go `clientip`).
+    rustlens_httpauth::clientip::init(config.trust_proxy_headers, &config.trust_proxy_ip_header);
     let pool = rustlens_db::connect(&config.postgres_url, 10)
         .await
         .context("connecting to Postgres")?;

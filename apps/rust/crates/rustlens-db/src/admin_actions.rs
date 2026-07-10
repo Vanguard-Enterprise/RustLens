@@ -446,6 +446,9 @@ pub struct AuditEntry<'a> {
     pub reason: Option<&'a str>,
     pub result: &'a str,
     pub error_message: Option<&'a str>,
+    /// Resolved client IP (see `rustlens_httpauth::clientip`); `None` stores
+    /// NULL. Was always NULL before the client-IP port.
+    pub ip: Option<&'a str>,
     pub user_agent: Option<&'a str>,
     pub via_api_key_id: Option<&'a str>,
     pub via_api_key_name: Option<&'a str>,
@@ -467,7 +470,7 @@ pub async fn record_audit(pool: &PgPool, e: &AuditEntry<'_>) -> Result<(), sqlx:
                resource_type, resource_id, target_user_id,
                params, reason, result, error_message, ip_address, user_agent,
                via_api_key_id, via_api_key_name
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,$11,$12::uuid,$13)"#,
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::inet,$12,$13::uuid,$14)"#,
     )
     .bind(e.action_type)
     .bind(e.actor_user_id)
@@ -479,6 +482,7 @@ pub async fn record_audit(pool: &PgPool, e: &AuditEntry<'_>) -> Result<(), sqlx:
     .bind(e.reason)
     .bind(e.result)
     .bind(e.error_message)
+    .bind(e.ip)
     .bind(e.user_agent)
     .bind(e.via_api_key_id)
     .bind(e.via_api_key_name)

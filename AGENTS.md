@@ -514,6 +514,8 @@ and fills it in; `PORT`, `POSTGRES_URL`, and `REDIS_URL` are set per-service by
 | `PROXY_ENABLED` | `false` | servers, players |
 | `PROXY_ENDPOINTS` | `` (CSV; legacy fallback when no DB-managed proxies exist) | servers, players |
 | `WIPE_SCHEDULER_INTERVAL_SECONDS` | `60` | guilds |
+| `TRUST_PROXY_HEADERS` | `false` | identity, players, servers, guilds |
+| `TRUST_PROXY_IP_HEADER` | `CF-Connecting-IP` | identity, players, servers, guilds |
 | `BOT_TARGET_SHARDS` | `4` | coordinator |
 | `BOT_HEARTBEAT_TTL_SECONDS` | `45` | coordinator |
 | `CLEANUP_INTERVAL_SECONDS` | `3600` | coordinator |
@@ -521,6 +523,19 @@ and fills it in; `PORT`, `POSTGRES_URL`, and `REDIS_URL` are set per-service by
 | `CLEANUP_ANALYTICS_CACHE_RETENTION_SECONDS` | `172800` (48h) | coordinator |
 | `CLEANUP_COMMAND_USAGE_RETENTION_SECONDS` | `7776000` (90d) | coordinator |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | all (see below) |
+
+**Client IP (`TRUST_PROXY_HEADERS` / `TRUST_PROXY_IP_HEADER`)**: the four
+app-facing services (identity/players/servers/guilds) resolve the real client
+IP for `api_keys.last_used_ip` and `audit_events.ip_address` via
+`rustlens_httpauth::clientip`, a faithful port of the Go `internal/clientip`
+package. The services don't wire axum `ConnectInfo`, so the only trusted source
+is an edge-injected header, and trusting it is opt-in: with `TRUST_PROXY_HEADERS`
+off (the default) both columns stay NULL exactly as before. When enabled, the
+service reads `TRUST_PROXY_IP_HEADER` (default `CF-Connecting-IP`, matching Go),
+takes the first comma-separated token, and records it only if it parses as an
+IP. Same env-var convention as the frontend rate limiter. The config lives on
+each service's config struct and is installed once at boot via
+`rustlens_httpauth::clientip::init`.
 
 The BattleMetrics public API client is unauthenticated; there is no `BATTLEMETRICS_API_KEY` env var. Steam<->BM resolution is delegated to the `steammatch` resolver chain: the **bmsearch.io** public no-auth API (`BM_SEARCH_*`) as the primary source, with the legacy external `bmmatch` service (`BM_MATCH_URL` + `BM_MATCH_TOKEN`) as an optional fallback.
 

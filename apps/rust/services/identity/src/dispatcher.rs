@@ -242,9 +242,12 @@ pub async fn dispatch(
     let ua = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok());
+    let client_ip = crate::appauth::client_ip(&headers);
     let is_success = exec.is_ok();
-    let (status, resp_body) =
-        finalize(&st, &actor, &spec, &action_type, &validated, &body, exec, ua).await;
+    let (status, resp_body) = finalize(
+        &st, &actor, &spec, &action_type, &validated, &body, exec, ua, client_ip.as_deref(),
+    )
+    .await;
     if let Some(key) = idem_key {
         if is_success && status == StatusCode::OK {
             st.idempotency
@@ -287,6 +290,7 @@ async fn finalize(
     body: &Body,
     exec: Result<ExecOk, ActionError>,
     user_agent: Option<&str>,
+    ip: Option<&str>,
 ) -> (StatusCode, Value) {
     let reason = if body.reason.is_empty() { None } else { Some(body.reason.as_str()) };
     let (via_key_id, via_key_name) = match &actor.api_key {
@@ -306,6 +310,7 @@ async fn finalize(
                 reason,
                 result: "success",
                 error_message: None,
+                ip,
                 user_agent,
                 via_api_key_id: via_key_id,
                 via_api_key_name: via_key_name,
@@ -326,6 +331,7 @@ async fn finalize(
                 reason,
                 result: "error",
                 error_message: Some(&msg),
+                ip,
                 user_agent,
                 via_api_key_id: via_key_id,
                 via_api_key_name: via_key_name,

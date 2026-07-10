@@ -50,7 +50,7 @@ pub enum ApiKeyError {
 
 const SELECT_COLS: &str = "id::text AS id, name, prefix, last4, secret_hash, created_by_user_id, \
      permissions, expires_at, revoked_at, revoked_reason, \
-     last_used_at, last_used_ip::text AS last_used_ip, created_at, updated_at";
+     last_used_at, host(last_used_ip) AS last_used_ip, created_at, updated_at";
 
 fn scan_key(row: &sqlx::postgres::PgRow) -> Result<ApiKey, sqlx::Error> {
     Ok(ApiKey {
@@ -173,7 +173,7 @@ pub async fn update_last_used(pool: &PgPool, id: &str, ip: &str) -> Result<(), s
     let ip_arg: Option<&str> = if ip.is_empty() { None } else { Some(ip) };
     sqlx::query(
         r#"UPDATE api_keys
-              SET last_used_at = NOW(), last_used_ip = $2
+              SET last_used_at = NOW(), last_used_ip = $2::inet
             WHERE id::text = $1"#,
     )
     .bind(id)
@@ -252,7 +252,7 @@ pub async fn list(pool: &PgPool, q: &ListQuery) -> Result<(Vec<ListItem>, i64), 
     let mut lb: QueryBuilder<Postgres> = QueryBuilder::new(
         "SELECT k.id::text AS id, k.name, k.prefix, k.last4, k.secret_hash, k.created_by_user_id, \
          k.permissions, k.expires_at, k.revoked_at, k.revoked_reason, \
-         k.last_used_at, k.last_used_ip::text AS last_used_ip, k.created_at, k.updated_at, \
+         k.last_used_at, host(k.last_used_ip) AS last_used_ip, k.created_at, k.updated_at, \
          COALESCE(u.display_name, u.discord_username, '') AS created_by_display_name \
          FROM api_keys k LEFT JOIN app_users u ON u.id = k.created_by_user_id WHERE 1=1",
     );

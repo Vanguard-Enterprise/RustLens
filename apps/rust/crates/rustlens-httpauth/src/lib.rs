@@ -22,6 +22,7 @@ use rustlens_db::identity::{self, Revocation};
 use rustlens_session::{SessionError, SessionUser, parse_session};
 
 pub mod api_key;
+pub mod clientip;
 pub use api_key::ApiKeyActor;
 
 /// The shared-secret header gating `/api/app/*` (Go `appSecretHeader`).

@@ -153,7 +153,8 @@ pub async fn authenticate_api_key(
         }
     }
 
-    maybe_update_last_used(pool, &key.id).await;
+    let client_ip = crate::clientip::extract(headers);
+    maybe_update_last_used(pool, &key.id, client_ip.as_deref()).await;
 
     Ok(ApiKeyActor {
         key_id: key.id,
@@ -179,10 +180,10 @@ fn last_used_map() -> &'static Mutex<HashMap<String, Instant>> {
 }
 
 /// Write `last_used_at` at most once per key per debounce window. The write is
-/// awaited inline (rare), so no runtime handle is required. IP is left NULL:
-/// behind Traefik the Go path records the proxy hop; a faithful client IP would
-/// need `ConnectInfo` wiring, which is out of scope for A4.
-async fn maybe_update_last_used(pool: &PgPool, key_id: &str) {
+/// awaited inline (rare), so no runtime handle is required. `ip` is the resolved
+/// client IP (see [`crate::clientip`]); `None` stores NULL, matching the Go path
+/// when proxy-header trust is off.
+async fn maybe_update_last_used(pool: &PgPool, key_id: &str, ip: Option<&str>) {
     {
         let mut map = match last_used_map().lock() {
             Ok(m) => m,
@@ -198,7 +199,7 @@ async fn maybe_update_last_used(pool: &PgPool, key_id: &str) {
         // Opportunistic prune so the map cannot grow unbounded.
         map.retain(|_, t| now.duration_since(*t) < LAST_USED_DEBOUNCE);
     }
-    if let Err(e) = api_keys::update_last_used(pool, key_id, "").await {
+    if let Err(e) = api_keys::update_last_used(pool, key_id, ip.unwrap_or("")).await {
         tracing::warn!("api-key auth: last-used update failed: {e:#}");
     }
 }

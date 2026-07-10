@@ -19,6 +19,13 @@ pub fn require_app_secret(headers: &HeaderMap, expected: &str) -> Result<(), Aut
     rustlens_httpauth::require_app_secret(headers, expected)
 }
 
+/// Resolve the acting client IP from the trusted edge header (see
+/// `rustlens_httpauth::clientip`). `None` when proxy-header trust is disabled or
+/// the header is absent/invalid.
+pub fn client_ip(headers: &HeaderMap) -> Option<String> {
+    rustlens_httpauth::clientip::extract(headers)
+}
+
 /// Validate the forwarded `X-RustLens-Session` header (signature + expiry + DB
 /// revocation) using the identity service's pool + session secret.
 pub async fn require_session(headers: &HeaderMap, st: &AppState) -> Result<SessionUser, AuthError> {

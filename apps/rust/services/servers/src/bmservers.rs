@@ -106,6 +106,10 @@ fn user_agent(headers: &HeaderMap) -> Option<String> {
     headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).map(String::from)
 }
 
+fn client_ip(headers: &HeaderMap) -> Option<String> {
+    rustlens_httpauth::clientip::extract(headers)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn audit(
     st: &AppState,
@@ -116,6 +120,7 @@ async fn audit(
     result: &str,
     error_message: Option<&str>,
     ua: Option<&str>,
+    ip: Option<&str>,
 ) {
     let entry = AuditEntry {
         action_type,
@@ -128,6 +133,7 @@ async fn audit(
         reason,
         result,
         error_message,
+        ip,
         user_agent: ua,
         via_api_key_id: None,
         via_api_key_name: None,
@@ -255,6 +261,7 @@ pub async fn create_admin_bm_server(
         Err(resp) => return resp,
     };
     let ua = user_agent(&headers);
+    let ip = client_ip(&headers);
     let req: CreateReq = match parse_json(&body) {
         Ok(r) => r,
         Err(resp) => return *resp,
@@ -271,15 +278,15 @@ pub async fn create_admin_bm_server(
     );
     match ts::create(&st.pool, &bm_id, &name, f).await {
         Ok(server) => {
-            audit(&st, &actor, "bm_servers.create", &bm_id, reason, "success", None, ua.as_deref()).await;
+            audit(&st, &actor, "bm_servers.create", &bm_id, reason, "success", None, ua.as_deref(), ip.as_deref()).await;
             (StatusCode::CREATED, Json(bmserver_map(&server))).into_response()
         }
         Err(TrackedServerError::AlreadyExists) => {
-            audit(&st, &actor, "bm_servers.create", &bm_id, reason, "error", Some("already_exists"), ua.as_deref()).await;
+            audit(&st, &actor, "bm_servers.create", &bm_id, reason, "error", Some("already_exists"), ua.as_deref(), ip.as_deref()).await;
             err_json(StatusCode::CONFLICT, "tracked server already exists")
         }
         Err(e) => {
-            audit(&st, &actor, "bm_servers.create", &bm_id, reason, "error", Some(&e.to_string()), ua.as_deref()).await;
+            audit(&st, &actor, "bm_servers.create", &bm_id, reason, "error", Some(&e.to_string()), ua.as_deref(), ip.as_deref()).await;
             db_error("create", e)
         }
     }
@@ -322,6 +329,7 @@ pub async fn update_admin_bm_server(
         Err(resp) => return resp,
     };
     let ua = user_agent(&headers);
+    let ip = client_ip(&headers);
     let current = current_bm_id.trim().to_string();
     if current.is_empty() {
         return err_json(StatusCode::BAD_REQUEST, "bmID is required");
@@ -345,19 +353,19 @@ pub async fn update_admin_bm_server(
     );
     match ts::update(&st.pool, &current, &next, &name, f).await {
         Ok(server) => {
-            audit(&st, &actor, "bm_servers.update", &server.bm_id, reason, "success", None, ua.as_deref()).await;
+            audit(&st, &actor, "bm_servers.update", &server.bm_id, reason, "success", None, ua.as_deref(), ip.as_deref()).await;
             Json(bmserver_map(&server)).into_response()
         }
         Err(TrackedServerError::NotFound) => {
-            audit(&st, &actor, "bm_servers.update", &current, reason, "error", Some("not_found"), ua.as_deref()).await;
+            audit(&st, &actor, "bm_servers.update", &current, reason, "error", Some("not_found"), ua.as_deref(), ip.as_deref()).await;
             err_json(StatusCode::NOT_FOUND, "tracked server not found")
         }
         Err(TrackedServerError::AlreadyExists) => {
-            audit(&st, &actor, "bm_servers.update", &current, reason, "error", Some("already_exists"), ua.as_deref()).await;
+            audit(&st, &actor, "bm_servers.update", &current, reason, "error", Some("already_exists"), ua.as_deref(), ip.as_deref()).await;
             err_json(StatusCode::CONFLICT, "tracked server with new bmId already exists")
         }
         Err(e) => {
-            audit(&st, &actor, "bm_servers.update", &current, reason, "error", Some(&e.to_string()), ua.as_deref()).await;
+            audit(&st, &actor, "bm_servers.update", &current, reason, "error", Some(&e.to_string()), ua.as_deref(), ip.as_deref()).await;
             db_error("update", e)
         }
     }
@@ -381,6 +389,7 @@ pub async fn delete_admin_bm_server(
         Err(resp) => return resp,
     };
     let ua = user_agent(&headers);
+    let ip = client_ip(&headers);
     let bm_id = bm_id.trim().to_string();
     if bm_id.is_empty() {
         return err_json(StatusCode::BAD_REQUEST, "bmID is required");
@@ -388,15 +397,15 @@ pub async fn delete_admin_bm_server(
     let reason = params.reason.as_deref();
     match ts::delete(&st.pool, &bm_id).await {
         Ok(()) => {
-            audit(&st, &actor, "bm_servers.delete", &bm_id, reason, "success", None, ua.as_deref()).await;
+            audit(&st, &actor, "bm_servers.delete", &bm_id, reason, "success", None, ua.as_deref(), ip.as_deref()).await;
             Json(json!({ "status": "deleted" })).into_response()
         }
         Err(TrackedServerError::NotFound) => {
-            audit(&st, &actor, "bm_servers.delete", &bm_id, reason, "error", Some("not_found"), ua.as_deref()).await;
+            audit(&st, &actor, "bm_servers.delete", &bm_id, reason, "error", Some("not_found"), ua.as_deref(), ip.as_deref()).await;
             err_json(StatusCode::NOT_FOUND, "tracked server not found")
         }
         Err(e) => {
-            audit(&st, &actor, "bm_servers.delete", &bm_id, reason, "error", Some(&e.to_string()), ua.as_deref()).await;
+            audit(&st, &actor, "bm_servers.delete", &bm_id, reason, "error", Some(&e.to_string()), ua.as_deref(), ip.as_deref()).await;
             db_error("delete", e)
         }
     }
@@ -428,6 +437,7 @@ pub async fn bulk_admin_bm_servers(
         Err(resp) => return resp,
     };
     let ua = user_agent(&headers);
+    let ip = client_ip(&headers);
     let req: BulkReq = match parse_json(&body) {
         Ok(r) => r,
         Err(resp) => return *resp,
@@ -463,18 +473,18 @@ pub async fn bulk_admin_bm_servers(
             Ok(()) => {
                 succeeded += 1;
                 results.push(json!({ "bmId": id, "ok": true }));
-                audit(&st, &actor, &action_type, id, reason, result_of(true), None, ua.as_deref()).await;
+                audit(&st, &actor, &action_type, id, reason, result_of(true), None, ua.as_deref(), ip.as_deref()).await;
             }
             Err(TrackedServerError::NotFound) => {
                 failed += 1;
                 results.push(json!({ "bmId": id, "ok": false, "error": "not_found" }));
-                audit(&st, &actor, &action_type, id, reason, result_of(false), Some("not_found"), ua.as_deref()).await;
+                audit(&st, &actor, &action_type, id, reason, result_of(false), Some("not_found"), ua.as_deref(), ip.as_deref()).await;
             }
             Err(e) => {
                 failed += 1;
                 results.push(json!({ "bmId": id, "ok": false, "error": "store_error" }));
                 tracing::error!("servers/bm-servers bulk {}: {e}", req.action);
-                audit(&st, &actor, &action_type, id, reason, result_of(false), Some("store_error"), ua.as_deref()).await;
+                audit(&st, &actor, &action_type, id, reason, result_of(false), Some("store_error"), ua.as_deref(), ip.as_deref()).await;
             }
         }
     }

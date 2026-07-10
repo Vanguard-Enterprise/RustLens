@@ -254,6 +254,8 @@ mod tests {
             proxy_enabled: false,
             proxy_endpoints: Vec::new(),
             proxy_encryption_key: None,
+            trust_proxy_headers: false,
+            trust_proxy_ip_header: String::new(),
         }
     }
 

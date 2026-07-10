@@ -52,6 +52,11 @@ pub struct IdentityConfig {
     pub bot_jwt_issuer: String,
     /// Bot JWT audience claim (`BOT_JWT_AUDIENCE`, default `rustlens-backend`).
     pub bot_jwt_audience: String,
+    /// Client-IP trust config for `api_keys.last_used_ip` / `audit_events.
+    /// ip_address` (`TRUST_PROXY_HEADERS` / `TRUST_PROXY_IP_HEADER`). Mirrors the
+    /// Go backend's `internal/clientip` config.
+    pub trust_proxy_headers: bool,
+    pub trust_proxy_ip_header: String,
 }
 
 impl IdentityConfig {
@@ -77,6 +82,9 @@ impl IdentityConfig {
             bot_jwt_issuer: opt("BOT_JWT_ISSUER").unwrap_or_else(|| "rustlens-bot".to_string()),
             bot_jwt_audience: opt("BOT_JWT_AUDIENCE")
                 .unwrap_or_else(|| "rustlens-backend".to_string()),
+            trust_proxy_headers: parse_bool("TRUST_PROXY_HEADERS", false)?,
+            trust_proxy_ip_header: opt("TRUST_PROXY_IP_HEADER")
+                .unwrap_or_else(|| "CF-Connecting-IP".to_string()),
         })
     }
 
@@ -146,6 +154,10 @@ pub struct PlayersConfig {
     pub proxy_enabled: bool,
     pub proxy_endpoints: Vec<String>,
     pub proxy_encryption_key: Option<String>,
+    /// Client-IP trust config for `api_keys.last_used_ip` (`TRUST_PROXY_HEADERS`
+    /// / `TRUST_PROXY_IP_HEADER`). Mirrors the Go `internal/clientip` config.
+    pub trust_proxy_headers: bool,
+    pub trust_proxy_ip_header: String,
 }
 
 impl PlayersConfig {
@@ -182,6 +194,9 @@ impl PlayersConfig {
                 })
                 .unwrap_or_default(),
             proxy_encryption_key: opt("PROXY_ENCRYPTION_KEY"),
+            trust_proxy_headers: parse_bool("TRUST_PROXY_HEADERS", false)?,
+            trust_proxy_ip_header: opt("TRUST_PROXY_IP_HEADER")
+                .unwrap_or_else(|| "CF-Connecting-IP".to_string()),
         })
     }
 }
@@ -203,6 +218,10 @@ pub struct ServersConfig {
     pub proxy_enabled: bool,
     pub proxy_endpoints: Vec<String>,
     pub proxy_encryption_key: Option<String>,
+    /// Client-IP trust config for `api_keys.last_used_ip` (`TRUST_PROXY_HEADERS`
+    /// / `TRUST_PROXY_IP_HEADER`). Mirrors the Go `internal/clientip` config.
+    pub trust_proxy_headers: bool,
+    pub trust_proxy_ip_header: String,
 }
 
 impl ServersConfig {
@@ -235,6 +254,9 @@ impl ServersConfig {
                 })
                 .unwrap_or_default(),
             proxy_encryption_key: opt("PROXY_ENCRYPTION_KEY"),
+            trust_proxy_headers: parse_bool("TRUST_PROXY_HEADERS", false)?,
+            trust_proxy_ip_header: opt("TRUST_PROXY_IP_HEADER")
+                .unwrap_or_else(|| "CF-Connecting-IP".to_string()),
         })
     }
 }
@@ -256,6 +278,10 @@ pub struct GuildsConfig {
     /// Wipe-react scheduler tick interval (seconds; `0` disables the poller).
     /// Mirrors the Go `schedulerInterval` of 60s.
     pub wipe_scheduler_interval_seconds: u64,
+    /// Client-IP trust config for `api_keys.last_used_ip` (`TRUST_PROXY_HEADERS`
+    /// / `TRUST_PROXY_IP_HEADER`). Mirrors the Go `internal/clientip` config.
+    pub trust_proxy_headers: bool,
+    pub trust_proxy_ip_header: String,
 }
 
 impl GuildsConfig {
@@ -274,6 +300,9 @@ impl GuildsConfig {
             bot_jwt_audience: opt("BOT_JWT_AUDIENCE")
                 .unwrap_or_else(|| "rustlens-backend".to_string()),
             wipe_scheduler_interval_seconds: parse_u64("WIPE_SCHEDULER_INTERVAL_SECONDS", 60)?,
+            trust_proxy_headers: parse_bool("TRUST_PROXY_HEADERS", false)?,
+            trust_proxy_ip_header: opt("TRUST_PROXY_IP_HEADER")
+                .unwrap_or_else(|| "CF-Connecting-IP".to_string()),
         })
     }
 }

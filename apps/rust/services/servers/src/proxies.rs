@@ -280,6 +280,10 @@ fn user_agent(headers: &HeaderMap) -> Option<String> {
     headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).map(String::from)
 }
 
+fn client_ip(headers: &HeaderMap) -> Option<String> {
+    rustlens_httpauth::clientip::extract(headers)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn audit(
     st: &AppState,
@@ -290,6 +294,7 @@ async fn audit(
     result: &str,
     error_message: Option<&str>,
     ua: Option<&str>,
+    ip: Option<&str>,
 ) {
     let entry = AuditEntry {
         action_type,
@@ -302,6 +307,7 @@ async fn audit(
         reason,
         result,
         error_message,
+        ip,
         user_agent: ua,
         via_api_key_id: None,
         via_api_key_name: None,
@@ -355,6 +361,7 @@ pub async fn create_admin_proxy(State(st): Shared, headers: HeaderMap, body: Byt
         Err(resp) => return resp,
     };
     let ua = user_agent(&headers);
+    let ip = client_ip(&headers);
     let req: AdminCreateReq = match parse_json(&body) {
         Ok(r) => r,
         Err(resp) => return *resp,
@@ -363,16 +370,16 @@ pub async fn create_admin_proxy(State(st): Shared, headers: HeaderMap, body: Byt
     match create_proxy(&st, &req.endpoint).await {
         Ok((meta, reload_err)) => {
             if let Some(e) = &reload_err {
-                audit(&st, &actor, "proxies.create", &meta.id.to_string(), reason, "error", Some("reload_failed"), ua.as_deref()).await;
+                audit(&st, &actor, "proxies.create", &meta.id.to_string(), reason, "error", Some("reload_failed"), ua.as_deref(), ip.as_deref()).await;
                 tracing::error!("servers/proxies reload: {e}");
                 return err_json(StatusCode::INTERNAL_SERVER_ERROR, "proxy saved but reload failed");
             }
-            audit(&st, &actor, "proxies.create", &meta.id.to_string(), reason, "success", None, ua.as_deref()).await;
+            audit(&st, &actor, "proxies.create", &meta.id.to_string(), reason, "success", None, ua.as_deref(), ip.as_deref()).await;
             (StatusCode::CREATED, Json(admin_map(&meta))).into_response()
         }
         Err(CreateError::Validation(msg)) => err_json(StatusCode::BAD_REQUEST, &msg),
         Err(CreateError::AlreadyExists) => {
-            audit(&st, &actor, "proxies.create", "", reason, "error", Some("already_exists"), ua.as_deref()).await;
+            audit(&st, &actor, "proxies.create", "", reason, "error", Some("already_exists"), ua.as_deref(), ip.as_deref()).await;
             err_json(StatusCode::CONFLICT, "proxy already exists")
         }
         Err(CreateError::Internal(msg)) => { tracing::error!("servers/proxies create_admin: {msg}"); err_json(StatusCode::INTERNAL_SERVER_ERROR, "internal error") }
@@ -398,6 +405,7 @@ pub async fn update_admin_proxy(
         Err(resp) => return resp,
     };
     let ua = user_agent(&headers);
+    let ip = client_ip(&headers);
     let Some(id) = parse_proxy_id(&proxy_id) else {
         return err_json(StatusCode::BAD_REQUEST, "proxyID must be a positive integer");
     };
@@ -409,15 +417,15 @@ pub async fn update_admin_proxy(
     match op::set_enabled(&st.pool, id, req.enabled).await {
         Ok(meta) => {
             if let Some(e) = reload(&st).await.err() {
-                audit(&st, &actor, "proxies.update", &id.to_string(), reason, "error", Some("reload_failed"), ua.as_deref()).await;
+                audit(&st, &actor, "proxies.update", &id.to_string(), reason, "error", Some("reload_failed"), ua.as_deref(), ip.as_deref()).await;
                 tracing::error!("servers/proxies reload: {e}");
                 return err_json(StatusCode::INTERNAL_SERVER_ERROR, "proxy updated but reload failed");
             }
-            audit(&st, &actor, "proxies.update", &id.to_string(), reason, "success", None, ua.as_deref()).await;
+            audit(&st, &actor, "proxies.update", &id.to_string(), reason, "success", None, ua.as_deref(), ip.as_deref()).await;
             Json(admin_map(&meta)).into_response()
         }
         Err(ProxyError::NotFound) => {
-            audit(&st, &actor, "proxies.update", &id.to_string(), reason, "error", Some("not_found"), ua.as_deref()).await;
+            audit(&st, &actor, "proxies.update", &id.to_string(), reason, "error", Some("not_found"), ua.as_deref(), ip.as_deref()).await;
             err_json(StatusCode::NOT_FOUND, "proxy not found")
         }
         Err(ProxyError::Db(e)) => db_error("update_admin", e),
@@ -441,6 +449,7 @@ pub async fn delete_admin_proxy(
         Err(resp) => return resp,
     };
     let ua = user_agent(&headers);
+    let ip = client_ip(&headers);
     let reason = params.reason.as_deref();
     let Some(id) = parse_proxy_id(&proxy_id) else {
         return err_json(StatusCode::BAD_REQUEST, "proxyID must be a positive integer");
@@ -448,15 +457,15 @@ pub async fn delete_admin_proxy(
     match op::delete(&st.pool, id).await {
         Ok(()) => {
             if let Some(e) = reload(&st).await.err() {
-                audit(&st, &actor, "proxies.delete", &id.to_string(), reason, "error", Some("reload_failed"), ua.as_deref()).await;
+                audit(&st, &actor, "proxies.delete", &id.to_string(), reason, "error", Some("reload_failed"), ua.as_deref(), ip.as_deref()).await;
                 tracing::error!("servers/proxies reload: {e}");
                 return err_json(StatusCode::INTERNAL_SERVER_ERROR, "proxy deleted but reload failed");
             }
-            audit(&st, &actor, "proxies.delete", &id.to_string(), reason, "success", None, ua.as_deref()).await;
+            audit(&st, &actor, "proxies.delete", &id.to_string(), reason, "success", None, ua.as_deref(), ip.as_deref()).await;
             Json(json!({ "status": "deleted" })).into_response()
         }
         Err(ProxyError::NotFound) => {
-            audit(&st, &actor, "proxies.delete", &id.to_string(), reason, "error", Some("not_found"), ua.as_deref()).await;
+            audit(&st, &actor, "proxies.delete", &id.to_string(), reason, "error", Some("not_found"), ua.as_deref(), ip.as_deref()).await;
             err_json(StatusCode::NOT_FOUND, "proxy not found")
         }
         Err(ProxyError::Db(e)) => db_error("delete_admin", e),
@@ -482,6 +491,7 @@ pub async fn bulk_admin_proxies(State(st): Shared, headers: HeaderMap, body: Byt
         Err(resp) => return resp,
     };
     let ua = user_agent(&headers);
+    let ip = client_ip(&headers);
     let req: BulkReq = match parse_json(&body) {
         Ok(r) => r,
         Err(resp) => return *resp,
@@ -510,17 +520,17 @@ pub async fn bulk_admin_proxies(State(st): Shared, headers: HeaderMap, body: Byt
             Ok(()) => {
                 succeeded += 1;
                 results.push(json!({ "id": id, "ok": true }));
-                audit(&st, &actor, &action_type, &id.to_string(), reason, "success", None, ua.as_deref()).await;
+                audit(&st, &actor, &action_type, &id.to_string(), reason, "success", None, ua.as_deref(), ip.as_deref()).await;
             }
             Err(ProxyError::NotFound) => {
                 failed += 1;
                 results.push(json!({ "id": id, "ok": false, "error": "not_found" }));
-                audit(&st, &actor, &action_type, &id.to_string(), reason, "error", Some("not_found"), ua.as_deref()).await;
+                audit(&st, &actor, &action_type, &id.to_string(), reason, "error", Some("not_found"), ua.as_deref(), ip.as_deref()).await;
             }
             Err(_) => {
                 failed += 1;
                 results.push(json!({ "id": id, "ok": false, "error": "store_error" }));
-                audit(&st, &actor, &action_type, &id.to_string(), reason, "error", Some("store_error"), ua.as_deref()).await;
+                audit(&st, &actor, &action_type, &id.to_string(), reason, "error", Some("store_error"), ua.as_deref(), ip.as_deref()).await;
             }
         }
     }
