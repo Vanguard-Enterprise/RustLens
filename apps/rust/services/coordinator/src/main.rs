@@ -20,7 +20,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use axum::{
     Router,
-    routing::{MethodRouter, get, post},
+    routing::{get, post},
 };
 use rustlens_config::CoordinatorConfig;
 
@@ -72,29 +72,6 @@ async fn healthz() -> &'static str {
     "ok"
 }
 
-/// Registers a bot-internal route under BOTH the legacy flat path and the new
-/// `coordinator/` domain-prefix path (D1 domain-prefix reorg). The flat paths
-/// are dropped wholesale in Phase E once every domain's bot deploy has cut
-/// over; until then Rust serves both so the bot deploy is the only cutover
-/// moment and reverting the bot is a full rollback.
-///
-/// `MethodRouter` is `Clone`, so the same handler(s) back both paths. Callers
-/// pass `old` and `new` explicitly rather than deriving one from the other,
-/// keeping the reorg auditable (see `players::main::dual_route` for the
-/// pattern this mirrors).
-///
-/// Coordinator has no bare-param routes at all (every segment is a literal),
-/// so unlike players/servers/guilds there is no `bm/`-style matchit
-/// bare-param-vs-literal conflict to avoid here.
-fn dual_route(
-    router: Router<Arc<AppState>>,
-    old_path: &str,
-    new_path: &str,
-    method: MethodRouter<Arc<AppState>>,
-) -> Router<Arc<AppState>> {
-    router.route(old_path, method.clone()).route(new_path, method)
-}
-
 /// Builds the full coordinator router (state left unresolved so tests can
 /// construct it without a live pool/Redis connection). Adding the routes is
 /// what triggers any matchit conflict panic, so `router_builds` below
@@ -108,43 +85,31 @@ fn build_router() -> Router<Arc<AppState>> {
         .route("/api/discord/webhook-events", post(webhook::discord_webhook_events));
 
     // ---- shard coordination (bot JWT) ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/shards/register",
+    let router = router.route(
         "/api/internal/bot/coordinator/shards/register",
         post(shards::register_shard_worker),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/shards/heartbeat",
+    let router = router.route(
         "/api/internal/bot/coordinator/shards/heartbeat",
         post(shards::heartbeat_shard_worker),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/shards/release",
+    let router = router.route(
         "/api/internal/bot/coordinator/shards/release",
         post(shards::release_shard_worker),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/shards/assignments",
+    let router = router.route(
         "/api/internal/bot/coordinator/shards/assignments",
         get(shards::get_shard_assignments),
     );
 
     // ---- owner stats (bot JWT) ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/owner/stats",
+    let router = router.route(
         "/api/internal/bot/coordinator/stats",
         get(owner_stats::get_owner_stats),
     );
 
     // ---- rate-limit consume (bot JWT) ----
-    dual_route(
-        router,
-        "/api/internal/bot/setup/rate-limit/consume",
+    router.route(
         "/api/internal/bot/coordinator/rate-limit/consume",
         post(ratelimit::consume_rate_limit),
     )
@@ -156,9 +121,9 @@ mod tests {
 
     /// Constructing the router adds every route to matchit, so any bare-param
     /// / literal-segment conflict panics here in `cargo test` rather than at
-    /// service boot. This guards the dual-registration reorg (coordinator has
-    /// no bare-param routes today, but the test is kept for parity with the
-    /// other services and to catch future additions).
+    /// service boot (coordinator has no bare-param routes today, but the test
+    /// is kept for parity with the other services and to catch future
+    /// additions).
     #[test]
     fn router_builds() {
         let _ = build_router();

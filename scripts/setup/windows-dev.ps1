@@ -19,7 +19,7 @@ Require-Admin
 
 Install-WingetPackage "Docker.DockerDesktop"
 Install-WingetPackage "OpenJS.NodeJS.LTS"
-Install-WingetPackage "GoLang.Go"
+Install-WingetPackage "Rustlang.Rustup"
 Install-WingetPackage "Git.Git"
 
 Write-Host "Enabling corepack and pnpm"
@@ -31,14 +31,11 @@ else {
   npm install -g pnpm@10.6.0
 }
 
-Write-Host "Installing Air (Go hot reload)"
-go install github.com/air-verse/air@latest
-
 Write-Host "Version check"
 docker --version
 node --version
 pnpm --version
-go version
+cargo --version
 git --version
 
 Write-Host "Done. Restart your terminal, then run: pnpm run setup && pnpm dev"

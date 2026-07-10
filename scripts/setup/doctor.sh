@@ -12,7 +12,7 @@ check_cmd() {
   else
     local version_output=""
     case "$cmd" in
-      go)
+      cargo)
         version_output="$($cmd version 2>/dev/null | head -n1 || true)"
         ;;
       *)
@@ -26,7 +26,7 @@ check_cmd() {
 check_cmd docker "Install Docker Desktop/Engine"
 check_cmd node "Install Node.js LTS"
 check_cmd pnpm "Enable corepack and pnpm"
-check_cmd go "Install Go"
+check_cmd cargo "Install Rust (rustup)"
 check_cmd git "Install Git"
 
 if [[ $missing -ne 0 ]]; then

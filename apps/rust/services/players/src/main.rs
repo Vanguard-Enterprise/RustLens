@@ -23,7 +23,7 @@ use std::time::Duration;
 use anyhow::Context;
 use axum::{
     Router,
-    routing::{MethodRouter, delete, get, post, put},
+    routing::{delete, get, post, put},
 };
 use rustlens_config::PlayersConfig;
 use rustlens_steam::Resolver;
@@ -202,40 +202,16 @@ async fn healthz() -> &'static str {
     "ok"
 }
 
-/// Registers a bot-internal route under BOTH the legacy flat `setup/` path and
-/// the new `players/` domain-prefix path (D1 domain-prefix reorg). The flat
-/// paths are dropped wholesale in Phase E once every domain's bot deploy has
-/// cut over; until then Rust serves both so the bot deploy is the only cutover
-/// moment and reverting the bot is a full rollback.
-///
-/// `MethodRouter` is `Clone`, so the same handler(s) back both paths. Callers
-/// pass `old` and `new` explicitly rather than deriving one from the other:
-/// most tails are identical (`/steam/{steamID}/profile`), but the bm-scoped
-/// routes differ (`/players/{bmID}/...` becomes `/bm/{bmID}/...`) and being
-/// explicit keeps the reorg auditable.
-///
-/// matchit `bm/` rule (the reason the bm routes are not a plain prefix swap):
-/// axum/matchit panics when a bare `{param}` shares a path position with any
-/// literal segment. Under the new prefix, position 6 already holds the literals
-/// `steam` / `discord` / `guilds` / `platform-sync` / `steam-accounts`, so the
-/// bm-scoped routes MUST use a literal `bm/{bmID}` segment there. This is the
-/// same care every sibling reorg (C2-C5) must take for its own bare-param
-/// routes.
-fn dual_route(
-    router: Router<Arc<AppState>>,
-    old_path: &str,
-    new_path: &str,
-    method: MethodRouter<Arc<AppState>>,
-) -> Router<Arc<AppState>> {
-    router
-        .route(old_path, method.clone())
-        .route(new_path, method)
-}
-
 /// Builds the full players router (state left unresolved so tests can construct
 /// it without a live pool). Adding the routes is what triggers any matchit
 /// conflict panic, so `router_builds` below constructs this at test time and
 /// fails `cargo test` instead of failing at service boot.
+///
+/// matchit `bm/` rule: axum/matchit panics when a bare `{param}` shares a path
+/// position with any literal segment. Under `/api/internal/bot/players/`,
+/// position 6 already holds the literals `steam` / `discord` / `guilds` /
+/// `platform-sync` / `steam-accounts`, so the bm-scoped routes use a literal
+/// `bm/{bmID}` segment there instead of a bare param.
 fn build_router() -> Router<Arc<AppState>> {
     let router = Router::new()
         .route("/api/healthz", get(healthz))
@@ -247,162 +223,112 @@ fn build_router() -> Router<Arc<AppState>> {
         );
 
     // ---- resolve / profile / analytics ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam/{steamID}",
+    let router = router.route(
         "/api/internal/bot/players/steam/{steamID}",
         get(steam::get_steam_account),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam/by-bm/{bmID}",
+    let router = router.route(
         "/api/internal/bot/players/steam/by-bm/{bmID}",
         get(steam::get_steam_account_by_bm),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam/{steamID}/profile",
+    let router = router.route(
         "/api/internal/bot/players/steam/{steamID}/profile",
         get(steam::get_steam_profile),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam/{steamID}/analytics",
+    let router = router.route(
         "/api/internal/bot/players/steam/{steamID}/analytics",
         get(steam::get_steam_analytics),
     );
-    // bm-scoped: new path uses the literal `bm/{bmID}` segment (see dual_route docs).
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/players/{bmID}/offline-analytics",
+    // bm-scoped: uses the literal `bm/{bmID}` segment (see the matchit rule above build_router).
+    let router = router.route(
         "/api/internal/bot/players/bm/{bmID}/offline-analytics",
         get(track_analytics::get_player_offline_analytics),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/players/{bmID}/bm-profile",
+    let router = router.route(
         "/api/internal/bot/players/bm/{bmID}/bm-profile",
         get(steam::get_bm_player_profile),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/players/{bmID}/bm-analytics",
+    let router = router.route(
         "/api/internal/bot/players/bm/{bmID}/bm-analytics",
         get(steam::get_bm_player_analytics),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam/{steamID}/friends",
+    let router = router.route(
         "/api/internal/bot/players/steam/{steamID}/friends",
         get(steam::get_steam_friends),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam/resolve",
+    let router = router.route(
         "/api/internal/bot/players/steam/resolve",
         post(steam::resolve_steam_id),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam-accounts/count",
+    let router = router.route(
         "/api/internal/bot/players/steam-accounts/count",
         get(steam::get_steam_account_count),
     );
 
     // ---- game-bans + track-group analytics + platform-sync ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/game-bans",
+    let router = router.route(
         "/api/internal/bot/players/guilds/{guildID}/game-bans",
         get(gamebans::check_guild_game_bans),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/analytics",
+    let router = router.route(
         "/api/internal/bot/players/guilds/{guildID}/track-groups/{groupID}/analytics",
         get(track_group_analytics::get_track_group_analytics),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/platform-sync/{platform}/{id}",
+    let router = router.route(
         "/api/internal/bot/players/platform-sync/{platform}/{id}",
         post(platformsync::sync_platform),
     );
 
     // ---- global links ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam/links",
+    let router = router.route(
         "/api/internal/bot/players/steam/links",
         post(links::create_soft_link),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam/bulk-hard-links",
+    let router = router.route(
         "/api/internal/bot/players/steam/bulk-hard-links",
         post(links::bulk_upsert_hard_links),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam/{steamID}/links",
+    let router = router.route(
         "/api/internal/bot/players/steam/{steamID}/links",
         get(links::list_links_by_steam),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/discord/{discordID}/links",
+    let router = router.route(
         "/api/internal/bot/players/discord/{discordID}/links",
         get(links::list_links_by_discord),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/steam/{steamID}/links/{discordID}/soft",
+    let router = router.route(
         "/api/internal/bot/players/steam/{steamID}/links/{discordID}/soft",
         delete(links::delete_soft_link),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/discord/{discordID}/setsteam-candidates",
+    let router = router.route(
         "/api/internal/bot/players/discord/{discordID}/setsteam-candidates",
         get(links::list_setsteam_candidates),
     );
 
     // ---- link visibility ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/discord/{discordID}/link-visibility-hidden",
+    let router = router.route(
         "/api/internal/bot/players/discord/{discordID}/link-visibility-hidden",
         put(links::hide_discord_link_identity).delete(links::unhide_discord_link_identity),
     );
 
     // ---- guild-scoped links ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/links",
+    let router = router.route(
         "/api/internal/bot/players/guilds/{guildID}/links",
         post(links::create_guild_link).get(links::list_guild_links),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/discord/{discordID}/links",
+    let router = router.route(
         "/api/internal/bot/players/guilds/{guildID}/discord/{discordID}/links",
         get(links::list_guild_links_by_discord),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/steam/{steamID}/links",
+    let router = router.route(
         "/api/internal/bot/players/guilds/{guildID}/steam/{steamID}/links",
         get(links::list_guild_links_by_steam),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/discord/{discordID}/steam/{steamID}",
+    let router = router.route(
         "/api/internal/bot/players/guilds/{guildID}/discord/{discordID}/steam/{steamID}",
         delete(links::delete_guild_link),
     );
-    dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/nickname-targets",
+    router.route(
         "/api/internal/bot/players/guilds/{guildID}/nickname-targets",
         get(links::list_guild_nickname_targets),
     )
@@ -414,7 +340,7 @@ mod tests {
 
     /// Constructing the router adds every route to matchit, so a bare-param /
     /// literal-segment conflict (the `bm/` rule) panics here in `cargo test`
-    /// rather than at service boot. This guards the dual-registration reorg.
+    /// rather than at service boot.
     #[test]
     fn router_builds() {
         let _ = build_router();

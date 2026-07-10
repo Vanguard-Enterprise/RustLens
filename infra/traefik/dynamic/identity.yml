@@ -1,19 +1,14 @@
-# Identity-service cutover (Rust, D1 domain-prefix reorg). Routes the path
-# families the identity service owns to it at a higher priority than the
-# `/api` catch-all in base.yml; everything else still falls through to the Go
-# backend.
+# Identity-service routing (Rust, D1 domain-prefix reorg). Routes the path
+# families the identity service owns to it. The Go backend has been removed
+# (Phase E), so this is now the only route for these paths; there is no
+# catch-all fallback left in base.yml.
 #
 # Families routed here:
 #   - app-facing auth/session: /api/auth/discord*, /api/events*, /api/app/me,
 #     /api/app/me/preferences, /api/app/auth/logout,
 #     /api/app/me/discord-role-connection.
 #   - /api/internal/bot/identity: the bot-internal identity domain
-#     (command-usage, bans, is-website-admin, has-pro-role, users/ensure). The
-#     identity service dual-registers this prefix alongside the legacy flat
-#     `/api/internal/bot/setup/...` paths, so the bot deploy (which flips to
-#     the new paths) is the cutover moment for this domain; the legacy flat
-#     paths still route to Go via the base.yml catch-all until Phase E drops
-#     them.
+#     (command-usage, bans, is-website-admin, has-pro-role, users/ensure).
 #   - identity-owned admin surface: /api/app/admin/{permissions,roles,users,
 #     administrators,audit,actions,api-keys}. The admin surface is split
 #     across services by the ownership map — guilds owns

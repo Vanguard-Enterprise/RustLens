@@ -21,7 +21,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use axum::{
     Router,
-    routing::{MethodRouter, delete, get, post},
+    routing::{delete, get, post},
 };
 use rustlens_config::GuildsConfig;
 
@@ -71,24 +71,6 @@ async fn healthz() -> &'static str {
     "ok"
 }
 
-/// Registers a bot-internal route under BOTH the legacy flat `setup/` path and
-/// the new `guilds/` domain-prefix path (D1 domain-prefix reorg). The flat
-/// paths are dropped wholesale in Phase E once every domain's bot deploy has
-/// cut over; until then Rust serves both so the bot deploy is the only cutover
-/// moment and reverting the bot is a full rollback.
-///
-/// `MethodRouter` is `Clone`, so the same handler(s) back both paths. Callers
-/// pass `old` and `new` explicitly rather than deriving one from the other, so
-/// the reorg stays auditable route-by-route.
-fn dual_route(
-    router: Router<Arc<AppState>>,
-    old_path: &str,
-    new_path: &str,
-    method: MethodRouter<Arc<AppState>>,
-) -> Router<Arc<AppState>> {
-    router.route(old_path, method.clone()).route(new_path, method)
-}
-
 /// Builds the full guilds router (state left unresolved so tests can construct
 /// it without a live pool). Adding the routes is what triggers any matchit
 /// conflict panic, so `router_builds` below constructs this at test time and
@@ -110,105 +92,75 @@ fn build_router() -> Router<Arc<AppState>> {
     let router = Router::new().route("/api/healthz", get(healthz));
 
     // ---- guild settings ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/settings",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/settings",
         get(settings::get_guild_settings).put(settings::update_guild_settings),
     );
 
     // ---- user-guilds ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/user-guilds",
+    let router = router.route(
         "/api/internal/bot/guilds/user-guilds",
         post(sync::create_user_guild_link),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/user-guilds/leave",
+    let router = router.route(
         "/api/internal/bot/guilds/user-guilds/leave",
         post(sync::mark_user_guild_left),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/discord/{discordID}/guilds",
+    let router = router.route(
         "/api/internal/bot/guilds/discord/{discordID}/guilds",
         get(sync::list_user_guild_links_by_discord),
     );
 
     // ---- bot-guilds ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/bot-guilds/upsert",
+    let router = router.route(
         "/api/internal/bot/guilds/bot-guilds/upsert",
         post(sync::upsert_bot_guild),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/bot-guilds/leave",
+    let router = router.route(
         "/api/internal/bot/guilds/bot-guilds/leave",
         post(sync::mark_bot_guild_left),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/bot-guilds/reconcile",
+    let router = router.route(
         "/api/internal/bot/guilds/bot-guilds/reconcile",
         post(sync::reconcile_bot_guilds),
     );
 
     // ---- bot-user-installs ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/bot-user-installs/seen",
+    let router = router.route(
         "/api/internal/bot/guilds/bot-user-installs/seen",
         post(sync::touch_bot_user_install_seen),
     );
 
     // ---- wipe-reacts ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/active",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/wipe-reacts/active",
         get(wipe_reacts::list_active_wipe_reacts),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/wipe-reacts",
         get(wipe_reacts::list_wipe_reacts).post(wipe_reacts::create_wipe_react),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/{messageID}",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/wipe-reacts/{messageID}",
         get(wipe_reacts::get_wipe_react)
             .put(wipe_reacts::update_wipe_react)
             .delete(wipe_reacts::delete_wipe_react),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/{messageID}/reactions",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/wipe-reacts/{messageID}/reactions",
         post(wipe_reacts::set_wipe_react_reaction),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/wipe-reacts/{messageID}/reactions/{userID}",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/wipe-reacts/{messageID}/reactions/{userID}",
         delete(wipe_reacts::remove_wipe_react_reaction),
     );
 
     // ---- wipe-react schedules ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedules",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/wipe-react-schedules",
         get(schedules::list_wipe_react_schedules).post(schedules::create_wipe_react_schedule),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedules/{scheduleID}",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/wipe-react-schedules/{scheduleID}",
         get(schedules::get_wipe_react_schedule)
             .put(schedules::update_wipe_react_schedule)
@@ -216,61 +168,43 @@ fn build_router() -> Router<Arc<AppState>> {
     );
 
     // ---- wipe-react schedule-post queue ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/claim",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/wipe-react-schedule-posts/claim",
         post(schedules::claim_next_schedule_post),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/complete",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/complete",
         post(schedules::complete_schedule_post),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/release",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/wipe-react-schedule-posts/{scheduleID}/release",
         post(schedules::release_schedule_post),
     );
 
     // ---- track groups ----
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/track-groups",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/track-groups",
         get(track_groups::list_track_groups).post(track_groups::create_track_group),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/track-groups/{groupID}",
         get(track_groups::get_track_group)
             .put(track_groups::update_track_group)
             .delete(track_groups::delete_track_group),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/members",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/track-groups/{groupID}/members",
         get(track_groups::list_track_group_members).post(track_groups::add_track_group_members),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/members/remove",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/track-groups/{groupID}/members/remove",
         post(track_groups::remove_track_group_members),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/online-state",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/track-groups/{groupID}/online-state",
         get(track_groups::list_track_group_online_state),
     );
-    let router = dual_route(
-        router,
-        "/api/internal/bot/setup/guilds/{guildID}/track-groups/{groupID}/notifications/claim",
+    let router = router.route(
         "/api/internal/bot/guilds/{guildID}/track-groups/{groupID}/notifications/claim",
         post(track_groups::claim_track_group_notification),
     );
@@ -292,8 +226,8 @@ mod tests {
 
     /// Constructing the router adds every route to matchit, so a bare-param /
     /// literal-segment conflict panics here in `cargo test` rather than at
-    /// service boot. This guards the dual-registration reorg, including the
-    /// no-doubled-segment guild-scoped scheme (see `build_router` docs).
+    /// service boot, including the no-doubled-segment guild-scoped scheme
+    /// (see `build_router` docs).
     #[test]
     fn router_builds() {
         let _ = build_router();
