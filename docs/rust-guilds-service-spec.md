@@ -1,5 +1,7 @@
 # Rust `guilds` service — port spec (Phase 4)
 
+> Historical: the migration completed on `rework/rust-backend`; see `rust-go-removal-plan.md`.
+
 The fourth Rust service in the Go→Rust backend migration (after identity, players, servers). New axum 0.8 + sqlx 0.8 binary at `apps/rust/services/guilds`, **default PORT 8093**, talking to the **same Postgres** as the Go backend. **NO schema changes / NO migrations** — Go's `EnsureSchema()` owns every table; the guilds service only reads/writes existing tables. JSON responses must match the Go handlers **byte-for-byte** (frontend + bot TS types depend on them). `cargo clippy --all-targets` must stay warning-clean; parameterized queries only.
 
 ## Scope (what this service owns)

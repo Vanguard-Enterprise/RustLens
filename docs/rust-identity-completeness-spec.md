@@ -1,5 +1,7 @@
 # Rust Identity Service — Completeness Spec
 
+> Historical: the migration completed on `rework/rust-backend`; see `rust-go-removal-plan.md`.
+
 Status: **✅ COMPLETE** — all spec items implemented, verified, and merged to
 `rework/rust-backend`.
 Author: migration work, 2026-06-30

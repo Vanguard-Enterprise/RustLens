@@ -1,5 +1,7 @@
 # RustLens Rust Migration — Phase 2: `players` Service Spec
 
+> Historical: the migration completed on `rework/rust-backend`; see `rust-go-removal-plan.md`.
+
 Status: **✅ ROUTE-COMPLETE** — all app + bot-internal routes built, tested, and
 merged to `rework/rust-backend`. Only **P2-F infra cutover** remains (held for
 sign-off).

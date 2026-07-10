@@ -58,7 +58,7 @@ export function loadConfig(): BotConfig {
   }
 
   return {
-    backendUrl: process.env.BACKEND_URL ?? "http://localhost:8080",
+    backendUrl: process.env.BACKEND_URL ?? "http://localhost",
     jwtSecret,
     jwtIssuer: process.env.BOT_JWT_ISSUER ?? "rustlens-bot",
     jwtAudience: process.env.BOT_JWT_AUDIENCE ?? "rustlens-backend",

@@ -1,11 +1,21 @@
 # Go removal master plan
 
-How `rework/rust-backend` goes from its current state (five code-complete-ish Rust
-services, Go still authoritative) to a **fully working Rust-only backend with Go
-deleted from the repo**. Supersedes the per-domain Go-handler-deletion steps in
-`docs/rust-cutover-plan.md`: since Go's end is confirmed, Go stays untouched as
-the fallback until every domain is verified, then `apps/backend` is deleted
-wholesale (one clean removal instead of five fiddly partial ones).
+> **Status: Phases A-E complete.** `apps/backend` has been deleted and the five
+> Rust services (identity, players, servers, guilds, coordinator) serve all
+> traffic on `rework/rust-backend`. Gates A, B, C (local, per domain), and E
+> (local/repo-level) have all passed. The only remaining item is **S1, the
+> production cutover**, which is an operator action outside this repo (deploy
+> the fleet images + migrate job, replicate the Traefik dynamic files in prod,
+> deploy the bot per domain, and flip the C6 worker-disable flags). See the
+> per-phase PR lists below and `AGENTS.md` / `README.md` for the resulting
+> architecture.
+
+How `rework/rust-backend` went from its starting state (five code-complete-ish
+Rust services, Go still authoritative) to a **fully working Rust-only backend
+with Go deleted from the repo**. Superseded the per-domain Go-handler-deletion
+steps in `docs/rust-cutover-plan.md`: since Go's end was confirmed, Go stayed
+untouched as the fallback until every domain was verified, then `apps/backend`
+was deleted wholesale (one clean removal instead of five fiddly partial ones).
 
 Decisions this plan builds on (both DECIDED 2026-07-08, recorded in
 `docs/rust-cutover-plan.md`):
@@ -36,6 +46,10 @@ it**; new path `/api/internal/bot/players/guilds/{guildID}/track-groups/{groupID
 
 ## Phase A: route parity (close the Go-only gaps)
 
+**Status: complete.** PRs: #218 (A5), #219 (A6), #221 (A3), #222 (A4), #223
+(A1+A2, landed as one PR), #224 (A7: RBAC catalog seed at identity startup,
+added after this table was originally written).
+
 All items independent and parallelizable. Each follows the established
 per-slice pattern: byte-for-byte response parity with the Go handler, queries
 in `rustlens-db`, clippy-clean, live HTTP smoke vs throwaway PG/Redis.
@@ -53,9 +67,11 @@ in `rustlens-db`, clippy-clean, live HTTP smoke vs throwaway PG/Redis.
 (`internal/http/router.go`) against the union of the five Rust route tables;
 the only allowed leftovers are `/api/docs*` (S3) and intentionally-dropped
 API-key bot-route scope (S4). Plus workspace clippy/test green and per-PR
-smokes.
+smokes. **Passed.**
 
 ## Phase B: the migrate binary (runs parallel to A)
+
+**Status: complete.** PRs: #220 (B1), #225 (B2).
 
 | # | PR | Contents | Executor |
 |---|---|---|---|
@@ -64,9 +80,12 @@ smokes.
 
 **Gate B**: fresh `docker compose up` migrates then starts the fleet; parity
 job green. Schema freeze during the dual-run window; any unavoidable change is
-authored in both Go `EnsureSchema` and a new `000N` migration.
+authored in both Go `EnsureSchema` and a new `000N` migration. **Passed.**
 
 ## Phase C: domain-prefix reorg (per service, after that service's Phase A items)
+
+**Status: complete.** PRs: #226 (C6), #227 (C1), #228 (C4), #229 (C2), #230
+(C3), #231 (C5).
 
 Per service: (1) Rust router dual-registers the new
 `/api/internal/bot/<domain>/...` paths alongside the old flat ones (old ones
@@ -97,9 +116,12 @@ coordinator gets `/coordinator/shards/*`, `/coordinator/stats`,
 
 **Gate C (per domain)**: local compose smoke proving the bot's calls for that
 domain land on the Rust service via the new prefix; bot unit tests green;
-prod verification after the bot deploy (held for Frank, see S1).
+prod verification after the bot deploy (held for Frank, see S1). **Passed
+locally for all five domains; prod verification is part of S1 below.**
 
 ## Phase D: platform prep (parallel to A/B/C)
+
+**Status: complete.** PRs: #217 (D1), #232 (D2).
 
 | # | PR | Contents | Executor |
 |---|---|---|---|
@@ -107,6 +129,9 @@ prod verification after the bot deploy (held for Frank, see S1).
 | D2 | rustlens-otel crate | New shared crate: `tracing-opentelemetry` + `opentelemetry-otlp` (gRPC) init behind `OTEL_EXPORTER_OTLP_ENDPOINT` (no-op when unset), service name per binary, wired into all five mains + migrate. Pyroscope profiling: optional fast-follow, not in this PR. | opus (crate) + sonnet (wiring) |
 
 ## Phase E: decommission sweep (after Gate C on all domains + S1 prod confirmation)
+
+**Status: complete (in-repo).** PRs: #233 (E2), #234 (E1), and this PR (E3:
+docs rewrite).
 
 | # | PR | Contents | Executor |
 |---|---|---|---|
@@ -117,7 +142,9 @@ prod verification after the bot deploy (held for Frank, see S1).
 **Gate E**: `pnpm run doctor` passes without Go installed; fresh clone +
 compose up serves everything through the five services; repo-wide grep for
 `apps/backend`, `:8080`, `go test|go vet|go build` returns only historical
-docs.
+docs. **Passed at the repo level (E-local).** The only outstanding item
+system-wide is **S1, the production cutover**, which happens outside this
+repo and is held for the operator (see Sign-off items below).
 
 ## Dependency graph
 
@@ -145,7 +172,8 @@ judgment. Held for Frank: everything in S1 below.
 
 ## Sign-off items for Frank
 
-- **S1 prod cutover (operator, outside this repo)**: deploy the fleet images +
+- **S1 prod cutover (operator, outside this repo)**, **the only item still
+  open.** All in-repo work (Phases A-E) is complete and merged; deploy the fleet images +
   migrate init job, replicate the five Traefik dynamic files in prod, deploy
   the bot per domain, flip C6 worker flags, and finally confirm Rust-only so
   Phase E can land. Every in-repo item above is reversible; these are not.

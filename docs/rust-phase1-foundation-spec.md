@@ -1,5 +1,7 @@
 # RustLens Rust Migration — Phase 1 Foundation Crates Spec
 
+> Historical: the migration completed on `rework/rust-backend`; see `rust-go-removal-plan.md`.
+
 Status: **✅ COMPLETE** — all four crates built, tested, and merged to
 `rework/rust-backend`.
 Author: migration work, 2026-07-01
