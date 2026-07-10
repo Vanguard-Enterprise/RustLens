@@ -1,5 +1,7 @@
 # Rust fleet cutover plan
 
+> Historical: the migration completed on `rework/rust-backend`; see `rust-go-removal-plan.md`.
+
 How the five code-complete Rust services (`identity` 8090, `players` 8091,
 `servers` 8092, `guilds` 8093, `coordinator` 8094 — all on `rework/rust-backend`)
 go from "built + verified" to "serving production traffic," retiring the Go

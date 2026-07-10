@@ -1,5 +1,7 @@
 # RustLens — Go → Rust Multiservice Migration Roadmap
 
+> Historical: the migration completed on `rework/rust-backend`; see `rust-go-removal-plan.md`.
+
 Status: **APPROVED — executing.** Plan for replacing the Go monolith
 (`apps/backend`) with a set of Rust services. Decisions resolved (§6); **Phase 0
 (finish + cut over `identity`) is in progress.** Builds on the completed identity

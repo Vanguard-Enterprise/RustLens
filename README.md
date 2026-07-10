@@ -1,38 +1,40 @@
 # RustLens Monorepo
 
-RustLens is a multi-application monorepo with three services:
+RustLens is a multi-application monorepo with three apps:
 
-- `apps/backend`: Go API and shard coordinator for bot workers.
+- `apps/rust`: the backend. A Cargo workspace of five axum microservices (`identity`, `players`, `servers`, `guilds`, `coordinator`) plus a `migrate` one-shot schema tool and shared crates. See `AGENTS.md` for the full service breakdown.
 - `apps/frontend`: Next.js web UI.
 - `apps/bot`: Discord.js sharded worker runtime.
 
+The Go backend (`apps/backend`) that used to serve `/api/*` has been deleted; the Rust fleet above is now authoritative for all API traffic.
+
 ## Architecture
 
-- Frontend handles user-facing web traffic and currently ships as a public landing-first surface only.
-- Backend handles all API traffic under `/api/*`.
-- Bot workers register with backend, fetch shard assignments, heartbeat leases, and release on shutdown.
-- Postgres stores worker event history.
-- Redis stores active worker heartbeats and shard lease ownership.
+- Frontend handles user-facing web traffic: a public landing surface plus the authenticated `/dashboard` and internal `/admin` dashboards.
+- The five Rust services together handle all API traffic under `/api/*`, split by domain ownership (see Traefik Routing below).
+- Bot workers register with the coordinator service, fetch shard assignments, heartbeat leases, and release on shutdown.
+- Postgres stores all persistent state; schema is owned by `crates/rustlens-db/migrations/` and applied by the `migrate` binary before any service starts (no in-service auto-migration).
+- Redis stores active worker heartbeats, shard lease ownership, cross-pod SSE fan-out, and assorted per-service coordination locks.
 
 ## Traefik Routing
 
 ### Development (local Docker Compose)
 
-Traefik routes from `http://localhost`:
+Traefik routes from `http://localhost`, configured via `infra/traefik/dynamic/*.yml` (one file per service):
 
-- `PathPrefix(/api)` -> backend on `localhost:8080`
-- everything else -> frontend on `localhost:3000`
+- `Path(/api/healthz)` -> `identity:8090`
+- `identity.yml` -> `identity:8090`: `/api/auth/discord*`, `/api/events*`, `/api/app/me*`, `/api/app/auth/logout`, `/api/internal/bot/identity/*`, and its admin routes (`/api/app/admin/{permissions,roles,users,administrators,audit,actions,api-keys}*`)
+- `players.yml` -> `players:8091`: `/api/internal/bot/players/*`, `/api/app/players/*`
+- `servers.yml` -> `servers:8092`: `/api/internal/bot/servers/*`, `/api/app/admin/{bm-servers,proxies,servers}/*`
+- `guilds.yml` -> `guilds:8093`: `/api/internal/bot/guilds/*`, `/api/app/admin/{guilds,user-installs}/*`
+- `coordinator.yml` -> `coordinator:8094`: `/api/internal/bot/coordinator/*`, `/api/discord/webhook-events`
+- everything else -> frontend on `host.docker.internal:3000`
+
+There is no `/api` catch-all anymore; every `/api/*` path is claimed by one of the five service files above.
 
 ### Production
 
-Production deployment manifests are not maintained in this repository.
-
-## Backend API Docs
-
-The backend is self-documenting via OpenAPI:
-
-- Interactive docs UI: `http://localhost/api/docs`
-- OpenAPI JSON: `http://localhost/api/docs/openapi.json`
+Production deployment manifests are not maintained in this repository, but production routing mirrors the same five Traefik dynamic files (deploying them is part of the still-open production cutover, see `docs/rust-go-removal-plan.md`).
 
 ## Prerequisites
 
@@ -44,22 +46,26 @@ Run PowerShell as Administrator:
 powershell -ExecutionPolicy Bypass -File scripts/setup/windows-dev.ps1
 ```
 
+Installs Docker Desktop, Node.js LTS, the Rust toolchain (rustup), and Git.
+
 ### Ubuntu/Debian
 
 ```bash
 bash scripts/setup/linux-dev.sh
 ```
 
+Installs Docker, Node.js LTS, pnpm, the Rust toolchain (rustup), and Git.
+
 ## Developer Workflow
 
-1. Install prerequisites with platform setup script.
-2. Validate toolchain:
+1. Install prerequisites with the platform setup script above.
+2. Validate toolchain (checks docker, node, pnpm, cargo, git):
 
 ```bash
 pnpm run doctor
 ```
 
-3. Install dependencies and backend tooling:
+3. Install dependencies:
 
 ```bash
 pnpm run setup
@@ -67,53 +73,48 @@ pnpm run setup
 
 > `pnpm run` is required for `setup` and `doctor` because the unprefixed forms collide with pnpm built-in commands.
 
-4. Start local infra + hot reload for all apps:
+4. Start local infra plus hot reload for the frontend and bot:
 
 ```bash
 pnpm dev
 ```
 
+This runs `docker compose up -d` (Postgres, Redis, Traefik, `migrate`, and all five Rust services) and then hot-reloads the frontend and bot on the host. The Rust services themselves are not hot-reloaded; rebuild them directly with `cargo` (see `AGENTS.md`) or `docker compose up -d --build <service>`.
+
 ### Useful Commands
 
-- `pnpm infra:up`: Start Postgres, Redis, Traefik.
-- `pnpm infra:down`: Stop infra containers.
-- `pnpm dev:backend`: Start backend only.
-- `pnpm dev:frontend`: Start frontend only.
-- `pnpm dev:bot`: Start bot only.
-- `pnpm lint`: Workspace lint (frontend + bot). Use `pnpm lint:all` to also run `go vet`.
-- `pnpm test`: Workspace tests (frontend + bot). Use `pnpm test:all` to also run `go test`.
-- `pnpm build`: Workspace builds (frontend + bot). Use `pnpm build:all` to also build the Go binary.
+- `pnpm infra:up`: start Postgres, Redis, Traefik, `migrate`, and the full Rust fleet.
+- `pnpm infra:down`: stop infra containers.
+- `pnpm dev:frontend`: start the frontend only.
+- `pnpm dev:bot`: start the bot only.
+- `pnpm lint`: workspace lint (frontend + bot). Use `pnpm lint:all` to also run `cargo clippy --all-targets` in `apps/rust`.
+- `pnpm test`: workspace tests (frontend + bot). Use `pnpm test:all` to also run `cargo test` in `apps/rust`.
+- `pnpm build`: workspace builds (frontend + bot). Use `pnpm build:all` to also run `cargo build --release` in `apps/rust`.
+
+There is no `dev:backend` script; the backend runs via the Docker fleet started by `pnpm dev` / `pnpm infra:up`.
 
 ## Environment Files
 
-Copy examples and fill values:
-
-- `apps/backend/.env.example`
-- `apps/frontend/.env.example`
-- `apps/bot/.env.example`
-
-The bot requires a real `DISCORD_TOKEN` for gateway login.
-The frontend currently only needs `PORT` when overriding the default Next.js port.
+- `apps/bot/.env.example`: copy to `.env` and fill in (`DISCORD_TOKEN` is required for gateway login).
+- `infra/rustlens.env.example`: copy to `infra/rustlens.env` and fill in; this is the shared secrets file for all five Rust services (Postgres/Redis URLs and per-service `PORT` are set separately in `infra/docker-compose.yml`).
+- The frontend has no checked-in `.env.example`; see the Environment Variables section in `AGENTS.md` for what it expects.
 
 ## Bot Sharding Model
 
-1. Bot worker signs JWT (`service=bot`) using `BOT_SERVICE_JWT_SECRET`.
-2. Worker calls `/api/internal/bot/shards/register`.
-3. Worker periodically calls `/assignments` and reconciles local shard processes.
-4. Worker heartbeats shard ownership via `/heartbeat`.
-5. Worker releases leases via `/release` on shutdown.
+1. Bot worker signs a JWT (`service=bot`) using `BOT_SERVICE_JWT_SECRET`.
+2. Worker calls `/api/internal/bot/coordinator/shards/register`.
+3. Worker periodically calls `/api/internal/bot/coordinator/shards/assignments` and reconciles local shard processes.
+4. Worker heartbeats shard ownership via `/api/internal/bot/coordinator/shards/heartbeat`.
+5. Worker releases leases via `/api/internal/bot/coordinator/shards/release` on shutdown.
 
-Backend computes assignments from active workers and configured shard count (`BOT_TARGET_SHARDS`).
+The coordinator service computes assignments from active workers and the configured shard count (`BOT_TARGET_SHARDS`).
 
 ## CI/CD
 
-- `.github/workflows/ci.yml`
-  - Runs lint/test/build for JS workspace.
-  - Runs vet/test/build for Go backend.
-  - Runs on `ubuntu-latest` while the self-hosted fleet is being remediated.
-- `.github/workflows/publish.yml`
-  - On `main`, builds and pushes `backend`, `frontend`, and `bot` images to GHCR using lowercase owner tags.
-  - Runs on `ubuntu-latest` while the self-hosted fleet is being remediated.
+- `.github/workflows/ci.yml` (both jobs `runs-on: self-hosted`):
+  - `workspace`: lint/test/build for the pnpm workspace (frontend + bot).
+  - `rust`: builds, clippy-lints, migrates a Postgres service container, and tests the full `apps/rust` workspace.
+- `.github/workflows/publish.yml` (`runs-on: self-hosted`):
+  - On `main`, builds and pushes 8 images to GHCR using lowercase owner tags: `frontend`, `bot`, and `identity`/`players`/`servers`/`guilds`/`coordinator`/`migrate` (the last six all built from the single parametrized `apps/rust/Dockerfile`).
 - `.github/workflows/runner-diagnostics.yml`
   - Manual self-hosted runner validation workflow for checkout, workspace, and post-job path issues.
-

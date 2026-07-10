@@ -1,6 +1,8 @@
 # RustLens Rust Migration — Phase 3: `servers` Service Spec
 
-Status: **DRAFT — awaiting review before implementation.**
+> Historical: the migration completed on `rework/rust-backend`; see `rust-go-removal-plan.md`.
+
+Status: **DRAFT, awaiting review before implementation.** (Superseded: the service shipped; see the status note above.)
 Author: migration work, 2026-07-02
 Branch base: `rework/rust-backend`
 

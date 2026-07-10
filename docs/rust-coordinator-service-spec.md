@@ -1,5 +1,7 @@
 # Rust `coordinator` service — port spec (Phase 5, final service)
 
+> Historical: the migration completed on `rework/rust-backend`; see `rust-go-removal-plan.md`.
+
 The fifth and last Rust service in the Go→Rust backend migration. New axum 0.8 + sqlx 0.8 + redis binary at `apps/rust/services/coordinator`, **default PORT 8094**, sharing the **same Postgres and same Redis** as the Go backend. **NO schema changes / NO migrations.** JSON responses match the Go handlers **byte-for-byte**, and the **Redis key schemes match byte-for-byte** — the Discord bot workers and other pods share this Redis state (shard leases, rate-limit counters). `cargo clippy --all-targets` warning-clean; parameterized queries only.
 
 ## Scope (the leftover bot/shard surface still on Go)
