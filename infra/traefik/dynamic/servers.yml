@@ -1,0 +1,26 @@
+# Servers-service routing (Rust, D1 domain-prefix reorg). Routes the path
+# families the servers service owns to it. The Go backend has been removed
+# (Phase E), so this is now the only route for these paths; there is no
+# catch-all fallback left in base.yml.
+#
+# One PathPrefix per family:
+#   - /api/internal/bot/servers: the bot-internal server domain (global +
+#     guild tracked servers, player presence, server analytics, owner-guild
+#     proxy management).
+#   - /api/app/admin/bm-servers, /api/app/admin/proxies, /api/app/admin/servers:
+#     the app-facing admin routes the servers service owns.
+http:
+  routers:
+    servers:
+      entryPoints:
+        - web
+      priority: 200
+      service: servers
+      # Single line: Traefik's rule parser rejects embedded newlines.
+      rule: "Host(`localhost`) && (PathPrefix(`/api/internal/bot/servers`) || PathPrefix(`/api/app/admin/bm-servers`) || PathPrefix(`/api/app/admin/proxies`) || PathPrefix(`/api/app/admin/servers`))"
+
+  services:
+    servers:
+      loadBalancer:
+        servers:
+          - url: "http://servers:8092"

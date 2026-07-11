@@ -1,3 +1,6 @@
+# The Rust services below read shared secrets from ./rustlens.env (not
+# committed; see infra/rustlens.env.example). Local dev: copy
+# infra/rustlens.env.example to infra/rustlens.env once, then edit as needed.
 services:
   postgres:
     image: postgres:18-alpine
@@ -9,16 +12,187 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rustlens"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   redis:
     image: redis:8-alpine
     ports:
       - "6379:6379"
 
+  # One-shot schema migrator. Runs rustlens_db::migrate() (embedded ordered SQL
+  # from crates/rustlens-db/migrations/) against the compose Postgres, then
+  # exits. Every Rust service below depends on this completing successfully
+  # before it starts, so the schema is always applied first. Go's own
+  # EnsureSchema() remains untouched and still runs on its own boot path.
+  migrate:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: migrate
+    env_file:
+      - path: ./rustlens.env
+        required: true
+    environment:
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # Rust identity service: serves the auth/OAuth, /me, events, role-connection,
+  # and bot-internal identity routes (see infra/traefik/dynamic/identity.yml for
+  # exactly which paths Traefik routes here). Shared secrets come from
+  # ./rustlens.env; the explicit environment below points it at the compose
+  # network's Postgres/Redis. Requires rustlens.env for the shared secrets
+  # (APP_SESSION_SECRET, APP_API_INTERNAL_SECRET, DISCORD_CLIENT_ID/SECRET,
+  # BOT_SERVICE_JWT_SECRET); the container exits without them.
+  identity:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: identity
+    env_file:
+      - path: ./rustlens.env
+        required: true
+    environment:
+      PORT: "8090"
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      APP_ORIGIN: "http://localhost"
+      APP_BASE_URL: "http://localhost:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Rust players service: serves the bot-internal player domain and the
+  # app-facing player search/profile routes (see infra/traefik/dynamic/players.yml
+  # for exactly which paths Traefik routes here). Runs against the compose
+  # Postgres/Redis. Shared secrets + Steam/BM/platformsync/proxy vars come from
+  # ./rustlens.env.
+  players:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: players
+    env_file:
+      - path: ./rustlens.env
+        required: true
+    environment:
+      PORT: "8091"
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Rust servers service (Phase 3): tracked servers, presence, analytics,
+  # outbound proxies + the BM poller/refresher (Redis-locked, shares Go's keys).
+  servers:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: servers
+    env_file:
+      - path: ./rustlens.env
+        required: true
+    environment:
+      PORT: "8092"
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Rust guilds service: serves the bot-internal guild domain (settings,
+  # wipe-reacts + schedules + scheduler, track-groups, guild/user/install
+  # sync) and the admin guilds/user-installs routes (see
+  # infra/traefik/dynamic/guilds.yml for exactly which paths Traefik routes
+  # here). Runs against the compose Postgres/Redis; shared secrets come from
+  # ./rustlens.env.
+  guilds:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: guilds
+    env_file:
+      - path: ./rustlens.env
+        required: true
+    environment:
+      PORT: "8093"
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Rust coordinator service (Phase 5): shard coordination (Redis leases), owner
+  # stats, rate-limit + fraud, Discord webhook (needs DISCORD_APP_PUBLIC_KEY), and
+  # the cleanup retention sweep.
+  coordinator:
+    build:
+      context: ../apps/rust
+      dockerfile: Dockerfile
+      args:
+        SERVICE: coordinator
+    env_file:
+      - path: ./rustlens.env
+        required: true
+    environment:
+      PORT: "8094"
+      POSTGRES_URL: "postgres://rustlens:rustlens@postgres:5432/rustlens?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   traefik:
     image: traefik:v3.7
     command:
-      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --api.dashboard=true
@@ -27,7 +201,7 @@ services:
       - "80:80"
       - "8081:8080"
     volumes:
-      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

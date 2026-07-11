@@ -44,7 +44,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/settings");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/123/settings");
     expect(init?.method).toBe("PUT");
     expect(init?.body).toBe(JSON.stringify({ wipeReactLogChannelId: "456" }));
   });
@@ -62,7 +62,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/steam-accounts/count");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/steam-accounts/count");
     expect(init?.method).toBe("GET");
   });
 
@@ -97,7 +97,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/wipe-reacts/789/reactions");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/123/wipe-reacts/789/reactions");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ userId: "222", type: "accepted" }));
   });
@@ -132,7 +132,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/wipe-reacts");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/123/wipe-reacts");
     expect(init?.method).toBe("GET");
   });
 
@@ -169,7 +169,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/servers/tracked-servers");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({
       bmId: "12345",
@@ -213,7 +213,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/steam/76561198000000000/profile");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/steam/76561198000000000/profile");
     expect(init?.method).toBe("GET");
   });
 
@@ -244,7 +244,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/servers/tracked-servers");
     expect(init?.method).toBe("GET");
   });
 
@@ -281,7 +281,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/tracked-servers/12345");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/servers/tracked-servers/12345");
     expect(init?.method).toBe("PUT");
     expect(init?.body).toBe(JSON.stringify({
       bmId: "98765",
@@ -314,7 +314,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/tracked-servers");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/servers/guilds/123/tracked-servers");
     expect(init?.method).toBe("PUT");
     expect(init?.body).toBe(JSON.stringify({ bmIds: ["111", "222"] }));
   });
@@ -345,7 +345,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/online-summary");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/servers/guilds/123/online-summary");
     expect(init?.method).toBe("GET");
   });
 
@@ -371,7 +371,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/discord/456/setsteam-candidates");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/discord/456/setsteam-candidates");
     expect(init?.method).toBe("GET");
     expect(result.items[0].displayName).toBe("Sem");
   });
@@ -394,7 +394,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/links");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/guilds/123/links");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ discordId: "456", steamId: "76561198000000000" }));
   });
@@ -419,7 +419,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/user-guilds");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/user-guilds");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ discordId: "456", guildId: "123" }));
   });
@@ -444,7 +444,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/user-guilds/leave");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/user-guilds/leave");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ discordId: "456", guildId: "123" }));
   });
@@ -471,7 +471,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/discord/456/guilds");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/discord/456/guilds");
     expect(init?.method).toBe("GET");
   });
 
@@ -496,7 +496,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/nickname-targets");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/guilds/123/nickname-targets");
     expect(init?.method).toBe("GET");
   });
 
@@ -513,7 +513,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/guilds/123/discord/456/steam/76561198000000000");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/guilds/123/discord/456/steam/76561198000000000");
     expect(init?.method).toBe("DELETE");
   });
 
@@ -530,7 +530,7 @@ describe("BackendClient", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/steam/resolve");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/players/steam/resolve");
     expect(init?.method).toBe("POST");
     expect(init?.body).toBe(JSON.stringify({ input: "https://steamcommunity.com/id/rustlens" }));
   });
@@ -558,7 +558,7 @@ describe("BackendClient", () => {
     });
 
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/bot-guilds/upsert");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/bot-guilds/upsert");
     expect(init?.method).toBe("POST");
     const body = JSON.parse(init?.body as string);
     expect(body.guildId).toBe("1");
@@ -574,7 +574,7 @@ describe("BackendClient", () => {
     await client.markBotGuildLeft("worker-a", "1");
 
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/bot-guilds/leave");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/bot-guilds/leave");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(init?.body as string)).toEqual({ guildId: "1" });
   });
@@ -587,7 +587,7 @@ describe("BackendClient", () => {
     await client.reconcileBotGuilds("worker-a", { shardId: 1, shardCount: 4, guildIds: ["1", "2"] });
 
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/bot-guilds/reconcile");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/guilds/bot-guilds/reconcile");
     expect(JSON.parse(init?.body as string)).toEqual({ shardId: 1, shardCount: 4, guildIds: ["1", "2"] });
   });
 
@@ -615,7 +615,7 @@ describe("BackendClient", () => {
     expect(result).toEqual({ userId: "usr_abcdef0123456789abcdef01", created: true });
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/users/ensure");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/identity/users/ensure");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(init?.body as string)).toEqual({
       discordId:  "111222333444555666",
@@ -652,7 +652,7 @@ describe("BackendClient", () => {
     expect(result).toBeUndefined();
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe("http://localhost:8080/api/internal/bot/setup/command-usage");
+    expect(url).toBe("http://localhost:8080/api/internal/bot/identity/command-usage");
     expect(init?.method).toBe("POST");
     const body = JSON.parse(init?.body as string);
     expect(body.command).toBe("track");
@@ -668,7 +668,7 @@ describe("BackendClient", () => {
 
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe(
-      "http://localhost:8080/api/internal/bot/setup/guilds/1478118029018792076/game-bans?method=deep&timeframe=180d&scopeDiscordId=10&scopeDiscordId=11",
+      "http://localhost:8080/api/internal/bot/players/guilds/1478118029018792076/game-bans?method=deep&timeframe=180d&scopeDiscordId=10&scopeDiscordId=11",
     );
     expect(init?.method).toBe("GET");
   });

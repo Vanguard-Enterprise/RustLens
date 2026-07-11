@@ -18,7 +18,15 @@ jobs:
     runs-on: self-hosted
     strategy:
       matrix:
-        service: [backend, frontend, bot]
+        include:
+          - { service: frontend, context: ., file: apps/frontend/Dockerfile }
+          - { service: bot, context: ., file: apps/bot/Dockerfile }
+          - { service: identity, context: apps/rust, file: apps/rust/Dockerfile }
+          - { service: players, context: apps/rust, file: apps/rust/Dockerfile }
+          - { service: servers, context: apps/rust, file: apps/rust/Dockerfile }
+          - { service: guilds, context: apps/rust, file: apps/rust/Dockerfile }
+          - { service: coordinator, context: apps/rust, file: apps/rust/Dockerfile }
+          - { service: migrate, context: apps/rust, file: apps/rust/Dockerfile }
     steps:
       - uses: actions/checkout@v7
 
@@ -39,11 +47,12 @@ jobs:
       - name: Build and push ${{ matrix.service }}
         uses: docker/build-push-action@v7
         with:
-          context: .
-          file: apps/${{ matrix.service }}/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: true
           build-args: |
             DEPLOYMENT_VERSION=sha-${{ github.sha }}
+            SERVICE=${{ matrix.service }}
           secrets: |
             next_server_actions_encryption_key=${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
           tags: |

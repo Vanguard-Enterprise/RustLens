@@ -1,0 +1,26 @@
+# Guilds-service routing (Rust, D1 domain-prefix reorg). Routes the path
+# families the guilds service owns to it. The Go backend has been removed
+# (Phase E), so this is now the only route for these paths; there is no
+# catch-all fallback left in base.yml.
+#
+# One PathPrefix per family:
+#   - /api/internal/bot/guilds: the bot-internal guild domain (guild settings,
+#     wipe-reacts + schedules + schedule-post queue, track-groups, user-guilds,
+#     bot-guilds sync, bot-user-installs).
+#   - /api/app/admin/guilds: the admin guild list/detail routes.
+#   - /api/app/admin/user-installs: the admin user-installs list route.
+http:
+  routers:
+    guilds:
+      entryPoints:
+        - web
+      priority: 200
+      service: guilds
+      # Single line: Traefik's rule parser rejects embedded newlines.
+      rule: "Host(`localhost`) && (PathPrefix(`/api/internal/bot/guilds`) || PathPrefix(`/api/app/admin/guilds`) || PathPrefix(`/api/app/admin/user-installs`))"
+
+  services:
+    guilds:
+      loadBalancer:
+        servers:
+          - url: "http://guilds:8093"

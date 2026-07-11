@@ -1,0 +1,90 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rustlens-session",
+    "crates/rustlens-config",
+    "crates/rustlens-db",
+    "crates/rustlens-events",
+    "crates/rustlens-crypto",
+    "crates/rustlens-botjwt",
+    "crates/rustlens-httpauth",
+    "crates/rustlens-outbound",
+    "crates/rustlens-battlemetrics",
+    "crates/rustlens-steam",
+    "crates/rustlens-otel",
+    "services/identity",
+    "services/players",
+    "services/servers",
+    "services/guilds",
+    "services/coordinator",
+    "tools/migrate",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.96"
+
+[workspace.dependencies]
+# shared crates
+rustlens-session = { path = "crates/rustlens-session" }
+rustlens-config = { path = "crates/rustlens-config" }
+rustlens-db = { path = "crates/rustlens-db" }
+rustlens-events = { path = "crates/rustlens-events" }
+rustlens-crypto = { path = "crates/rustlens-crypto" }
+rustlens-botjwt = { path = "crates/rustlens-botjwt" }
+rustlens-httpauth = { path = "crates/rustlens-httpauth" }
+rustlens-outbound = { path = "crates/rustlens-outbound" }
+rustlens-battlemetrics = { path = "crates/rustlens-battlemetrics" }
+rustlens-steam = { path = "crates/rustlens-steam" }
+rustlens-otel = { path = "crates/rustlens-otel" }
+
+# third-party
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+subtle = "2.6"
+thiserror = "2"
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+axum = "0.8"
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "chrono",
+    "uuid",
+    "json",
+] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+uuid = { version = "1", features = ["v4", "serde"] }
+rand = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
+futures-util = "0.3"
+tokio-stream = "0.1"
+aes-gcm = "0.10"
+jsonwebtoken = "9"
+async-trait = "0.1"
+ed25519-dalek = "2"
+hex = "0.4"
+
+# OpenTelemetry (rustlens-otel). All aligned on the opentelemetry 0.32 line;
+# tracing-opentelemetry 0.33 targets that same core version.
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = [
+    "grpc-tonic",
+    "trace",
+    "metrics",
+] }
+opentelemetry-semantic-conventions = "0.32"
+tracing-opentelemetry = "0.33"

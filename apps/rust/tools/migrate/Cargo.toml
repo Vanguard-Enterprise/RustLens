@@ -1,0 +1,17 @@
+[package]
+name = "rustlens-migrate"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "One-shot schema migrator for the RustLens Rust fleet (runs rustlens_db::migrate)."
+
+[[bin]]
+name = "migrate"
+path = "src/main.rs"
+
+[dependencies]
+rustlens-db = { workspace = true }
+rustlens-otel = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -36,33 +36,44 @@ jobs:
 
       - name: Build
         run: pnpm build
-
-  backend:
+  rust:
     runs-on: self-hosted
     defaults:
       run:
-        working-directory: apps/backend
+        working-directory: apps/rust
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: rustlens
+          POSTGRES_USER: rustlens
+          POSTGRES_PASSWORD: rustlens
+        ports:
+          - 5432
+        options: >-
+          --health-cmd="pg_isready -U rustlens"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          go-version: '1.26.4'
-
-      - name: Download modules
-        run: go mod download
-
-      - name: Vulnerability scan
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
-        run: go test ./...
-
-      - name: Race test
-        run: go test -race ./...
+          components: clippy
 
       - name: Build
-        run: go build ./cmd/server
+        run: cargo build --all-targets
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run migrations
+        run: cargo run --bin migrate
+        env:
+          POSTGRES_URL: postgres://rustlens:rustlens@172.18.0.1:${{ job.services.postgres.ports['5432'] }}/rustlens?sslmode=disable
+
+      - name: Test
+        run: cargo test
+        env:
+          RUSTLENS_TEST_PG_URL: postgres://rustlens:rustlens@172.18.0.1:${{ job.services.postgres.ports['5432'] }}/rustlens?sslmode=disable

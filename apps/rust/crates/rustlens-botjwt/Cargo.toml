@@ -1,0 +1,11 @@
+[package]
+name = "rustlens-botjwt"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Bot service JWT (HS256) validation for /api/internal/bot/*, matching the Go backend."
+
+[dependencies]
+jsonwebtoken = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }

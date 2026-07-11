@@ -7,14 +7,14 @@ node_modules/
 .env
 .env.*
 !.env.example
+infra/rustlens.env
+!infra/rustlens.env.example
 
 # Build
 apps/frontend/.next/
 apps/frontend/out/
 apps/frontend/tsconfig.tsbuildinfo
 apps/bot/dist/
-apps/backend/tmp/
-apps/backend/server.exe
 
 # Coverage
 coverage/

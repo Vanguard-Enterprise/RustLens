@@ -1,0 +1,32 @@
+# Identity-service routing (Rust, D1 domain-prefix reorg). Routes the path
+# families the identity service owns to it. The Go backend has been removed
+# (Phase E), so this is now the only route for these paths; there is no
+# catch-all fallback left in base.yml.
+#
+# Families routed here:
+#   - app-facing auth/session: /api/auth/discord*, /api/events*, /api/app/me,
+#     /api/app/me/preferences, /api/app/auth/logout,
+#     /api/app/me/discord-role-connection.
+#   - /api/internal/bot/identity: the bot-internal identity domain
+#     (command-usage, bans, is-website-admin, has-pro-role, users/ensure).
+#   - identity-owned admin surface: /api/app/admin/{permissions,roles,users,
+#     administrators,audit,actions,api-keys}. The admin surface is split
+#     across services by the ownership map — guilds owns
+#     /api/app/admin/guilds + /user-installs, servers owns
+#     /api/app/admin/{bm-servers,proxies,servers} (their own dynamic files);
+#     everything else on the admin surface belongs to identity.
+http:
+  routers:
+    identity:
+      entryPoints:
+        - web
+      priority: 200
+      service: identity
+      # Single line: Traefik's rule parser rejects embedded newlines.
+      rule: "Host(`localhost`) && (PathPrefix(`/api/auth/discord`) || PathPrefix(`/api/events`) || Path(`/api/app/me`) || Path(`/api/app/me/preferences`) || Path(`/api/app/auth/logout`) || Path(`/api/app/me/discord-role-connection`) || PathPrefix(`/api/internal/bot/identity`) || PathPrefix(`/api/app/admin/permissions`) || PathPrefix(`/api/app/admin/roles`) || PathPrefix(`/api/app/admin/users`) || PathPrefix(`/api/app/admin/administrators`) || PathPrefix(`/api/app/admin/audit`) || PathPrefix(`/api/app/admin/actions`) || PathPrefix(`/api/app/admin/api-keys`))"
+
+  services:
+    identity:
+      loadBalancer:
+        servers:
+          - url: "http://identity:8090"

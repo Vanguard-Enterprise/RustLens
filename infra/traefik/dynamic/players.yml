@@ -1,0 +1,26 @@
+# Players-service routing (Rust, D1 domain-prefix reorg). Routes the two path
+# families the players service owns to it. The Go backend has been removed
+# (Phase E), so this is now the only route for these paths; there is no
+# catch-all fallback left in base.yml.
+#
+# One PathPrefix per family:
+#   - /api/internal/bot/players: the bot-internal player domain (Steam<->BM
+#     resolution, profiles/analytics, all Steam<->Discord linking, guild
+#     game-bans + nickname targets, track-group analytics, platform-sync).
+#   - /api/app/players: the app-facing session-authed search + profile routes
+#     the frontend/dashboard hits.
+http:
+  routers:
+    players:
+      entryPoints:
+        - web
+      priority: 200
+      service: players
+      # Single line: Traefik's rule parser rejects embedded newlines.
+      rule: "Host(`localhost`) && (PathPrefix(`/api/internal/bot/players`) || PathPrefix(`/api/app/players`))"
+
+  services:
+    players:
+      loadBalancer:
+        servers:
+          - url: "http://players:8091"

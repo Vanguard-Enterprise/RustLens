@@ -1,0 +1,26 @@
+# Coordinator-service routing (Rust, D1 domain-prefix reorg). Routes the two
+# path families the coordinator service owns to it. The Go backend has been
+# removed (Phase E), so this is now the only route for these paths; there is
+# no catch-all fallback left in base.yml.
+#
+# One PathPrefix/Path per family:
+#   - /api/internal/bot/coordinator: the bot-internal coordinator domain
+#     (shard register/heartbeat/release/assignments, owner stats, rate-limit
+#     consume).
+#   - /api/discord/webhook-events: Discord's Ed25519-signed webhook callback,
+#     already coordinator-only and not part of the bot-internal reorg.
+http:
+  routers:
+    coordinator:
+      entryPoints:
+        - web
+      priority: 200
+      service: coordinator
+      # Single line: Traefik's rule parser rejects embedded newlines.
+      rule: "Host(`localhost`) && (PathPrefix(`/api/internal/bot/coordinator`) || Path(`/api/discord/webhook-events`))"
+
+  services:
+    coordinator:
+      loadBalancer:
+        servers:
+          - url: "http://coordinator:8094"
